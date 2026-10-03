@@ -8,6 +8,9 @@ if (command !== "plugin") process.exit(0);
 const home = host === "claude" ? process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude") : process.env.CODEX_HOME || join(homedir(), ".codex");
 const file = join(home, ".native-plugin-fixture.json");
 const data = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { markets: {}, plugins: {} };
+// Claude declares a marketplace per scope. `declared` is the user-scope declaration; `kept` names markets
+// that stay listed after a user-scope removal (another scope declares them, or Claude keeps them).
+data.declared ??= {}; data.kept ??= [];
 let result: unknown = {};
 if (verb === "marketplace") {
   const [operation, value] = args;
@@ -21,7 +24,17 @@ if (verb === "marketplace") {
     const source = host === "codex" ? realpathSync(value!) : value;
     if (data.markets[market.name] && data.markets[market.name] !== source) throw new Error("marketplace already added from a different source");
     data.markets[market.name] = source;
-  } else if (operation === "remove") delete data.markets[value!];
+    if (args.includes("--scope")) data.declared[market.name] = true;
+  } else if (operation === "remove") {
+    if (host === "claude" && args.includes("--scope")) {
+      if (!data.declared[value!]) {
+        console.error(`✘ Failed to remove marketplace: Marketplace '${value}' is not declared in user settings. Omit --scope to remove it from all scopes.`);
+        process.exit(1);
+      }
+      delete data.declared[value!];
+      if (!data.kept.includes(value!)) delete data.markets[value!];
+    } else { delete data.markets[value!]; delete data.declared[value!]; }
+  }
   else throw new Error(`unsupported fixture marketplace command ${operation}`);
 } else if (verb === "list") {
   const rows = Object.keys(data.plugins).filter(id => host === "claude" || data.markets[id.split("@")[1]!]).map(id => host === "claude"

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { installSkillPlugin, removeSkillPlugin, TAP_MARKETPLACE, TAP_PLUGIN, type PluginCommand, type PluginHost } from "../src/install-skill-plugin";
+import { installSkillPlugin, removeSkillPlugin, RETAINED_LISTING, TAP_MARKETPLACE, TAP_PLUGIN, type PluginCommand, type PluginHost } from "../src/install-skill-plugin";
 import { aliasBody, PUBLIC_SKILLS } from "../src/skill-policy";
 import { installSkillLinks } from "../src/install-skill-links";
 import { generateSkillPlugin } from "../src/skill-plugin";
@@ -15,7 +15,7 @@ function fixture(host: PluginHost) {
   const home = join(root, "home"); mkdirSync(home);
   const manifest = join(root, "manifest.json"); process.env.TAP_INSTALL_MANIFEST = manifest;
   const calls: string[][] = [];
-  const data = { source: undefined as string | undefined, cachedSource: undefined as string | undefined, installed: false, enabled: true, foreign: false, failInstall: false, failMarketAdd: false };
+  const data = { source: undefined as string | undefined, cachedSource: undefined as string | undefined, installed: false, enabled: true, foreign: false, failInstall: false, failMarketAdd: false, undeclared: false, listedElsewhere: false, failRemove: false };
   const run: PluginCommand = (actualHost, actualHome, args) => {
     expect(actualHost).toBe(host); expect(actualHome).toBe(home); calls.push(args);
     if (args.join(" ") === "marketplace list") {
@@ -33,7 +33,13 @@ function fixture(host: PluginHost) {
       if (data.source && data.source !== target) throw new Error("already added from a different source");
       data.source = target;
     }
-    else if (args[0] === "marketplace" && args[1] === "remove") data.source = undefined;
+    else if (args[0] === "marketplace" && args[1] === "remove") {
+      if (data.failRemove) throw new Error("fixture remove failure");
+      // Claude's --scope user consumes the user-scope declaration and then refuses; the listing is Claude's.
+      if (data.undeclared) throw new Error("claude plugin marketplace remove failed: ✘ Marketplace 'tap-marketplace' is not declared in user settings. Omit --scope to remove it from all scopes.");
+      if (host === "claude") data.undeclared = true;
+      if (!data.listedElsewhere) data.source = undefined;
+    }
     else if (["add", "install", "update"].includes(args[0]!)) {
       if (data.failInstall) throw new Error("fixture install failure");
       data.installed = true; data.cachedSource = data.source;
@@ -82,6 +88,14 @@ test("a failed native migration repairs only owned old entrypoints, then retires
   expect(f.entries().filter((e: any) => e.kind === "native-plugin")).toHaveLength(1);
 });
 
+test("claude: a user-scope declaration already consumed counts as removed; other failures are preserved", () => {
+  const f = fixture("claude"); f.install(); const market = f.entries().find((e: any) => e.kind === "native-marketplace");
+  f.data.installed = false; f.data.undeclared = true; f.data.listedElsewhere = true;
+  expect(removeSkillPlugin(market, false, f.run)).toStartWith("removed TAP's user-scope registration");
+  f.data.undeclared = false; f.data.failRemove = true;
+  expect(removeSkillPlugin(market, false, f.run)).toBe("preserved plugin registration (fixture remove failure)");
+});
+
 for (const host of ["claude", "codex"] as const) {
   test(`${host}: registration is recorded, repeat is idempotent, removal checks ownership`, () => {
     const f = fixture(host); f.install(); f.install();
@@ -114,6 +128,14 @@ for (const host of ["claude", "codex"] as const) {
     for (const entry of entries) expect(removeSkillPlugin(entry, false, f.run)).toBe("preserved changed plugin source");
     f.data.source = repo; f.data.installed = false; f.data.foreign = true;
     expect(removeSkillPlugin(entries.find((e: any) => e.kind === "native-marketplace"), false, f.run)).toBe("preserved marketplace with installed plugins");
+  });
+  test(`${host}: marketplace removal is scoped to the user, and an unconfirmed removal is still preserved`, () => {
+    const f = fixture(host); f.install(); const market = f.entries().find((e: any) => e.kind === "native-marketplace");
+    f.data.installed = false; f.data.listedElsewhere = true;
+    expect(removeSkillPlugin(market, false, f.run)).toBe(host === "claude"
+      ? RETAINED_LISTING : "preserved unconfirmed plugin removal");
+    expect(f.calls.filter(a => a[0] === "marketplace" && a[1] === "remove")).toEqual([["marketplace", "remove", TAP_MARKETPLACE, ...(host === "claude" ? ["--scope", "user"] : [])]]);
+    expect(f.data.source).toBe(repo);
   });
   test(`${host}: a cached plugin with no marketplace retains its ownership record`, () => {
     const f = fixture(host); f.install(); f.data.source = undefined;

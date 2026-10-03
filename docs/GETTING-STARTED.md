@@ -193,7 +193,8 @@ tap attach writer
 ```
 
 Inside the agent CLI, run its own `/resume` command and select the old
-conversation. Then invoke `/tap:in` in that resumed conversation. Ask the agent
+conversation. Then, in that resumed conversation, ask the agent to run `tap in`
+(in Claude Code, the `/tap:in` command does the same). Ask the agent
 to run `tap whoami` and confirm it is `writer`. The conversation comes from the
 harness; the seat's name comes from TAP. Stop if the reported name differs, and
 have the agent resolve the mismatch before sending it work. The tmux session label

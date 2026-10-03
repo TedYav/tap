@@ -16,7 +16,7 @@ import { isRetiredVersion } from "../launcher/catalog-listing";
 import { installMachineSkills, removeOwnedLink } from "../install-skill-links";
 import { readIndexJson } from "../index-home";
 import { CORE_SKILLS, savedFullKit, skillManifestPath } from "../skill-policy";
-import { removeSkillPlugin } from "../install-skill-plugin";
+import { removeSkillPlugin, RETAINED_LISTING } from "../install-skill-plugin";
 import { CODEX_BEGIN, readManifestRecord, scanManifestEntries } from "../install-manifest";
 import { relocateCodexEndMarker } from "../codex-fence";
 import { archiveHistory, removeRoots } from "../install-history";
@@ -833,9 +833,13 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
   for (const line of keybinding.lines) console.log(line);
   if (keybinding.preserved) { console.log("Uninstall stopped before removing TAP itself, so the tmux binding does not point at a deleted executable. next: fix the problem above (or restart tmux), then rerun tap uninstall"); return 2; }
   const remaining: Entry[] = [], gone = new Set<string>();
+  let retained = false; // a marketplace listing that still names the clone
+  // The run may already have removed the tap launcher, so recovery names the clone's own executable.
+  const rerun = `${quote(join(manifest.repo,"bin/tap"))} uninstall`;
   for (const entry of [...manifest.entries].sort((a,b) => Number(a.kind === "native-marketplace") - Number(b.kind === "native-marketplace"))) {
     const outcome = removeEntry(entry);
     console.log(`${outcome}: ${entry.path}`);
+    if (outcome === RETAINED_LISTING) retained = true;
     if (outcome.startsWith("preserved")) remaining.push(entry);
     else if (outcome === "removed" || outcome.endsWith("deleted the file TAP created")) gone.add(entry.path);
   }
@@ -852,7 +856,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     manifest.historyPending = false; saveManifest(manifest);
   }
   else {
-    if (remaining.length) { console.log("Some installed artifacts were preserved; history kept so their records survive. next: review those artifacts and rerun tap uninstall"); return 2; }
+    if (remaining.length) { console.log(`Some installed artifacts were preserved; history kept so their records survive. next: review those artifacts and rerun ${rerun}`); return 2; }
     if (choice === "archive") {
       const archive = join(home(),`tap-history-${new Date().toISOString().replaceAll(":","").replaceAll(".","")}.tar.gz`);
       // Removal happens only after archiveHistory returns: a failed archive
@@ -861,7 +865,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
         archiveHistory(archive, history);
       } catch (error) {
         console.error(`${(error as Error).message}`);
-        console.error("Archive verification failed; originals preserved. next: inspect archive and rerun tap uninstall");
+        console.error(`Archive verification failed; originals preserved. next: inspect archive and rerun ${rerun}`);
         return 2;
       }
       // The archive is now the only copy: always tell the user where it lives.
@@ -872,13 +876,13 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
         // Verification passed and removal failed partway: some roots are
         // already gone, the verified archive is the recovery copy.
         const root = (error as NodeJS.ErrnoException).path ?? `${(error as Error).message}`;
-        console.error(`History archive verified at ${archive}; could not remove ${root}. next: inspect archive and rerun tap uninstall`);
+        console.error(`History archive verified at ${archive}; could not remove ${root}. next: inspect archive and rerun ${rerun}`);
         return 2;
       }
     } else for (const path of history) rmSync(path,{recursive:true});
   }
   console.log("Dependencies and unrelated plugins remain installed.");
-  console.log(installSourceAdvice(manifest.repo, remaining.length > 0));
+  console.log(installSourceAdvice(manifest.repo, remaining.length > 0 || retained));
   return 0;
 }
 

@@ -876,6 +876,41 @@ test("wizard bypass JSON receipt has no auto note", async () => {
  } finally { stdout.mockRestore(); stderr.mockRestore(); }
 });
 
+test("a preserved artifact's rerun advice names the clone's executable, which survives the first run",async()=>{
+ const root=fixture(),edited=join(root,"edited");writeFileSync(edited,"user edit");
+ writeFileSync(join(process.env.TAP_INDEX_HOME!,"install-manifest.json"),JSON.stringify({version:1,repo,entries:[{kind:"file",path:edited,sha256:"none"}]}));
+ const run=await captured(()=>uninstallMachine(noPrompt,{yes:true,history:"archive"}));
+ expect(run.result).toBe(2);
+ expect(run.lines.at(-1)).toEndWith(`rerun '${repo}/bin/tap' uninstall`);
+ expect(readFileSync(edited,"utf8")).toBe("user edit");
+});
+// tap-ad0hh: Claude's `marketplace remove --scope user` consumes the user-scope declaration and refuses
+// (exit 1, "not declared in user settings") once it is gone. Whether the marketplace then stays listed is
+// Claude's, not TAP's: another scope may declare it. Neither state may strand the archive.
+for (const [label,stuck] of [["stays listed after the user-scope removal",false],["is already undeclared from an earlier interrupted run",true]] as const) {
+ test(`uninstall archives when Claude's marketplace ${label}`,async()=>{
+  const root=fixture();codexHomes(root);
+  const settings=join(process.env.TAP_CLAUDE_HOME!,"settings.json");writeFileSync(settings,'{"theme": "dark"}\n');
+  expect(runInstall().exitCode).toBe(0);
+  const registry=join(process.env.TAP_CLAUDE_HOME!,".native-plugin-fixture.json"),data=JSON.parse(readFileSync(registry,"utf8"));
+  expect(data.declared).toEqual({"tap-marketplace":true});
+  if(stuck)data.declared={};else data.kept=["tap-marketplace"];
+  writeFileSync(registry,JSON.stringify(data));
+  const run=await captured(()=>uninstallMachine(noPrompt,{yes:true,history:"archive"}));
+  expect(run.result).toBe(0);
+  expect(run.lines.filter(l=>/^(preserved|Some installed)/.test(l))).toEqual([]);
+  expect(run.lines.some(l=>l.startsWith("Verified history archive: "))).toBe(true);
+  expect(Array.from(new Bun.Glob("tap-history-*.tar.gz").scanSync(process.env.HOME!))).toHaveLength(1);
+  expect(existsSync(process.env.TAP_INDEX_HOME!)).toBe(false);
+  expect(JSON.parse(readFileSync(settings,"utf8")).theme).toBe("dark");
+  // The registry keeps what was never TAP's user-scope declaration.
+  expect(Object.keys(JSON.parse(readFileSync(registry,"utf8")).markets)).toEqual(["tap-marketplace"]);
+  // The retained listing still names the clone, so it is not offered for deletion.
+  expect(run.lines.at(-1)).toContain(`Keep TAP's clone at ${repo}`);
+  expect(run.lines.join("\n")).not.toContain("safe to delete");
+ },60000);
+}
+
 test("uninstall prunes only recorded TAP-created containers and preserves user settings",()=>{
  const root=fixture(),path=join(root,"settings.json"),value={type:"command",command:"tap-hook"};
  for(const owned of [false,true]) {

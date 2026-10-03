@@ -56,6 +56,9 @@ const physical = (path: string) => existsSync(path) ? realpathSync(path) : resol
 const sameSource = (source: unknown, repo: string) => typeof source === "string" && physical(source) === physical(repo);
 const recordedSource = (source: unknown, entry: ManifestEntry) => typeof source === "string"
   && [entry.nativeSource, entry.pendingSource].some(value => typeof value === "string" && resolve(source) === resolve(value));
+/** The listing still names TAP's clone as its source, so the clone must outlive the uninstall. */
+export const RETAINED_LISTING = "removed TAP's user-scope registration (marketplace still listed; left in place)";
+const USER_SCOPE_GONE = /not declared in user settings/;
 const scope = (host: PluginHost) => host === "claude" ? ["--scope", "user"] : [];
 
 export function skillPluginReady(repo: string, host: PluginHost, home: string): boolean {
@@ -140,11 +143,20 @@ export function removeSkillPlugin(entry: ManifestEntry, dryRun = false, run: Plu
       const remaining = current.plugins.filter((p: any) => String(p.id ?? p.pluginId).endsWith(`@${TAP_MARKETPLACE}`)
         && !(dryRun && (p.id ?? p.pluginId) === TAP_PLUGIN && (entry.host !== "claude" || p.scope === "user") && plannedRemovals.has(join(entry.home as string, "plugins", TAP_PLUGIN))));
       if (remaining.length) return "preserved marketplace with installed plugins";
-      if (!dryRun) run(entry.host, entry.home, ["marketplace", "remove", TAP_MARKETPLACE, ...scope(entry.host)]);
+      if (!dryRun) {
+        try { run(entry.host, entry.home, ["marketplace", "remove", TAP_MARKETPLACE, ...scope(entry.host)]); }
+        // TAP records user-scope registrations only. A scoped remove consumes that declaration, so a
+        // retry after a later failure finds it gone: already discharged, not a refusal.
+        catch (error) { if (!(entry.host === "claude" && USER_SCOPE_GONE.test((error as Error).message))) throw error; }
+      }
     }
     if (!dryRun) {
       const after = state(entry.host, entry.home, run);
-      if (entry.kind === "native-plugin" ? after.plugin : after.market) return "preserved unconfirmed plugin removal";
+      if (entry.kind === "native-plugin" ? after.plugin : after.market) {
+        // Other scopes' declarations are not TAP's to remove (Claude's --scope omission would erase them).
+        if (entry.kind === "native-marketplace" && entry.host === "claude") return RETAINED_LISTING;
+        return "preserved unconfirmed plugin removal";
+      }
     }
     return "removed";
   } catch (error) { return `preserved plugin registration (${(error as Error).message})`; }
