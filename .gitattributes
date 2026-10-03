@@ -5,3 +5,4 @@ skills/tap/protocol/** whitespace=-trailing-space,-blank-at-eof
 skills/tap/scripts/smoke/fixtures/submit-verify/*.ansi whitespace=-trailing-space,-blank-at-eof
 runtime/bun/test/fixtures/hermes-queue-row/*.ansi whitespace=-trailing-space,-blank-at-eof
 runtime/bun/test/fixtures/codex-warning-footer/*.ansi whitespace=-trailing-space,-blank-at-eof
+runtime/bun/test/fixtures/codex-status-footer/*.txt whitespace=-trailing-space,-blank-at-eof

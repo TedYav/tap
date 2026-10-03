@@ -458,6 +458,13 @@ function readFrameText(frame: string, command: string, expected: string, width: 
       while (region.length && !region.at(-1)!.trim()) region.pop();
       const cue = /^\s*(?:tab to queue(?: message)?(?:\s+\d+% context left)?|shift\s*\+\s*←\s+edit last queued message|\d+% context left)\s*$/;
       const status = /^\s*[^\s·]+\s+(?:low|medium|high|xhigh|max|ultra)(?: fast)?\s+·\s+(?:Context\s+\d+% left|[^·\r\n]+\s+·\s+weekly\s+\d+% left)(\s+·.*|\s+Goal paused \(\/goal resume\)|…)?\s*$/;
+      // Codex 0.160 paints a configurable status row: `<model> <reasoning label> · <cwd> [· <thread title>]`,
+      // e.g. `GPT-6.1-Sol default · ~/project · Run shell diagnostics`. The old grammar above needs a Context or
+      // weekly item, so this row was kept as composer input and a strict reader saw the wire plus extra text.
+      // One physical row only: the cwd and title items accept free words, so joining wrapped rows could swallow
+      // a human line. The cwd item must start with `~` or `/`, and Codex paints a blank row between composer and
+      // status, so a row typed directly under the wire is input.
+      const cwdStatus = /^\s*[^\s·]+\s+(?:default|low|medium|high|xhigh|max|ultra)(?: fast)?\s+·\s+(?:~|\/)[^·\r\n]*(?:\s+·\s+[^·\r\n]+)*\s*$/;
       // Codex paints a config-warning row beneath the status footer
       // (tap-2ajq8). It is chrome only directly under a status row the loop
       // below recognizes; anywhere else the row stays input.
@@ -476,7 +483,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
         const rows = region.slice(-count);
         if (rows.some(row => !row.trim())) continue;
         const joins = ["", " "];
-        if (joins.some(separator => status.test(rows.join(separator))
+        if ((count === 1 && start > 1 && !region[start - 1]!.trim() && cwdStatus.test(rows[0]!)) || joins.some(separator => status.test(rows.join(separator))
             && !rows.slice(0, -1).some((_, i) => !!status.exec(rows.slice(0, i + 1).join(separator))?.[1]))) {
           region.splice(-count);
           break;

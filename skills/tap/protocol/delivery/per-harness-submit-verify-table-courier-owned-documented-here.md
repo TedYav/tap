@@ -46,6 +46,15 @@ composer input. Read as input, it made an idle composer holding only our wire
 read `changed`, so `tap nudge` refused and the idle staged submit never passed
 its whole-composer equality.
 
+Codex 0.160 also paints a status row with no Context item: `<model> <reasoning
+label> · <cwd> [· <thread title>]`, for example `GPT-6.1-Sol default · ~/project
+· Run shell diagnostics` (tap-21bdj). It is footer chrome only as one physical row
+whose cwd item starts with `~` or `/`; a wrapped or non-path row stays input.
+An auto seat licenses Enter only when its composer is the sentinel and nothing
+else, so while this row was read as input every auto send was withheld
+(`enter_count 0`) and `tap nudge` refused. A bypass seat licenses Enter when the
+wire is visible in its input tail, which tolerates the same footer.
+
 ### Completion Enter (tap-vclur)
 
 An ordinary courier submit finishes with one additional Enter, including when
