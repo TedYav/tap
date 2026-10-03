@@ -77,6 +77,13 @@ function both(key: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}, at 
   const baseKey = key.replace(/ --json$/, "");
   const warningFlag = ({ "passthrough flag": "-c", "preset with passthrough": "-c", "--effort with passthrough": "--verbose" } as Record<string, string>)[baseKey];
   if (warningFlag && !(key.endsWith(" --json") && expected.status !== 0)) expected.stderr = `tap session launch: warning: ${warningFlag} is not a TAP launch option; it and following arguments are forwarded to the harness. Use -- before intentional harness arguments.\n` + expected.stderr;
+  // Every local Codex launch now carries --no-daemon (tap-21bdj); the recorded incumbent predates it.
+  // It sits right before the permission flag, after any tuning flags. Splice that one token into
+  // the recorded --json argv so every other byte stays pinned and a candidate without it, or with
+  // it elsewhere, still fails. The plain-text rows never print argv.
+  if (key.endsWith(" --json") && expected.status === 0 && expected.stdout.includes('"argv":["codex",') && !expected.stdout.includes("--remote")) {
+    expected.stdout = expected.stdout.replace('"--dangerously-bypass-approvals-and-sandbox"', '"--no-daemon","--dangerously-bypass-approvals-and-sandbox"');
+  }
   if (baseKey === "collision: a seated gone row refuses without a terminal") {
     expected.stderr = "tap session: fixture/scout has a retained seat record but no live tmux session; --fresh reclaims the record and launches the seat; next: tap session launch claude scout --fresh\n";
     if (key.endsWith(" --json")) {

@@ -256,6 +256,12 @@ function stable(value: unknown): unknown {
   return value;
 }
 
+// Authorized deviation from the frozen Python capture: Codex launches carry `--no-daemon` (tap-21bdj).
+function withNoDaemon<T extends { argv?: unknown }>(row: T): T {
+  const argv = row.argv;
+  return Array.isArray(argv) && argv[0] === "codex" ? { ...row, argv: [argv[0], "--no-daemon", ...argv.slice(1)] } : row;
+}
+
 describe("G4 plan --json differential", () => {
   test("frozen-home rows are parsed-identical to Python", () => {
     const homes = freezeHomes();
@@ -266,7 +272,7 @@ describe("G4 plan --json differential", () => {
     const mismatches: string[] = [];
     for (const row of oracle) {
       const bun = bunPlan(row.id, env);
-      const py = comparable(row);
+      const py = withNoDaemon(comparable(row));
       const { revive_tier: _tier, ...resume } = bun.resume;
       const bunCmp = {
         argv: bun.argv,
@@ -450,7 +456,7 @@ describe("G4 plan --json differential", () => {
       env,
     });
     expect(bound.argv).toEqual([
-      "codex",
+      "codex", "--no-daemon",
       "--dangerously-bypass-approvals-and-sandbox",
       "resume",
     ]);

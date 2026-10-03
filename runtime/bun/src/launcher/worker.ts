@@ -44,10 +44,10 @@ async function dispatch(packet: Packet, notices: Notices, signal: AbortSignal): 
     case "permissions": {
       const policy = resolveHarnessPolicy(p.harness, env, notices, facadeSecureRead);
       record.permissions = policy.permissions;
-      value = permissionArgv(p.harness, policy.permissions); break;
+      value = permissionArgv(p.harness, policy.permissions, env); break;
     }
     case "enforce":
-      try { enforcePermissions(p.harness, p.mode, p.argv); return null; }
+      try { enforcePermissions(p.harness, p.mode, p.argv, env); return null; }
       catch (error) { if (error instanceof LauncherError) throw new InvocationError(error.message); throw error; }
     case "opencode-pin": return pinOpenCodeSession(p.argv, p.session_id);
     case "shell-command": return invocationShellCommand(p.invocation as Invocation, env);

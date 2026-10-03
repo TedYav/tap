@@ -35,8 +35,15 @@ const AUTHORIZED_DEVIATIONS = new Map<string, string>([
   ["argv:cursor/resume/hsid=null/model=sonnet/prompt=go", "bare --resume picker removed: null identity emits nothing"],
 ]);
 
-/** The deviation's expected bytes: the Python row minus its one bare `--resume`. */
+// Every Codex launch now carries `--no-daemon` (tap-21bdj); the frozen Python rows never emitted it.
+const NO_DAEMON_REASON = "Codex launches add --no-daemon so each seat's tools descend from its own Codex process (tap-21bdj)";
+for (const row of JSON.parse(readFileSync(resolve(import.meta.dir, "fixtures/launcher-g1-adapters-oracle.json"), "utf8")).cases as OracleRow[]) {
+  if (row.harness === "codex" && row.argv) AUTHORIZED_DEVIATIONS.set(argvCellId(row), NO_DAEMON_REASON);
+}
+
+/** The deviation's expected bytes: the Python row minus its one bare `--resume`, or with Codex's `--no-daemon` inserted. */
 function deviationArgv(row: OracleRow): string[] | undefined {
+  if (row.harness === "codex" && row.argv) return [row.argv[0]!, "--no-daemon", ...row.argv.slice(1)];
   if (!row.argv) return row.argv;
   const at = row.argv.indexOf("--resume");
   if (at < 0) return row.argv;
@@ -94,7 +101,7 @@ describe("G1 adapters argv differential", () => {
     expect(HERMES_BIN).toBe("hermes");
   });
 
-  test("96 python oracle rows: 92 byte-identical + the 4 named tap-we6b deviations", () => {
+  test("96 python oracle rows: 76 byte-identical + 20 named deviations (4 tap-we6b, 16 tap-21bdj --no-daemon)", () => {
     const oracle = loadOracle();
     expect(oracle.length).toBe(96);
     const mismatches: string[] = [];

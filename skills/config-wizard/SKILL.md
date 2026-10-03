@@ -118,8 +118,8 @@ catalog's tuning.
 For each selected harness, explain the bypass flag's actual effect from the knob
 library, then ask once. Claude, Codex, Cursor and Antigravity record `"auto"` or
 `"bypass"`; a new Claude/Codex config needs an explicit answer, and bypass
-records the person's consent. Codex auto uses automatic approval review, not a
-human approval dialog; Cursor auto uses `--auto-review`, which still prompts for
+records the person's consent. Codex auto keeps Codex's file sandbox and its automatic approval review, not a
+human approval dialog, and TAP turns on Codex's network proxy with no allowed domains so seats can reach the tmux socket (other destinations stay blocked for commands the sandbox runs); Cursor auto uses `--auto-review`, which still prompts for
 calls its classifier will not run. Antigravity has no automatic mode: auto stops
 the seat on every permission request, which TAP shows as blocked. In a new
 folder, Claude, Codex and Antigravity auto seats first ask to trust it. Say so

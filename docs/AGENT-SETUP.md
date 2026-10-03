@@ -231,8 +231,10 @@ question at a time and retain choices already accepted in the terminal wizard:
    default effort, or a pinned level. The presets arrive with basic calibration
    and role notes they can edit later.
 4. **Ask each permission choice.** Ask once before enabling bypass unless
-   already authorized. Codex auto uses a workspace sandbox and automatic
-   approval review, not a human approval dialog. Relay review refusals exactly.
+   already authorized. Codex auto keeps Codex's file sandbox and its automatic
+   approval review, not a human approval dialog, and TAP turns on Codex's
+   network proxy with no allowed domains so seats can reach the tmux socket
+   (other destinations stay blocked for commands the sandbox runs). Relay review refusals exactly.
    Cursor and Antigravity take the same auto/bypass choice; Antigravity auto
    stops the seat on every permission request, which the wizard explains.
 5. **Ask the two new-user questions:** whether TAP asks before setting up a team

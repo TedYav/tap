@@ -24,6 +24,7 @@ import {
 import { enrolledNameForRootFromDoc, flipMarkerState, loadGlobalRegistry } from "./index-home";
 import { physicalSocketPath, serverEpochFromRaw, seedServerIdentity, socketFingerprint, tmux, tmuxReadOnly } from "./tmux";
 import { isFile } from "./watch-lease";
+import { libprocRow } from "./proc-row";
 import { isOldStoreRefusal } from "./register-authority";
 
 export class TapError extends Error {
@@ -422,7 +423,8 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
     // observation, which then answered a positive `outside`. The boundary is
     // load-bearing exactly because this function's one positive answer grants
     // authority.
-    const raw = (row.stdout ?? "").replace(/\n+$/, "");
+    // `ps` that cannot run at all (a sandbox forbids exec of setuid binaries) falls back to the OS process table.
+    const raw = (row.error ? libprocRow(pid) ?? "" : row.stdout ?? "").replace(/\n+$/, "");
     if (!raw) {
       return { state: "unobservable", refusal: `process observation unavailable for pid '${pid}'` };
     }

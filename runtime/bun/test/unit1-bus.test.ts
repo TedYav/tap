@@ -287,6 +287,25 @@ describe("Bus layout + settlement authority (CONTRACT §Bus layout)", () => {
     expect(existsSync(join(bus.home, ".tap-bus-authority"))).toBe(false);
   });
 
+  test("an unwritable bus root refuses with bus_unwritable instead of throwing a raw mkdir error", () => {
+    const bus = busOf(root);
+    mkdirSync(bus.home, { recursive: true });
+    chmodSync(bus.home, 0o555);
+    let refusal: (Error & { tapErrorClass?: string; tapAction?: string }) | undefined;
+    try {
+      bus.ensureDirs();
+    } catch (error) {
+      refusal = error as Error & { tapErrorClass?: string; tapAction?: string };
+    } finally {
+      chmodSync(bus.home, 0o755);
+    }
+
+    expect(refusal?.tapErrorClass).toBe("bus_unwritable");
+    expect(refusal?.message).toContain(`cannot write the bus at '${bus.home}'`);
+    expect(refusal?.tapAction).toContain("writable");
+    expect(existsSync(bus.payloadsDir)).toBe(false);
+  });
+
   test("unprocessed = payload present with no .done", () => {
     const bus = busOf(root); bus.ensureDirs();
     writeFileSync(bus.payloadPath("i1"), "---\n---\n");

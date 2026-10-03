@@ -598,7 +598,7 @@ config = ["service_tier=default", "model_reasoning_effort=low", "features.policy
   expect({ status: result.status, error: result.status ? result.diagnostic : "" }).toEqual({ status: 0, error: "" });
   const argv = readFileSync(join(f.root, "argv"), "utf8").trim().split("\n");
   const recipe = ["--config", "model_reasoning_effort=high", "--config", "service_tier=default", "--config", "features.keep=true", "--verbose"];
-  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra"]);
+  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra"]);
   const row = JSON.parse(readFileSync(f.registry, "utf8")).seats["delimiter-reviewer"];
   expect(row.passthrough).toEqual(recipe);
   expect(row.model).toBe("gpt-6-astra");
@@ -627,7 +627,7 @@ config = ["service_tier=default", "model_reasoning_effort=low", "features.policy
   expect({ status: result.status, error: result.status ? result.diagnostic : "" }).toEqual({ status: 0, error: "" });
   const argv = readFileSync(join(f.root, "argv"), "utf8").trim().split("\n");
   const recipe = ["--config", "model_reasoning_effort=high", "--config", "service_tier=default", "--config", "features.keep=true", "--verbose"];
-  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra", ...explicit]);
+  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra", ...explicit]);
   const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
   expect(row.passthrough).toEqual(recipe);
   expect(row.harness_tail).toEqual(explicit);

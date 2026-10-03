@@ -44,7 +44,7 @@ export const SIDECAR_SOURCES: readonly string[] = [
   "input-backup.ts", "input-protection.ts", "invocation-memo.ts", "latest-outbound.ts", "lock-attribution.ts", "lossless-json.ts", "native-error.ts",
   "notice-submit.ts", "notice.ts", "notifications.ts", "observe-gather.ts", "observe.ts",
   "opencode-composer.ts", "opencode-store.ts", "opencode-turn-state.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts", "pane/draft.ts",
-  "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "payload-fields.ts", "pyint.ts",
+  "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "payload-fields.ts", "proc-row.ts", "pyint.ts",
   "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/cli.ts", "recovery/effect.ts", "recovery/identity-guard.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
   "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "scripts-dir.ts", "seat-state.ts",
   "selector.ts", "sentinel-preview.ts", "sentinel.ts", "slices/control-payload.ts",

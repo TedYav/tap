@@ -165,6 +165,17 @@ test("auto permission conflicts are checked before the config floor can hide the
   expect(readFileSync(r.path, "utf8")).toBe(before);
 });
 
+test("crew Codex auto carries the launcher profile and refuses a config param that turns the proxy off", () => {
+  const auto = 'version = 3\n[harness.codex]\npermissions = "auto"\n';
+  const command = success(fixture(auto), "codex");
+  expect(command).toContain("--approve-for-me");
+  expect(command).toMatch(/tap_launcher_auto_[0-9a-f]{12}/);
+  for (const spelling of ['disable = "network_proxy"', 'config = ["features={network_proxy=false}"]']) {
+    const f = fixture(auto + "[harness.codex.params]\n" + spelling + "\n");
+    expect(refusal(f, ["--model", "model-x"], "session_error", "codex").detail).toContain("harness_permissions_conflict");
+  }
+});
+
 test("final preparation rechecks the preset digest before touching the registered row", () => {
   const f = fixture(preset("claude")), r = registry(f), before = readFileSync(r.path, "utf8");
   refusal(f, [...r.args, "--preset-digest", "changed"], "preset_config_changed", "claude");

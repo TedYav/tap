@@ -1,12 +1,12 @@
 // Shared value owner for creation, resume and the retained in-pane callers.
 // No registry, fence or process effects belong to invocation construction.
-import { buildHarnessInvocation } from "./adapters";
+import { buildHarnessInvocation, hostBootEnv, isolationArgv, withoutNoDaemonForRemote } from "./adapters";
 import { resolveHarnessPolicy } from "./catalog";
 import { facadeSecureRead } from "../slices/preset-api";
 import { Notices } from "./catalog-notices";
 import { applyLaunchEnv } from "./plan";
 import { paramsToArgv, spliceTokensIfAbsent, spliceVerbatimParams } from "./argv-splice";
-import { enforcePermissions, permissionArgv, PERMISSION_HARNESSES } from "./permissions";
+import { enforcePermissions, permissionArgv, PERMISSION_HARNESSES, refuseAmbientCodexSockets } from "./permissions";
 import { claudeSessionTranscriptExists, resolveResumeTarget, resolvedResumeIdentity, emitResumeTargetReceipts } from "./resume-identity";
 import { assignments } from "./config-args";
 import { launchWorkdir } from "./workdir";
@@ -82,8 +82,9 @@ export function buildInvocation(
   if (nativeQuery === undefined || !["claude", "codex", "agy"].includes(record.harness)) {
     return buildHarnessInvocation(action, record, prompt, resume, env, permissions, receipts);
   }
-  const argv = [record.harness];
-  argv.push(...permissionArgv(record.harness, permissions));
+  const argv = [record.harness, ...isolationArgv(record.harness)];
+  if (record.harness === "codex" && permissions === "auto") refuseAmbientCodexSockets(env, launchWorkdir(record));
+  argv.push(...permissionArgv(record.harness, permissions, env));
   if (record.harness === "codex") argv.push("resume");
   argv.push(...modelArgv(record.harness, record.model));
   if (record.harness === "claude") {
@@ -101,7 +102,7 @@ export function buildInvocation(
     const id = nativeQuery || record.harness_session_id;
     if (id) argv.push("--conversation", id); else argv.push("--continue");
   }
-  return { argv, env: {} };
+  return { argv, env: hostBootEnv(record.harness, permissions, env) };
 }
 
 export function applyInvocationEnv(
@@ -129,7 +130,7 @@ export function composeInvocation(
   record.permissions ??= PERMISSION_HARNESSES.includes(record.harness) ? policy.permissions : "bypass";
   try {
     for (const source of [record.harness_passthrough ?? [], paramsToArgv(policy.params), argv.slice(1), record.harness_tail ?? []]) {
-      enforcePermissions(record.harness, record.permissions, source);
+      enforcePermissions(record.harness, record.permissions, source, env);
     }
   } catch (error) {
     if (error instanceof LauncherError) throw new InvocationError(error.message);
@@ -137,6 +138,7 @@ export function composeInvocation(
   }
   argv = spliceVerbatimParams(argv, policy.params, { configKeys: record.harness === "codex" });
   argv.push(...record.harness_tail ?? []);
+  argv = withoutNoDaemonForRemote(record.harness, argv);
   if (record.harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id);
   const tuningEnv = { ...configured.env };
   for (const key of configured.unset_env ?? []) delete tuningEnv[key];

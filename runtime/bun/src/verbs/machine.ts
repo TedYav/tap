@@ -144,7 +144,7 @@ function permissionNotes(plan: SetupPlan, notes: string[], log: Log) {
 /** What auto and bypass mean on each harness whose permissions TAP owns. */
 const PERMISSION_EXPLANATIONS: Record<string, string> = {
   claude: "Claude auto uses its automatic permission mode; it may still require attention in the attached session. Bypass skips permission checks.",
-  codex: "Codex auto uses automatic approval review (--approve-for-me), not a human approval dialog. Bypass disables approvals and sandboxing.",
+  codex: "Codex auto keeps Codex's file sandbox and its automatic approval review (--approve-for-me), not a human approval dialog. TAP also turns on Codex's network proxy with no allowed domains and lets the sandbox write TAP's index folder, so seats can reach the tmux socket and TAP state while other network destinations stay blocked for commands the sandbox runs (Codex's own model traffic is not affected). Bypass disables approvals and sandboxing.",
   cursor: "Cursor auto uses its automatic review (--auto-review): safe tool calls run, the rest wait for you in the attached session. Bypass (--force --sandbox disabled) runs every command without asking.",
   agy: "Antigravity has no automatic approval mode: auto stops for every permission request until you answer it in the attached session. Bypass (--dangerously-skip-permissions) approves every request.",
 };

@@ -47,8 +47,19 @@ export class Bus {
       (e as Error & { tapAction?: string }).tapAction = "unset TAP_HOME or point it at the bus dir";
       throw e;
     }
-    mkdirSync(this.payloadsDir, { recursive: true });
-    mkdirSync(this.receiptsDir, { recursive: true });
+    try {
+      mkdirSync(this.payloadsDir, { recursive: true });
+      mkdirSync(this.receiptsDir, { recursive: true });
+    } catch (error) {
+      // A read-only or sandboxed caller (a harness shell that may not write the bus) refuses. The two mkdirs are
+      // sequential and not rolled back, so payloads/ may already exist when receipts/ is the one denied.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EACCES" && code !== "EROFS") throw error;
+      const e = new Error(`cannot write the bus at '${this.home}' (${code}); this shell is not allowed to create its payloads/receipts directories`);
+      (e as Error & { tapErrorClass?: string }).tapErrorClass = "bus_unwritable";
+      (e as Error & { tapAction?: string }).tapAction = "run tap where this bus is writable; a sandboxed harness shell may be denied it";
+      throw e;
+    }
     if (this.home.endsWith("/.tap/bus")) {
       const ignore = join(dirname(this.home), ".gitignore");
       if (!existsSync(ignore)) {

@@ -10,7 +10,7 @@ import { facadeSecureRead } from "../slices/preset-api";
 import { INHERITED_IDENTITY_ENV } from "../session-store";
 import { verbose } from "../verbose";
 import { dumps, isMap, loads, pyTruthy, type JsonMap, type JsonValue } from "../watch-detect";
-import { buildHarnessInvocation } from "./adapters";
+import { buildHarnessInvocation, withoutNoDaemonForRemote } from "./adapters";
 import { paramsToArgv, spliceTokensIfAbsent, spliceVerbatimParams } from "./argv-splice";
 import { configDirectory, environment, HARNESSES, isRegularFile, refuse, resolveHarnessPolicy } from "./catalog";
 import { loadPresetCatalog, requirePreset } from "./catalog-listing";
@@ -88,8 +88,8 @@ function renderArgv(harness: string, name: string, cwd: string, model: string, s
   let argv = passthrough.length
     ? spliceTokensIfAbsent(invocation.argv, passthrough, { floor: presetFloor, configKeys: harness === "codex" }) : invocation.argv;
   const params = resolveHarnessPolicy(harness, env, notices, facadeSecureRead).params;
-  for (const source of [passthrough, paramsToArgv(params), argv.slice(1)]) enforcePermissions(harness, permissions, source);
-  argv = spliceVerbatimParams(argv, params, { configKeys: harness === "codex" });
+  for (const source of [passthrough, paramsToArgv(params), argv.slice(1)]) enforcePermissions(harness, permissions, source, env);
+  argv = withoutNoDaemonForRemote(harness, spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }));
   if (harness === "opencode") {
     const clean: string[] = [];
     for (let i = 0; i < argv.length; i++) {

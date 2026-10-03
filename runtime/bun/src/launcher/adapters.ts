@@ -2,7 +2,8 @@ import { launchWorkdir } from "./workdir";
 import { FORKABLE_HARNESSES } from "../harness-families";
 import { randomUUID } from "node:crypto";
 import { resolveCatalog } from "./catalog";
-import { permissionArgv, type PermissionMode } from "./permissions";
+import { permissionArgv, refuseAmbientCodexSockets, type PermissionMode } from "./permissions";
+import { bootId } from "../tmux";
 // Dark argv planner. Port of launcher.build_harness_invocation.
 // Environment composition is applyLaunchEnv in plan.ts. This file originates none.
 
@@ -23,6 +24,40 @@ export {
   type ResumeIdentity,
   type SessionRecord,
 };
+
+/**
+ * Launcher-owned flags that give each seat its own process tree, whatever its permission mode.
+ * Observed on Codex 0.160.0: without `--no-daemon`, a later seat's tool shell is a child of the
+ * first seat's shared app-server daemon and reports that seat's pane, so `tap whoami` names the
+ * wrong seat. With the flag the shell descends from the seat's own Codex process.
+ */
+export function isolationArgv(harness: string): string[] {
+  return harness === "codex" ? ["--no-daemon"] : [];
+}
+
+/**
+ * Codex refuses `--no-daemon` together with `--remote` ("--no-daemon cannot be used with --remote"), and a
+ * remote seat's tools run on that server anyway. Once the whole argv is composed, a remote launch keeps
+ * its own flag and drops ours, so a supported `-- --remote <ADDR>` tail still launches.
+ */
+export function withoutNoDaemonForRemote(harness: string, argv: string[]): string[] {
+  if (harness !== "codex") return argv;
+  const end = argv.indexOf("--") < 0 ? argv.length : argv.indexOf("--");
+  const remote = argv.slice(0, end).some(token => token === "--remote" || token.startsWith("--remote="));
+  return remote ? argv.filter((token, i) => i >= end || token !== "--no-daemon") : argv;
+}
+
+/**
+ * Codex's auto sandbox denies the `sysctl` read behind the boot id; the launcher, outside it, attests the
+ * boot instead. This is a boot-session attestation, not a seat identity. bootId honors an inherited
+ * TAP_BOOT_ID verbatim, so the host value is read with that override removed. Every Codex auto argv
+ * builder (fresh, resume, native adoption) carries this env.
+ */
+export function hostBootEnv(harness: string, mode: PermissionMode, environ: NodeJS.ProcessEnv): Record<string, string> {
+  if (harness !== "codex" || mode !== "auto") return {};
+  const boot = bootId({ ...environ, TAP_BOOT_ID: undefined });
+  return boot ? { TAP_BOOT_ID: boot } : {};
+}
 
 /**
  * Match Python: resolve the Hermes CLI on PATH, independent of the installer home.
@@ -145,7 +180,10 @@ export function buildHarnessInvocation(
   }
 
   if (record.harness === "codex") {
-    const argv = ["codex", ...permissionArgv("codex", permissions ?? resolveCatalog(undefined, "codex", environ, () => {}).permissions)];
+    const mode = permissions ?? resolveCatalog(undefined, "codex", environ, () => {}).permissions;
+    const argv = ["codex", ...isolationArgv("codex"), ...permissionArgv("codex", mode, environ)];
+    if (mode === "auto") refuseAmbientCodexSockets(environ, launchWorkdir(record));
+    Object.assign(env, hostBootEnv("codex", mode, environ));
     if (action === "resume") argv.push("resume");
     else if (source) argv.push("fork");
     argv.push(...modelArgv(record.harness, record.model));

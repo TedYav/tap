@@ -217,7 +217,13 @@ The flags per harness live in
 - **Claude**: `--permission-mode auto`. Its classifier approves routine actions
   and asks you about the rest.
 - **Codex**: `--approve-for-me`, automatic review, which can approve a tool
-  without asking you.
+  without asking you. Codex's file sandbox stays on. Its default sandbox blocks
+  the tmux socket, so a seat could not send or read. TAP therefore also turns on
+  Codex's network proxy with no allowed domains, allows only your tmux socket
+  through it, and lets the sandbox write TAP's index folder (`~/.tap`, or
+  `TAP_INDEX_HOME`). Other network destinations stay blocked for commands the
+  sandbox runs; Codex's own model traffic is not affected. This composes with your
+  own Codex config: TAP's settings are what it guarantees.
 - **Cursor**: `--auto-review`. Safe calls run; the rest wait for you.
 - **Antigravity**: has no automatic mode, so it asks about every tool call.
 - **OpenCode and Hermes**: TAP does not set their permissions. Use OpenCode's
@@ -251,7 +257,7 @@ waiting messages then go through.
 | Missing machine config or unknown preset | Bare-harness launches need no config; presets are optional. Follow [Easy Mode](EASY-MODE.md#2-save-simple-machine-settings) to record permission choices. |
 | Enrollment refused | Read the exact refusal. Outside Git, init asks before enrolling; a linked worktree enrolls with `tap init` in that worktree. |
 | Scripted setup or a missing signpost | `tap init --yes` initializes without questions; `tap setup --repo` repairs a missing signpost. |
-| Codex rejects `--approve-for-me` when launching in auto mode | Update Codex to a build that lists `--approve-for-me` in `codex --help`, then launch again. |
+| Codex rejects `--approve-for-me` or `--no-daemon` when launching | Update Codex to a build that lists both in `codex --help`, then launch again. TAP gives every local Codex seat its own process with `--no-daemon`, so seats do not share one background server. A launch you point at a remote server with `-- --remote <ADDR>` omits it, because Codex rejects the pair and a remote seat's tools run on that server. |
 | Codex says `Hooks need review` | Visit that seat and follow [hook review](#when-codex-asks-to-review-hooks); trust is your decision. |
 | A seat is parked on a permission or sign-in prompt | Attach to it and answer the prompt yourself. When it is ready, ask the sender agent to check whether the original question was answered. |
 | The sender reports delivery, but no answer appears | Visit the receiving agent and inspect what it is doing. Avoid resending the same task until you know whether it already started. |

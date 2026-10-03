@@ -349,6 +349,13 @@ test.each(["new", "adopted", "resume", "resume-all", "restart", "replacement", "
         oldState.argv = lines.join("\n");
       }
     }
+    // Fifth deviation (tap-21bdj): every local Codex launch now starts with `--no-daemon`
+    // so a seat's tools descend from its own Codex process. The pinned owner predates it;
+    // prepend that one token on the oracle side so every other byte stays pinned and a
+    // candidate without it (or with it elsewhere) still fails.
+    if (harness === "codex" && typeof oldState.argv === "string" && oldState.argv.length > 0) {
+      oldState.argv = `--no-daemon\n${oldState.argv}`;
+    }
     // Fourth deviation (tap-6c1me): Cursor and AGY permissions are now launcher-owned
     // like Claude's and Codex's, so a launched row records the resolved mode (the
     // default, bypass). The pinned owner never touched those rows' permissions, so
