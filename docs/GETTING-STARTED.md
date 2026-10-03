@@ -147,6 +147,15 @@ not verify model access. Shell shortcuts and notifier customization can wait
 until now; see [Easy Mode](EASY-MODE.md#after-the-first-answer) and
 [notification setup](AGENT-SETUP.md#human-notification-setup).
 
+The wizard asks how messages should reach you while you type in an agent's
+prompt. **Interrupt** is the default; it delivers faster when the harness's
+permission mode allows delivery into text already typed. In auto mode, TAP
+waits for an empty composer. Interrupt may clear your draft. TAP saves only
+text it can capture; paste-back is conditional. Use `tap draft` to recover it.
+Pasted content or images may be missing. Type `WAIT` in caps to hold deliveries
+for two minutes when you need more time. **Wait** leaves your typing alone but
+holds messages until the agent's input is empty.
+
 ## Configure message previews
 
 ```bash
@@ -261,6 +270,7 @@ waiting messages then go through.
 | Codex says `Hooks need review` | Visit that seat and follow [hook review](#when-codex-asks-to-review-hooks); trust is your decision. |
 | A seat is parked on a permission or sign-in prompt | Attach to it and answer the prompt yourself. When it is ready, ask the sender agent to check whether the original question was answered. |
 | The sender reports delivery, but no answer appears | Visit the receiving agent and inspect what it is doing. Avoid resending the same task until you know whether it already started. |
+| A Claude seat went into agent view (left arrow, `/bg`) and stopped answering | New Claude seats start with `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, so this affects seats launched before that default. Recovery is `claude stop <short-id>` from another shell, then `tmux respawn-pane` in the seat's own pane with its original directory, arguments and environment plus `--resume <new-session-id>`. The exact, ordered procedure is on the [harness page](../skills/tap/protocol/harness/README.md#claude-agent-view-prevention-and-recovery); prepare the whole command before stopping the worker. |
 
 To update TAP later, run `./install.sh --sync` from your TAP clone.
 If it refuses because the clone has local changes, resolve those changes and

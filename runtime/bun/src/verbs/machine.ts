@@ -156,7 +156,7 @@ function waitTip(choices: SetupChoices, previous: Record<string, any>, interacti
   const chosen = choices.write === "candidate" ? undefined : choices.injection?.behavior;
   const behavior = chosen
     ?? (["clobber", "wait", "warn"].includes(saved) ? (saved === "warn" ? "wait" : saved) : "clobber");
-  if (behavior !== "wait") log("Tip: type WAIT (in caps) at your prompt to hold deliveries for two minutes.");
+  if (behavior !== "wait") log("Tip: if you need more time, type WAIT (in caps) at your prompt to hold deliveries for two minutes.");
 }
 
 /** Terminal answers become the same explicit decision object accepted from a file. */
@@ -171,7 +171,16 @@ async function collectSetupChoices(ask: Prompt, snapshot: SetupSnapshot, found: 
   const savedBehavior = snapshot.previous.injection?.behavior;
   const savedBehaviorValid = ["clobber", "wait", "warn"].includes(savedBehavior);
   const defaultBehavior = savedBehaviorValid ? (savedBehavior === "warn" ? "wait" : savedBehavior) : "interrupt";
-  let behavior = (await ask(`Messages that arrive while you type: interrupt (fastest; may clear your draft, keeping the text TAP can capture; pasting it back is conditional, and when it does not happen \`tap draft\` recovers it; pasted content or images may not be captured; type WAIT to pause two minutes) or wait (until your input is empty)? [${savedBehaviorValid ? `keep ${defaultBehavior}` : "interrupt"}] (interrupt/wait): `)).trim().toLowerCase();
+  let behavior = (await ask(`How should agents' messages reach you while you're typing in an agent's prompt?
+  interrupt  Faster when your permission mode allows delivery into typed text.
+             It may clear your draft. TAP saves only text it can
+             capture; paste-back is conditional. \`tap draft\` recovers it.
+             Pasted content or images may be missing. Type WAIT (in caps) to
+             hold deliveries for two minutes if you need more time.
+  wait       Messages wait until the agent's input is empty. Nothing interrupts
+             your typing, but if you leave text there, messages to that agent
+             wait too.
+  Choice [${savedBehaviorValid ? `keep ${defaultBehavior}` : "interrupt"}] (interrupt/wait): `)).trim().toLowerCase();
   while (behavior && !["interrupt", "clobber", "wait"].includes(behavior)) behavior = (await ask("Choose interrupt or wait, or leave empty to keep the displayed default: ")).trim().toLowerCase();
   if (behavior) choices.injection = {behavior: behavior === "wait" ? "wait" : "clobber"};
   for (const h of found) {

@@ -156,13 +156,14 @@ function scenario(steps: [string, string][], env: Record<string, string> = {}): 
     log: existsSync(join(root, "popup.log")) ? readFileSync(join(root, "popup.log"), "utf8") : "no popup.log" };
 }
 const select: [string, string][] = [["READY>", "\x02@"], ["Teammate >", "sol"], ["1/2", "\r"]];
+const selectAndContinue: [string, string][] = [...select, ["READY> beta/sol", "x"]];
 /** The invariants the feature promises, as one predicate so mutants can be shown to trip it. */
 const typedOnly = (o: Outcome, typed: string) => o.origin.length === 1 && o.origin[0] === `${prompt}${typed}` && o.other.length === 1 && o.other[0] === prompt.trimEnd();
 
-test("prefix @ opens the popup; selecting types the full team/handle into the origin pane, with no Enter", () => {
-  const o = scenario(select);
-  expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
-  expect(typedOnly(o, "beta/sol")).toBe(true);
+test("prefix @ opens the popup; selection types a trailing space for continued typing, without Enter", () => {
+  const o = scenario(selectAndContinue);
+  expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol x`]);
+  expect(typedOnly(o, "beta/sol x")).toBe(true);
 }, 60_000);
 
 test("Esc closes the popup and types nothing", () => {
@@ -193,8 +194,8 @@ function mutant(name: string, edit: (text: string) => string): string {
   return path;
 }
 test("RED mutant: an Enter sent after the name is caught", () => {
-  const path = mutant("enter", t => t.replace(`const result = tmux(["send-keys", "-t", pane, "-l", "--", target], env);`,
-    `const result = tmux(["send-keys", "-t", pane, "-l", "--", target], env); tmux(["send-keys", "-t", pane, "Enter"], env);`));
+  const path = mutant("enter", t => t.replace('const result = tmux(["send-keys", "-t", pane, "-l", "--", `${target} `], env);',
+    'const result = tmux(["send-keys", "-t", pane, "-l", "--", `${target} `], env); tmux(["send-keys", "-t", pane, "Enter"], env);'));
   const o = scenario(select, { LOOKUP_PICK_SRC: path });
   expect(typedOnly(o, "beta/sol"), JSON.stringify(o)).toBe(false);
 }, 60_000);

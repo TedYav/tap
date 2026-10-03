@@ -2,8 +2,8 @@
 //
 // The lookup behind the tmux popup (`tap keybinding`): fuzzy-pick one live seat
 // across every enrolled team and give back its full `team/handle`. With
-// `--pane` the name is TYPED into that pane (tmux send-keys -l) so a human
-// writing prose in a composer never types a long handle; it never presses
+// `--pane` the name and a trailing space are TYPED into that pane (tmux
+// send-keys -l) so a human writing prose can keep typing; it never presses
 // Enter. Esc types nothing.
 //
 // Exit: 0 selected | cancelled | listed; 1 refusal; 130 interrupted.
@@ -77,7 +77,7 @@ const choosePreferred: Choose = async (choices, options) => {
   }
 };
 
-/** Type exactly one `team/handle` into a pane: literal keys, never Enter. */
+/** Type one `team/handle` followed by a space into a pane; never Enter. */
 export function typeIntoPane(pane: string, target: string, env = process.env): void {
   const [team, handle, ...rest] = target.split("/");
   if (rest.length || !validToken(team ?? "") || !validToken(handle ?? "")) {
@@ -92,7 +92,7 @@ export function typeIntoPane(pane: string, target: string, env = process.env): v
   if (HARNESSES.some(harness => approvalPrompt(harness, frame.stdout))) {
     throw new TapError(1, "approval_prompt", "tap pick", `pane ${pane} shows an approval prompt; typed nothing. Answer it yourself, then pick again`);
   }
-  const result = tmux(["send-keys", "-t", pane, "-l", "--", target], env);
+  const result = tmux(["send-keys", "-t", pane, "-l", "--", `${target} `], env);
   if (result.code !== 0) {
     throw new TapError(1, "type_failed", "tap pick", `could not type into pane ${pane}: ${displayText(result.stderr.trim()) || "tmux refused"}`);
   }

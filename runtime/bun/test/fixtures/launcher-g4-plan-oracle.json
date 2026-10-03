@@ -1,6 +1,7 @@
 {
  "source_commit": "2ce226a03e9ff31c9546a8661f07212dbb1f2efe",
  "recorded_by": "R9a compute b889965d2e23; live Python bridge reference and native comparisons passed before deletion",
+ "amended": "tap-k0jwy hand-added CLAUDE_CODE_DISABLE_AGENT_VIEW=1 to every claude plan env; the recorded incumbent predates it.",
  "cases": [
   {
    "argv": [
@@ -10,6 +11,7 @@
     "seat"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "99",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
    },
@@ -43,6 +45,7 @@
     "--resume"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "99",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
    },
@@ -77,6 +80,7 @@
     "live-id"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "99",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
    },
@@ -159,6 +163,7 @@
     "seat"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "9",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1",
     "TAP_G4_SEAT": "won"
@@ -196,6 +201,7 @@
     "--resume"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "99",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
    },
@@ -228,6 +234,7 @@
     "seat"
    ],
    "env": {
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": "1",
     "CLAUDE_CODE_SCROLL_SPEED": "99",
     "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
    },

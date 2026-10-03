@@ -69,3 +69,32 @@ test("with no env and no policy, the claude cosmetics carry the incumbent fallba
   expect(got.env.CLAUDE_CODE_SCROLL_SPEED).toBe("6");
   expect(got.env.CLAUDE_CODE_TMUX_TRUECOLOR).toBe("1");
 });
+
+// tap-k0jwy: agent view moves a seat into a background worker and strands its
+// pane. This pins only the environment the launcher composes -- not Claude's
+// behavior. The runtime check (Claude Code 2.1.288 with the variable set ran
+// background Bash and a background subagent while left-arrow agent view and /bg
+// were unavailable) used real ~/.claude auth and is not a suite test.
+test("a claude seat launches with agent view disabled by default", () => {
+  const got = applyLaunchEnv({ argv: ["claude"], env: {} }, seat, machine("version=3\n"));
+  expect(got.env.CLAUDE_CODE_DISABLE_AGENT_VIEW).toBe("1");
+  expect(got.env).not.toHaveProperty("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+});
+
+test("a non-claude seat never receives the agent-view default", () => {
+  const codex = { ...seat, harness: "codex" };
+  const got = applyLaunchEnv({ argv: ["codex"], env: {} }, codex, machine("version=3\n"));
+  expect(got.env).not.toHaveProperty("CLAUDE_CODE_DISABLE_AGENT_VIEW");
+});
+
+test("the launching shell's explicit agent-view value overrides the default", () => {
+  const env = { ...machine("version=3\n"), CLAUDE_CODE_DISABLE_AGENT_VIEW: "0" };
+  const got = applyLaunchEnv({ argv: ["claude"], env: {} }, seat, env);
+  expect(got.env.CLAUDE_CODE_DISABLE_AGENT_VIEW).toBe("0");
+});
+
+test("machine policy overrides the agent-view default", () => {
+  const env = machine('version=3\n[harness.claude.env]\nCLAUDE_CODE_DISABLE_AGENT_VIEW="0"\n');
+  const got = applyLaunchEnv({ argv: ["claude"], env: {} }, seat, env);
+  expect(got.env.CLAUDE_CODE_DISABLE_AGENT_VIEW).toBe("0");
+});

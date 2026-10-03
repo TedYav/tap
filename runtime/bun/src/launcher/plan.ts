@@ -172,8 +172,10 @@ export function jsonSafe(value: unknown): unknown {
 /**
  * Compose the launch environment from its tiers, later winning.
  *
- *   1. claude cosmetics -- the ONLY env the launcher originates, and deliberately
- *      still parent-honouring: they carry no audit weight.
+ *   1. claude defaults -- the ONLY env the launcher originates, and deliberately
+ *      still parent-honouring: they carry no audit weight. Cosmetics
+ *      (truecolor, scroll speed) plus CLAUDE_CODE_DISABLE_AGENT_VIEW=1, which
+ *      keeps agent view off the seat's pane (tap-k0jwy).
  *   2. `[harness.<name>.env]` machine policy, read FRESH on every launch and
  *      every resume. Reading rather than replaying is what makes the policy
  *      migration-free: a seat created before the policy existed picks it up on
@@ -223,6 +225,11 @@ export function applyLaunchEnv(
     composed.CLAUDE_CODE_TMUX_TRUECOLOR =
       env.CLAUDE_CODE_TMUX_TRUECOLOR ?? "1";
     composed.CLAUDE_CODE_SCROLL_SPEED = env.CLAUDE_CODE_SCROLL_SPEED ?? "6";
+    // Agent view's left-arrow panel and /bg take over a seat's input and can
+    // strand a TAP pane; background Bash and subagents work without it. A
+    // launching shell that sets this explicitly (any value) keeps its choice.
+    composed.CLAUDE_CODE_DISABLE_AGENT_VIEW =
+      env.CLAUDE_CODE_DISABLE_AGENT_VIEW ?? "1";
   }
   const policyEnv = readPolicyEnv();
   const declared: Record<string, string> = {

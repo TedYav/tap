@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='installer-continuity-') as scratch:
             os.close(master)
     # Select Codex starters explicitly; all other discovered harnesses keep skip.
     # The wizard opens with two questions; an empty answer keeps each default.
-    answers=[('The first time TAP is used in a new project',''),('Messages that arrive while you type','')]
+    answers=[('The first time TAP is used in a new project',''),("How should agents' messages reach you",'')]
     answers += [(h+': keep it simple, choose myself, or skip? [skip]', 'simple' if h=='codex' else '') for h in ('claude','codex','cursor','opencode','agy','hermes')]
     answers += [('Default effort for selected Claude/Codex starter models','high')]
     answers += [(h+': Permission mode [auto]', 'bypass' if h=='codex' else 'auto') for h in ('claude','codex')]

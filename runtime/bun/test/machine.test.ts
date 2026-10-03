@@ -83,7 +83,7 @@ test("wizard asks team-setup and interrupt choices, keeps saved values and tips 
  expect(await setupMachine(async q=>{
    questions.push(q);
    if(q.startsWith("The first time TAP is used"))return "";
-   if(q.startsWith("Messages that arrive while you type"))return "interrupt";
+   if(q.startsWith("How should agents' messages reach you"))return "interrupt";
    if(q.includes("keep it simple"))return "skip";
    if(q.includes("Permission mode"))return "";
    if(q.startsWith("Install the optional full"))return "n";
@@ -95,18 +95,20 @@ test("wizard asks team-setup and interrupt choices, keeps saved values and tips 
  expect(output[0]).toContain("Pre-release beta: expect bugs");
  const initQ=questions.find(q=>q.startsWith("The first time TAP is used"))!;
  expect(initQ).toContain("[keep ask]");
- const behaviorQ=questions.find(q=>q.startsWith("Messages that arrive while you type"))!;
+ const behaviorQ=questions.find(q=>q.startsWith("How should agents' messages reach you"))!;
  expect(behaviorQ).toContain("[keep wait]");
- expect(behaviorQ).toContain("type WAIT to pause two minutes");
- expect(behaviorQ).toContain("may clear your draft");
- expect(behaviorQ).toContain("pasting it back is conditional");
- expect(behaviorQ).toContain("`tap draft` recovers it");
- expect(behaviorQ).toContain("pasted content or images may not be captured");
+ expect(behaviorQ).toContain("interrupt  Faster when your permission mode allows delivery into typed text");
+ expect(behaviorQ).toContain("TAP saves only text it can");
+ expect(behaviorQ).toContain("capture; paste-back is conditional");
+ expect(behaviorQ).toContain("Pasted content or images may be missing");
+ expect(behaviorQ).toContain("Type WAIT (in caps) to");
+ expect(behaviorQ).toContain("wait       Messages wait until the agent's input is empty");
  expect(behaviorQ).not.toContain("draft comes back");
+ expect(behaviorQ).toContain("`tap draft` recovers it");
  const parsed=Bun.TOML.parse(readFileSync(path,"utf8")) as any;
  expect(parsed.onboarding.init).toBe("ask");expect(parsed.injection.behavior).toBe("clobber");
  expect(readFileSync(path,"utf8")).toContain("# personal");
- expect(output.join("\n")).toContain("Tip: type WAIT (in caps)");
+ expect(output.join("\n")).toContain("Tip: if you need more time, type WAIT (in caps)");
 });
 test("choosing wait writes the live spelling and suppresses the WAIT tip",async()=>{
  fixture();
@@ -115,7 +117,7 @@ test("choosing wait writes the live spelling and suppresses the WAIT tip",async(
  restores.push(()=>log.mockRestore());
  expect(await setupMachine(async q=>{
    if(q.startsWith("The first time TAP is used"))return "auto";
-   if(q.startsWith("Messages that arrive while you type"))return "wait";
+   if(q.startsWith("How should agents' messages reach you"))return "wait";
    if(q.includes("keep it simple"))return "skip";
    if(q.includes("Permission mode"))return "";
    if(q.startsWith("Install the optional full"))return "n";
@@ -125,7 +127,7 @@ test("choosing wait writes the live spelling and suppresses the WAIT tip",async(
  },["codex"])).toBe(0);
  const parsed=Bun.TOML.parse(readFileSync(join(process.env.XDG_CONFIG_HOME!,"tap/config.toml"),"utf8")) as any;
   expect(parsed.onboarding.init).toBe("auto");expect(parsed.injection.behavior).toBe("wait");
-  expect(output.join("\n")).not.toContain("Tip: type WAIT");
+  expect(output.join("\n")).not.toContain("Tip: if you need more time");
  });
 test("declining the update bases the closing tip on the live config, not the declined choice",async()=>{
  const run=async (savedBehavior:string,answer:string)=>{
@@ -136,7 +138,7 @@ test("declining the update bases the closing tip on the live config, not the dec
   restores.push(()=>log.mockRestore());
   expect(await setupMachine(async q=>{
    if(q.startsWith("The first time TAP is used"))return "";
-   if(q.startsWith("Messages that arrive while you type"))return answer;
+   if(q.startsWith("How should agents' messages reach you"))return answer;
    if(q.includes("keep it simple"))return "skip";
    if(q.includes("Permission mode"))return "";
    if(q.startsWith("Update existing"))return "n";
@@ -150,15 +152,15 @@ test("declining the update bases the closing tip on the live config, not the dec
   expect(candidate.injection.behavior).toBe(answer === "wait" ? "wait" : "clobber");
   return output.join("\n");
  };
- expect((await run("clobber","wait"))).toContain("Tip: type WAIT (in caps)");
- expect(await run("warn","interrupt")).not.toContain("Tip: type WAIT");
+ expect((await run("clobber","wait"))).toContain("Tip: if you need more time, type WAIT (in caps)");
+ expect(await run("warn","interrupt")).not.toContain("Tip: if you need more time");
 });
 test("invalid team-setup choice reprompts and accepts the corrected answer",async()=>{
  fixture(); let asked=0, reprompted=false;
  expect(await setupMachine(async q=>{
    if(q.startsWith("The first time TAP is used")){asked++;return asked===1?"maybe":"auto";}
    if(q.startsWith("Choose ask or auto")){reprompted=true;return "auto";}
-   if(q.startsWith("Messages that arrive while you type"))return "interrupt";
+   if(q.startsWith("How should agents' messages reach you"))return "interrupt";
    if(q.includes("keep it simple"))return "skip";
    if(q.includes("Permission mode"))return "";
    if(q.startsWith("Install the optional full"))return "n";
@@ -415,7 +417,7 @@ test("skip-all still configures permissions and shell integration without effort
  expect(output.join("\n")).not.toContain("Added shell aliases");
  expect(output.some(line=>line.includes("tap launch codex <name>"))).toBe(true);
  expect(output.join("\n")).not.toContain("launch undefined");
- expect(output.at(-1)).toContain("Tip: type WAIT (in caps)");
+ expect(output.at(-1)).toContain("Tip: if you need more time, type WAIT (in caps)");
 });
 test("skip-all retains distinct permissions and unrelated config bytes without importing the catalog",async()=>{
  fixture(); const dir=join(process.env.XDG_CONFIG_HOME!,"tap");mkdirSync(dir);
@@ -460,7 +462,7 @@ test("wizard refuses an edit made while questions were open",async()=>{
  const path=join(dir,"config.toml");writeFileSync(path,"version=3\n");
  const edited="version=3\n# concurrent user edit\n";
  expect(await setupMachine(async question=>{
-   if(question.startsWith("The first time TAP is used")||question.startsWith("Messages that arrive while you type"))return "";
+   if(question.startsWith("The first time TAP is used")||question.startsWith("How should agents' messages reach you"))return "";
    if(question.includes("keep it simple"))return "skip";
    if(question.startsWith("codex:"))return "auto";
    if(question.startsWith("Install the optional full"))return "y";if(question.startsWith("Notifier ["))return "";
@@ -596,7 +598,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    for prompt,answer in [(b'The first time TAP is used',b'\n'),(b'Messages that arrive while you type',b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n')]:
+    for prompt,answer in [(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n')]:
         until(prompt); os.write(master,answer)
     until(b'Add shell aliases?')
     os.write(master,b'\x03')
@@ -697,7 +699,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b'Messages that arrive while you type',b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output
@@ -745,7 +747,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b'Messages that arrive while you type',b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output

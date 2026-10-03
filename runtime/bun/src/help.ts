@@ -1342,9 +1342,9 @@ USAGE
 
 DESCRIPTION
   Opens a fuzzy picker over every live seat on every enrolled team. The result is
-  the full team/handle. With --pane it is typed into that tmux pane with literal
-  keys and no Enter, so you can finish writing the message yourself; Esc types
-  nothing. The tmux popup bound by tap keybinding runs this. A machine without
+  the full team/handle. With --pane it types the name followed by a space into
+  that tmux pane, with no Enter, so you can keep writing; Esc types nothing.
+  The tmux popup bound by tap keybinding runs this. A machine without
   TAP's pinned fzf gets a plain type-to-filter list instead. Read-only apart from the
   typed text; it never sends mail and never picks a recipient for another verb.
 
