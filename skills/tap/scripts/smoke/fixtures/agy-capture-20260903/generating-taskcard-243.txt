@@ -1,0 +1,36 @@
+  immediately to Lane W5!
+
+────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=maple-9-3-leader to=willow-low-conductor
+  id=maple-9-3-leader-20260903T163646Z-192a00d1cb53
+  kind=discuss reply=settle-only
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/spool/maple-9
+  -3-leader-20260903T163646Z-192a00d1cb53.md]]
+  STAND-DOWN from the leader (panel ruling):
+  lime-backup-conductor takes over; read path= and follow its
+  five steps.
+
+● Read(~/wrk/Example-Org/tap/.tap...03T163646Z-192a00d1cb53.md)
+● Bash(tap watch off)
+● ManageTask(status 59b29b4e-f252-4e95-a082-47b020347862/task-
+...)
+● Bash(ps aux | grep "[s]moke_all_main")
+● ManageTask(status 59b29b4e-f252-4e95-a082-47b020347862/task-
+...)
+● Edit(~/.gemini/antigravity-cli/...h/to-luna-final-handoff.md)
+○ Bash(tap send lime-backup-conductor --wake -f
+/Users/runner/...)
+● ManageTask(status 59b29b4e-f252-4e95-a082-47b020347862/task-
+...)
+● ManageTask(status 59b29b4e-f252-4e95-a082-47b020347862/task-
+...)
+● ManageTask(status 59b29b4e-f252-4e95-a082...) (ctrl+o to
+expand)
+⣾  Generating...
+└ Tip: Press ctrl+b to sen...   1 artifact · /artifact to review
+────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────
+  ● [09:38:48] tap send lime-backup-conductor --wake ... running
+────────────────────────────────────────────────────────────────
+esc to cancel        Gemini 3.8 Flash · low · 1 task(s) · /tasks

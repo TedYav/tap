@@ -1,0 +1,52 @@
+tap health: attention
+
+bus
+  path: <WORK>/A/.tap/bus
+  rule: dotdir
+
+notify
+  type: sticky-notify
+  at: -
+  reason: invalid notify state: JSON Parse error: Expected '}'
+
+watch
+  armed by: -
+  done when: -
+  threshold: -
+  rung: -
+  heartbeat at: -
+  watcher pid: -
+  watcher alive: no
+  condition: watch-state-unreadable
+  error: invalid watch state: JSON Parse error: Expected '}'
+
+last activity
+  payload: 89s
+  receipt: 89s
+
+unsettled payloads
+  id                                      age  from         to   kind  path
+  alice-20260901T000000Z-aaaaaaaaaaaa.md  90s  other/alice  bob  task  <WORK>/A/.tap/bus/payloads/alice-20260901T000000Z-aaaaaaaaaaaa.md
+
+roster
+  gen  recorded: active  harness: claude  pane: <S>gen:0.0  state: unknown
+  gone  recorded: active  harness: claude  pane: nosuch:0.0  state: unknown
+  idle  recorded: active  harness: claude  pane: <S>idle:0.0  state: unknown
+  parked  recorded: suspended  harness: claude  pane: <S>idle:0.0  state: unknown
+  pollseat  recorded: active  harness: claude  pane: -  state: poll-mode (liveness unknown)
+
+supervision traffic
+  bob-20260901T000001Z-bbbbbbbbbbbb  kind: notice  age: 89s
+  watcher-20260831T235900Z-cccccccccccc  kind: probe  age: 150s
+
+registry events
+  e03
+  e04
+  e05
+  e06
+  e07
+  e08
+  e09
+  e10
+  e11
+  e12

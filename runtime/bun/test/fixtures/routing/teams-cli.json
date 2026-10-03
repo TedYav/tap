@@ -1,0 +1,287 @@
+[
+  {
+    "args": [],
+    "expected": {
+      "exit": 0,
+      "stdout": "tap teams (machine-wide): no active teams\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--all"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "tap teams (machine-wide): no enrolled teams\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--details"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "tap teams (machine-wide): no active teams\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--a",
+      "--d"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "tap teams (machine-wide): no enrolled teams\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--h"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-h"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--help"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-hhh"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-h=bad"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
+    }
+  },
+  {
+    "args": [
+      "--all=yes"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument --all: ignored explicit argument 'yes'\n"
+    }
+  },
+  {
+    "args": [
+      "--details="
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument --details: ignored explicit argument ''\n"
+    }
+  },
+  {
+    "args": [
+      "--unknown"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: --unknown\n"
+    }
+  },
+  {
+    "args": [
+      "--",
+      "--all"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: -- --all\n"
+    }
+  },
+  {
+    "args": [
+      "--",
+      "--help"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: -- --help\n"
+    }
+  },
+  {
+    "args": [
+      "--unknown",
+      "--help"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--help",
+      "--unknown"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--all",
+      "x"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: x\n"
+    }
+  },
+  {
+    "args": [
+      "-d"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: -d\n"
+    }
+  },
+  {
+    "args": [
+      "--d",
+      "--d"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "tap teams (machine-wide): no active teams\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-hfoo"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-hhfoo"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-h--all"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument '--all'\n"
+    }
+  },
+  {
+    "args": [
+      "-hh=bad"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
+    }
+  },
+  {
+    "args": [
+      "-ha"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-h-foo"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument '-foo'\n"
+    }
+  },
+  {
+    "args": [
+      "-hfoo=bar"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "-hfoo-bar"
+    ],
+    "expected": {
+      "exit": 0,
+      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stderr": ""
+    }
+  },
+  {
+    "args": [
+      "--=x"
+    ],
+    "expected": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: ambiguous option: --=x could match --help, --all, --details\n"
+    }
+  }
+]

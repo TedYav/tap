@@ -1,0 +1,1050 @@
+# One operator's TAP configuration, shared as an example.
+#
+# This is a real working config from the maintainer's machine with private
+# details removed. It is NOT the best or the only way to configure TAP, and it
+# is not a default: nothing loads this file. Read it for ideas (how presets are
+# named, how calibration notes and roles are written down), then build your own
+# with `/tap:config-wizard` or `tap setup --machine`.
+#
+# What to notice:
+#   - One preset per model-and-effort combination this operator actually uses,
+#     plus "-big" variants that raise the context and compaction limits.
+#   - `metadata.*` on each preset is a calibration note written by a human after
+#     using the model: what it is good at, what to avoid, relative cost and
+#     speed. These are one person's opinions on one set of subscriptions. Your
+#     models, plans and experience will differ; write your own.
+#   - [roles] and [intelligences] define the vocabulary the metadata uses.
+#   - Model names and provider strings go stale. Check each CLI's own model
+#     list before copying one.
+#
+# Do not copy this file over your own config. The starter catalog the setup
+# wizard installs from is config.v3.toml in this directory.
+#
+# Presets supply harness tuning only: never identity, team, cwd, bus or TAP_*.
+# [harness.*] policy is read fresh on every launch and resume.
+
+version = 3
+
+# ── Machine-level harness policy ─────────────────────────────────────
+# Stated once here instead of repeated in every preset. This operator runs
+# every harness with permission checks bypassed; `tap setup --machine` defaults
+# a new config to "auto" and asks before recording bypass.
+
+[harness.agy]
+permissions = "bypass"
+
+[harness.claude]
+permissions = "bypass"
+
+[harness.codex]
+permissions = "bypass"
+env.PONYTAIL_DEFAULT_MODE = "off"
+
+[harness.cursor]  # family key "cursor"; the executable is cursor-agent
+permissions = "bypass"
+
+# -- Roles --
+# -- These indicate what a model is best suited for, and what types of tasks to route to it on a TAP team --
+[roles]
+driver = "Drives an implementation lane. May also implement code, or delegate its lane to an implementer. See /tap:drive"
+implementer = "Implements code from a prompt or a spec"
+reviewer = "Reviews code, plans, proposals, etc, either as itself, or as a particular reviewer agent definition provided to it"
+partner = "A situational role for pair programming, pair research, or other tasks. Partners are agents that are strong implementers and reviewers, and can offer a turn by turn perspective on a task before escalating to a driver/conductor/leader. Generally, the partner should be a stronger model than the implementer or researcher in the pair."
+debugger = "Debugs issues in code or on the machine"
+leader = "Leads a TAP team, responsible for choreographing other agents, adding and removing teammates, managing teammate context. Delegates most or all of actual implementation work to other agents. May write plans, or review important parts of plans written by other agents. Pair with a conductor to save tokens! See /tap:lead"
+conductor = "A conductor assists the leader with the variety of messages received from an active TAP team. Drivers, implementers, reviewers, etc send messages to the conductor, who will selectively relay questions to the leader as needed."
+planner = "Comes up with ideas, and pressure tests ideas with other agents."
+researcher = "Researches a given problem space, using internet research and local reference material"
+prose_writer = "Writes or edits prose, such as comments, design documents, ADRs, and so forth."
+architect = "Designs and refines the architecture of a system, including the codebase, the data model, the API, the UI, and the overall system design."
+approver = "Approves a design or code change after other agents have reviewed it. The leader will assign an approver to various gates in the development process. (Or the leader may designate themselves as the approver). Approvers are generally a distinct seat from reviewers, to avoid rubber stamping something they've already seen."
+goalie = "Acts as the team goalie, keeping it on track, blocking deadlocks, failures, and other issues. Can maintain a /goal for the team as a whole. Goalie's job is to let the leader rest and avoid using frontier tokens for micromanaging the team and herding cats."
+tasker = "Runs tasks, such as running scripts, executing simple operations, gathering data from the machine, and other tasks that don't require a lot of intelligence."
+prototyper = "Prototypes code, designs, and other artifacts quickly, to get a sense of what is possible. Generally top tier frontier models on lower effort settings are useful for this - to see if an idea is feasible before handing robust implementation to cheaper seats."
+monitor = "Samples a declared subject on a regular cadence, writes a timestamped heartbeat with numbers each cycle, and reports crossings or errors to its charter recipient. Nightwatch, goalie and context genie are monitor variants. See skills/tap/protocol/supervision/monitor.md."
+
+# -- Intelligence Levels --
+
+[intelligences]
+s-tier = "Absolute top of the line frontier models to be used for situations requiring exceptional intelligence and capabilities."
+frontier = "Frontier model with top of the line intelligence and capabilities, that is strong for executing agentic tasks, doing code reviews, and producing quality software"
+advanced = "An advanced model which is useful for general execution tasks, implementation, and research."
+medium = "A model useful for basic implementation, data analysis, quick scripting, and other tasks where the goal is very well defined and a more advanced model will check its work."
+dumb = "A model which is generally fast and cheap, and useful for offloading more mechanical tasks from more expensive agents, such as detecting team deadlocks, running mechanical gates, data collecting and parsing, etc."
+
+# -- Presets ---
+
+# For simplicity, the names of these presets will be used to match seat names in the personal calibration ledger (~/.tap/seat-calibration.md; see `tap models`)
+# We will assume that a seat with a given name prefix should match a seat calibration.
+# i.e. don't name a seat sol-scout if you don't want the sol calibration to apply.
+
+# ── claude ───────────────────────────────────────────────────────────
+
+[presets.opus46]
+description = "Claude Opus 4.6, with medium effort"
+harness = "claude"
+params.model = "claude-opus-4-6[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Older Claude Opus Model, many people swear by it for faithful implementation without overengineering. Use as implementer or partner, not for complex design or architecture."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer", "prose_writer" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.opus46-big]
+description = "Claude Opus 4.6, with medium effort, 700k context"
+harness = "claude"
+params.model = "claude-opus-4-6[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Older Claude Opus Model with a larger 700k context window. Many people swear by it for faithful implementation without overengineering. Use as implementer or partner, not for complex design or architecture."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer", "prose_writer" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.opus46-high]
+description = "Claude Opus 4.6, with high effort"
+harness = "claude"
+params.model = "claude-opus-4-6[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "450000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Older Claude Opus Model, many people swear by it for faithful implementation without overengineering. Use as implementer or partner, not for complex design or architecture. Extra effort for slightly more complex tasks."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer", "prose_writer" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.opus46-high-big]
+description = "Claude Opus 4.6, with high effort, 700k context"
+harness = "claude"
+params.model = "claude-opus-4-6[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Older Claude Opus Model with a larger 700k context window. Many people swear by it for faithful implementation without overengineering. Use as implementer or partner, not for complex design or architecture. Extra effort for slightly more complex tasks."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer", "prose_writer" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.opus48]
+description = "Claude Opus 4.8, with medium effort"
+harness = "claude"
+params.model = "claude-opus-4-8[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Great all around model that is less prone to overthinking than Opus 5. Solid implementer and builder."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus48-big]
+description = "Claude Opus 4.8, with medium effort, 700k context"
+harness = "claude"
+params.model = "claude-opus-4-8[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Great all around model with a larger 700k context window that is less prone to overthinking than Opus 5. Solid implementer and builder."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus48-high]
+description = "Claude Opus 4.8, with high effort"
+harness = "claude"
+params.model = "claude-opus-4-8[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "450000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Great all around model that is less prone to overthinking than Opus 5. Extra effort for slightly more complex tasks. Solid implementer and builder."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus48-high-big]
+description = "Claude Opus 4.8, with high effort, 700k context"
+harness = "claude"
+params.model = "claude-opus-4-8[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Great all around model with a larger 700k context window that is less prone to overthinking than Opus 5. Extra effort for slightly more complex tasks. Solid implementer and builder."
+metadata.primary_roles = [ "driver", "implementer", "partner" ]
+metadata.secondary_roles = [ "reviewer" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus]
+description = "Latest Claude Opus Model (Currently 5.5), with medium effort"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "fast"
+metadata.summary = "Great all around model. Significant upgrade from Opus 5. Almost as good as Fable, and 60% cheaper, and much faster. Writing is better, but still not as good as Sol or Astra."
+metadata.primary_roles = [ "driver", "implementer", "conductor", "leader" ]
+metadata.secondary_roles = [ "reviewer", "debugger", "researcher", "partner", "planner" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus-big]
+description = "Latest Claude Opus Model (Currently 5.5), with medium effort, 700k context"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "fast"
+metadata.summary = "Great all around model with a larger 700k context window. Significant upgrade from Opus 5. Almost as good as Fable, and 60% cheaper, and much faster. Writing is better, but still not as good as Sol or Astra."
+metadata.primary_roles = [ "driver", "implementer", "conductor", "leader" ]
+metadata.secondary_roles = [ "reviewer", "debugger", "researcher", "partner", "planner" ]
+metadata.avoid_roles = [ "prose_writer" ]
+
+[presets.opus-high]
+description = "Opus 5.5 high effort"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "450000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, high effort. Slower and more verbose. Good for architecture and design, and as a partner."
+metadata.primary_roles = [ "debugger", "reviewer", "partner" ]
+metadata.secondary_roles = [ "driver", "implementer", "leader", "researcher", "conductor" ]
+metadata.avoid_roles = [ "prose_writer", "architect", "approver" ]
+
+[presets.opus-high-big]
+description = "Opus 5.5 high effort, 700k context"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, high effort, with a larger 700k context window. Slower and more verbose. Good for architecture and design, and as a partner."
+metadata.primary_roles = [ "debugger", "reviewer", "partner" ]
+metadata.secondary_roles = [ "driver", "implementer", "leader", "researcher", "conductor" ]
+metadata.avoid_roles = [ "prose_writer", "architect", "approver" ]
+
+[presets.opus-xhigh]
+description = "Opus 5.5, 1M context, xHigh effort"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "xhigh"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "500000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium high"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, extra high effort. Slower and may overengineer. Good for important architecture and design, and as a partner."
+metadata.primary_roles = [ "debugger", "reviewer", "partner" ]
+metadata.secondary_roles = [ "driver", "implementer", "leader", "researcher", "conductor" ]
+metadata.avoid_roles = [ "prose_writer", "architect", "approver" ]
+
+[presets.opus-xhigh-big]
+description = "Opus 5.5, xHigh effort, 700k context"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "xhigh"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "700000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium high"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, extra high effort, with a larger 700k context window. Slower and may overengineer. Good for important architecture and design, and as a partner."
+metadata.primary_roles = [ "debugger", "reviewer", "partner" ]
+metadata.secondary_roles = [ "driver", "implementer", "leader", "researcher", "conductor" ]
+metadata.avoid_roles = [ "prose_writer", "architect", "approver" ]
+
+[presets.fable-low]
+description = "Fable 5 with low effort"
+harness = "claude"
+params.model = "fable"
+params.effort = "low"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium high"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Fable model to use when only needed for consulting, not for implementation. Low effort to save tokens, but great for intelligently orchestrating a team and assigning work where it's needed."
+metadata.primary_roles = [ "leader", "prototyper" ]
+metadata.secondary_roles = [ "approver", "driver" ]
+metadata.avoid_roles = [ "researcher", "prose_writer", "implementer", "conductor", "partner" ]
+
+[presets.fable]
+description = "Fable 5 with medium effort"
+harness = "claude"
+params.model = "fable"
+params.effort = "medium"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Default leader model. Medium effort to avoid overthinking, but great for intelligently orchestrating a team and assigning work where it's needed. Good for planning simpler tasks as well as prototyping."
+metadata.primary_roles = [ "leader", "prototyper" ]
+metadata.secondary_roles = [ "debugger", "reviewer", "architect", "approver", "driver", "planner" ]
+metadata.avoid_roles = [ "researcher", "prose_writer", "implementer", "conductor", "partner" ]
+
+[presets.fable-high]
+description = "Fable 5 with high effort"
+harness = "claude"
+params.model = "fable"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "500000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Leader model for scenarios requiring extra intelligence. High effort to increase intelligence somewhat at the expense of some cost."
+metadata.primary_roles = [ "leader", "architect", "approver", "reviewer" ]
+metadata.secondary_roles = [ "debugger", "driver", "planner" ]
+metadata.avoid_roles = [ "researcher", "prose_writer", "implementer", "conductor", "partner" ]
+
+[presets.fable-xhigh]
+description = "Fable 5 with xHigh effort. Uncapped context window for advanced planning."
+harness = "claude"
+params.model = "fable"
+params.effort = "xhigh"
+metadata.pronouns = "he/him"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Top tier frontier model. Very expensive, very slow. xHigh effort set - good for architecture and planning."
+metadata.primary_roles = [ "architect", "approver", "reviewer", "planner" ]
+metadata.secondary_roles = [ "debugger" ]
+metadata.avoid_roles = [ "researcher", "prose_writer", "driver", "implementer", "leader", "conductor" ]
+
+[presets.sonnet]
+description = "Sonnet 5"
+harness = "claude"
+params.model = "sonnet"
+params.effort = "high"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "420000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "95"
+metadata.pronouns = "he/him"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Strong implementer and researcher. Good for simple, well defined tasks when speed is needed and we want another claude model. Solid choice for a claude subagent."
+metadata.primary_roles = [ "implementer", "researcher" ]
+metadata.secondary_roles = [ "debugger" ]
+metadata.avoid_roles = [ "leader", "architect", "approver", "reviewer", "prose_writer", "driver" ]
+
+[presets.sonnet-low]
+description = "Sonnet 5"
+harness = "claude"
+params.model = "sonnet"
+params.effort = "low"
+env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "300000"
+env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "90"
+metadata.pronouns = "he/him"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Basic claude model for tasking, and when we want to use Claude Code harness specific tools like cron, monitors, etc. Has access to advisor tool for Fable consults so preferred for watching tasks."
+metadata.primary_roles = [ "tasker", "monitor" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "implementer", "researcher", "debugger", "leader", "architect", "approver", "reviewer", "prose_writer", "driver" ]
+
+# ── codex ────────────────────────────────────────────────────────────
+
+[presets.astra-med]
+description = "GPT 6 Astra with Medium Effort"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=medium",
+  "service_tier=default",
+  "model_context_window=450000",
+  "model_auto_compact_token_limit=375000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort. Use for implementation, prototyping, writing, and partnering, or other tasks where frontier intelligence but less effort is required."
+metadata.primary_roles = [ "prototyper", "partner", "prose_writer", "implementer" ]
+metadata.secondary_roles = [ "driver", "reviewer", "leader"  ]
+metadata.avoid_roles = [ "tasker", "architect", "approver", "researcher" ]
+
+[presets.astra-med-big]
+description = "GPT 6 Astra with Medium Effort, 700k context"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=medium",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort with a larger 700k context window. Use for implementation, prototyping, writing, and partnering, or other tasks where frontier intelligence but less effort is required and more context is needed."
+metadata.primary_roles = [ "prototyper", "partner", "prose_writer", "implementer" ]
+metadata.secondary_roles = [ "driver", "reviewer", "leader"  ]
+metadata.avoid_roles = [ "tasker", "architect", "approver", "researcher" ]
+
+[presets.astra-low-context]
+description = "GPT 6 Astra with Medium Effort, Lower Context limit for efficiency"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=medium",
+  "service_tier=default",
+  "model_context_window=350000",
+  "model_auto_compact_token_limit=300000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort. Use for implementation, prototyping, writing, and partnering, or other tasks where frontier intelligence but less effort is required."
+metadata.primary_roles = [ "prototyper", "partner", "prose_writer", "implementer" ]
+metadata.secondary_roles = [ "driver", "reviewer", "leader"  ]
+metadata.avoid_roles = [ "tasker", "architect", "approver", "researcher" ]
+
+[presets.astra-fast]
+description = "GPT 6 Astra with Medium Effort, Fast Mode"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=medium",
+  "service_tier=fast",
+  "model_context_window=450000",
+  "model_auto_compact_token_limit=375000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "very fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort in fast mode. 2.5x the normal price, USE SPARINGLY! Agents should not launch this without asking."
+metadata.primary_roles = [ "prototyper", "tasker", "prose_writer", "implementer" ]
+metadata.secondary_roles = [ "leader" ]
+metadata.avoid_roles = [ "architect", "approver", "researcher" ]
+
+[presets.astra-fast-big]
+description = "GPT 6 Astra with Medium Effort, Fast Mode, 700k context"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=medium",
+  "service_tier=fast",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "very fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort in fast mode with a larger 700k context window. 2.5x the normal price, USE SPARINGLY! Agents should not launch this without asking."
+metadata.primary_roles = [ "prototyper", "tasker", "prose_writer", "implementer" ]
+metadata.secondary_roles = [ "leader" ]
+metadata.avoid_roles = [ "architect", "approver", "researcher" ]
+
+[presets.astra]
+description = "GPT 6 Astra with High Effort"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=450000",
+  "model_auto_compact_token_limit=375000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.primary_roles = [ "prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher"  ]
+metadata.avoid_roles = [ "tasker" ]
+
+[presets.astra-big]
+description = "GPT 6 Astra with High Effort, 700k context"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on high effort with a larger 700k context window. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.primary_roles = [ "prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher"  ]
+metadata.avoid_roles = [ "tasker" ]
+
+[presets.astra-ponytail]
+description = "GPT 6 Astra in Ponytail Mode"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=450000",
+  "model_auto_compact_token_limit=375000"
+]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in Ponytail Mode. Very Expensive. Use as an overengineering gate on the team."
+metadata.primary_roles = [ "architect", "approver", "reviewer", "prose_writer" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "driver", "tasker", "implementer", "leader" ]
+
+[presets.astra-ponytail-big]
+description = "GPT 6 Astra in Ponytail Mode, 700k context"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in Ponytail Mode with a larger 700k context window. Very Expensive. Use as an overengineering gate on the team."
+metadata.primary_roles = [ "architect", "approver", "reviewer", "prose_writer" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "driver", "tasker", "implementer", "leader" ]
+
+[presets.astra-xhigh]
+description = "GPT 6 Astra in xHigh Effort"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=450000",
+  "model_auto_compact_token_limit=375000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in xHigh Effort. Very Expensive and Slow. Use for complex debugging or architecture work."
+metadata.primary_roles = [ "debugger", "reviewer", "architect" ]
+metadata.secondary_roles = [ "approver" ]
+metadata.avoid_roles = [ "driver", "tasker", "implementer", "leader", "partner" ]
+
+[presets.astra-xhigh-big]
+description = "GPT 6 Astra in xHigh Effort, 700k context"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in xHigh Effort with a larger 700k context window. Very Expensive and Slow. Use for complex debugging or architecture work."
+metadata.primary_roles = [ "debugger", "reviewer", "architect" ]
+metadata.secondary_roles = [ "approver" ]
+metadata.avoid_roles = [ "driver", "tasker", "implementer", "leader", "partner" ]
+
+[presets.astra-max]
+description = "GPT 6 Astra in Max Effort"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = [
+  "model_reasoning_effort=max",
+  "service_tier=default",
+  "model_context_window=1000000",
+  "model_auto_compact_token_limit=800000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "ultra high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "slow"
+metadata.summary = "Top tier frontier model from OpenAI in Max Effort. Use sparingly for the most complex debugging or review tasks."
+metadata.primary_roles = [ "debugger", "reviewer", "architect" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "driver", "tasker", "implementer", "leader", "partner", "approver" ]
+
+[presets.sol]
+description = "Sol — gpt-6.1-sol with high effort"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=400000",
+  "model_auto_compact_token_limit=350000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong reviewer and debugger. Great pair programmer and implementer. Solid choice to drive an implementation lane, or pair program with another agent building an implementation lane. Also a very strong writer."
+metadata.primary_roles = [ "reviewer", "debugger", "implementer", "prose_writer", "partner" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.sol-big]
+description = "Sol — gpt-6.1-sol with high effort, 700k context"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong reviewer and debugger with a larger 700k context window. Great pair programmer and implementer. Solid choice to drive an implementation lane, or pair program with another agent building an implementation lane. Also a very strong writer."
+metadata.primary_roles = [ "reviewer", "debugger", "implementer", "prose_writer", "partner" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.sol-xhigh]
+description = "Sol — gpt-6.1-sol in xHigh effort"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=400000",
+  "model_auto_compact_token_limit=350000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Top tier frontier model. Very expensive, very slow. xHigh effort set - good for architecture and planning."
+metadata.primary_roles = [ "reviewer", "debugger", "implementer", "prose_writer", "partner" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.sol-xhigh-big]
+description = "Sol — gpt-6.1-sol in xHigh effort, 700k context"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=xhigh",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Top tier frontier model with a larger 700k context window. Very expensive, very slow. xHigh effort set - good for architecture and planning."
+metadata.primary_roles = [ "reviewer", "debugger", "implementer", "prose_writer", "partner" ]
+metadata.secondary_roles = [ "driver", "leader", "researcher" ]
+metadata.avoid_roles = [ "architect", "approver" ]
+
+[presets.sol-ponytail]
+description = "Sol — gpt-6.1-sol in Ponytail mode"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=400000",
+  "model_auto_compact_token_limit=350000"
+]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong adversarial reviewer that is relentless at demanding simplifications. Great counterweight on the team. For complicated architecture or design, a necessary voice to combat overengineering."
+metadata.primary_roles = [ "reviewer", "architect", "partner" ]
+metadata.secondary_roles = [ "debugger", "prose_writer", "implementer", "approver", "researcher" ]
+metadata.avoid_roles = [ "leader", "driver" ]
+
+[presets.sol-ponytail-big]
+description = "Sol — gpt-6.1-sol in Ponytail mode, 700k context"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=700000",
+  "model_auto_compact_token_limit=600000"
+]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong adversarial reviewer that is relentless at demanding simplifications, with a larger 700k context window. Great counterweight on the team. For complicated architecture or design, a necessary voice to combat overengineering."
+metadata.primary_roles = [ "reviewer", "architect", "partner" ]
+metadata.secondary_roles = [ "debugger", "prose_writer", "implementer", "approver", "researcher" ]
+metadata.avoid_roles = [ "leader", "driver" ]
+
+[presets.sol-max]
+description = "Sol — gpt-6.1-sol in Max mode"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = [
+  "model_reasoning_effort=max",
+  "service_tier=default",
+  "model_context_window=1000000",
+  "model_auto_compact_token_limit=700000"
+]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium"
+metadata.speed = "slow"
+metadata.summary = "Strong reviewer, architect, and debugger. Great for architecture and design. Slow and expensive, but great when needed."
+metadata.primary_roles = [ "reviewer", "architect", "debugger" ]
+metadata.secondary_roles = [ "prose_writer", "approver", "researcher", "partner" ]
+metadata.avoid_roles = [ "leader", "driver" ]
+
+[presets.luna]
+description = "Luna — gpt-6 luna with high effort"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=default",
+  "model_context_window=400000",
+  "model_auto_compact_token_limit=350000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "medium"
+metadata.speed = "very fast"
+metadata.summary = "Cheap agent that is still a lot smarter than many other models. Great for automation tasks, running scripts, and executing simple operations. Less good for heavy coding."
+metadata.primary_roles = [ "tasker" ]
+metadata.secondary_roles = [ "implementer", "researcher" ]
+metadata.avoid_roles = [ "leader", "architect", "approver", "reviewer", "debugger", "prose_writer" ]
+
+[presets.luna-fast]
+description = "Luna — gpt-6-luna with high effort, fast mode"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = [
+  "model_reasoning_effort=high",
+  "service_tier=fast",
+  "model_context_window=400000",
+  "model_auto_compact_token_limit=350000"
+]
+metadata.pronouns = "she/her"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "ultra fast"
+metadata.summary = "Cheap agent in fast mode for quick tasks and implementation. Great for conducting or roles that require near realtime responses and actions."
+metadata.primary_roles = [ "conductor" ]
+metadata.secondary_roles = [ "tasker" ]
+metadata.avoid_roles = [ "leader", "architect", "approver", "reviewer", "debugger", "prose_writer", "implementer", "researcher" ]
+
+# ── cursor ───────────────────────────────────────────────────────────
+
+[presets.grok]
+description = "Grok 4.7 high"
+harness = "cursor"
+params.model = "grok-4.7-high" # effort contained in model string
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "fast"
+metadata.summary = "Very strong implementer and adversarial reviewer. Use liberally for implementation or partner pair programming reviews, as well as for pressure testing designs."
+metadata.primary_roles = [ "reviewer", "implementer", "partner" ]
+metadata.secondary_roles = [ "debugger", "prose_writer", "architect", "driver" ]
+metadata.avoid_roles = [ "leader", "approver", "researcher" ]
+
+# ── opencode ─────────────────────────────────────────────────────────
+# Full provider-qualified model strings. Three-segment strings such as
+# tokenrouter/z-ai/glm-5.2 cannot be expressed as provider + model —
+# provider fusion emits exactly one slash — so give the whole string as
+# `model` and omit `provider`.
+
+[presets.glm]
+description = "GLM 5.2 via opencode, TokenRouter"
+harness = "opencode"
+params.model = "tokenrouter/z-ai/glm-5.2"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "api"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong adversarial reviewer. Because it's API based, use for decorrelated reviews of plans and code, rather than for implementation or research."
+metadata.primary_roles = [ "reviewer" ]
+metadata.secondary_roles = [ "architect" ]
+metadata.avoid_roles = [ "implementer", "leader", "approver", "researcher", "prose_writer", "driver" ]
+
+[presets.glm53]
+description = "GLM 5.3 via opencode, TokenRouter"
+harness = "opencode"
+params.model = "zai-coding-plan/glm-5.3"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Very strong reviewer. Great at catching bugs, security issues, and software design. With subscription access, may be used for implementation, or as a very powerful reviewer or pair programming partner."
+metadata.primary_roles = [ "reviewer", "partner" ]
+metadata.secondary_roles = [ "architect" ]
+metadata.avoid_roles = [ "implementer", "leader", "approver", "researcher", "prose_writer", "driver" ]
+
+[presets.glm53-flash]
+description = "GLM 5.3 Flash via opencode, TokenRouter"
+harness = "opencode"
+params.model = "zai-coding-plan/glm-5.3-flash"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "fast"
+metadata.summary = "Fast, cheap implementer and conductor for well-defined work."
+metadata.primary_roles = [ "implementer", "conductor" ]
+metadata.secondary_roles = [ "tasker" ]
+metadata.avoid_roles = [ "architect", "leader", "approver", "researcher", "prose_writer", "driver" ]
+
+[presets.kimi]
+# This operator points this preset at a separate OpenCode config directory:
+# env.OPENCODE_CONFIG_DIR = "/absolute/path/to/an/alternate/opencode/config"
+description = "Kimi K3 via opencode, Synthetic"
+harness = "opencode"
+params.model = "synthetic/hf:moonshotai/Kimi-K3"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "low"
+metadata.speed = "medium"
+metadata.summary = "Very strong reviewer, great at catching edge cases and providing architectural feedback. Low capacity - do not use for implementation or research."
+metadata.primary_roles = [ "reviewer", "architect" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "implementer", "leader", "approver", "researcher", "prose_writer", "driver" ]
+
+# -- hermes ───────────────────────────────────────────────────────────
+[presets.hermes-agent]
+description = "Hermes Agent running DeepSeek v4 Pro"
+harness = "hermes"
+params.provider = "nous-portal"
+params.model = "deepseek/deepseek-v4.1-flash"
+metadata.pronouns = "she/they"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "api"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Specialized model and agent, only needed when we need to interface with hermes service on the machine. Do not add to TAP teams unless specifically asked."
+# no role lists: deliberate — specialized interface seat, not a general team member.
+
+[presets.hermes-goalie]
+description = "DeepSeek v4 Flash in Hermes Agent, Designed to be team goalie"
+harness = "hermes"
+params.provider = "nous-portal"
+params.model = "deepseek/deepseek-v4-flash-0731"
+metadata.pronouns = "she/they"
+metadata.intelligence = "dumb"
+metadata.cost_basis = "api"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "medium"
+metadata.speed = "very fast"
+metadata.summary = "Very dumb model, very fast. Great for things like being team goalie. Do not use for code reviews or implementation."
+metadata.primary_roles = [ "goalie" ]
+metadata.avoid_roles = [ "implementer", "leader", "approver", "researcher", "prose_writer", "driver", "reviewer", "debugger" ]
+
+# -- gemini ───────────────────────────────────────────────────────────
+
+[presets.gemini-low]
+description = "Gemini 3.8 Flash Via Antigravity"
+harness = "agy"
+params.model = "gemini-3.8-flash-low"
+metadata.pronouns = "she/her"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "very high"
+metadata.speed = "very fast"
+metadata.summary = "Very fast model to use for assistive roles, like conducting, tasking, triaging messages for more expensive models."
+metadata.primary_roles = [ "conductor", "tasker" ]
+metadata.secondary_roles = [ ]
+metadata.avoid_roles = [ "leader", "approver", "driver", "reviewer", "debugger", "architect", "implementer", "prose_writer", "researcher" ]
+
+[presets.gemini]
+description = "Gemini 3.8 Flash Via Antigravity - High Effort"
+harness = "agy"
+params.model = "gemini-3.8-flash-high"
+metadata.pronouns = "she/her"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Strong reviewer, especially for reviewing plans and designs. Use extensively for up front reviews during planning and design. Do not use as an approver or code reviewer, as it may be too lenient."
+metadata.primary_roles = [ "reviewer", "architect" ]
+metadata.secondary_roles = [ "prose_writer", "researcher", "implementer", "partner" ]
+metadata.avoid_roles = [ "leader", "approver", "driver" ]
+
+# Leader digest window: coalesce routine notes to one seat for 10 minutes.
+# The key is "<team>/<seat handle>"; this one is a placeholder.
+[delivery.overrides."my-team/leader"]
+now_window_seconds = 600
+
+[recovery]
+aggressiveness = "aggressive"
+
+# A bounded recovery worker: cheap model, extra effort.
+[presets.luna-xhigh]
+description = "Luna with extra-high effort for bounded harness recovery"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = "model_reasoning_effort=xhigh"
+
+# Optional sentinel previews: senders pass --preview "text"; rendering reads this at delivery time.
+[sentinel]
+preview = true
+
+[notifications]
+notifier = "command"
+# Replace with your own notifier; arguments are literal argv, never a shell string.
+command = ["my-notifier", "--title", "{title}", "--urgency", "{urgency}", "--", "{body}"]

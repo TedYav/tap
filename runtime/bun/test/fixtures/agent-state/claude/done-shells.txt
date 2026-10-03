@@ -1,0 +1,11 @@
+  Ran 1 shell command
+
+⏺ The focused run is still in progress. A background watcher will notify me when its log completes.
+
+✻ Worked for 10s · done 7:29 AM · 3 shells still running
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Sonnet 5.5 high | 32% 137k/420k | 📁 Example | 🌿 lane/example
+  ⏵⏵ bypass permissions on · 3 shells · ← 3 agents

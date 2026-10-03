@@ -1,0 +1,895 @@
+{
+  "source": "871ab6140cb0c15e6b73a19dc7e6c54eae5a5178",
+  "cases": [
+    {
+      "name": "models ",
+      "args": [
+        "models"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\ntap models --all for dispositions; <handle> for one; --full for the ledger. Who is on your team and reachable right now: tap team calibration.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --all",
+      "args": [
+        "models",
+        "--all"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\nDispositions:\n\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models opus",
+      "args": [
+        "models",
+        "opus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY     TIER      SPEED  COST  VOICE          ROUTES TO\nopus    Opus @ claude    anthropic  advanced  fast   $$    sole-eligible  reviews 😀\n\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\nHistory: see <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --full",
+      "args": [
+        "models",
+        "--full"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --verbose",
+      "args": [
+        "models",
+        "--verbose"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --a",
+      "args": [
+        "models",
+        "--a"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\nDispositions:\n\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --f",
+      "args": [
+        "models",
+        "--f"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --v",
+      "args": [
+        "models",
+        "--v"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --all opus",
+      "args": [
+        "models",
+        "--all",
+        "opus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY     TIER      SPEED  COST  VOICE          ROUTES TO\nopus    Opus @ claude    anthropic  advanced  fast   $$    sole-eligible  reviews 😀\n\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\nHistory: see <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models opus --all",
+      "args": [
+        "models",
+        "opus",
+        "--all"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY     TIER      SPEED  COST  VOICE          ROUTES TO\nopus    Opus @ claude    anthropic  advanced  fast   $$    sole-eligible  reviews 😀\n\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\nHistory: see <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --full absent",
+      "args": [
+        "models",
+        "--full",
+        "absent"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --all --full",
+      "args": [
+        "models",
+        "--all",
+        "--full"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -- --all",
+      "args": [
+        "models",
+        "--",
+        "--all"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: no catalog row for '--all' (known: opus, opus-anchor, glm, sub, 😀, __proto__); seats are `tap team calibration`\n"
+      }
+    },
+    {
+      "name": "models --bogus",
+      "args": [
+        "models",
+        "--bogus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: --bogus\n"
+      }
+    },
+    {
+      "name": "models a b",
+      "args": [
+        "models",
+        "a",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: b\n"
+      }
+    },
+    {
+      "name": "models a --all b",
+      "args": [
+        "models",
+        "a",
+        "--all",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: b\n"
+      }
+    },
+    {
+      "name": "models --full=x",
+      "args": [
+        "models",
+        "--full=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument --full/--verbose: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models --all=x",
+      "args": [
+        "models",
+        "--all=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument --all: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models --verbose=x",
+      "args": [
+        "models",
+        "--verbose=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument --full/--verbose: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models --help=x",
+      "args": [
+        "models",
+        "--help=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument -h/--help: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models --help",
+      "args": [
+        "models",
+        "--help"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --h",
+      "args": [
+        "models",
+        "--h"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models a --help",
+      "args": [
+        "models",
+        "a",
+        "--help"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -hfoo",
+      "args": [
+        "models",
+        "-hfoo"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -1",
+      "args": [
+        "models",
+        "-1"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: no catalog row for '-1' (known: opus, opus-anchor, glm, sub, 😀, __proto__); seats are `tap team calibration`\n"
+      }
+    },
+    {
+      "name": "models -",
+      "args": [
+        "models",
+        "-"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: no catalog row for '-' (known: opus, opus-anchor, glm, sub, 😀, __proto__); seats are `tap team calibration`\n"
+      }
+    },
+    {
+      "name": "models -- a b",
+      "args": [
+        "models",
+        "--",
+        "a",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: b\n"
+      }
+    },
+    {
+      "name": "models -- --",
+      "args": [
+        "models",
+        "--",
+        "--"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: no catalog row for '--' (known: opus, opus-anchor, glm, sub, 😀, __proto__); seats are `tap team calibration`\n"
+      }
+    },
+    {
+      "name": "models --bogus a b",
+      "args": [
+        "models",
+        "--bogus",
+        "a",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: --bogus b\n"
+      }
+    },
+    {
+      "name": "models a --bogus b",
+      "args": [
+        "models",
+        "a",
+        "--bogus",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: --bogus b\n"
+      }
+    },
+    {
+      "name": "models --=x",
+      "args": [
+        "models",
+        "--=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: ambiguous option: --=x could match --help, --all, --full, --verbose\n"
+      }
+    },
+    {
+      "name": "models --help --=x",
+      "args": [
+        "models",
+        "--help",
+        "--=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -h=x",
+      "args": [
+        "models",
+        "-h=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument -h/--help: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models --help --full=x",
+      "args": [
+        "models",
+        "--help",
+        "--full=x"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "usage: tap models [-h] [--all] [--full] [handle]\n\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --full=x --help",
+      "args": [
+        "models",
+        "--full=x",
+        "--help"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap models [-h] [--all] [--full] [handle]\ntap models: error: argument --full/--verbose: ignored explicit argument 'x'\n"
+      }
+    },
+    {
+      "name": "models ",
+      "args": [
+        "models",
+        ""
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\ntap models --all for dispositions; <handle> for one; --full for the ledger. Who is on your team and reachable right now: tap team calibration.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --",
+      "args": [
+        "models",
+        "--"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\ntap models --all for dispositions; <handle> for one; --full for the ledger. Who is on your team and reachable right now: tap team calibration.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -- opus",
+      "args": [
+        "models",
+        "--",
+        "opus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY     TIER      SPEED  COST  VOICE          ROUTES TO\nopus    Opus @ claude    anthropic  advanced  fast   $$    sole-eligible  reviews 😀\n\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\nHistory: see <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models -- -opus",
+      "args": [
+        "models",
+        "--",
+        "-opus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: no catalog row for '-opus' (known: opus, opus-anchor, glm, sub, 😀, __proto__); seats are `tap team calibration`\n"
+      }
+    },
+    {
+      "name": "models -v",
+      "args": [
+        "models",
+        "-v"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: -v\n"
+      }
+    },
+    {
+      "name": "models -opus",
+      "args": [
+        "models",
+        "-opus"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: -opus\n"
+      }
+    },
+    {
+      "name": "models --al",
+      "args": [
+        "models",
+        "--al"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 0,
+        "stdout": "Priors, not law.\n\nHANDLE       MODEL @ HARNESS   FAMILY     TIER      SPEED  COST  VOICE            ROUTES TO\nopus         Opus @ claude     anthropic  advanced  fast   $$    sole-eligible    reviews 😀\nopus-anchor  Leader @ claude   anthropic  frontier  slow   $$$   additional-only  leads\nglm          GLM @ opencode    zhipu      basic     fast   $     sole-eligible    bounded\nsub          Sub @ Agent tool  anthropic  frontier               sole-eligible    consult\n😀            Astral @ codex    openai     advanced               sole-eligible    unicode\n__proto__    Plain @ codex     openai     basic                  sole-eligible    ordinary name\n\nDispositions:\n\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "models --full -- a b",
+      "args": [
+        "models",
+        "--full",
+        "--",
+        "a",
+        "b"
+      ],
+      "ledger": 0,
+      "expected": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: b\n"
+      }
+    },
+    {
+      "name": "CRLF full",
+      "args": [
+        "models",
+        "--full"
+      ],
+      "ledger": 1,
+      "expected": {
+        "exit": 0,
+        "stdout": "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "missing",
+      "args": [
+        "models"
+      ],
+      "ledger": 2,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: seat-calibration ledger not found: <LEDGER>\n"
+      }
+    },
+    {
+      "name": "missing full",
+      "args": [
+        "models",
+        "--full"
+      ],
+      "ledger": 2,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: seat-calibration ledger not found: <LEDGER>\n"
+      }
+    },
+    {
+      "name": "no section",
+      "args": [
+        "models"
+      ],
+      "ledger": 3,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: '## Routing table' section not found in <LEDGER> — the ledger has no routing table to render (expected the pipe table `tap models` reads).\n"
+      }
+    },
+    {
+      "name": "no table",
+      "args": [
+        "models"
+      ],
+      "ledger": 4,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: '## Routing table' section in <LEDGER> has no pipe table — nothing to render (expected a `| handle | model @ harness | family | tier | … |` row).\n"
+      }
+    },
+    {
+      "name": "missing columns",
+      "args": [
+        "models"
+      ],
+      "ledger": 5,
+      "expected": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tap models: Routing table in <LEDGER> is missing required column(s): model @ harness, tier — header row is [handle | family]. A renamed/removed routing column would silently mis-route a consumer, so this fails loud rather than rendering blanks.\n"
+      }
+    },
+    {
+      "name": "blank cells",
+      "args": [
+        "models",
+        "--all"
+      ],
+      "ledger": 6,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY  TIER   SPEED  COST  VOICE          ROUTES TO\nx       plain @          z       basic               sole-eligible\nskip    z @              basic                       sole-eligible\n\nDispositions:\n\n### x\ntext\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "duplicate names",
+      "args": [
+        "models",
+        "opus"
+      ],
+      "ledger": 7,
+      "expected": {
+        "exit": 0,
+        "stdout": "HANDLE  MODEL @ HARNESS  FAMILY     TIER      SPEED  COST  VOICE          ROUTES TO\nopus    Opus @ claude    anthropic  advanced  fast   $$    sole-eligible  reviews 😀\n\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n\nHistory: see <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "calibration false",
+      "args": [
+        "team-calibration"
+      ],
+      "ledger": 0,
+      "roster": {
+        "team": "example",
+        "agents": [
+          {
+            "handle": "opus",
+            "harness": "claude",
+            "status": "active",
+            "pane": "%1",
+            "attached": "2",
+            "metadata": {
+              "primary_roles": [
+                "driver",
+                3
+              ],
+              "secondary_roles": [
+                "reviewer"
+              ]
+            }
+          },
+          {
+            "handle": "opus-anchor-duty",
+            "harness": "claude",
+            "status": "active",
+            "pane": "x:0.1",
+            "attached": false
+          },
+          {
+            "handle": "opus-mismatch",
+            "harness": "codex",
+            "status": "active",
+            "pane": "%3",
+            "attached": 0
+          },
+          {
+            "handle": "glm53-duty",
+            "harness": "opencode",
+            "status": "active",
+            "pane": "%4"
+          },
+          {
+            "handle": "sub",
+            "harness": "Agent tool",
+            "status": "active"
+          },
+          {
+            "handle": "unknown",
+            "harness": "cursor",
+            "status": "active"
+          },
+          {
+            "handle": "😀-duty",
+            "harness": "",
+            "status": "suspended",
+            "attached": "true"
+          },
+          {
+            "handle": "__proto__",
+            "harness": "codex",
+            "status": "active"
+          },
+          null,
+          2,
+          {}
+        ]
+      },
+      "activity": "%1\tx:0.0\t9850\n%2\tx:0.1\t10030\n%3\tx:0.2\t0\nmalformed\n%4\tx:0.3\tbad\n",
+      "strongest": false,
+      "now": 10000,
+      "expected": {
+        "exit": 0,
+        "stdout": "tap team calibration: example\nPriors, not law.\n\nHANDLE            BASE         MODEL @ HARNESS   FAMILY             TIER      VOICE            ROLES              STATUS     ATTACHED  IDLE\nopus              opus         Opus @ claude     anthropic          advanced  sole-eligible    driver (reviewer)  active     yes       2m\nopus-anchor-duty  opus-anchor  Leader @ claude   anthropic          frontier  additional-only  -                  active     no        just now\nopus-mismatch     -            - @ codex         openai (INFERRED)  -         -                -                  active     no        -\nglm53-duty        -            - @ opencode      -                  -         -                -                  active     -         -\nsub               sub          Sub @ Agent tool  anthropic          frontier  sole-eligible    -                  active     -         -\nunknown           -            - @ cursor        -                  -         -                -                  active     -         -\n😀-duty            😀            Astral @ codex    openai             advanced  sole-eligible    -                  suspended  yes       -\n__proto__         __proto__    Plain @ codex     openai             basic     sole-eligible    -                  active     -         -\n\nSeated, no calibration row (the handle joins nothing — that is a gap in the ledger, not a dead seat):\n  opus-mismatch — active, codex; harness codex does not match opus's claude — the name matches but the harness contradicts it, so the calibration is NOT inherited\n  glm53-duty — active, opencode; add a routing entry to calibrate\n  unknown — active, cursor; add a routing entry to calibrate\n\nRoutes to, and the latest dated observation:\n  opus — reviews 😀\n      2026-07-30 · Later tie (2026-07-30).\n  opus-anchor-duty (via opus-anchor) — leads\n      2026-12-30–01-02 · Rollover (2026-12-30–01-02).\n  sub — consult\n  😀-duty (via 😀) — unicode\n  __proto__ — ordinary name\n\nIDLE is tmux window activity — a hint, not a work signal (incoming traffic bumps it). Catalog: tap models. Ledger: <LEDGER>\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "calibration true",
+      "args": [
+        "team-calibration"
+      ],
+      "ledger": 0,
+      "roster": {
+        "team": "example",
+        "agents": [
+          {
+            "handle": "opus",
+            "harness": "claude",
+            "status": "active",
+            "pane": "%1",
+            "attached": "2",
+            "metadata": {
+              "primary_roles": [
+                "driver",
+                3
+              ],
+              "secondary_roles": [
+                "reviewer"
+              ]
+            }
+          },
+          {
+            "handle": "opus-anchor-duty",
+            "harness": "claude",
+            "status": "active",
+            "pane": "x:0.1",
+            "attached": false
+          },
+          {
+            "handle": "opus-mismatch",
+            "harness": "codex",
+            "status": "active",
+            "pane": "%3",
+            "attached": 0
+          },
+          {
+            "handle": "glm53-duty",
+            "harness": "opencode",
+            "status": "active",
+            "pane": "%4"
+          },
+          {
+            "handle": "sub",
+            "harness": "Agent tool",
+            "status": "active"
+          },
+          {
+            "handle": "unknown",
+            "harness": "cursor",
+            "status": "active"
+          },
+          {
+            "handle": "😀-duty",
+            "harness": "",
+            "status": "suspended",
+            "attached": "true"
+          },
+          {
+            "handle": "__proto__",
+            "harness": "codex",
+            "status": "active"
+          },
+          null,
+          2,
+          {}
+        ]
+      },
+      "activity": "%1\tx:0.0\t9850\n%2\tx:0.1\t10030\n%3\tx:0.2\t0\nmalformed\n%4\tx:0.3\tbad\n",
+      "strongest": true,
+      "now": 10000,
+      "expected": {
+        "exit": 0,
+        "stdout": "opus-anchor-duty\nsub\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "empty false",
+      "args": [
+        "team-calibration"
+      ],
+      "ledger": 0,
+      "roster": {
+        "team": "empty",
+        "agents": []
+      },
+      "activity": "",
+      "strongest": false,
+      "now": 10000,
+      "expected": {
+        "exit": 0,
+        "stdout": "tap team calibration: empty\nno seats registered yet — run: tap register\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "empty true",
+      "args": [
+        "team-calibration"
+      ],
+      "ledger": 0,
+      "roster": {
+        "team": "empty",
+        "agents": []
+      },
+      "activity": "",
+      "strongest": true,
+      "now": 10000,
+      "expected": {
+        "exit": 0,
+        "stdout": "sub\n",
+        "stderr": ""
+      }
+    }
+  ],
+  "ledgers": [
+    "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n",
+    "# Calibration\r\n\r\n## Routing table (live state)\r\nPriors, not law. Another sentence.\r\n\r\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\r\n| --- | --- | --- | --- | --- | --- | --- | --- |\r\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\r\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\r\n| basic | glm | GLM @ opencode | zhipu | fast | $ | | bounded |\r\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\r\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\r\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\r\n\r\n## Dispositions\r\n### opus\r\n- Old (2026-07-29).\r\n- Range (2026-07-28–07-30).\r\n- Later tie (2026-07-30).\r\n### opus-anchor\r\n- Before rollover (2026-12-31).\r\n- Rollover (2026-12-30–01-02).\r\n### glm\r\n- Two dates 2026-08-01 and 2026-09-10-09-12.\r\n### sub\r\n- Undated.\r\n",
+    null,
+    "# absent\n",
+    "## Routing table\nOnly a banner.\n",
+    "## Routing table\n| handle | family |\n| x | y |\n",
+    "## Routing table\n|handle|model @ harness|family|tier|\n|-|-|-|-|\n| x | plain | z | basic |\n||skip|z|basic|\n### x\ntext\n",
+    "# Calibration\n\n## Routing table (live state)\nPriors, not law. Another sentence.\n\n| tier | handle | model @ harness | family | speed | cost | voice | one-liner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| advanced | opus | Opus @ claude | anthropic | fast | $$ | | reviews 😀 |\n| frontier | opus-anchor | Leader @ claude | anthropic | slow | $$$ | additional-only | leads |\n| basic | opus | GLM @ opencode | zhipu | fast | $ | | bounded |\n| frontier | sub | Sub @ Agent tool | anthropic | | | | consult |\n| advanced | 😀 | Astral @ codex | openai | | | | unicode |\n| basic | __proto__ | Plain @ codex | openai | | | | ordinary name |\n\n## Dispositions\n### opus\n- Old (2026-07-29).\n- Range (2026-07-28–07-30).\n- Later tie (2026-07-30).\n### opus-anchor\n- Before rollover (2026-12-31).\n- Rollover (2026-12-30–01-02).\n### glm\n- Two dates 2026-08-01 and 2026-09-10-09-12.\n### sub\n- Undated.\n"
+  ]
+}

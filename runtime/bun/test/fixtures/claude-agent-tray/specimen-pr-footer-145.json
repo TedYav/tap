@@ -1,0 +1,10 @@
+{
+  "payload_id": "fixture-peer-seat-20260928T081630Z-aabbccddeeff",
+  "harness": "claude",
+  "pane": "tap/peer-seat:0.0",
+  "expected": "[[TAP v0.23 note fixture-peer-seat-20260928T081630Z-aabbccddeeff preview=\"Neutral fixture preview\"]]",
+  "stage": "synthetic-reconstruction",
+  "observed_at": "2026-09-28T08:20:00.000000+00:00",
+  "capture_id": "synthetic-reconstruction-of-20260928T081630Z-bb972a6c2cc0",
+  "frame": "fixtures/claude-agent-tray/specimen-pr-footer-145.ansi"
+}

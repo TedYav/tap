@@ -1,0 +1,5 @@
+■ Conversation interrupted - tell the model what to do differently. Something went wrong?
+
+› /compact
+
+  /compact  summarize conversation to prevent hitting the context limit

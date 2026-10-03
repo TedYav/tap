@@ -1,0 +1,1358 @@
+{
+ "source_commit": "2ce226a03e9ff31c9546a8661f07212dbb1f2efe",
+ "recorded_by": "R9a compute b889965d2e23; live Python bridge reference and native comparisons passed before deletion",
+ "cases": [
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--session-id",
+    "ghost-id-0000"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--session-id",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--session-id",
+    "ghost-id-0000"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--session-id",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--resume"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--resume",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--name",
+    "seat",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "claude",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--model",
+    "sonnet",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--model",
+    "sonnet",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "ghost-id-0000"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "--model",
+    "sonnet",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "--model",
+    "sonnet",
+    "ghost-id-0000"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "--model",
+    "sonnet",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "codex",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "opencode",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "opencode",
+    "--model",
+    "sonnet",
+    "--session",
+    "ghost-id-0000"
+   ],
+   "harness": "opencode",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--model",
+    "sonnet",
+    "--resume",
+    "ghost-id-0000",
+    "go"
+   ],
+   "harness": "cursor",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--continue"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--continue",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--conversation",
+    "ghost-id-0000"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--conversation",
+    "ghost-id-0000",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--continue"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--continue",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--conversation",
+    "ghost-id-0000"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "agy",
+    "--dangerously-skip-permissions",
+    "--model",
+    "sonnet",
+    "--conversation",
+    "ghost-id-0000",
+    "--prompt-interactive",
+    "go"
+   ],
+   "harness": "agy",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "new",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": null,
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": null,
+   "model": "sonnet",
+   "prompt": "go"
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": null
+  },
+  {
+   "action": "resume",
+   "argv": [
+    "hermes",
+    "--model",
+    "sonnet"
+   ],
+   "harness": "hermes",
+   "hsid": "ghost-id-0000",
+   "model": "sonnet",
+   "prompt": "go"
+  }
+ ]
+}

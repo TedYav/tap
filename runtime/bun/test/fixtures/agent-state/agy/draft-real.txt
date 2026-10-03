@@ -1,0 +1,22 @@
+
+      ▄▀▀▄        Antigravity CLI 1.2.9
+     ▀▀▀▀▀▀       user@example.com (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Medium)
+   ▄▀▀    ▀▀▄     /private/tmp/tb.sQJcNs/home.cwd-LHo4lk
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with the single word ok.
+
+  ok
+
+────────────────────────────────────────────────────────────
+> Reply with the single word ok.
+
+  ok
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> [[TAP v0.23 note plum-verbs-20260923T203120Z-126889b85511 preview="plum-verbs PR1 is open with shutdown owner scope and up down refusals plus follow ups plum-verbs PR1 is open with shutdown owner scope and up down refusals plus
+  follow ups plum-verbs PR1 is open with shutdown owner scope and up down refusals plus follow ups plum-verbs PR1 is open with shutdown owner scope and up down refusals pl"]]
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                                                                    Gemini 3.8 Flash · medium

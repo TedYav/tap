@@ -1,0 +1,4 @@
+#!/usr/bin/env bun
+// Mock ps for claude-tool-caller-identity.test.ts: the desktop-backed Bash
+// tool's ancestry — it ends at launchd (pid 1) on a non-pane tty, ttys003.
+console.log("1 ttys003");

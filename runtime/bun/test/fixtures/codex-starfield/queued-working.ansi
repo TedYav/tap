@@ -1,0 +1,12 @@
+• Working (7m 37s • esc to interrupt)
+  └ Running hooks
+
+• Messages to be submitted after next tool call (press esc to
+  interrupt and send immediately)
+  ↳ [[TAP v0.23 note teak-review-20260914T042056Z-9e2b15b71a97]
+    preview="!3240 ACCEPT retained; waiting working-rule fix range
+    and new receipt"]]
+[38;2;112;112;112m[48;2;30;30;30m⠁[39m             [38;2;116;116;116m⠄[39m                 [38;2;100;100;100m⠁[39m       [38;2;65;65;65m⠁[39m                 [38;2;43;43;43m⠂[39m [38;2;39;39;39m⠄[39m
+[1m›[0m[38;2;122;122;122m[48;2;30;30;30m⠁[2m[39mAsk Codex to do anything[0m[48;2;30;30;30m   [38;2;99;99;99m⠈[39m     [38;2;44;44;44m⠈[39m      [38;2;89;89;89m⠁[39m                  [38;2;107;107;107m⠈[39m
+                    [38;2;118;118;118m⠠[39m                        [38;2;99;99;99m⢀[39m        [38;2;48;48;48m⠄[38;2;66;66;66m⠂[39m  [38;2;81;81;81m⡀[39m
+[49m  [38;2;114;212;231mgpt-6-astra high fast[2m[39m · [0m[38;2;171;133;240mContext 87% left[2m[39m · [0m[38;2;227;218;130mtap[2m[39m · [0m[38;2;171;133;240mweekly 100% le…

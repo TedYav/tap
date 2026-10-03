@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["verdict"],
+  "properties": {
+    "verdict": { "enum": ["done", "not_done", "blocked"] },
+    "reason": { "type": "string" },
+    "action": {
+      "enum": ["advance", "notify human", "disarm"]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["clause", "citation"],
+        "properties": {
+          "clause": { "type": "string" },
+          "citation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

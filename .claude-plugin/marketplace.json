@@ -1,0 +1,13 @@
+{
+  "name": "tap-marketplace",
+  "owner": {
+    "name": "TAP contributors"
+  },
+  "plugins": [
+    {
+      "name": "tap",
+      "source": "./plugins/tap",
+      "description": "Coordinate agents through TAP."
+    }
+  ]
+}

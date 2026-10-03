@@ -1,0 +1,16 @@
+tap health: ok
+
+bus
+  path: <WORK>/bus
+  rule: env
+
+watch
+  disarmed
+
+last activity
+  payload: none
+  receipt: none
+
+roster
+  claude  recorded: active  harness: claude  pane: demo-claude:0.0  state: unknown
+  codex  recorded: active  harness: codex  pane: demo-codex:0.0  state: unknown

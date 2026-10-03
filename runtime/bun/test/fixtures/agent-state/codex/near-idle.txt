@@ -1,0 +1,6 @@
+Allow command?
+do you want to continue? [y/n]
+◦ Working (1m 02s • esc to interrupt)
+──────────────────────────────────────────
+› Ask Codex to do anything
+gpt-5.6-sol xhigh · /workspace

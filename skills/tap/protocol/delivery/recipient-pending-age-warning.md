@@ -1,0 +1,11 @@
+# Recipient pending-age warning
+
+> Normative TAP v0.23 source fragment. Search the group index for adjacent parts.
+
+<!-- tap-source id=source-0127 start=832918 end=834761 sha256=4a5f90f0377bf97f00048f4b877f4c170be3c939a29880e403550e7b861d61b4 fragment=1/1 transform=wrapper_prefix -->
+<!-- TAP_SOURCE_BYTES_BEGIN -->
+## Recipient pending-age warning
+
+The native dispatcher (`runtime/bun/src/overdue.ts`) checks aged inbound on explicit queue inspection (`poll`, `outstanding`) or with `-v`/`--verbose`. Routine success receipts do not repeat the advisory. Help paths and the `session complete` producer remain routed before bus initialization. The Bash dispatcher (`scripts/tap.sh`) prints no advisory of its own; a native form that delegates to it has already run the check. An empty poll emits no age warning. When the caller resolves to an active registered seat and at least one valid inbound payload for that seat has remained unsettled for **3600 seconds or more**, TAP writes exactly one bounded warning to stderr: the seat, overdue count, oldest age, and `tap poll <seat>` recovery command. The advisory shares poll's eligibility predicate: done/cancelled receipts and non-current recipient instances are excluded before age counting. Inbound uses the same team-qualified predicate as poll: `to` must match the seat and optional `to_team` must match the local bus team, so sender-side foreign relay state never ages as local inbox work. The called verb's stdout and exit status are unchanged, including `--json` output. An unregistered caller, a below-threshold payload, a settled payload, a draft, a foreign-team payload, or malformed/mismatched envelope produces no age warning.
+
+The threshold is inclusive and age uses `idAgeSeconds` (`runtime/bun/src/ids.ts`), the same clock as sender-side `tap outstanding --stale`; the timestamp comes from the immutable courier-minted id. Touching or redelivering the payload cannot make it fresh. A future-stamped id clamps to age 0 (so it does not trip the overdue threshold) and surfaces a `future-stamped` warning on stderr — the fault signal is the stamp itself, not a fabricated stale age (tap-56ig). This is a reminder, not a second state machine: TAP writes no started/read marker and does not infer whether the recipient is working.

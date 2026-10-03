@@ -1,0 +1,45 @@
+{
+  "note": "captured once from python3 tomllib; recorder booleans are 'hooks' not in d, 'features' not in d, 'hooks' not in d.get('features', {})",
+  "shapes": [
+    {
+      "name": "array_of_tables",
+      "toml": "[[hooks.SessionStart]]\nuser = \"own\"\n",
+      "hooks": false,
+      "features": true,
+      "features_hooks": true
+    },
+    {
+      "name": "dotted_key",
+      "toml": "features.hooks = true\n",
+      "hooks": true,
+      "features": false,
+      "features_hooks": false
+    },
+    {
+      "name": "empty_array",
+      "toml": "hooks.SessionStart = []\n",
+      "hooks": false,
+      "features": true,
+      "features_hooks": true
+    },
+    {
+      "name": "inline_table",
+      "toml": "features = { hooks = true }\n",
+      "hooks": true,
+      "features": false,
+      "features_hooks": false
+    },
+    {
+      "name": "plain_tables",
+      "toml": "[hooks]\nx = 1\n\n[features]\ny = 2\n",
+      "hooks": false,
+      "features": false,
+      "features_hooks": true
+    },
+    {
+      "name": "invalid",
+      "toml": "[hooks\nbroken =\n",
+      "baseline": null
+    }
+  ]
+}

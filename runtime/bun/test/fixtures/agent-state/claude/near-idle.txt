@@ -1,0 +1,10 @@
+Do you want to proceed?
+Bash command: printf old
+❯ 1. Yes
+  2. No
+Esc to cancel · Tab to amend
+⏵ Old turn · esc to interrupt
+──────────────────────────────────────────
+❯
+──────────────────────────────────────────
+  bypass permissions on

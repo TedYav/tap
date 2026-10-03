@@ -1,0 +1,71 @@
+{
+ "captured_from": {
+  "head": "9bf012997dbe2e5978c5b48edbd2dd35a8ecd055",
+  "blobs": {
+   "skills/tap/scripts/session/launcher.py": "a0aecb34a3ba217130fa30938f0c35644d66458e"
+  },
+  "python": "3.14.6",
+  "how": "the launcher port recorded each case from launcher.py new (the incumbent) while it still existed, in the same test run that required new.ts to agree; volatile values are masked by the test's own mask()."
+ },
+ "why": "Frozen outcome of one live incumbent launch bound by the real SessionStart hook (status, receipts, registry row, harness argv), volatile fields masked. new.ts must reproduce it.",
+ "cases": {
+  "launch testseat reviewer": {
+   "harnessArgv": [
+    "--dangerously-skip-permissions",
+    "--name",
+    "fixture/reviewer",
+    "--session-id",
+    "<uuid>"
+   ],
+   "row": {
+    "adopted_from_manual": false,
+    "base": "fixture",
+    "boot_id": "<volatile>",
+    "cost_mode": "subscription",
+    "delivery": "pane",
+    "derived_at": "<volatile>",
+    "harness": "claude",
+    "harness_session_id": "<uuid>",
+    "history": [],
+    "identity_capture_result": {
+     "decision": "accepted",
+     "expected_harness_session_id": "<uuid>",
+     "mode": "launcher_new",
+     "observed_harness_session_id": "<uuid>"
+    },
+    "include_policy": "always",
+    "index": 1,
+    "instance": "<volatile>",
+    "last_launched": "<volatile>",
+    "model": null,
+    "pane": "<volatile>",
+    "pane_current_command": "sleep",
+    "pane_id": "<volatile>",
+    "passthrough": [],
+    "passthrough_from_config": true,
+    "permissions": "bypass",
+    "preset": {
+     "config_digest": "sha256:152a54c33cdd4ad4603b7b9134bd085dc3a742a070c4b2d0a9ccce6d82dbcc96",
+     "name": "testseat",
+     "source_path": "<root>/.config/tap/config.toml"
+    },
+    "registered_at": "<volatile>",
+    "registered_from_worktree": "<root>",
+    "server_epoch": "<volatile>",
+    "server_socket": "<tmux>/tmux-<uid>/<socket>",
+    "session": "fixture/reviewer",
+    "session_attribution_detail": "env capture",
+    "session_attribution_trust": "env",
+    "session_store_kind": "file",
+    "session_store_path": "<root>/.claude/projects/fixture/<uuid>.jsonl",
+    "status": "active",
+    "status_reason": "",
+    "tag": "reviewer",
+    "transcript_path": "<root>/.claude/projects/fixture/<uuid>.jsonl"
+   },
+   "status": 0,
+   "stderr": "",
+   "stdout": "tap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n"
+  }
+ }
+}

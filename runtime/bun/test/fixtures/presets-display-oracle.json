@@ -1,0 +1,508 @@
+{
+  "source_commit": "ec8df7ef1435d8e2f59d4b9232b1f64cf16bfdd0",
+  "recorded_by": "R9a compute 8aaa7bd5f1aa, presets.test.ts Python reference while preset_ops.py was still present",
+  "normalization": "Only the per-file scratch root is replaced with @ROOT@; cases follow reference invocation order",
+  "cases": [
+    {
+      "ok": true,
+      "source": "@ROOT@/0/tap/config.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/2/tap/config.toml",
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/4/tap/presets.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/5/tap/presets.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/6/tap/presets.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/7/tap/config.toml",
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/10/tap/config.toml",
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/11/tap/config.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/12/tap/config.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/13/tap/config.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "list",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/14/tap/config.toml",
+      "presets": [
+        {
+          "name": "a",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": "undefined"
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/15/tap/config.toml",
+      "presets": [
+        {
+          "name": "a",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/16/tap/config.toml",
+      "presets": [
+        {
+          "name": "a",
+          "harness": "codex",
+          "model": "",
+          "description": "﻿hello﻿",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/17/tap/config.toml",
+      "presets": [
+        {
+          "name": "a",
+          "harness": "codex",
+          "model": "",
+          "description": "hello",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/18/tap/config.toml",
+      "presets": [
+        {
+          "name": "a",
+          "harness": "codex",
+          "model": "",
+          "description": "hello",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/21/real.toml",
+      "presets": [
+        {
+          "name": "alpha",
+          "harness": "claude",
+          "model": "opus",
+          "description": "hello\nforged\trow\u007f",
+          "roles": "reviewer, leader"
+        },
+        {
+          "name": "zed",
+          "harness": "codex",
+          "model": "",
+          "description": "",
+          "roles": ""
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "source": null,
+      "presets": []
+    },
+    {
+      "ok": true,
+      "source": "@ROOT@/22/tap/config.toml",
+      "presets": [
+        {
+          "name": "astra",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at high",
+          "roles": "driver, prototyper, partner, prose_writer, implementer, architect, approver, reviewer"
+        },
+        {
+          "name": "astra-fast",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at medium, fast mode",
+          "roles": "prototyper, tasker, prose_writer, implementer"
+        },
+        {
+          "name": "astra-max",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at max",
+          "roles": "debugger, reviewer, architect"
+        },
+        {
+          "name": "astra-med",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at medium",
+          "roles": "prototyper, partner, prose_writer, implementer"
+        },
+        {
+          "name": "astra-ponytail",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at xhigh, Ponytail mode",
+          "roles": "architect, approver, reviewer, prose_writer"
+        },
+        {
+          "name": "astra-xhigh",
+          "harness": "codex",
+          "model": "gpt-6-astra",
+          "description": "gpt-6-astra at xhigh",
+          "roles": "debugger, reviewer, architect"
+        },
+        {
+          "name": "fable",
+          "harness": "claude",
+          "model": "fable",
+          "description": "fable at medium",
+          "roles": "leader, prototyper"
+        },
+        {
+          "name": "fable-high",
+          "harness": "claude",
+          "model": "fable",
+          "description": "fable at high",
+          "roles": "leader, architect, approver, reviewer"
+        },
+        {
+          "name": "fable-xhigh",
+          "harness": "claude",
+          "model": "fable",
+          "description": "fable at xhigh",
+          "roles": "architect, approver, reviewer, planner"
+        },
+        {
+          "name": "gemini",
+          "harness": "agy",
+          "model": "gemini-3.8-flash-high",
+          "description": "gemini-3.8-flash-high at high",
+          "roles": "reviewer, architect, partner, conductor"
+        },
+        {
+          "name": "gemini-low",
+          "harness": "agy",
+          "model": "gemini-3.8-flash-low",
+          "description": "gemini-3.8-flash-low at low",
+          "roles": "conductor, tasker"
+        },
+        {
+          "name": "glm",
+          "harness": "opencode",
+          "model": "tokenrouter/z-ai/glm-5.2",
+          "description": "tokenrouter/z-ai/glm-5.2 at default effort",
+          "roles": "reviewer"
+        },
+        {
+          "name": "glm53",
+          "harness": "opencode",
+          "model": "zai-coding-plan/glm-5.3",
+          "description": "zai-coding-plan/glm-5.3 at default effort",
+          "roles": "reviewer, partner"
+        },
+        {
+          "name": "glm53-flash",
+          "harness": "opencode",
+          "model": "zai-coding-plan/glm-5.3-flash",
+          "description": "zai-coding-plan/glm-5.3-flash at default effort",
+          "roles": "implementer, conductor"
+        },
+        {
+          "name": "gpt-spark",
+          "harness": "codex",
+          "model": "gpt-5.3-codex-spark",
+          "description": "gpt-5.3-codex-spark at high",
+          "roles": "conductor, tasker"
+        },
+        {
+          "name": "grok",
+          "harness": "cursor",
+          "model": "grok-4.7-high",
+          "description": "grok-4.7-high at high",
+          "roles": "reviewer, implementer, partner"
+        },
+        {
+          "name": "hermes-agent",
+          "harness": "hermes",
+          "model": "deepseek/deepseek-v4-pro",
+          "description": "deepseek/deepseek-v4-pro at default effort",
+          "roles": ""
+        },
+        {
+          "name": "hermes-goalie",
+          "harness": "hermes",
+          "model": "deepseek/deepseek-v4-flash-0731",
+          "description": "deepseek/deepseek-v4-flash-0731 at default effort",
+          "roles": "goalie"
+        },
+        {
+          "name": "kimi",
+          "harness": "opencode",
+          "model": "synthetic/hf:moonshotai/Kimi-K3",
+          "description": "synthetic/hf:moonshotai/Kimi-K3 at default effort",
+          "roles": "reviewer, architect"
+        },
+        {
+          "name": "luna",
+          "harness": "codex",
+          "model": "gpt-6-luna",
+          "description": "gpt-6-luna at high",
+          "roles": "tasker"
+        },
+        {
+          "name": "luna-fast",
+          "harness": "codex",
+          "model": "gpt-6-luna",
+          "description": "gpt-6-luna at high, fast mode",
+          "roles": "conductor"
+        },
+        {
+          "name": "luna-xhigh",
+          "harness": "codex",
+          "model": "gpt-6-luna",
+          "description": "gpt-6-luna at xhigh",
+          "roles": ""
+        },
+        {
+          "name": "opus",
+          "harness": "claude",
+          "model": "opus[1m]",
+          "description": "opus[1m] at medium",
+          "roles": "driver, implementer, conductor"
+        },
+        {
+          "name": "opus-high",
+          "harness": "claude",
+          "model": "opus[1m]",
+          "description": "opus[1m] at high",
+          "roles": "debugger, reviewer, partner"
+        },
+        {
+          "name": "opus-xhigh",
+          "harness": "claude",
+          "model": "opus[1m]",
+          "description": "opus[1m] at xhigh",
+          "roles": "debugger, reviewer, partner"
+        },
+        {
+          "name": "sol",
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "description": "gpt-6.1-sol at high",
+          "roles": "reviewer, debugger, implementer, prose_writer, partner"
+        },
+        {
+          "name": "sol-max",
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "description": "gpt-6.1-sol at max, Ponytail mode",
+          "roles": "reviewer, architect, debugger"
+        },
+        {
+          "name": "sol-ponytail",
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "description": "gpt-6.1-sol at xhigh, Ponytail mode",
+          "roles": "reviewer, architect, partner"
+        },
+        {
+          "name": "sol-xhigh",
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "description": "gpt-6.1-sol at xhigh",
+          "roles": "reviewer, debugger, implementer, prose_writer, partner"
+        },
+        {
+          "name": "sonnet",
+          "harness": "claude",
+          "model": "sonnet",
+          "description": "sonnet at high",
+          "roles": "implementer, researcher"
+        }
+      ]
+    }
+  ],
+  "native_snapshots": {
+    "23": "Shipped-catalog case: native `tap presets --json` snapshot of skills/tap/config/config.v3.toml (tap-u507t catalog refresh), not Python output. Cases 0-22 are the original Python capture."
+  }
+}

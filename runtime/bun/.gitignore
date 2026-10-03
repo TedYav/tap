@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+
+# Generated build artifacts. `bun build --compile` leaves ~60MB temp blobs in the
+# working directory, and three of them reached a commit before this line existed
+# — twice via `git add -A`. Ignored at the repo boundary rather than remembered.
+*.bun-build
+.*.bun-build
+tap-compiled*
+/tap
+/tap-smoke.*
+
+# Runtime bus/registry state, if a manual probe is ever run from inside the repo.
+.tap/

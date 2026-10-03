@@ -1,0 +1,15 @@
+tap health: ok
+
+bus
+  path: <WORK>/B/.tap/bus
+  rule: env
+
+watch
+  disarmed
+
+last activity
+  payload: none
+  receipt: none
+
+roster
+  b-only  recorded: active  harness: codex  pane: nosuch:0.0  state: unknown

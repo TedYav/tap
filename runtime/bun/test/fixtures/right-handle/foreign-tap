@@ -1,0 +1,11 @@
+#!/usr/bin/env bun
+// Foreign PATH stub for session-context-right-handle.test.ts: a same-named
+// `tap` executable must never become the hook's TAP runtime. Any invocation is
+// logged so the final control proves the stub was reachable throughout.
+import { appendFileSync } from "node:fs";
+
+// The test reaches this stub through a per-run symlink, so the log goes to
+// FOREIGN_TAP_LOG when set (keeping scratch inside the runner-owned tree);
+// invoked bare it logs beside this file.
+appendFileSync(process.env.FOREIGN_TAP_LOG ?? `${import.meta.dir}/foreign-tap-called`, `${process.argv.slice(2).join(" ")}\n`);
+process.exit(1);

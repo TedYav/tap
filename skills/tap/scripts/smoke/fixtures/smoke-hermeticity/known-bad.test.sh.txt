@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+WORK=/tmp/private-fixture
+TMUX_BIN=tmux
+
+# expect:operator-home-reset
+export HOME=/Users/username
+
+# expect:operator-home-reset
+trap 'export HOME=/Users/username; touch "$HOME/.tap/escaped"' EXIT
+
+# safe: fixture-owned HOME
+HOME="$WORK/home" bash child.sh
+
+# expect:external-tmux-socket
+tmux -S /private/tmp/tmux-502/default list-sessions
+
+# expect:external-tmux-socket
+tmux -S/tmp/tmux-502/default list-sessions
+
+# expect:external-tmux-socket
+"$TMUX_BIN" \
+  -S /tmp/live-tmux/default list-sessions
+
+# expect:external-tmux-socket
+tmux -L ../operator list-sessions
+
+# expect:external-tmux-socket
+tmux -L../operator list-sessions
+
+# safe: suite-owned default, named, and explicit sockets
+tmux list-sessions
+tmux -L fixture list-sessions
+tmux -S "$WORK/tmux.sock" list-sessions
+
+# expect:tmux-root-reset
+TMUX_TMPDIR=/private/tmp/tmux-502 command tmux list-sessions
+
+# expect:tmux-root-reset
+TMUX_TMPDIR=/tmp tmux list-sessions
+
+# expect:tmux-root-reset
+export TMUX_TMPDIR='/tmp'; tmux list-sessions
+
+# expect:tmux-root-reset
+TMUX=/private/tmp/tmux-502/default,1,0 tmux list-sessions
+
+# expect:tmux-root-reset
+unset TMUX_TMPDIR
+
+# expect:absolute-real-tmux
+/opt/homebrew/bin/tmux list-sessions
+
+# expect:absolute-real-tmux
+/bin/tmux list-sessions
+
+python3 - <<'PY'
+import subprocess
+# expect:external-tmux-socket
+subprocess.run([
+    "/usr/bin/tmux",
+    "-S",
+    "/tmp/live-tmux/default",
+    "list-sessions",
+])
+PY

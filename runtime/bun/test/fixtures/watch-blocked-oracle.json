@@ -1,0 +1,3678 @@
+{
+ "captured_from": {
+  "head": "f6be3e855",
+  "blobs": {
+   "skills/tap/scripts/tap-watch.sh": "f43bc36ff01b85dc550db9cf9af48b2a74b44518",
+   "skills/tap/scripts/lib.sh": "1cce2333602260296e1196345d242778d02f88ee",
+   "skills/tap/scripts/supervision-lib.sh": "e78b342fcb341d12bbe732291f9e49223dbdba49",
+   "skills/tap/scripts/watch-templates/continue.md": "05eaeee6f25fdeef7e903b8799fd15397df5a5bb",
+   "runtime/bun/src/watch-detect.ts": "5a950c2208416c62f39955fc20e623c564dee1d7",
+   "runtime/bun/src/watch-evaluate.ts": "73b6c53d8abda31a43e8fbd545c0d4732be8bb8a"
+  },
+  "template": "# TAP watch resume (mechanical \u2014 no judgment needed)\n\n{{REASON}}\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send {{ARMER}} --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+  "shape": "substitution",
+  "bash": "5.3.9(1)-release"
+ },
+ "cases": [
+  {
+   "case": "empty-map",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "",
+    ""
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {},
+    "seat_state": {},
+    "activity": {},
+    "peek": {},
+    "send": {},
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "map-from-lease",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead"
+   ],
+   "env": {},
+   "world": {
+    "lease": {
+     "blocked_map": "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+     "blocked_exempt": "[]"
+    },
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "lease-fields-empty",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "api-not-due",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1900,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "api-due-idle-continue",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "limit-due-idle-continue",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "limit-not-due",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1950}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "grace-env-makes-it-due",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1950}}",
+    "[]"
+   ],
+   "env": {
+    "TAP_WATCH_BLOCKED_GRACE": "10"
+   },
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "backoff-env-keeps-it-waiting",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {
+    "TAP_WATCH_BLOCKED_BACKOFF": "500"
+   },
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "backoff-env-hex",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {
+    "TAP_WATCH_BLOCKED_BACKOFF": "0x10"
+   },
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "lease-gone-before-effect",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     false
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "api-due-exactly-now",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1880,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "limit-due-exactly-now",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":0,\"reset_at\":1940}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "busy-recovers-banner-gone",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "busy",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "case": "busy-banner-persists-exempt",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "busy",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "idle-activity-since-block",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "1900"
+    },
+    "peek": {
+     "r": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "case": "idle-activity-before-block",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "1700"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "idle-activity-equal-to-since",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "1800"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "activity-not-digits",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "abc"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "activity-read-fails",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {},
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "api-error-banner-persists",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "rate-limited-error",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "claude\nTerminated early due to an API error\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "exempt-already-has-seat",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[\"r\",\"z\"]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\",\"z\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "exempt-appended-after-others",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[\"z\"]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"z\",\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "send-rc-5-quiet",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      5,
+      "queued\n"
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "send-rc-1-reported",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      1,
+      "tap send: no such seat\nmore\n"
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "tap watch: continue send to 'r' failed (rc=1): tap send: no such seat\n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "send-rc-3-reported-empty-err",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      3,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "tap watch: continue send to 'r' failed (rc=3): \n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "armer-special-chars",
+   "argv": [
+    "armed1",
+    "2000",
+    "le&ad/\\x{{REASON}}",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send le&ad/\\x{{REASON}} --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "classifier-fails-quiet",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "",
+      1
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "classifier-prints-and-fails",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      1
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "no-registry-pane-outside-tick",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {},
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "": "1950"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "tick-seat-not-in-roster",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": {
+     "handles": [
+      "other"
+     ],
+     "panes": [
+      [
+       "other",
+       "%9",
+       "%9"
+      ]
+     ]
+    },
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "tick-seat-in-roster",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": {
+     "handles": [
+      "r"
+     ],
+     "panes": [
+      [
+       "r",
+       "%1",
+       "%1"
+      ]
+     ]
+    },
+    "alive": {
+     "%1": "%1"
+    },
+    "registry_pane": {},
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "tick-pane-id-rebound",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": {
+     "handles": [
+      "r"
+     ],
+     "panes": [
+      [
+       "r",
+       "%1",
+       "%1"
+      ]
+     ]
+    },
+    "alive": {
+     "%1": "%7"
+    },
+    "registry_pane": {},
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "": "1950"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "tick-pane-gone",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": {
+     "handles": [
+      "r"
+     ],
+     "panes": [
+      [
+       "r",
+       "%1",
+       "%1"
+      ]
+     ]
+    },
+    "alive": {},
+    "registry_pane": {},
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "r"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "tick-roster-empty-cache",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": {
+     "handles": [],
+     "panes": []
+    },
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "three-seats-mixed",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0},\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900},\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1",
+     "s": "%2",
+     "t": "%3"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ],
+     "s": [
+      "busy",
+      0
+     ],
+     "t": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0",
+     "%2": "0",
+     "%3": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n",
+     "s": "claude\n> \n",
+     "t": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ],
+     "s": [
+      0,
+      ""
+     ],
+     "t": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r\ns",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900},\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ],
+    [
+     "peek",
+     "s"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ]
+   ]
+  },
+  {
+   "case": "three-seats-lease-lost-midway",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0},\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900},\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true,
+     false
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1",
+     "s": "%2",
+     "t": "%3"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ],
+     "s": [
+      "busy",
+      0
+     ],
+     "t": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0",
+     "%2": "0",
+     "%3": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n",
+     "s": "claude\n> \n",
+     "t": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ],
+     "s": [
+      0,
+      ""
+     ],
+     "t": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900},\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "three-seats-lease-lost-then-back",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0},\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":1900},\"t\":{\"reason\":\"api_error\",\"since\":1990,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     false,
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1",
+     "s": "%2",
+     "t": "%3"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ],
+     "s": [
+      "busy",
+      0
+     ],
+     "t": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0",
+     "%2": "0",
+     "%3": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n",
+     "s": "claude\n> \n",
+     "t": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ],
+     "s": [
+      0,
+      ""
+     ],
+     "t": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "unicode-handle",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\\u00e9\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r\u00e9": "%1"
+    },
+    "seat_state": {
+     "r\u00e9": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r\u00e9": "claude\n> \n"
+    },
+    "send": {
+     "r\u00e9": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r\u00e9",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\\u00e9\"]"
+    ],
+    [
+     "send",
+     "r\u00e9",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reset-at-none",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":null}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 1,
+   "stdout": "",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 395: None: unbound variable\n",
+   "effects": []
+  },
+  {
+   "case": "reset-at-missing",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reset-at-empty",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":\"\"}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reset-at-expression",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":\"1+1\"}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reset-at-hex-spaced",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":\" 0x10 \"}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reset-at-int64-wrap",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":9223372036854775807}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "since-name",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":\"abc\",\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 1,
+   "stdout": "",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 397: abc: unbound variable\n",
+   "effects": []
+  },
+  {
+   "case": "since-float",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1.5,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 1,
+   "stdout": "",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 397: 1.5: arithmetic syntax error: invalid arithmetic operator (error token is \".5\")\n",
+   "effects": []
+  },
+  {
+   "case": "since-non-int-with-activity",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\",\"since\":\"x\",\"reset_at\":1900}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "1950"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 404: [: x: integer expected\n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "now-not-integer",
+   "argv": [
+    "armed1",
+    "abc",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 399: [: abc: integer expected\n",
+   "effects": []
+  },
+  {
+   "case": "now-blank-padded",
+   "argv": [
+    "armed1",
+    " 2000 ",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "map-is-a-list",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "[]",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "map-unreadable",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "not json",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "",
+   "stderr": "",
+   "effects": []
+  },
+  {
+   "case": "map-entry-not-a-dict",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":5}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "tap watch: 'int' object has no attribute 'get'\ntap watch: 'int' object has no attribute 'get'\ntap watch: 'int' object has no attribute 'get'\n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "map-entry-null",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":null}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "key-with-blank",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"a b\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {},
+    "seat_state": {
+     "a": [
+      "busy",
+      0
+     ],
+     "b": [
+      "busy",
+      0
+     ]
+    },
+    "activity": {
+     "": "0"
+    },
+    "peek": {},
+    "send": {},
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "a\nb",
+   "stderr": "",
+   "effects": [
+    [
+     "peek",
+     "a"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{\"a b\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+     "blocked_exempt",
+     "[]"
+    ],
+    [
+     "peek",
+     "b"
+    ],
+    [
+     "set",
+     "blocked_map",
+     "{\"a b\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+     "blocked_exempt",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "case": "key-with-glob",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"a*\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "a*": "%1"
+    },
+    "seat_state": {
+     "a*": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {},
+    "send": {
+     "a*": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "a*",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"a*\"]"
+    ],
+    [
+     "send",
+     "a*",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "good-seat-then-fatal",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0},\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":null}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1",
+     "s": "%2",
+     "t": "%3"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ],
+     "s": [
+      "busy",
+      0
+     ],
+     "t": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0",
+     "%2": "0",
+     "%3": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n",
+     "s": "claude\n> \n",
+     "t": "claude\n> \n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ],
+     "s": [
+      0,
+      ""
+     ],
+     "t": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 1,
+   "stdout": "r",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 395: None: unbound variable\n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{\"s\":{\"reason\":\"session_limit\",\"since\":1000,\"reset_at\":null}}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reason-trailing-newline",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\\n\",\"since\":1990,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "since-trailing-newline",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":\"1800\\n\",\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "reason-with-nul",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"session_limit\\u0000\",\"since\":1990,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 391: warning: command substitution: ignored null byte in input\n",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nYou were blocked by a session limit that has now reset.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "exempt-is-a-dict",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "{\"r\":1}"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "{\"r\":1}"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "exempt-unreadable",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "not json"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 0
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  },
+  {
+   "case": "set-refused",
+   "argv": [
+    "armed1",
+    "2000",
+    "lead",
+    "{\"r\":{\"reason\":\"api_error\",\"since\":1800,\"reset_at\":0}}",
+    "[]"
+   ],
+   "env": {},
+   "world": {
+    "lease": {},
+    "lease_current": [
+     true
+    ],
+    "tick": null,
+    "alive": {},
+    "registry_pane": {
+     "r": "%1"
+    },
+    "seat_state": {
+     "r": [
+      "idle-at-prompt",
+      0
+     ]
+    },
+    "activity": {
+     "%1": "0"
+    },
+    "peek": {
+     "r": "codex\nYou've hit your session limit \u00b7 resets 3:00pm (America/Los_Angeles)\n"
+    },
+    "send": {
+     "r": [
+      0,
+      ""
+     ]
+    },
+    "set_rc": 4
+   },
+   "rc": 0,
+   "stdout": "r",
+   "stderr": "",
+   "effects": [
+    [
+     "set",
+     "blocked_map",
+     "{}",
+     "blocked_exempt",
+     "[\"r\"]"
+    ],
+    [
+     "send",
+     "r",
+     "# TAP watch resume (mechanical \u2014 no judgment needed)\n\nA retryable API error interrupted your run; retrying once.\n\nDo exactly this:\n\n1. Settle this message (its id is in the sentinel you received):\n      tap done <id-from-the-sentinel> --by <your-handle>\n2. RESUME the work you were doing before the block: re-read your work order and keep\n   going. This message reassigns nothing and is NOT a stop order. End your turn only\n   if you have no in-flight work (e.g. the block was your lane already completing).\n3. ONLY if you are blocked, or you believe the run is done, send the armer one line:\n      tap send lead --wake -m \"<blocked: what needs intervention | done: what proves the run is complete>\"\n4. Do not disarm this watch. The armer owns run closure; report done-ness to them.\n\nDo NOT `tap reply` to this message \u2014 the sender ('watcher') is pane-less and has no\ninbox, so a reply cannot be delivered. Settlement alone records that you saw this;\nroutine status creates a reply loop and is not requested.\n",
+     "watcher",
+     "--from watcher --kind probe --fyi"
+    ]
+   ]
+  }
+ ]
+}

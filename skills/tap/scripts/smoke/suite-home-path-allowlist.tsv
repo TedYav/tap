@@ -1,0 +1,10 @@
+# path	kind	count	disposition — tap-lesh class closure; keep sorted
+# count is occurrence count for (path, kind); a new hit in the same file REDS.
+# disposition is pin:<ENV> (must appear in BOTH smoke-all allowlists) or exempt:<why>
+scripts/smoke-all.sh	dollar_home_tap	1	exempt:TAP_SUITE_LOCK_HOME-overridable
+scripts/smoke-all.sh	expanduser_tilde	2	exempt:doc-comment-default-path
+scripts/suite-slot-unlock.sh	dollar_home_tap	1	exempt:TAP_SUITE_LOCK_HOME-overridable
+scripts/suite_slot.py	expanduser_tilde	1	exempt:TAP_SUITE_LOCK_HOME-overridable
+skills/tap/scripts/CONTRACT.md	dollar_home_tap	1	exempt:suite-slot-lock-home-overridable
+skills/tap/scripts/lib.sh	dollar_home_tap	1	pin:TAP_INDEX_HOME
+skills/tap/scripts/lib.sh	expanduser_tilde	2	exempt:harness home differs from operator state

@@ -1,0 +1,3 @@
+Requesting permission for: run_shell_command
+Do you want to proceed?
+Yes · No · Tab amend

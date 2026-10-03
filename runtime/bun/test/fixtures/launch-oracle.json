@@ -1,0 +1,755 @@
+{
+ "captured_from": {
+  "head": "9bf012997dbe2e5978c5b48edbd2dd35a8ecd055",
+  "blobs": {
+   "skills/tap/scripts/session/launcher.py": "a0aecb34a3ba217130fa30938f0c35644d66458e"
+  },
+  "python": "3.14.6",
+  "how": "the launcher port recorded each case from launcher.py new (the incumbent) while it still existed, in the same test run that required new.ts to agree; volatile values are masked by the test's own mask()."
+ },
+ "why": "Frozen outcomes of `launcher.py new --dry-run` across the launcher-new-oracle cases (status, stdout, stderr; chooser prompts as PTY transcripts). new.ts must reproduce them.",
+ "cases": {
+  "bare claude": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "bare claude --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "bare codex": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/codex (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "bare codex --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/codex\"}\n",
+   "stderr": ""
+  },
+  "opencode": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/opencode (opencode) in <root>/repo\n",
+   "stderr": ""
+  },
+  "opencode --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"opencode\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"opencode\",\"name\":\"fixture/opencode\"}\n",
+   "stderr": ""
+  },
+  "cursor": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/cursor (cursor) in <root>/repo\n",
+   "stderr": ""
+  },
+  "cursor --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"cursor-agent\",\"--force\",\"--sandbox\",\"disabled\",\"--workspace\",\"<root>/repo\",\"--trust\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"cursor\",\"name\":\"fixture/cursor\"}\n",
+   "stderr": ""
+  },
+  "hermes": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/hermes (hermes) in <root>/repo\n",
+   "stderr": ""
+  },
+  "hermes --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"hermes\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"hermes\",\"name\":\"fixture/hermes\"}\n",
+   "stderr": ""
+  },
+  "agy": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/agy (agy) in <root>/repo\n",
+   "stderr": ""
+  },
+  "agy --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"agy\",\"--dangerously-skip-permissions\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"agy\",\"name\":\"fixture/agy\"}\n",
+   "stderr": ""
+  },
+  "labelled seat": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scout (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "labelled seat --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/scout\"}\n",
+   "stderr": ""
+  },
+  "label equal to harness": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "label equal to harness --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "dotted label": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/review.er (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "dotted label --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/review.er\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/review.er\"}\n",
+   "stderr": ""
+  },
+  "label needing sanitizing": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/Big-Seat (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "label needing sanitizing --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/Big-Seat\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/Big-Seat\"}\n",
+   "stderr": ""
+  },
+  "--tag": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/planner (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--tag --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/planner\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/planner\"}\n",
+   "stderr": ""
+  },
+  "--tag=value": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/planner (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--tag=value --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/planner\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/planner\"}\n",
+   "stderr": ""
+  },
+  "--unique": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/exact-one (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--unique --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/exact-one\"}\n",
+   "stderr": ""
+  },
+  "--unique invalid": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --unique names must use only letters, numbers, '_', '-' or '/'\n"
+  },
+  "--unique invalid --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --unique names must use only letters, numbers, '_', '-' or '/'\n"
+  },
+  "--unique with --fresh": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --fresh is not supported with --unique exact session names\n"
+  },
+  "--unique with --fresh --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --fresh is not supported with --unique exact session names\n"
+  },
+  "--model": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--model --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--model\",\"opus\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "--model empty": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --model must be a non-empty string; next: fix the --model value\n"
+  },
+  "--model empty --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"fix the --model value\",\"detail\":\"--model must be a non-empty string\"}\n",
+   "stderr": ""
+  },
+  "--effort claude": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--effort claude --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--effort\",\"high\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "--effort codex": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/codex (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--effort codex --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"-c\",\"model_reasoning_effort=\\\"xhigh\\\"\",\"--dangerously-bypass-approvals-and-sandbox\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/codex\"}\n",
+   "stderr": ""
+  },
+  "--effort out of domain": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: harness 'claude' does not accept --effort bogus (legal: low, medium, high, xhigh, max); next: pass --effort as one of: low, medium, high, xhigh, max\n"
+  },
+  "--effort out of domain --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"pass --effort as one of: low, medium, high, xhigh, max\",\"detail\":\"harness 'claude' does not accept --effort bogus (legal: low, medium, high, xhigh, max)\"}\n",
+   "stderr": ""
+  },
+  "--effort unsupported": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: harness 'cursor' does not support --effort (supported by: agy, claude, codex, hermes); next: remove --effort or launch a harness that supports it (agy, claude, codex, hermes)\n"
+  },
+  "--effort unsupported --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_effort_unsupported\",\"action\":\"remove --effort or launch a harness that supports it (agy, claude, codex, hermes)\",\"detail\":\"harness 'cursor' does not support --effort (supported by: agy, claude, codex, hermes)\"}\n",
+   "stderr": ""
+  },
+  "cursor --model": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/cursor (cursor) in <root>/repo\n",
+   "stderr": ""
+  },
+  "cursor --model --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"cursor-agent\",\"--force\",\"--sandbox\",\"disabled\",\"--workspace\",\"<root>/repo\",\"--trust\",\"--model\",\"gpt-5\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"cursor\",\"name\":\"fixture/cursor\"}\n",
+   "stderr": ""
+  },
+  "--env": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--env --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\",\"FOO\":\"bar\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "--env forbidden": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --env key 'TAP_SELF' crosses the identity, transport, process, credential, or policy fence; next: remove --env TAP_SELF=... from the command\n"
+  },
+  "--env forbidden --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_env_forbidden\",\"action\":\"remove --env TAP_SELF=... from the command\",\"detail\":\"--env key 'TAP_SELF' crosses the identity, transport, process, credential, or policy fence\"}\n",
+   "stderr": ""
+  },
+  "--env credential": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --env key 'GITHUB_TOKEN' crosses the identity, transport, process, credential, or policy fence; next: remove --env GITHUB_TOKEN=... from the command\n"
+  },
+  "--env credential --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_env_forbidden\",\"action\":\"remove --env GITHUB_TOKEN=... from the command\",\"detail\":\"--env key 'GITHUB_TOKEN' crosses the identity, transport, process, credential, or policy fence\"}\n",
+   "stderr": ""
+  },
+  "--env missing =": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --env is missing '='; pass KEY=VALUE; next: \n"
+  },
+  "--env missing = --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"\",\"detail\":\"--env is missing '='; pass KEY=VALUE\"}\n",
+   "stderr": ""
+  },
+  "--unset-env": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/claude (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--unset-env --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/claude\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/claude\"}\n",
+   "stderr": ""
+  },
+  "--env and --unset-env same key": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: both --env and --unset-env name FOO; next: \n"
+  },
+  "--env and --unset-env same key --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"\",\"detail\":\"both --env and --unset-env name FOO\"}\n",
+   "stderr": ""
+  },
+  "passthrough flag": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/worker (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "passthrough flag --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"-c\",\"reasoning_effort=high\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/worker\"}\n",
+   "stderr": ""
+  },
+  "-- passthrough": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scribe (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "-- passthrough --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/scribe\",\"--session-id\",\"<uuid>\",\"--model\",\"gpt-foo\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/scribe\"}\n",
+   "stderr": ""
+  },
+  "--effort with passthrough": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --effort conflicts with an explicit harness passthrough vector; next: pass effort one way: --effort, or the harness passthrough flag, not both\n"
+  },
+  "--effort with passthrough --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"pass effort one way: --effort, or the harness passthrough flag, not both\",\"detail\":\"--effort conflicts with an explicit harness passthrough vector\"}\n",
+   "stderr": ""
+  },
+  "bare passthrough token": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: unexpected argument 'extrabare': harness passthrough flags must start with '-'; use '--' before bare harness arguments; next: \n"
+  },
+  "bare passthrough token --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_arg_invalid\",\"action\":\"\",\"detail\":\"unexpected argument 'extrabare': harness passthrough flags must start with '-'; use '--' before bare harness arguments\"}\n",
+   "stderr": ""
+  },
+  "preset": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/rev (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "preset --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "preset with label": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/second (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "preset with label --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/second\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "--preset": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/rev (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--preset --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "preset with env and effort": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/deep (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "preset with env and effort --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--effort\",\"high\",\"--dangerously-skip-permissions\",\"--model\",\"opus\",\"--name\",\"fixture/deep\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\",\"DEEP_MODE\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/deep\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"deep\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "preset plus --model": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: preset 'rev' is complete; --model cannot override it; next: drop --model, or launch without --preset and pass tuning by flag\n"
+  },
+  "preset plus --model --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"preset_not_composable\",\"action\":\"drop --model, or launch without --preset and pass tuning by flag\",\"detail\":\"preset 'rev' is complete; --model cannot override it\"}\n",
+   "stderr": ""
+  },
+  "preset named help": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: handle 'help' is reserved as the CLI help keyword and cannot name a seat; pass an explicit seat name, or rename the preset\n"
+  },
+  "preset named help --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: handle 'help' is reserved as the CLI help keyword and cannot name a seat; pass an explicit seat name, or rename the preset\n"
+  },
+  "preset with passthrough": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/rev (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "preset with passthrough --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\",\"-c\",\"x=y\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "--preset smuggled after --": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --preset is never forwarded; move --preset before harness passthrough begins; next: \n"
+  },
+  "--preset smuggled after -- --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"preset_passthrough\",\"action\":\"\",\"detail\":\"--preset is never forwarded; move --preset before harness passthrough begins\"}\n",
+   "stderr": ""
+  },
+  "retired --teams flag": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "usage: tap session [-h] {new,resume,restart,clear} ...\ntap session: error: unrecognized arguments: --teams\n"
+  },
+  "retired --teams flag --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "usage: tap session [-h] {new,resume,restart,clear} ...\ntap session: error: unrecognized arguments: --teams\n"
+  },
+  "value flag missing its value": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "usage: tap session new [-h] [--preset PRESET] [--tag TAG] [--unique UNIQUE]\n                       [--model MODEL] [--effort EFFORT] [--env KEY=VALUE]\n                       [--unset-env KEY] [--fresh] [--new] [--attach]\n                       [--dry-run] [--json]\n                       [harness] [label]\ntap session new: error: argument --tag: expected one argument\n"
+  },
+  "value flag missing its value --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "usage: tap session new [-h] [--preset PRESET] [--tag TAG] [--unique UNIQUE]\n                       [--model MODEL] [--effort EFFORT] [--env KEY=VALUE]\n                       [--unset-env KEY] [--fresh] [--new] [--attach]\n                       [--dry-run] [--json]\n                       [harness] [label]\ntap session new: error: argument --tag: expected one argument\n"
+  },
+  "unknown preset": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: preset 'nope' was not found in <root>/user/.config/tap/config.toml; next: choose an available preset (deep, help, rev) or edit <root>/user/.config/tap/config.toml\n"
+  },
+  "unknown preset --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"preset_not_found\",\"action\":\"choose an available preset (deep, help, rev) or edit <root>/user/.config/tap/config.toml\",\"detail\":\"preset 'nope' was not found in <root>/user/.config/tap/config.toml\"}\n",
+   "stderr": ""
+  },
+  "unknown first word": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: 'nope' is neither a known harness nor a known preset; canonical harnesses: agy, claude, codex, cursor, hermes, opencode; configured presets in <root>/user/.config/tap/config.toml: deep, help, rev; next: tap session launch <preset|harness> [name]\n"
+  },
+  "unknown first word --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"harness_or_preset_not_found\",\"action\":\"tap session launch <preset|harness> [name]\",\"detail\":\"'nope' is neither a known harness nor a known preset; canonical harnesses: agy, claude, codex, cursor, hermes, opencode; configured presets in <root>/user/.config/tap/config.toml: deep, help, rev\"}\n",
+   "stderr": ""
+  },
+  "no arguments": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: usage: tap session launch <preset|harness> [name]\n"
+  },
+  "no arguments --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: usage: tap session launch <preset|harness> [name]\n"
+  },
+  "numeric label resumes": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: no claude session found for 3; create it with tap session launch claude 3\n"
+  },
+  "numeric label resumes --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: no claude session found for 3; create it with tap session launch claude 3\n"
+  },
+  "numeric label with tuning": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: --model cannot apply to a numeric-label resume: a resume replays the stored record; next: drop --model, or pass --fresh to launch a new seat that can carry it\n"
+  },
+  "numeric label with tuning --json": {
+   "status": 2,
+   "stdout": "{\"ok\":false,\"error_class\":\"launch_tuning_not_resumable\",\"action\":\"drop --model, or pass --fresh to launch a new seat that can carry it\",\"detail\":\"--model cannot apply to a numeric-label resume: a resume replays the stored record\"}\n",
+   "stderr": ""
+  },
+  "numeric label --fresh": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/3 (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "numeric label --fresh --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/3\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/3\"}\n",
+   "stderr": ""
+  },
+  "--new": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/sib (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--new --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/sib\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/sib\"}\n",
+   "stderr": ""
+  },
+  "--attach": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/att (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "--attach --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/att\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/att\"}\n",
+   "stderr": ""
+  },
+  "live reset fence": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: refusing session launch — team bus is mid-reset (fence at <root>/repo/.tap/bus/reset.fence.json); next: tap team reset\n"
+  },
+  "ownerless reset fence": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: refusing session launch — the reset fence record at <root>/repo/.tap/bus/reset.fence.json names no owner (pid, boot_id or owner_start missing), so nothing will clear it automatically; next: inspect <root>/repo/.tap/bus/reset.fence.json and, once you are sure no reset is running, remove it: rm <root>/repo/.tap/bus/reset.fence.json\n"
+  },
+  "invalid flip marker": {
+   "status": 1,
+   "stdout": "",
+   "stderr": "tap session launch: tap session launch refused — global-registry.json is present but unreadable or wrong schema; next: tap doctor\n"
+  },
+  "unenrolled root, foreign TAP_HOME": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: unanchored_bus: cwd-derived bus has no acting registry (<root>/fresh); next: pass --team <team>  OR  set TAP_HOME to the bus directory\n"
+  },
+  "pristine root --dry-run": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: unanchored_bus: cwd-derived bus has no acting registry (<root>/pristine); next: pass --team <team>  OR  set TAP_HOME to the bus directory\n"
+  },
+  "pristine root --dry-run --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: unanchored_bus: cwd-derived bus has no acting registry (<root>/pristine); next: pass --team <team>  OR  set TAP_HOME to the bus directory\n"
+  },
+  "spaced root --dry-run": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: team name: my-project (derived from folder 'My Project'; override with --team <name>)\ntap session: unanchored_bus: cwd-derived bus has no acting registry (<root>/My Project); next: pass --team <team>  OR  set TAP_HOME to the bus directory\n"
+  },
+  "spaced root --dry-run --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: team name: my-project (derived from folder 'My Project'; override with --team <name>)\ntap session: unanchored_bus: cwd-derived bus has no acting registry (<root>/My Project); next: pass --team <team>  OR  set TAP_HOME to the bus directory\n"
+  },
+  "linked worktree --dry-run": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: tap session refused — launch would create a team for linked worktree <root>/linked; refusing implicit enrollment; next: launch from your enrolled team's root, or run tap init here to make this worktree its own team\n"
+  },
+  "linked worktree --dry-run --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: tap session refused — launch would create a team for linked worktree <root>/linked; refusing implicit enrollment; next: launch from your enrolled team's root, or run tap init here to make this worktree its own team\n"
+  },
+  "collision: a seated gone row refuses without a terminal": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/scout already exists\n\n  next  tap session resume scout\n  or    tap session launch claude scout-2\n  or    tap session launch claude scout --fresh\n"
+  },
+  "collision: a seated gone row refuses without a terminal --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/scout already exists\n\n  next  tap session resume scout\n  or    tap session launch claude scout-2\n  or    tap session launch claude scout --fresh\n"
+  },
+  "collision: a seated gone row with --fresh reseats": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scout (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a seated gone row with --fresh reseats --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/scout\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/scout\"}\n",
+   "stderr": ""
+  },
+  "collision: a seated gone row with --new suffixes": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scout-2 (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a seated gone row with --new suffixes --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/scout-2\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/scout-2\"}\n",
+   "stderr": ""
+  },
+  "collision: a seated gone row with a conversation id and --fresh": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scout (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a seated gone row with a conversation id and --fresh --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/scout\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/scout\"}\n",
+   "stderr": ""
+  },
+  "collision: a gone preset row suffixes automatically": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/rev-2 (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a gone preset row suffixes automatically --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev-2\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "collision: a gone preset row with --fresh reseats": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/rev (codex) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a gone preset row with --fresh reseats --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stderr": ""
+  },
+  "collision: an unattended shell is reseated fresh": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/shelly (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: an unattended shell is reseated fresh --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/shelly\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/shelly\"}\n",
+   "stderr": ""
+  },
+  "collision: an unattended shell seated as another harness refuses": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/shelly already exists\n\n  next  tap session resume shelly\n  or    tap session launch claude shelly-2\n  or    tap session launch claude shelly --fresh\n"
+  },
+  "collision: an unattended shell seated as another harness refuses --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/shelly already exists\n\n  next  tap session resume shelly\n  or    tap session launch claude shelly-2\n  or    tap session launch claude shelly --fresh\n"
+  },
+  "collision: a busy off-roster session refuses": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/busy already exists\n\n  next  tap session resume busy\n  or    tap session launch claude busy-2\n  or    tap session launch claude busy --fresh\n"
+  },
+  "collision: a busy off-roster session refuses --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/busy already exists\n\n  next  tap session resume busy\n  or    tap session launch claude busy-2\n  or    tap session launch claude busy --fresh\n"
+  },
+  "collision: a live off-roster harness refuses with the tmux fact": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: a tmux session named fixture/harn already exists (created <hh:mm>); it is not on the team roster\n\n  next  tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n  or    to reattach: tmux attach -t fixture/harn  (or: tap session resume harn)\n"
+  },
+  "collision: a live off-roster harness refuses with the tmux fact --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: a tmux session named fixture/harn already exists (created <hh:mm>); it is not on the team roster\n\n  next  tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n  or    to reattach: tmux attach -t fixture/harn  (or: tap session resume harn)\n"
+  },
+  "collision: a live off-roster harness with --new suffixes": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/harn-2 (claude) in <root>/repo\n",
+   "stderr": ""
+  },
+  "collision: a live off-roster harness with --new suffixes --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/harn-2\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/harn-2\"}\n",
+   "stderr": ""
+  },
+  "collision: a live seated harness refuses": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/harn already exists\n\n  next  tap session resume harn\n  or    tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n"
+  },
+  "collision: a live seated harness refuses --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/harn already exists\n\n  next  tap session resume harn\n  or    tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n"
+  },
+  "collision: a live seated harness with a record refuses": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/harn already exists\n\n  next  tap session resume harn\n  or    tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n"
+  },
+  "collision: a live seated harness with a record refuses --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: fixture/harn already exists\n\n  next  tap session resume harn\n  or    tap session launch claude harn-2\n  or    tap session launch claude harn --fresh\n"
+  },
+  "collision: a leftover record off the roster is ignored with a notice": {
+   "status": 0,
+   "stdout": "tap session: would launch fixture/scout (claude) in <root>/repo\n",
+   "stderr": "tap session: ignoring leftover record fixture/scout — not on roster; launch creates a new seat (tap session resume scout to restore history)\n"
+  },
+  "collision: a leftover record off the roster is ignored with a notice --json": {
+   "status": 0,
+   "stdout": "{\"argv\":[\"claude\",\"--dangerously-skip-permissions\",\"--name\",\"fixture/scout\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_SCROLL_SPEED\":\"6\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/scout\"}\n",
+   "stderr": "tap session: ignoring leftover record fixture/scout — not on roster; launch creates a new seat (tap session resume scout to restore history)\n"
+  },
+  "collision: a handle live in another session refuses": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: roam is live in fixture/other\n\n  next  tap session resume roam\n  or    tap session launch claude roam-2\n  or    tap session launch claude roam --fresh\n"
+  },
+  "collision: a handle live in another session refuses --json": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: roam is live in fixture/other\n\n  next  tap session resume roam\n  or    tap session launch claude roam-2\n  or    tap session launch claude roam --fresh\n"
+  },
+  "chooser: a live seated harness offers reattach": {
+   "exit": 2,
+   "output": "tap session: 'fixture/harn' (claude): live, running detached · registered as harn\r\n\r\n  [r] resume  no conversation to resume — start a fresh session under this name\r\n  [n] new     Start another session with a suffix\r\n  [k] fresh   Stop the session and start over\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: a live seated harness with a record discloses its resume tier": {
+   "exit": 2,
+   "output": "tap session: 'fixture/harn' (claude): live, running detached · registered as harn\r\n\r\n  [r] resume  no live id — resume opens the harness native picker\r\n  [n] new     Start another session with a suffix\r\n  [k] fresh   Stop the session and start over\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: a handle live in another session": {
+   "exit": 2,
+   "output": "tap session: 'fixture/roam' (claude): live in fixture/other · registered as roam\r\n\r\n  [r] resume  Reattach to the existing session\r\n  [n] new     Start another session with a suffix\r\n  [k] fresh   Stop the session and start over\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: an unattended shell offers a fresh reseat": {
+   "exit": 2,
+   "output": "tap session: 'fixture/shelly' (claude): an unattended shell session is holding the name · not on roster\r\n\r\n  [r] resume  no conversation to resume — start a fresh session under this name\r\n  [n] new     Start a sibling seat under a suffixed name\r\n  [k] fresh   Replace it — start a fresh session under this name\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: a live off-roster harness offers no resume": {
+   "exit": 2,
+   "output": "tap session: to reattach: tmux attach -t fixture/harn  (or: tap session resume <handle>)\r\ntap session: a tmux session named fixture/harn already exists (created <hh:mm>); it is not on the team roster\r\n\r\n  [n] new    Start another session with a suffix\r\n  [k] fresh  Stop the session and start over under this name\r\n  [q] quit   Leave everything unchanged\r\n\r\nChoice [n] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: a seated gone row offers the reseat chooser": {
+   "exit": 2,
+   "output": "tap session: 'fixture/scout' (claude): a gone seat row (fixture/scout:0.0) · registered as scout\r\n\r\n  [r] resume  no live id — resume opens the harness native picker\r\n  [n] new     Start a sibling seat under a suffixed name\r\n  [k] fresh   Replace it — start a fresh session under this name\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  },
+  "chooser: a busy off-roster session": {
+   "exit": 2,
+   "output": "tap session: 'fixture/busy' already exists (claude)\r\n\r\n  [r] resume  no conversation to resume — start a fresh session under this name\r\n  [n] new     Start another session with a suffix\r\n  [k] fresh   Stop the session and start over\r\n  [q] quit    Leave everything unchanged\r\n\r\nChoice [r] (Esc quits): ",
+   "before": "gfmt1:cflag=4b00:iflag=2b02:lflag=5cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600",
+   "after": "gfmt1:cflag=4b00:iflag=2b02:lflag=200005cb:oflag=3:discard=f:dsusp=19:eof=4:eol=ff:eol2=ff:erase=7f:intr=3:kill=15:lnext=16:min=1:quit=1c:reprint=12:start=11:status=14:stop=13:susp=1a:time=0:werase=17:ispeed=9600:ospeed=9600"
+  }
+ }
+}

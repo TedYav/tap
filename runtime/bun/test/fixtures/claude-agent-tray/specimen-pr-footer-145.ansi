@@ -1,0 +1,15 @@
+  Neutral transcript filler for the synthetic frame; the original
+  specimen held another team's private conversation and is never
+  committed. A second filler row keeps the transcript non-empty.
+
+▐ ⏳ Waiting for 1 background agent to finish
+
+───────────────────────────────────────────────────────────────── tap/peer-seat ─────────────────────────────────────────────────────────────────
+❯ [[TAP v0.23 note fixture-peer-seat-20260928T081630Z-aabbccddeeff preview="Neutral fixture preview"]]
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Test 5.1 med | 45%↯ 200k/700k ●59m ████░░░░ | 📁 tap | 🌿 main
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · PR #1
+
+  ⏺ main
+❯ ◯ general-purpose  Reading docs section                                                                                3m 48s · ↓ 143.1k tokens
+

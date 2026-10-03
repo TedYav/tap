@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Keep a team working through a long backlog, with supervision, handoffs and roles that grow from repeated needs.">
+<title>TAP level 5 — Teams that run and evolve</title>
+<style>
+:root {
+  color-scheme:dark;
+  --ink:#e6edf3;
+  --muted:#a8b8c4;
+  --paper:#101820;
+  --card:#18252f;
+  --line:#3b505d;
+  --teal:#70d8cd;
+  --orange:#ffb071}
+
+* {
+  box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font:17px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main {
+  max-width:1100px;
+  margin:auto;
+  padding:48px 28px}
+a {
+  color:var(--teal);
+  text-underline-offset:.2em}
+a:focus-visible {
+  outline:3px solid var(--orange);
+  outline-offset:4px}
+h1,h2,h3,p {
+  margin-top:0}
+h1 {
+  font-size:clamp(2.6rem,7vw,4.8rem);
+  line-height:1.06;
+  letter-spacing:-.045em;
+  max-width:850px;
+  margin-bottom:20px}
+h2 {
+  font-size:1.5rem;
+  line-height:1.2;
+  margin-bottom:18px}
+h3 {
+  font-size:1.05rem;
+  margin-bottom:5px}
+.eyebrow {
+  font-size:.8rem;
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--teal)}
+.intro {
+  max-width:760px;
+  font-size:1.18rem}
+.nav {
+  display:flex;
+  gap:22px;
+  flex-wrap:wrap;
+  margin:24px 0 40px}
+.section {
+  margin-top:38px}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px}
+.card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:22px}
+.card p:last-child {
+  margin-bottom:0}
+.number {
+  display:block;
+  color:var(--orange);
+  font-size:.8rem;
+  font-weight:750;
+  margin-bottom:12px}
+code,kbd {
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:.87em}
+code {
+  overflow-wrap:anywhere}
+pre {
+  white-space:pre-wrap;
+  margin:12px 0 0}
+kbd {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-bottom-width:2px;
+  border-radius:4px;
+  padding:1px 5px}
+.bus {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:26px 12px;
+  margin:24px 0;
+  background:#183832;
+  border-radius:14px;
+  text-align:center}
+.seat {
+  font-weight:750}
+.seat small {
+  display:block;
+  font-weight:400;
+  color:var(--muted)}
+.bridge {
+  color:var(--teal);
+  font-size:.95rem}
+.bridge strong {
+  display:block;
+  font-size:1.4rem}
+.quote {
+  font-size:1.12rem;
+  border-left:4px solid var(--orange);
+  padding:12px 20px;
+  margin:14px 0;
+  background:var(--card)}
+.roles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px}
+.role {
+  border-top:2px solid var(--teal);
+  padding-top:12px}
+.role p {
+  color:var(--muted);
+  margin-bottom:0}
+.skills {
+  display:grid;
+  grid-template-columns:max-content 1fr;
+  gap:12px 22px}
+.skills dt {
+  font-weight:750;
+  color:var(--teal)}
+.skills dd {
+  margin:0}
+.footer {
+  margin-top:38px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.9rem}
+@media(max-width:700px) {
+  main {
+  padding:28px 18px}
+.grid,.roles {
+  grid-template-columns:1fr}
+.bus {
+  gap:12px}
+.bridge {
+  font-size:.8rem}
+.skills {
+  gap:12px}
+.nav {
+  margin-bottom:28px}
+}
+@media print {
+  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
+  main {
+  padding:0}
+.card,.role,.quote,.bus {
+  break-inside:avoid}
+body {
+  font-size:11pt;
+  color:#182c34;
+  background:white}
+h1 {
+  font-size:32pt}
+.nav {
+  margin:12px 0}
+.section {
+  margin-top:22px}
+a {
+  color:inherit}
+.grid {
+  grid-template-columns:repeat(3,1fr)}
+.roles {
+  grid-template-columns:repeat(3,1fr)}
+}
+
+
+main { max-width:940px }
+pre { padding:16px 20px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:16px }
+.level-nav { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap }
+[aria-current="page"] { color:var(--ink); font-weight:750 }
+li { margin-bottom:8px }
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">The five levels of TAP · 5 of 5</p>
+<h1>Teams that run and evolve</h1>
+<p class="intro">Keep a team working through a long backlog, with supervision, handoffs and roles that grow from repeated needs.</p>
+<nav class="nav" aria-label="The five levels"><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html" aria-current="page">Level 5</a></nav>
+</header>
+<section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Work through a migration over several sessions. Keep a test-watching seat on new commits. Add a coach to record lessons, or a context watcher to prompt handoffs before conversations fill up. A team can become a software factory while you keep steering its goals.</p></section>
+<section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>Start with the level 4 team. Ask its registered lead to supervise one bounded run:</p>
+<pre><code>tap watch on -m "CSV export PR merged; verify with gh pr view; preserve existing exports; stop after 6h"
+tap watch status</code></pre>
+<p>The watcher checks silence and context pressure. Its default evaluator may read pane transcripts; <code>tap help watch</code> explains that choice. A lead still owns decisions and follow-up. When the run ends, the seat that armed it runs <code>tap watch off</code>.</p>
+<p>Before a seat runs out of context, have it write its decisions, paths, open work and next step to <code>tmp/me/handoff.md</code>. Then that seat can run:</p>
+<pre><code>tap self compact --handoff tmp/me/handoff.md -- "Preserve: open work and review state"</code></pre>
+<p>This arms compaction. The seat ends its turn and checks the resume note before continuing; arming alone does not prove recovery finished.</p></section>
+<section class="section"><h2>What’s new since level 4</h2><p>The team survives context changes and evolves its own working habits. Add a role when you repeatedly do its job by hand. Describe what it watches, when to act, whom to tell and when to stop. Save proven instructions as a <code>SKILL.md</code> so the next seat can use them.</p></section>
+<section class="section"><h2>Go deeper</h2><p><a href="https://github.com/TedYav/tap/blob/main/skills/tap/protocol/supervision/README.md">Supervision and reminders</a> and <a href="https://github.com/TedYav/tap/blob/main/docs/solutions/best-practices/write-before-reset.md">write before you reset</a> cover long runs. The <code>tap-context</code> skill helps choose a context transition.</p><p><a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md#when-another-tool-fits">When another tool fits</a> compares other kinds of agent systems.</p></section>
+<footer class="footer">
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-4.html">← Level 4</a><a href="index.html">Back to the guide →</a></nav>
+<p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
+</footer>
+</main>
+</body>
+</html>

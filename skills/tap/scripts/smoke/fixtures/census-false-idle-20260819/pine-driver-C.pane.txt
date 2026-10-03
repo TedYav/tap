@@ -1,0 +1,137 @@
+
+  ▎ this would NOT have caught the 2026-08-19 04:00 idle board. WORKING was 2 there — the gate and the lieutenant — so it would not have fired.
+
+  I didn't settle for the absence of a coverage claim. An absent claim is satisfied by silence, and silence is what a future reader fills in with the flattering assumption. A stated negative can't be misread that way, and any softened
+  version ("catches the failure that funded it") would now have to contradict a sentence rather than merely omit one.
+
+  The limitation ships with its bound and its framing: one check in a stack, so the masked case is a division of labour rather than a gap — and it fires late, not never, the masked phase decaying as the masking seats go idle (~105 min for
+  the 08-19 case). I attributed that figure to the lane that measured it rather than presenting it as mine.
+
+  grok's refusal is recorded as a decision, not an absence. He declined to smuggle a conductor-exclusion into the census; it would have made WORKING 1 instead of 2 at 04:00 — closer to firing for a reason unrelated to the design, quietly
+  reversing a ruling by implementation. That's in the code comment too, because the next person tempted by that exclusion will be reading the census, not the PR page.
+
+  Green cited at 8cd70819, MERGEABLE/CLEAN, the gate's blocking F1 fixed and arm (0b) mutation-proven. The comment change on top is doc-only; verifying, then pushing for the gate to re-derive.
+
+✻ Cogitated for 3m 10s · 1 shell still running
+
+⏺ Background command "Verify comment-only change still green" completed (exit code 0)
+
+  Pushed to tap-ulyr-working-zero, read 1 file, ran 3 shell commands
+
+⏺ Background command "Await doc-change verification run" completed (exit code 0)
+
+⏺ Head a7533899 pushed; final gate running.
+
+  That last commit is comments and PR-body only — zero executable lines. I re-ran the full fixture anyway rather than reasoning that comments can't break a shell script. They can: a stray quote or unbalanced heredoc marker inside a
+  comment block is a syntax error, and "it's only a comment" is precisely the shape of assumption this lane has spent the night catching. 21 assertions, rc=0.
+
+  I also flagged something back to the gate rather than letting my own wording grade itself: the claim-freeze now appears as a stated negative in the code and body, which is the stronger form — but it means the diff now mentions the 04:00
+  incident in the same paragraph as the detector, which is exactly the adjacency their scan is tuned to flag. I asked them to confirm it reads as disclosure rather than claim, since I'm the wrong person to judge whether my own sentence
+  trips their check.
+
+  For the re-derive I scoped what moved since their blocking finding: 8cd70819 carries F1, F2, mutation-proven arm (0b), and N1; a7533899 is comments only.
+
+✻ Worked for 1m 4s · 1 shell still running
+
+⏺ Background command "Gate at final head" completed (exit code 0)
+
+  Edited PR !111, searched for 1 pattern
+
+⏺ The final green landed — but it moved my file to the top of the timing table, which contradicts what my PR body currently claims. Correcting that.
+
+  Edited PR !111, ran 1 shell command
+
+⏺ Background command "Await final gate" completed (exit code 0)
+
+⏺ Green cited at a7533899 — MERGEABLE/CLEAN, all 163 files passed, unpiped exit 0, clean tree.
+
+  The run also caught a number in my own PR body that had gone stale between writing and publishing: I'd claimed this file was "134.8s, second heaviest." On this run it's 141.1s and first — ahead of courier-auto-settle and
+  team-only-driven. I replaced the single figure with the range across three green runs (111.8 / 134.8 / 141.1) and stated that the ranking is noisy — those three files reorder with contention, so "heaviest" is a property of a run rather
+  than a stable fact. What's stable is that it's top-three every time.
+
+  I flagged that rather than letting a favorable stale number sit, because "second" reads meaningfully better than "first" to someone scanning — and the entire point of tap-0ff4 is that suite wall time degrades where nobody's looking.
+
+  One decision I re-raised instead of standing on: I'd declined the ~20s optimization on the grounds that a slot cycle costs the board more. That run needed 17 attempts to get the slot, so the reasoning holds tonight — but the file now
+  tops the table, which is a different fact from when I first declined. So I put it back to the gate and the lieutenant with the price attached, rather than treating my earlier call as settled.
+
+  Still open for the gate's judgment: whether the strengthened claim-freeze — a stated negative rather than an absent claim — reads as disclosure or trips their adjacency scan. That's not something my own wording should grade.
+
+✻ Baked for 1m 44s · 1 shell still running
+
+❯ [[TAP v=0.20 from=pine-lieutenant to=pine-driver-C id=pine-lieutenant-20260819T231406Z-deea4d6982e2 kind=discuss reply=expected urgency=urgent
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-lieutenant-20260819T231406Z-deea4d6982e2.md]]
+
+  Ran 1 shell command
+
+⏺ I received and acted on all four — he asked to be told if so. Verifying against the record before I answer.
+
+  Ran 1 shell command
+
+⏺ All four are unsettled — I read and acted on every one but never settled them. Fixing that now, then answering.
+
+  Ran 3 shell commands
+
+❯ [[TAP v=0.20 from=pine-gate to=pine-driver-C id=pine-gate-20260819T231629Z-650e69cd8c22 kind=discuss reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-20260819T231629Z-650e69cd8c22.md]]
+
+⏺ One more unsettled from earlier — I acted on it but never replied. Settling, and reading the gate's verdict.
+
+  Ran 3 shell commands
+
+⏺ APPROVED at a7533899. Merging per the gate's ruling, then filing the two follow-ups it named.
+
+  Ran 3 shell commands
+
+⏺ MERGED as fa1bca23. Per AGENTS.md, a skills/ change isn't live until the primary checkout is synced.
+
+  Ran 3 shell commands
+
+⏺ Live and verified: origin/main (fa1bca23) is an ancestor of HEAD (76cf9839). Filing the two follow-ups the gate named.
+
+  Ran 3 shell commands
+
+⏺ Verifying the beads actually exist rather than trusting the create output — "filed" should be checkable.
+
+  Ran 2 shell commands
+
+⏺ Both filed: tap-f1x2 (P2, the unanchored figure) and tap-ijyr (P3, the shrink). Closing out the lane.
+
+  Ran 3 shell commands
+
+⏺ Three still unsettled — my earlier tap done ran from the worktree cwd and didn't take. Settling from the anchored checkout.
+
+  Ran 1 shell command
+
+❯ [[TAP v=0.20 from=pine-gate to=pine-driver-C id=pine-gate-20260819T232311Z-a7a105607152 kind=discuss reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-20260819T232311Z-a7a105607152.md]]
+
+  Ran 1 shell command
+
+❯ [[TAP v=0.20 from=pine-gate to=pine-driver-C id=pine-gate-20260819T232408Z-ad0bd91938dc kind=discuss reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-20260819T232408Z-ad0bd91938dc.md]]
+
+  Ran 1 shell command
+
+❯ [[TAP v=0.20 from=pine-gate to=pine-driver-C id=pine-gate-20260819T232437Z-d65bf459cb3a kind=discuss reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-20260819T232437Z-d65bf459cb3a.md]]
+
+  Ran 1 shell command
+
+⏺ Lane 1 shipped. PR !111 merged as fa1bca23, and the layer is live — install.sh --sync confirms origin/main (fa1bca23) is an ancestor of HEAD (76cf9839), so the installed tap goalie executes the merged code rather than a stale symlink.
+
+  What landed (tap-ulyr build items 1 and 2): the WORKING == 0 work-feeder detector with an obligation that can't silently become an FYI, and tap-goalie-heartbeat.sh, the no-LLM check that watches the detector. Gate APPROVED at
+  a7533899/tree 72d39c3e from its own checkout — unpiped exit 0, base drift re-established at that exact head by merging origin/main in a scratch tree.
+
+  Two things arm tonight and one doesn't. Role resolution finds hermes-goalie on the live registry and the observer is excluded from both censuses — verified live, not inferred. But tap-iend isn't installed, so the heartbeat stamp is
+  written and nobody ages it. Zero wakes is only readable if the reader is alive, and tonight the reader is a bead.
+
+  Follow-ups filed from the gate's non-blocking findings: tap-f1x2 (P2 — the ~105min figure sits in durable code text with no traceable source; I took it from a directive and stated it flat rather than attributed) and tap-ijyr (P3 — the
+  ~20s board-shrink, deferred because the slot needed 16–17 attempts that night).
+
+  Closeout: worktree reaped, branch deleted, beads synced and committed on main (2 unpushed bd-sync commits), both queues clean.
+
+  The night's lesson I'd carry forward isn't a code defect. I read the lieutenant's longest message with tail -30 and missed its head — which was the blocker. A tail always returns something plausible, so a truncated read looks exactly
+  like a complete one. Everything I built well for the following hour was improving a detector that would not have armed, and the only thing that caught it was a one-line question. That's a thin margin, not a process.
+
+✻ Cogitated for 11m 29s · 1 shell still running
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── tap/pine-driver-C ─
+❯ stand by for the next lane order
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on · 1 shell · ← 2 agents · ↓ to manage

@@ -1,0 +1,74 @@
+import { afterAll, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createOpenCodeContextReader, parseOpenCodeModels } from "../src/opencode-context";
+import { removeScratchTree } from "./support/scratch";
+const root = mkdtempSync(join(tmpdir(), "opencode-context-"));
+afterAll(() => removeScratchTree(root));
+let number = 0;
+const model = {id:"glm",providerID:"provider",limit:{context:420000}};
+const catalog = () => new Map([["provider/glm", model]]);
+function fixture() {
+  const path = join(root, `${number++}.db`);
+  const db = new Database(path);
+  db.exec(`CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, revert TEXT);
+    CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+    CREATE INDEX message_session_time ON message(session_id,time_created,id);`);
+  db.query("INSERT INTO session VALUES (?, ?, NULL)").run("seat",root);
+  const add = (time: number, change: Record<string, unknown> = {}, session = "seat") => {
+    const data = {role:"assistant",modelID:"glm",providerID:"provider",
+      time:{created:time,completed:time+1},tokens:{input:131,output:89,reasoning:30,total:999999,
+        cache:{read:101696,write:12}},...change};
+    db.query("INSERT INTO message VALUES (?, ?, ?, ?)").run(`${time}`,session,time,JSON.stringify(data));
+  };
+  return {path,db,add};
+}
+test("latest completed request includes cache once, ignores session totals and other sessions", () => {
+  const f=fixture(); f.add(100); f.add(200); f.add(300,{time:{created:300}}); f.add(400,{},"other");
+  let loads=0;
+  const read=createOpenCodeContextReader(() => { loads++; return catalog(); });
+  const result=read("seat",f.path);
+  expect(result).toMatchObject({input_tokens:101839,window_tokens:420000,used_percent:24,
+    observed_at:new Date(201).toISOString(),source:"opencode_store",window_source:"opencode_model"});
+  expect(read("seat",f.path)).toEqual(result); expect(loads).toBe(1);
+  f.db.close();
+});
+test("compaction summary hides old input until a subsequent completed request", () => {
+  const f=fixture(); f.add(100); f.add(200,{summary:true});
+  const read=createOpenCodeContextReader(catalog);
+  expect(read("seat",f.path).unknown_reason).toBe("awaiting_usage_after_compact");
+  f.add(300,{time:{created:300}});
+  expect(read("seat",f.path).input_tokens).toBeNull();
+  f.add(400); expect(read("seat",f.path).input_tokens).toBe(101839); f.db.close();
+});
+test("missing or failed model metadata keeps the measured input and never guesses a cap", () => {
+  const f=fixture(); f.add(100);
+  for (const models of [() => new Map(), () => {throw Error("offline");}]) {
+    expect(createOpenCodeContextReader(models)("seat",f.path)).toMatchObject({input_tokens:101839,window_tokens:null,used_percent:null});
+  }
+  f.db.close();
+});
+test("invalid configured caps stay unknown", () => {
+  const f=fixture(); f.add(100);
+  const invalid=() => new Map([["provider/glm",{...model,limit:{context:0}}]]);
+  f.add(200); expect(createOpenCodeContextReader(invalid)("seat",f.path).window_tokens).toBeNull(); f.db.close();
+});
+test("invalid usage, wrong identity, revert and absent stores stay unknown", () => {
+  const f=fixture(); const read=createOpenCodeContextReader(catalog);
+  expect(read("seat",f.path).unknown_reason).toBe("usage_not_in_tail");
+  f.add(100,{tokens:{input:-1,cache:{read:0,write:0}}});
+  expect(read("seat",f.path).unknown_reason).toBe("invalid_usage");
+  expect(read("other",f.path).unknown_reason).toBe("session_mismatch");
+  expect(read("seat",join(root,"absent.db")).input_tokens).toBeNull();
+  expect(read("seat","relative").unknown_reason).toBe("unbound_transcript");
+  f.add(200,{sessionID:"other"}); expect(read("seat",f.path).unknown_reason).toBe("session_mismatch");
+  f.db.query("UPDATE session SET revert = '{}' WHERE id = 'seat'").run();
+  expect(read("seat",f.path).unknown_reason).toBe("awaiting_usage_after_revert"); f.db.close();
+});
+test("model CLI headings bind the parsed metadata to its provider and model", () => {
+  const text=`provider/glm\n${JSON.stringify(model,null,2)}\nwrong/model\n${JSON.stringify(model,null,2)}\n`;
+  expect([...parseOpenCodeModels(text).keys()]).toEqual(["provider/glm"]);
+  expect(parseOpenCodeModels("unexpected output").size).toBe(0);
+});

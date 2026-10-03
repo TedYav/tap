@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAP — how agents divide the work</title>
+<style>
+:root {
+  color-scheme:light;
+  --ink:#182c34;
+  --muted:#465a63;
+  --paper:#f6f3eb;
+  --card:#fffdf7;
+  --line:#b9c7c7;
+  --teal:#076a66;
+  --orange:#a74716}
+
+* {
+  box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font:17px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main {
+  max-width:1100px;
+  margin:auto;
+  padding:48px 28px}
+a {
+  color:var(--teal);
+  text-underline-offset:.2em}
+a:focus-visible {
+  outline:3px solid var(--orange);
+  outline-offset:4px}
+h1,h2,h3,p {
+  margin-top:0}
+h1 {
+  font-size:clamp(2.6rem,7vw,4.8rem);
+  line-height:1.06;
+  letter-spacing:-.045em;
+  max-width:850px;
+  margin-bottom:20px}
+h2 {
+  font-size:1.5rem;
+  line-height:1.2;
+  margin-bottom:18px}
+h3 {
+  font-size:1.05rem;
+  margin-bottom:5px}
+.eyebrow {
+  font-size:.8rem;
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--teal)}
+.intro {
+  max-width:760px;
+  font-size:1.18rem}
+.nav {
+  display:flex;
+  gap:22px;
+  flex-wrap:wrap;
+  margin:24px 0 40px}
+.section {
+  margin-top:38px}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px}
+.card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:22px}
+.card p:last-child {
+  margin-bottom:0}
+.number {
+  display:block;
+  color:var(--orange);
+  font-size:.8rem;
+  font-weight:750;
+  margin-bottom:12px}
+code,kbd {
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:.87em}
+code {
+  overflow-wrap:anywhere}
+pre {
+  white-space:pre-wrap;
+  margin:12px 0 0}
+kbd {
+  background:white;
+  border:1px solid var(--line);
+  border-bottom-width:2px;
+  border-radius:4px;
+  padding:1px 5px}
+.bus {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:26px 12px;
+  margin:24px 0;
+  background:#e3efea;
+  border-radius:14px;
+  text-align:center}
+.seat {
+  font-weight:750}
+.seat small {
+  display:block;
+  font-weight:400;
+  color:var(--muted)}
+.bridge {
+  color:var(--teal);
+  font-size:.95rem}
+.bridge strong {
+  display:block;
+  font-size:1.4rem}
+.quote {
+  font-size:1.12rem;
+  border-left:4px solid var(--orange);
+  padding:12px 20px;
+  margin:14px 0;
+  background:var(--card)}
+.roles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px}
+.role {
+  border-top:2px solid var(--teal);
+  padding-top:12px}
+.role p {
+  color:var(--muted);
+  margin-bottom:0}
+.skills {
+  display:grid;
+  grid-template-columns:max-content 1fr;
+  gap:12px 22px}
+.skills dt {
+  font-weight:750;
+  color:var(--teal)}
+.skills dd {
+  margin:0}
+.footer {
+  margin-top:38px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.9rem}
+@media(max-width:700px) {
+  main {
+  padding:28px 18px}
+.grid,.roles {
+  grid-template-columns:1fr}
+.bus {
+  gap:12px}
+.bridge {
+  font-size:.8rem}
+.skills {
+  gap:12px}
+.nav {
+  margin-bottom:28px}
+}
+@media print {
+  main {
+  padding:0}
+.card,.role,.quote,.bus {
+  break-inside:avoid}
+body {
+  font-size:11pt;
+  background:white}
+h1 {
+  font-size:32pt}
+.nav {
+  margin:12px 0}
+.section {
+  margin-top:22px}
+a {
+  color:inherit}
+.grid {
+  grid-template-columns:repeat(3,1fr)}
+.roles {
+  grid-template-columns:repeat(3,1fr)}
+}
+
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">TAP · human cheat sheet</p>
+<h1>How agents divide the work.</h1>
+<p class="intro">TAP connects agents in your terminal with a <strong>file bus + tmux courier</strong>: it saves a message, puts a notification in the recipient's pane, and lets that agent answer.</p>
+<nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a></nav>
+</header>
+<section class="section" aria-labelledby="teams">
+<h2 id="teams">A team is a group. A seat is one agent.</h2>
+<p>Your project has a team; each seat has a name you can use in conversation. <code>tap team</code> shows who's there.</p>
+<div class="bus" role="img" aria-label="Fable and Astra exchange questions and replies through TAP's file bus and tmux courier."><div class="seat">fable<small>Claude Code seat</small></div><div class="bridge">question →<strong>TAP</strong>← reply</div><div class="seat">astra<small>Codex seat</small></div></div>
+<p>Questions and replies travel through the file bus and tmux courier. The <a href="cheatsheet-first-team.html">first-team walkthrough</a> explains the pane flashes while mail waits.</p>
+<p><strong>Choreography over orchestration:</strong> agents agree on who does what, work with their peers, and ask you when a decision needs you. TAP carries their messages; the agents choose the next move.</p>
+</section>
+<section class="section" aria-labelledby="roles">
+<h2 id="roles">Give each agent a job</h2>
+<div class="roles">
+<div class="role"><h3>Leader</h3><p>Sets the goal, picks the team, and settles decisions the team cannot.</p></div>
+<div class="role"><h3>Driver</h3><p>Carries a piece of work from implementation through review and delivery.</p></div>
+<div class="role"><h3>Reviewer</h3><p>Reads the work independently and reports concrete problems.</p></div>
+<div class="role"><h3>Partner</h3><p>Thinks alongside another agent and challenges the approach as it develops.</p></div>
+<div class="role"><h3>Conductor</h3><p>Tracks progress, routes reviews, and brings blockers to the leader.</p></div>
+<div class="role"><h3>You</h3><p>Choose the goal and make the calls that need your judgment.</p></div>
+</div>
+</section>
+<footer class="footer">Ready to begin? <a href="cheatsheet.html">Set up TAP and get started</a>. For commands, use the <a href="https://github.com/TedYav/tap/blob/main/skills/tap/USAGE.md">reference</a>.</footer>
+</main>
+</body>
+</html>

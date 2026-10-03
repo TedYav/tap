@@ -1,0 +1,8 @@
+     ▣  Build · Kimi K3 · 2m 51s
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Kimi K3 Synthetic
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /Users/runner/wrk/Example-Org/tap     107.8K (21%) · $2.87  ctrl+p commands

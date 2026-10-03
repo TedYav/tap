@@ -1,0 +1,77 @@
+    [38;5;230mGood analysis from codex. Let me settle first, then fix.[39m
+
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+[0m  ┊ 💻 preparing terminal…
+  ┊ 💻 $         tap done codex-20260706T033014Z-c17c071cf533  0.5s
+
+[1m[38;5;220m╭─ ⚕ Hermes ──────────────────────────────────────────────────────────────────────╮
+[0m    [38;5;230mSettled. Codex's findings: the Hermes runner invokes bash explicitly (not via s
+hebang), and /bin comes before /opt/homebrew/bin in my PATH. Let me fix it[39m
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+[0m  ┊ 💻 preparing terminal…
+  ┊ 💻 $         bash --version  0.1s
+
+[1m[38;5;220m╭─ ⚕ Hermes ──────────────────────────────────────────────────────────────────────╮
+[0m    [38;5;230mThat fixes it for this session. But the real fix is in your shell config — ever
+y new Hermes terminal session inherits the default PATH where /bin beats /opt/homeb
+rew/bin. Let me check your zshrc:[39m
+
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+[0m  ┊ 💻 preparing terminal…
+  ┊ 💻 $         grep -n 'PATH\|homebrew\|/bin' ~/.zshrc 2>/dev/null  0.1s
+
+[1m[38;5;220m╭─ ⚕ Hermes ──────────────────────────────────────────────────────────────────────╮
+[0m    [38;5;230mFound it. Line 22 in .zshrc builds PATH but doesn't include /opt/homebrew/bin.
+The system defaults (/etc/zprofile) put /usr/bin:/bin before /opt/homebrew/bin. Let
+ me fix:[39m
+
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+[0m  ┊ 🔧 preparing patch…
+  ┊ 🔧 patch     /Users/runner/.zshrc  0.2s
+  ┊ review diff
+[38;5;178ma//Users/runner/.zshrc → b//Users/runner/.zshrc[39m
+[38;5;102m@@ -19,7 +19,7 @@[39m
+[38;5;136m [39m
+[38;5;136m # Bun (for BTCA CLI)[39m
+[38;5;136m export BUN_INSTALL="$HOME/.bun"[39m
+[38;5;231m[48;5;88m-export PATH="$BUN_INSTALL/bin:$HOME/bin:$HOME/Scripts:/usr/local/bin:$HOME/go/bin:
+$HOME/.lmstudio/bin:$PNPM_HOME:$HOME/Library/Python/3.9/bin:$PATH"[39m[49m
+[38;5;231m[48;5;22m+export PATH="/opt/homebrew/bin:$BUN_INSTALL/bin:$HOME/bin:$HOME/Scripts:/usr/local
+/bin:$HOME/go/bin:$HOME/.lmstudio/bin:$PNPM_HOME:$HOME/Library/Python/3.9/bin:$PATH
+"[39m[49m
+[38;5;136m export CLAUDE_CODE_MAX_OUTPUT_TOKENS=500000[39m
+[38;5;136m export CLAUDE_CODE_NO_FLICKER=1[39m
+[38;5;136m export CLAUDE_CODE_AUTO_COMPACT_WINDOW=800000[39m
+  ┊ 💻 preparing terminal…
+  ┊ 💻 $         zsh -l -c 'which bash && bash --version | head -1'  0.2s
+
+[1m[38;5;220m╭─ ⚕ Hermes ──────────────────────────────────────────────────────────────────────╮
+[0m    [38;5;230mFixed. Fresh login shells now get bash 5.3.9. Summary:[39m
+
+    [38;5;230m- Root cause: /bin/bash (3.2, macOS default) appeared before /opt/homebrew/bin/
+bash (5.3.9, homebrew) in PATH[39m
+    [38;5;230m- Why only me: The .zshrc PATH builder on line 22 never included /opt/homebrew/
+bin, relying on system /etc/zprofile which puts /usr/bin:/bin first[39m
+    [38;5;230m- Impact: Hermes' terminal() tool spawns new shells that inherit the default PA
+TH → bash = 3.2 → hit the register script parsing bug[39m
+    [38;5;230m- Fix: Added /opt/homebrew/bin as the first PATH entry in .zshrc line 22[39m
+    [38;5;230m- Bonus: Codex confirmed TAP already patched the register script for bash-3.2 c
+ompat in commit 1da4b0e[39m
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+
+[0m[38;5;214m────────────────────────────────────────[39m
+[1m[38;5;214m●[0m [1m[[TAP v=0.3 from=fable-3 to=hermes id=fable-3-20260706T033204Z-a6f0502da034 [0m
+[1mkind=discuss reply=expected [0m
+[1mpath=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/fable-3-20260706T033204Z-a
+6f0502da034.md]][0m
+[38;5;214m────────────────────────────────────────[39m
+
+🔐 Nous agent key refreshed after 401. Retrying request...
+  ┊ 📖 preparing read_file…
+  ┊ 📖 read      fable-3-20260706T033204Z-a6f0502da034.md  0.1s
+[3m[38;5;136m  (´･_･`) formulating...[0m
+
+[38;5;230m[48;5;234m ⚕ [1m[38;5;220mdeepseek-v4-pro[0m[38;5;136m[48;5;234m │ 55.8K/1M │ [1m[38;5;71m[░░░░░░░░░░][0m[38;5;136m[48;5;234m [1m[38;5;71m5%[0m[38;5;136m[48;5;234m │ 23m │ ⏱ 8s[38;5;230m [39m[49m
+[38;5;173m───────────────────────────────────────────────────────────────────────────────────
+[3m[38;5;136m⚕ ❯ msg=interrupt · /queue · /bg · /steer · Ctrl+C cancel[0m
+[38;5;173m───────────────────────────────────────────────────────────────────────────────────

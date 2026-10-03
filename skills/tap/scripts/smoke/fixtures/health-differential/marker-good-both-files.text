@@ -1,0 +1,25 @@
+tap health: ok
+
+bus
+  path: <WORK>/C/.tap/bus
+  rule: dotdir
+
+watch
+  disarmed
+
+last activity
+  payload: none
+  receipt: none
+
+roster
+  alder-architect  recorded: active  harness: claude  pane: tap/alder-architect:0.0  state: unknown
+  alder-leader  recorded: active  harness: claude  pane: tap/alder-leader:0.0  state: unknown
+  birch-review  recorded: active  harness: agy  pane: tap/birch-review:0.0  state: unknown
+  cedar-review  recorded: active  harness: opencode  pane: tap/cedar-review:0.0  state: unknown
+  dogwood-panel-1  recorded: active  harness: cursor  pane: tap/fir-conductor:2.0  state: unknown
+  dogwood-panel-2  recorded: active  harness: codex  pane: tap/fir-conductor:3.0  state: unknown
+  elm-review  recorded: active  harness: opencode  pane: tap/elm-review:0.0  state: unknown
+  fir-conductor  recorded: active  harness: codex  pane: tap/fir-conductor:0.0  state: unknown
+  ginkgo-gate  recorded: active  harness: claude  pane: tap/ginkgo-gate:0.0  state: unknown
+  hazel-planner  recorded: active  harness: codex  pane: tap/hazel-planner:0.0  state: unknown
+  juniper-coach  recorded: active  harness: codex  pane: tap/juniper-coach:0.0  state: unknown

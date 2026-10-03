@@ -1,0 +1,8 @@
+Requesting permission for: old command
+Do you want to proceed?
+Yes · No · Tab amend
+⣷ Generating… · esc to cancel
+──────────────────────────────────────────
+> Add a follow-up
+──────────────────────────────────────────
+? for shortcuts · Gemini 2.5 Pro

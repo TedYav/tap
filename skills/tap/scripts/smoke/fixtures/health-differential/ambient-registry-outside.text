@@ -1,0 +1,15 @@
+tap health: ok
+
+bus
+  path: <WORK>/N/.tap/bus
+  rule: default
+
+registry
+  no registry (run: tap register)
+
+watch
+  disarmed
+
+last activity
+  payload: none
+  receipt: none

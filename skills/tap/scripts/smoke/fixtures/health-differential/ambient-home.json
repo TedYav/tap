@@ -1,0 +1,1 @@
+{"ok":true,"status":"healthy","bus":"<WORK>/B/.tap/bus","bus_rule":"env","registry_present":true,"last_payload_age_seconds":null,"last_receipt_age_seconds":null,"attention":[],"unsettled":[],"roster":[{"handle":"b-only","status":"active","pane":"nosuch:0.0","harness":"codex","state":"unknown","delivery":"pane"}],"watch":{"armed":false},"notify":null,"supervision":[],"events":[]}

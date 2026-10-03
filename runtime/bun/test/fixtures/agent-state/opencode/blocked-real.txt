@@ -1,0 +1,39 @@
+
+  ┃
+  ┃  Use your read tool to read the file /etc/hosts and tell me its first line.
+  ┃
+
+     ⠸ Read /etc/hosts [limit=1]
+
+     ▣  Build · Claude Haiku 4.5 (latest)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    ← Access external directory /etc
+  ┃
+  ┃  Patterns
+  ┃
+  ┃  - /etc/*
+  ┃
+  ┃
+  ┃   Allow once   Allow always   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃

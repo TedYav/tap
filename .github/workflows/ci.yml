@@ -1,0 +1,54 @@
+name: ci
+# Fork-safe CI: a GitHub-hosted runner, read-only permissions, no secrets.
+# Sanity runs the harness-free smoke subset under a sandbox HOME/TMPDIR/tmux;
+# the install smoke runs ./install.sh against a sandbox HOME and asserts the
+# installed `tap help` exits zero.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install tmux and jq
+        run: sudo apt-get update && sudo apt-get install -y tmux jq
+      - name: CI sanity (parse sweeps and fast smokes, sandboxed)
+        run: |
+          git config --local user.email ci@tap.local
+          git config --local user.name tap-ci
+          sanity_scratch=$(mktemp -d "$RUNNER_TEMP/tap-sanity.XXXXXX")
+          trap 'rm -rf "$sanity_scratch"' EXIT
+          mkdir -p "$sanity_scratch/home" "$sanity_scratch/tmp" "$sanity_scratch/tmux"
+          bun_bin="$(dirname "$(command -v bun)")"
+          env -i HOME="$sanity_scratch/home" TMPDIR="$sanity_scratch/tmp" \
+            TMUX_TMPDIR="$sanity_scratch/tmux" \
+            PATH="$bun_bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+            LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TERM=dumb \
+            CI_SANITY_BUDGET_SECS=60 \
+            bash scripts/ci-sanity.sh
+      - name: Typecheck
+        run: (cd runtime/bun && bun install --frozen-lockfile && bun run typecheck)
+      - name: Install smoke (sandbox HOME)
+        run: |
+          install_scratch=$(mktemp -d "$RUNNER_TEMP/tap-install.XXXXXX")
+          trap 'rm -rf "$install_scratch"' EXIT
+          mkdir -p "$install_scratch/home" "$install_scratch/bin" "$install_scratch/tmux"
+          HOME="$install_scratch/home" TAP_INSTALL_BIN="$install_scratch/bin" \
+            TMUX_TMPDIR="$install_scratch/tmux" PATH="$install_scratch/bin:$PATH" \
+            ./install.sh
+          HOME="$install_scratch/home" TAP_INSTALL_BIN="$install_scratch/bin" \
+            TMUX_TMPDIR="$install_scratch/tmux" PATH="$install_scratch/bin:$PATH" \
+            tap help > /dev/null

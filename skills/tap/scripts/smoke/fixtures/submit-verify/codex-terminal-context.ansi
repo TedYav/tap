@@ -1,0 +1,30 @@
+  [1mTip:[0m This is GPT-6, a new generation of intelligence. Astra is state-of-the-
+  art in coding, computer use, science, and professional work. Give it a hard
+  problem, a half-formed idea, or anything you've been meaning to build. See
+  where it takes you.
+
+
+[1;2m› [0mYou are a disposable TAP UI acceptance specimen. Use the shell tool to run
+  sleep 60 once, then reply IDLE_READY. For any later user message, reply
+  CONTROL_RECEIVED only and do not run tools. Do not poll TAP or clear your
+  composer.
+
+
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a
+  breakdown.
+
+[2m• [0mI’ll run the requested sleep once, then reply with the readiness marker.
+
+• [1mRan[0m sleep 60
+[2m  └ (no output)
+
+────────────────────────────────────────────────────────────────────────────────
+
+• [0mIDLE_READY
+
+[2m─ Worked for 1m 06s ────────────────────────────────────────────────────────────
+[0m 
+ 
+[1m›[0m [[TAP v0.23 ask sender-20260907T013531Z-fb2af96900ca]]
+ 
+  gpt-6-astra medium · Context 99% left                                       

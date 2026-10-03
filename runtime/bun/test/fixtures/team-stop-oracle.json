@@ -1,0 +1,539 @@
+{
+  "captured_from": {
+    "head": "bfe4f1bcaf24d43ab795839ab811442e83d9ab24",
+    "blobs": {
+      "skills/tap/scripts/tap-team-stop.sh": "4cf4d03acfc7f397a22c514d25039037ec9e9437",
+      "skills/tap/scripts/tap-team.sh": "651c3d9ba15a7051b6317718105c514ef9cf3d35",
+      "skills/tap/scripts/tap-team-reset.sh": "efbda0a2c70da09cbb40256d13898cd539619ec7",
+      "skills/tap/scripts/lib.sh": "f17ba54d96b5c93a7e885e5074d98b57da4458c5"
+    },
+    "platform": "darwin",
+    "bash": "5.3.9(1)-release",
+    "python": "3.14.6"
+  },
+  "cases": [
+    {
+      "name": "down_default_self_last",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/bob                 (1 pane)  seats: bob\n  kill session demo/boss                (1 pane)  seats: boss  [SELF — killed last]\ntap team down: stopped 2 teammate session(s), suspended their seats (self 'demo/boss' next)\n",
+        "stderr": "",
+        "rc": -1,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:58493:1789918929\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"bob\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:58493:1789918929\",\n      \"session\": \"demo/bob\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"bob\"\n    },\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:58493:1789918929\",\n      \"session\": \"demo/boss\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-down action=killed handle=bob pane=demo/bob team=demo\nts={TS} actor=team-down action=kill-requested handle=boss pane=demo/boss team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry.json.self-last-journal.59651.json": "{\"pre\": {\"boss\": {\"adopted_from_manual\": false, \"base\": \"demo\", \"delivery\": \"pane\", \"harness\": \"claude\", \"history\": [], \"index\": 1, \"model\": null, \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%2\", \"passthrough\": [], \"permissions\": \"bypass\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"registered_from_worktree\": \"{CASE}/demo\", \"server_epoch\": \"srv:58493:1789918929\", \"session\": \"demo/boss\", \"status\": \"active\", \"tag\": \"boss\"}}, \"post\": {\"boss\": {\"adopted_from_manual\": false, \"base\": \"demo\", \"delivery\": \"pane\", \"harness\": \"claude\", \"history\": [], \"index\": 1, \"model\": null, \"passthrough\": [], \"permissions\": \"bypass\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"registered_from_worktree\": \"{CASE}/demo\", \"server_epoch\": \"srv:58493:1789918929\", \"session\": \"demo/boss\", \"status\": \"suspended\", \"tag\": \"boss\", \"status_reason\": \"session_stopped\"}}}",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c0/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c0/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:58493:1789918929\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c0/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:58493:1789918929\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c0/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%2\", \"server_epoch\": \"srv:58493:1789918929\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1",
+          "boss": "%2"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "58493:1789918929",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c0/demo"
+      }
+    },
+    {
+      "name": "down_keep_self_caller_survives",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/bob                 (1 pane)  seats: bob\n  keep  session demo/boss                (1 pane)  seats: boss  [SELF — kept]\ntap team down: stopped 2 teammate session(s), suspended their seats (kept self 'demo/boss')\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:8227:1789918993\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"bob\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:8227:1789918993\",\n      \"session\": \"demo/bob\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"bob\"\n    },\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/boss:0.0\",\n      \"pane_id\": \"%2\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:8227:1789918993\",\n      \"session\": \"demo/boss\",\n      \"status\": \"active\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-down action=killed handle=bob pane=demo/bob team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c1/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c1/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:8227:1789918993\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c1/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:8227:1789918993\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c1/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%2\", \"server_epoch\": \"srv:8227:1789918993\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1",
+          "boss": "%2"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "8227:1789918993",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c1/demo"
+      }
+    },
+    {
+      "name": "down_kill_self_self_last",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/boss                (1 pane)  seats: boss  [SELF — killed last]\ntap team down: stopped 1 teammate session(s), suspended their seats (self 'demo/boss' next)\n",
+        "stderr": "",
+        "rc": -1,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:12619:1789918999\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:12619:1789918999\",\n      \"session\": \"demo/boss\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-down action=kill-requested handle=boss pane=demo/boss team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/bus/registry.json.self-last-journal.13043.json": "{\"pre\": {\"boss\": {\"adopted_from_manual\": false, \"base\": \"demo\", \"delivery\": \"pane\", \"harness\": \"claude\", \"history\": [], \"index\": 1, \"model\": null, \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"passthrough\": [], \"permissions\": \"bypass\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"registered_from_worktree\": \"{CASE}/demo\", \"server_epoch\": \"srv:12619:1789918999\", \"session\": \"demo/boss\", \"status\": \"active\", \"tag\": \"boss\"}}, \"post\": {\"boss\": {\"adopted_from_manual\": false, \"base\": \"demo\", \"delivery\": \"pane\", \"harness\": \"claude\", \"history\": [], \"index\": 1, \"model\": null, \"passthrough\": [], \"permissions\": \"bypass\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"registered_from_worktree\": \"{CASE}/demo\", \"server_epoch\": \"srv:12619:1789918999\", \"session\": \"demo/boss\", \"status\": \"suspended\", \"tag\": \"boss\", \"status_reason\": \"session_stopped\"}}}",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c2/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c2/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:12619:1789918999\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c2/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:12619:1789918999\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "boss": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "12619:1789918999",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c2/demo"
+      }
+    },
+    {
+      "name": "shutdown_clear_except_self",
+      "expected": {
+        "stdout": "tap team shutdown: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/bob                 (1 pane)  seats: bob\n  spared by --except (rows unchanged): boss (excepted: demo/boss)\ntap team shutdown: killed 2 teammate session(s), cleared registry\ntap team shutdown: spared 1 seat(s) by --except: boss\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/boss:0.0\",\n      \"pane_id\": \"%2\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:67021:1789919063\",\n      \"session\": \"demo/boss\",\n      \"status\": \"active\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-shutdown action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-shutdown action=killed handle=bob pane=demo/bob team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c3/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c3/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:67021:1789919063\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c3/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:67021:1789919063\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c3/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%2\", \"server_epoch\": \"srv:67021:1789919063\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1",
+          "boss": "%2"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "67021:1789919063",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c3/demo"
+      }
+    },
+    {
+      "name": "shutdown_clear_self_last",
+      "expected": {
+        "stdout": "tap team shutdown: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/boss                (1 pane)  seats: boss  [SELF — killed last]\ntap team shutdown: killed 1 teammate session(s), deleted registry (self 'demo/boss' next)\n",
+        "stderr": "",
+        "rc": -1,
+        "effects": {
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-shutdown action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-shutdown action=kill-requested handle=boss pane=demo/boss team=demo\n",
+          ".tap/bus/recovery/self-row-v4DIrc.inflight": "{\"team\": {\"name\": \"demo\", \"worktree_root\": \"{CASE}/demo\"}, \"schema\": \"0.20\", \"rows\": {\"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"{CASE}/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:74018:1789919070\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n",
+          ".tap/bus/registry.json": null
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c4/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c4/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:74018:1789919070\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c4/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:74018:1789919070\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "boss": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "74018:1789919070",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c4/demo"
+      }
+    },
+    {
+      "name": "shutdown_zero_rows_empty_registry_index_deenroll",
+      "expected": {
+        "stdout": "tap team shutdown: deleted blank acting registry (no seats); next: tap init\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n",
+          "index/global-registry.json": "{\n  \"schema\": \"0.20\",\n  \"teams\": {}\n}\n",
+          "index/teams.json.lock": "",
+          "index/global-registry.json.lock": "",
+          ".tap/bus/registry.json": null
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c5/demo\"}, \"seats\": {}}\n",
+        "panes": {},
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c5/demo"
+      }
+    },
+    {
+      "name": "shutdown_zero_rows_empty_registry_preflip_control",
+      "expected": {
+        "stdout": "tap team shutdown: deleted blank acting registry (no seats); next: tap init\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n",
+          ".tap/bus/registry.json": null
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c6/demo\"}, \"seats\": {}}\n",
+        "panes": {},
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c6/demo"
+      }
+    },
+    {
+      "name": "shutdown_named_positional_composes_only",
+      "expected": {
+        "stdout": "tap team shutdown: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  spared by --only alice (rows unchanged, the complement — not a typed set): bob (excepted: demo/bob)\ntap team shutdown: killed 1 teammate session(s), cleared registry\ntap team shutdown: spared 1 seat(s) by --only alice — every other seat\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"bob\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/bob:0.0\",\n      \"pane_id\": \"%1\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:37842:1789919138\",\n      \"session\": \"demo/bob\",\n      \"status\": \"active\",\n      \"tag\": \"bob\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-shutdown action=killed handle=alice pane=demo/alice team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c7/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c7/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:37842:1789919138\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c7/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:37842:1789919138\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "37842:1789919138",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c7/demo"
+      }
+    },
+    {
+      "name": "shutdown_named_positional_extra_refuses",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team: unexpected extra argument after team 'demo'; next: tap help team shutdown\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c8/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c8/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:41174:1789919142\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "41174:1789919142",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c8/demo"
+      }
+    },
+    {
+      "name": "down_only_unverified_pane_refuses",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  refused unverified pane (rows retained; possible live target): ghost (session_name_gone)\ntap team down: stopped 1 teammate session(s), suspended their seats\ntap team down: 1 stopped, 1 refused — the team is now partially down\ntap team down: --only alice, ghost matched every seat — none spared\n",
+        "stderr": "tap team down: warning: unverified pane seat 'ghost' — counts as stop refusal (row retained; possible live target)\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:42818:1789919144\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"ghost\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/ghost:0.0\",\n      \"pane_id\": \"%102\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:42818:1789919144\",\n      \"session\": \"demo/ghost\",\n      \"status\": \"active\",\n      \"tag\": \"ghost\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c9/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c9/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:42818:1789919144\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c9/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/ghost:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:42818:1789919144\", \"session\": \"demo/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "42818:1789919144",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c9/demo"
+      }
+    },
+    {
+      "name": "down_only_poll_row_retained",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  retained poll (rows unchanged): polldata (poll)\ntap team down: stopped 1 teammate session(s), suspended their seats\ntap team down: retained 1 poll seat(s) unchanged\ntap team down: --only alice, polldata matched every seat — none spared\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:45693:1789919147\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"polldata\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"poll\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/polldata:0.0\",\n      \"pane_id\": \"%102\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:45693:1789919147\",\n      \"session\": \"demo/polldata\",\n      \"status\": \"active\",\n      \"tag\": \"polldata\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c10/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c10/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:45693:1789919147\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"polldata\": {\"status\": \"active\", \"delivery\": \"poll\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c10/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/polldata:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:45693:1789919147\", \"session\": \"demo/polldata\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"polldata\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "45693:1789919147",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c10/demo"
+      }
+    },
+    {
+      "name": "kill_survives_suspend_rollback",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/boss                (1 pane)  seats: boss  [SELF — killed last]\ntap team down: stopped 0 teammate session(s), suspended their seats (self 'demo/boss' next)\ntap team down: 0 stopped, 1 refused — the team is now partially down\n",
+        "stderr": "tap team down: warning: session 'demo/alice' still live after kill\ntap team down: warning: own session 'demo/boss' still live after kill\ntap team down: 0 stopped, 2 refused — the team is now partially down (self kill failed)\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/alice:0.0\",\n      \"pane_id\": \"%0\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:48845:1789919151\",\n      \"session\": \"demo/alice\",\n      \"status\": \"active\",\n      \"tag\": \"alice\"\n    },\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/boss:0.0\",\n      \"pane_id\": \"%1\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:48845:1789919151\",\n      \"session\": \"demo/boss\",\n      \"status\": \"active\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=kill-failed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-down action=kill-requested handle=boss pane=demo/boss team=demo\nts={TS} actor=team-down action=kill-failed handle=boss pane=demo/boss team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c11/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c11/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:48845:1789919151\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c11/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:48845:1789919151\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "boss": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "48845:1789919151",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c11/demo"
+      }
+    },
+    {
+      "name": "kill_survives_clear_recovery_pending",
+      "expected": {
+        "stdout": "tap team shutdown: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/boss                (1 pane)  seats: boss  [SELF — killed last]\ntap team shutdown: killed 0 teammate session(s), cleared registry (self 'demo/boss' next)\n",
+        "stderr": "tap team shutdown: warning: session 'demo/alice' still live after kill\ntap team shutdown: warning: own session 'demo/boss' still live after kill\ntap team shutdown: 0 stopped, 2 refused — the team is now partially down (self kill failed)\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/alice:0.0\",\n      \"pane_id\": \"%0\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:54037:1789919157\",\n      \"session\": \"demo/alice\",\n      \"status\": \"active\",\n      \"tag\": \"alice\"\n    },\n    \"boss\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"pane\": \"demo/boss:0.0\",\n      \"pane_id\": \"%1\",\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:54037:1789919157\",\n      \"session\": \"demo/boss\",\n      \"status\": \"active\",\n      \"tag\": \"boss\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-shutdown action=kill-failed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-shutdown action=kill-requested handle=boss pane=demo/boss team=demo\nts={TS} actor=team-shutdown action=kill-failed handle=boss pane=demo/boss team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c12/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c12/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:54037:1789919157\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"boss\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c12/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/boss:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:54037:1789919157\", \"session\": \"demo/boss\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"boss\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "boss": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "54037:1789919157",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c12/demo"
+      }
+    },
+    {
+      "name": "down_dry_run",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/bob                 (1 pane)  seats: bob\ntap team down: dry-run — nothing killed, registry unchanged\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c13/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c13/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:60085:1789919164\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c13/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:60085:1789919164\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "60085:1789919164",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c13/demo"
+      }
+    },
+    {
+      "name": "down_json_receipt",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  kill session demo/bob                 (1 pane)  seats: bob\ntap team down: stopped 2 teammate session(s), suspended their seats\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"alice\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:62593:1789919167\",\n      \"session\": \"demo/alice\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"alice\"\n    },\n    \"bob\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:62593:1789919167\",\n      \"session\": \"demo/bob\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"session_stopped\",\n      \"tag\": \"bob\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-down action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-down action=killed handle=bob pane=demo/bob team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c14/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c14/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:62593:1789919167\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c14/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:62593:1789919167\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "62593:1789919167",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c14/demo"
+      }
+    },
+    {
+      "name": "down_except_dry_run",
+      "expected": {
+        "stdout": "tap team down: plan for team 'demo'\n  kill session demo/alice               (1 pane)  seats: alice\n  spared by --except (rows unchanged): bob (excepted: demo/bob)\ntap team down: dry-run — nothing killed, registry unchanged\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c15/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c15/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:67201:1789919172\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c15/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:67201:1789919172\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "67201:1789919172",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c15/demo"
+      }
+    },
+    {
+      "name": "reset_clean_stops_teammates",
+      "expected": {
+        "stdout": "tap team reset: checkpointed and reinitialized team bus\ntap team reset:   archive={CASE}/demo/.tap/bus/archive/team-reset/19700101T000000Z-resetclean\ntap team reset:   bundle_id=19700101T000000Z-resetclean\ntap team reset:   next: tap in   # rejoin the clean bus (caller is unregistered)\ntap team reset:   optional: tap team restore --archive 19700101T000000Z-resetclean   # then tap team up\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetclean/COMPLETE": "19700101T000000Z-resetclean\nbus/payloads\nbus/receipts\nbus/registry.json\nbus/registry.json.lock\nmeta.json\ninventory.json\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetclean/bus/registry.json": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"{CASE}/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"{CASE}/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:68860:1789919174\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"{CASE}/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:68860:1789919174\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetclean/bus/registry.json.lock": "",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetclean/inventory.json": "{\n  \"components\": [\n    {\n      \"files\": 0,\n      \"name\": \"payloads\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"receipts\"\n    },\n    {\n      \"files\": 1,\n      \"name\": \"registry.json\"\n    },\n    {\n      \"files\": 1,\n      \"name\": \"registry.json.lock\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"team-registry.json\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"team-registry.json.lock\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"spool\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"watch\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"goalie\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"collab\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"seat-state\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"pane-effects\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"drafts\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"handoff\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"input-backups\"\n    }\n  ]\n}\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetclean/meta.json": "{\n  \"bundle_id\": \"19700101T000000Z-resetclean\",\n  \"created_at\": \"{TS}\",\n  \"kind\": \"team-reset\",\n  \"prior_reset_generation\": null,\n  \"root\": \"{CASE}/demo\",\n  \"schema_version\": 1,\n  \"source_bus\": \"{CASE}/demo/.tap/bus\",\n  \"team\": \"demo\"\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-reset-stop action=killed handle=alice pane=demo/alice team=demo\nts={TS} actor=team-reset-stop action=killed handle=bob pane=demo/bob team=demo\n",
+          ".tap/bus/reset-generation.json": "{\n  \"bundle_id\": \"19700101T000000Z-resetclean\",\n  \"state\": \"pristine\"\n}\n",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/reset.fence.json.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/team-registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {},\n  \"team\": {\n    \"branch_at_bootstrap\": \"unknown\",\n    \"created_at\": \"{TS}\",\n    \"name\": \"demo\",\n    \"schema_version\": \"1\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n",
+          ".tap/team-registry.json.lock": "",
+          ".tap/bus/registry.json": null
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c16/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c16/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:68860:1789919174\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"bob\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c16/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/bob:0.0\", \"pane_id\": \"%1\", \"server_epoch\": \"srv:68860:1789919174\", \"session\": \"demo/bob\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"bob\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0",
+          "bob": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "68860:1789919174",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c16/demo"
+      }
+    },
+    {
+      "name": "reset_aborts_on_unverified_pane",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team reset-stop: warning: unverified pane seat 'ghost' — counts as stop refusal (row retained; possible live target)\ntap: reset aborted: 1 stopped, 1 refused — team is partially down; live TAP state unchanged; next: re-run tap team reset after stopping survivors\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-reset-stop action=killed handle=alice pane=demo/alice team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/reset.fence.json.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c17/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c17/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:75875:1789919182\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c17/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/ghost:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:75875:1789919182\", \"session\": \"demo/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "75875:1789919182",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c17/demo"
+      }
+    },
+    {
+      "name": "reset_spared_poll_row_proceeds",
+      "expected": {
+        "stdout": "tap team reset: checkpointed and reinitialized team bus\ntap team reset:   archive={CASE}/demo/.tap/bus/archive/team-reset/19700101T000000Z-resetpoll\ntap team reset:   bundle_id=19700101T000000Z-resetpoll\ntap team reset:   next: tap in   # rejoin the clean bus (caller is unregistered)\ntap team reset:   optional: tap team restore --archive 19700101T000000Z-resetpoll   # then tap team up\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetpoll/COMPLETE": "19700101T000000Z-resetpoll\nbus/payloads\nbus/receipts\nbus/registry.json\nbus/registry.json.lock\nmeta.json\ninventory.json\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetpoll/bus/registry.json": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"{CASE}/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"{CASE}/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:78625:1789919186\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"polldata\": {\"status\": \"active\", \"delivery\": \"poll\", \"registered_from_worktree\": \"{CASE}/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/polldata:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:78625:1789919186\", \"session\": \"demo/polldata\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"polldata\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetpoll/bus/registry.json.lock": "",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetpoll/inventory.json": "{\n  \"components\": [\n    {\n      \"files\": 0,\n      \"name\": \"payloads\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"receipts\"\n    },\n    {\n      \"files\": 1,\n      \"name\": \"registry.json\"\n    },\n    {\n      \"files\": 1,\n      \"name\": \"registry.json.lock\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"team-registry.json\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"team-registry.json.lock\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"spool\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"watch\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"goalie\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"collab\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"seat-state\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"pane-effects\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"drafts\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"handoff\"\n    },\n    {\n      \"files\": 0,\n      \"name\": \"input-backups\"\n    }\n  ]\n}\n",
+          ".tap/bus/archive/team-reset/19700101T000000Z-resetpoll/meta.json": "{\n  \"bundle_id\": \"19700101T000000Z-resetpoll\",\n  \"created_at\": \"{TS}\",\n  \"kind\": \"team-reset\",\n  \"prior_reset_generation\": null,\n  \"root\": \"{CASE}/demo\",\n  \"schema_version\": 1,\n  \"source_bus\": \"{CASE}/demo/.tap/bus\",\n  \"team\": \"demo\"\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=team-reset-stop action=killed handle=alice pane=demo/alice team=demo\n",
+          ".tap/bus/reset-generation.json": "{\n  \"bundle_id\": \"19700101T000000Z-resetpoll\",\n  \"state\": \"pristine\"\n}\n",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/reset.fence.json.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/team-registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {},\n  \"team\": {\n    \"branch_at_bootstrap\": \"unknown\",\n    \"created_at\": \"{TS}\",\n    \"name\": \"demo\",\n    \"schema_version\": \"1\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n",
+          ".tap/team-registry.json.lock": "",
+          ".tap/bus/registry.json": null
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c18/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c18/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:78625:1789919186\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"polldata\": {\"status\": \"active\", \"delivery\": \"poll\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c18/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/polldata:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:78625:1789919186\", \"session\": \"demo/polldata\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"polldata\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "78625:1789919186",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c18/demo"
+      }
+    },
+    {
+      "name": "down_foreign_live_fence_refuses",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team down: refusing tap team down — team bus is mid-reset (fence at {CASE}/demo/.tap/bus/reset.fence.json); next: wait for the reset owner (or until identity is readable), then: tap team reset\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c19/demo\"}, \"seats\": {\"alice\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c19/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/alice:0.0\", \"pane_id\": \"%0\", \"server_epoch\": \"srv:83489:1789919193\", \"session\": \"demo/alice\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"alice\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "alice": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.ub5gtr/tmux/tmux-502/default",
+        "serverEpoch": "83489:1789919193",
+        "root": "/tmp/tb.ub5gtr/tmux/tap-team-stop-oracle.7RCcDY/c19/demo"
+      }
+    }
+  ]
+}

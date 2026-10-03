@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.286
+▝▜██████▀  Fable 5.1 with high effort · Claude Max
+ ▝▝   ▝▝   /tmp/probe
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      Scroll wheel is sending arrow keys · use PgUp/PgDn to scroll
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ probe draft line 13 (inert, do not act)
+  probe draft line 14 (inert, do not act)
+  probe draft line 15 (inert, do not act)
+  probe draft line 16 (inert, do not act)
+  probe draft line 17 (inert, do not act)
+  probe draft line 18 (inert, do not act)
+  probe draft line 19 (inert, do not act)
+  probe draft line 20 (inert, do not act)
+  probe draft line 21 (inert, do not act)
+  probe draft line 22 (inert, do not act)
+  probe draft line 23 (inert, do not act)
+  probe draft line 24 (inert, do not act)
+  probe draft line 25 (inert, do not act)
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Fable 5.1 high | 0%↯ 0/420k ● ░░░░░░░░░░ | 📁 cwd
+  ⏵⏵ auto mode on (shift+tab to cycle)

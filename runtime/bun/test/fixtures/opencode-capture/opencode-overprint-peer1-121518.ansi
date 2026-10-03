@@ -1,0 +1,66 @@
+[38;2;255;255;255m[48;2;10;10;10m     [38;2;238;238;238mstrippe display width) is a valid "every cell position unchanged" argument. Approving with two small [38;2;255;255;255m
+     [38;2;238;238;238mstipulations to verify at PR review:[38;2;255;255;255m
+
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238m$ cat > /var/folders/.t/dummyxdummyxdummyxdummyxdummyx/T/opencode/peer-reviewer/design-note-review.txt <<'EOF'[38;2;255;255;255m [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mDesign note for tap-zcjht.5: approved. Substitute-all-72 with the mechanical geometry proof is the right call; [38;2;255;255;255m[48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mre-capture of unreproducible states would weaken the tests. Baseline counts re-verified on origin/main by [38;2;255;255;255m     [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mreviewer (72 token files, 69 company-name files). Two stipulations, both checked at PR review:[38;2;255;255;255m                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238m1. State the map's application rule in the PR body (ordering, longest-first if prefixes overlap, and whether [38;2;255;255;255m  [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mreplacement is bare-substring or token/segment-bounded). Short same-length tokens make this the one place the [38;2;255;255;255m [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mproof script could be self-consistent yet wrong. The fragment sweep covers detection; the PR body needs the [38;2;255;255;255m   [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mrule itself.[38;2;255;255;255m                                                                                                   [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238m2. The regenerated precut archive must be reproducible: deterministic gzip (fixed mtime/name), with the [38;2;255;255;255m       [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mREADME's regeneration instructions updated to name the map and those settings alongside the source commit.[38;2;255;255;255m     [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mNoted and accepted: leaving live test_launcher.py and the other lane-4 consumers to lane 4 (their charter [38;2;255;255;255m     [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mcovers them; the archive's own copy is handled by your regeneration); seat handles and TAP lane worktree names [38;2;255;255;255m[48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mout of refusal classes. Proceed to implementation. I will approve the whole diff at the exact head once the [38;2;255;255;255m   [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mdiff, proof-script output, focused checks and thread state are in.[38;2;255;255;255m                                             [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mEOF[38;2;255;255;255m                                                                                                            [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mtap reply ossfixtures-20260926T120822Z-509d21e359d3 -f /var/folders/.t/dummyxdummyxdummyxdummyxdummyx/T/[38;2;255;255;255m       [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mopencode/peer-reviewer/design-note-review.txt[38;2;255;255;255m                                                                  [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mtap reply: ok ossfixtures-20260926T120822Z-509d21e359d3[38;2;255;255;255m                                                        [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238m$ tap outstanding peer-reviewer[38;2;255;255;255m                                                                                [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m  [38;2;238;238;238mtap outstanding: no outstanding sends for peer-reviewer[38;2;255;255;255m                                                        [48;2;10;10;10m
+  [38;2;10;10;10m[48;2;20;20;20m┃[38;2;255;255;255m                                                                                                                 [48;2;10;10;10m
+
+     [38;2;245;167;66m+ Thought: 161ms[38;2;255;255;255m
+
+     [38;2;238;238;238mDesign note for lane 5 [1m[38;2;245;167;66mreviewed and approved[0m[38;2;238;238;238m[48;2;10;10;10m, reply delivered to ossfixtures. Summary of my review:[38;2;255;255;255m
+
+     [1m[38;2;245;167;66mVerified before approving:[0m[38;2;255;255;255m[48;2;10;10;10m
+
+     [38;2;250;178;131m- [38;2;238;238;238mBaseline counts on [38;2;127;216;143morigin/main[38;2;238;238;238m match the note and charter exactly (72 token files, 69 company-name files [38;2;255;255;255m
+       [38;2;238;238;238macross both fixture trees).[38;2;255;255;255m
+     [38;2;250;178;131m- [38;2;238;238;238mThe precut archive pin is a whole-archive sha256 (test, README, manifest), so regenerating with the map [38;2;255;255;255m
+       [38;2;238;238;238mapplied and re-pinning in the same PR is consistent — no member-vs-live-fixture comparison to break.[38;2;255;255;255m
+     [38;2;250;178;131m- [38;2;238;238;238mSame-length byte-level substitution automatically preserves the derived project-dir slug invariant and cell [38;2;255;255;255m
+       [38;2;238;238;238mpositions; the proof plan (line count + per-line byte length + ANSI-stripped display width + consumers green [38;2;255;255;255m
+       [38;2;238;238;238m+ dual grep instruments) satisfies the charter's same-length option.[38;2;255;255;255m
+
+     [1m[38;2;245;167;66mTwo stipulations for PR review:[0m[38;2;255;255;255m[48;2;10;10;10m
+
+     [38;2;250;178;131m1. [38;2;238;238;238mPR body must state the map's application rule (ordering/boundaries) — the one spot the self-checking proof [38;2;255;255;255m
+        [38;2;238;238;238mcould be wrong-but-consistent.[38;2;255;255;255m
+     [38;2;250;178;131m2. [38;2;238;238;238mRegenerated archive must use deterministic gzip with updated README regeneration instructions.[38;2;255;255;255m
+
+     [1m[38;2;245;167;66mAccepted scope edges:[0m[38;2;238;238;238m[48;2;10;10;10m lane-4-owned live consumers (test_launcher.py etc.) stay with lane 4; seat handles/TAP [38;2;255;255;255m
+     [38;2;238;238;238mworktree names are outside refusal classes.[38;2;255;255;255m
+
+     [38;2;238;238;238mNo outstanding sends. Standing by for the PR head to review and approve the whole diff.[38;2;255;255;255m
+
+     [38;2;92;156;245m▣ [38;2;255;255;255m [38;2;238;238;238mBuild[38;2;128;128;128m · Kimi K3 · 1m 59s[38;2;255;255;255m
+
+  [38;2;92;156;245m┃[38;2;255;255;255m[48;2;30;30;30m                                                                                                                 [48;2;10;10;10m
+  [38;2;92;156;245m┃[38;2;255;255;255m[48;2;30;30;30m  [39m[49m[claude-mem-capture] Worker POST /api/sessions/observations failed: Unable to connect. Is the computer able to ac
+cess the url?[38;2;255;255;255m[48;2;30;30;30m                                                                                                       [48;2;10;10;10m
+[39m[49m[claude-mem-capture] Worker POST /api/sessions/summarize failed: Unable to connect. Is the computer able to access the
+ url?[38;2;30;30;30m[48;2;10;10;10m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[38;2;255;255;255m
+   [38;2;128;128;128m/Users/runner/wrk/Example-Org/tap[38;2;255;255;255m                                             [38;2;128;128;128m33.6K (6%) · $0.33[38;2;255;255;255m  [38;2;238;238;238mctrl+p [38;2;128;128;128mcommands[38;2;255;255;255m

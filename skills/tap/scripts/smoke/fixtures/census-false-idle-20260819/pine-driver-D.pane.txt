@@ -1,0 +1,137 @@
+  priority tonight.
+
+  The fix, four parts: an escape route at the read site (because the mark has four writers, and the fourth was only found by grepping the string after three function-name sweeps came back clean); a third disposition unrouted that asserts
+  no observation and explicitly declines to blame the recipient; reconcile-before-dispose above both gates; and an audit trail so the mark stops destroying its own diagnosis.
+
+  Caught one more near-miss before it became evidence. The retry loop I had running was still cycling on the suite slot after I'd committed twice — its tree was 4bfb5858 while the tree had moved to 56a52b06. A green from it would have
+  anchored a tree that no longer existed. Killed it, verified no orphaned suite held the slot, re-ran from the current head, and disclosed it with an instruction to refuse that tree if it's cited.
+
+  That's the third time tonight the answer was the same shape: Lane 4's dirty anchor, my stale five-losses status report, and this. A recorded result is a measurement with a timestamp, not a property of the world.
+
+  Lane totals: seven commits, two fixtures, eight distinct mutations, fully synthetic substrate. Two placebo arms caught by mutation and recorded in-file rather than quietly repaired — one relabelled to state what it actually pins, then
+  re-proven. One defect (the escalated-gate ordering) that only the end-to-end leg could reach, which would otherwise have shipped a fix converting "sunk and silent" into "sunk, announced, and permanent."
+
+  Honest scope: specimen 1's mark remains unexplained, reported as a result rather than a claimed path. The tap doctor scheduler and tap-ncd4's guard are deliberately out of this PR and named as such.
+
+✻ Sautéed for 2m 43s · 1 shell still running
+
+❯ [[TAP v=0.20 from=pine-lieutenant to=pine-driver-D id=pine-lieutenant-20260819T231215Z-7b4918afe17e kind=discuss reply=expected path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-lieutenant-20260819T231215Z-7b4918afe17e.md]]
+
+  Ran 2 shell commands
+
+❯ [[TAP v=0.20 from=pine-gate to=pine-driver-D id=pine-gate-20260819T231215Z-b214a522f45f kind=discuss reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-20260819T231215Z-b214a522f45f.md]]
+
+  Ran 2 shell commands
+
+⏺ Both messages handled. Status:
+
+  Gate has PR !113 queued third — behind !111 (the dogfood prerequisite I asked to queue behind) and !109's final re-gate. It's using the wait productively, running the fifth-writer sweep from the string rather than the function names,
+  with its own good reasoning: a sweep that found the fourth writer only by string is a sweep whose earlier passes were measuring the wrong thing. It's accepted the 4bfb5858 refusal for the record and will anchor only to
+  56a52b06/3f6c8fa1.
+
+  On the stale-tree loop, I sharpened one thing. I didn't catch it by inspecting the loop — I caught it because my command happened to start with git rev-parse HEAD^{tree}, so its output file carried the old tree in line 1 and mismatched
+  what I had in hand. That was luck of formatting, not diligence. Written the obvious way, the loop would have delivered a green with nothing to compare against. So the transferable rule isn't "check your loop" — it's a background run
+  must stamp the tree it started against, or its eventual green is uncheckable.
+
+  And a structural point past the lieutenant's framing: smoke-all did stamp the tree it tested, and that tree was real. Every field was honest. The defect isn't in the anchor — it's that nobody compares the anchor's tree to the tree being
+  merged, and that comparison currently lives in a human's head. Lane 4's dirty-tree case is the same gap from the other side. If tap-8sez wants a mechanical owner rather than a lesson, both findings share one fix: the gate request and
+  PR should carry the tree, and something should refuse a mismatch. Flagged, not built — that's not this lane's scope.
+
+  Adopted inline retry over background loops on any moving tree. The throughput I was buying amounted to writing a bead comment while waiting; a retry inside my own turn has no tree to outlive.
+
+  Tree stable and clean at 3f6c8fa1, no live loops. Nothing blocked; waiting on a real verdict.
+
+✻ Worked for 1m 35s · 1 shell still running
+
+❯ [[TAP v=0.20 from=pine-lieutenant to=pine-driver-D id=pine-lieutenant-20260819T231619Z-5d87b46b1d2f kind=discuss reply=expected path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-lieutenant-20260819T231619Z-5d87b46b1d2f.md]]
+
+  Ran 3 shell commands
+
+⏺ Accepted the Lane 6 review gate — Lane 5 is waiting on gate's queue, not on my hands, so that window is idle time rather than reserve capacity.
+
+  I set out how I'll run it before linden-util-1 arrives, so the shape can be corrected in advance: I review and don't drive (wanting to write the fix is the signal to hand it back with reasoning, not take the wheel), and his
+  mutation-kill proof gets re-run, not read. Tonight produced two placebo arms in my own lane that looked exactly like coverage and were invisible on inspection — a mutation proof I accept by reading is a proof I haven't checked. I'll
+  apply his mutations myself and say which ones I re-ran. The sonnet seat is a reason to look, not a prior about what I'll find; if it's clean I'll say so and name what I checked.
+
+  On tap-dnub — it's my lane's defect inverted, and the pairing is worth recording. In tap-6vwz, no side made any claim at all: silence that looked like nothing was wrong. In tap-dnub, the sending side made true claims — .placed and .sent
+  are both honest about what the sender did — and the receiving side asserts nothing, so a complete-looking receipt set describes a message that never became text.
+
+  The common root: every receipt in this system attests an action by the party writing it, and none attests arrival. .placed says "I wrote a file." .sent says "I submitted." Even tap_submit_verify verifies a submission, not a render. No
+  receipt in the vocabulary has the recipient's pane as its author, so "did it arrive" is structurally unanswerable — which is how grok's !111 review findings could vanish with every check passing.
+
+  That means my own unrouted disposition inherits the same limit, and I'd rather name it than let it read as more: it asserts the courier never attempted, which is a claim about the courier. It says nothing about what the recipient saw.
+  Honest for what it states; not a delivery guarantee.
+
+✻ Brewed for 1m 27s · 1 shell still running
+
+❯ [[TAP v=0.20 from=pine-gate-2 to=pine-driver-D id=pine-gate-2-20260819T232216Z-9144485234f5 kind=discuss reply=expected path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-gate-2-20260819T232216Z-9144485234f5.md]]
+
+  Ran 1 shell command
+
+⏺ A serious finding. Verifying it myself rather than accepting it on the report.
+
+  Ran 1 shell command
+
+⏺ Reproduced exactly — the body is destroyed and the sender holds a pointer to a file that never existed. The finding is correct.
+
+  Ran 1 shell command
+
+⏺ Confirmed. Fixing the residency — and the event action needs to stay honest too:
+
+  Ran 1 shell command
+
+⏺ Fixed: the named path now resolves both before and after the reap, and the body survives at canonical. Now the arm gate-2 said must exist:
+
+  Ran 2 shell commands
+
+⏺ Mutation K passed — meaning arm 5c can't see the reap defect, because the notice path already promoted. Adding a case that isolates it:
+
+  Ran 2 shell commands
+
+⏺ My rig bug — TAP_SPOOL is frozen at source time, so re-exporting TAP_HOME doesn't move the bus. Simpler to plant the case in the same bus:
+
+  Ran 2 shell commands
+
+⏺ Both residency defects now independently mutation-proven. Committing and gating.
+
+  Ran 1 shell command
+
+❯ [[TAP v=0.20 from=linden-util-1 to=pine-driver-D id=linden-util-1-20260819T232500Z-7fcf418117b9 kind=discuss reply=expected path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/linden-util-1-20260819T232500Z-7fcf418117b9.md]]
+
+  Ran 2 shell commands
+
+⏺ A well-formed request. Reviewing the diff directly rather than the description.
+
+  Ran 2 shell commands
+
+⏺ The diff reads well. Now re-running their mutation proofs myself rather than accepting them.
+
+  Ran 1 shell command
+
+⏺ I shouldn't mutate their locked worktree. Copying to my own scratch first:
+
+  Ran 2 shell commands
+
+⏺ MUT 1 reds correctly. MUT 2 shows something important — the arm still passes because another surface prints a matching line.
+
+  Read 1 file, ran 2 shell commands
+
+⏺ MUT 2 does red (my earlier tail -2 showed the diagnostic dump, not the verdict). But that output revealed something worth checking:
+
+  Ran 2 shell commands
+
+⏺ I have a substantive finding. Verifying its practical impact before reporting.
+
+  Ran 3 shell commands
+
+⏺ I have the review. The finding is real but nuanced — not a blocker.
+
+⏺ Running 1 shell command…
+
+✽ Hashing… (5m 44s · ↓ 16.5k tokens)
+  ⎿  Tip: Connect Claude to your IDE · /ide
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── tap/pine-driver-D ─
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on · 1 shell · esc to interrupt · ← 2 agents · ↓ to manage

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAP — Choose a harness. Save a preset.</title>
+<style>
+:root {
+  color-scheme:light;
+  --ink:#182c34;
+  --muted:#465a63;
+  --paper:#f6f3eb;
+  --card:#fffdf7;
+  --line:#b9c7c7;
+  --teal:#076a66;
+  --orange:#a74716}
+
+* {
+  box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font:17px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main {
+  max-width:1100px;
+  margin:auto;
+  padding:48px 28px}
+a {
+  color:var(--teal);
+  text-underline-offset:.2em}
+a:focus-visible {
+  outline:3px solid var(--orange);
+  outline-offset:4px}
+h1,h2,h3,p {
+  margin-top:0}
+h1 {
+  font-size:clamp(2.6rem,7vw,4.8rem);
+  line-height:1.06;
+  letter-spacing:-.045em;
+  max-width:850px;
+  margin-bottom:20px}
+h2 {
+  font-size:1.5rem;
+  line-height:1.2;
+  margin-bottom:18px}
+h3 {
+  font-size:1.05rem;
+  margin-bottom:5px}
+.eyebrow {
+  font-size:.8rem;
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--teal)}
+.intro {
+  max-width:760px;
+  font-size:1.18rem}
+.nav {
+  display:flex;
+  gap:22px;
+  flex-wrap:wrap;
+  margin:24px 0 40px}
+.section {
+  margin-top:38px}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px}
+.card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:22px}
+.card p:last-child {
+  margin-bottom:0}
+.number {
+  display:block;
+  color:var(--orange);
+  font-size:.8rem;
+  font-weight:750;
+  margin-bottom:12px}
+code,kbd {
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:.87em}
+code {
+  overflow-wrap:anywhere}
+pre {
+  white-space:pre-wrap;
+  margin:12px 0 0}
+kbd {
+  background:white;
+  border:1px solid var(--line);
+  border-bottom-width:2px;
+  border-radius:4px;
+  padding:1px 5px}
+.bus {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:26px 12px;
+  margin:24px 0;
+  background:#e3efea;
+  border-radius:14px;
+  text-align:center}
+.seat {
+  font-weight:750}
+.seat small {
+  display:block;
+  font-weight:400;
+  color:var(--muted)}
+.bridge {
+  color:var(--teal);
+  font-size:.95rem}
+.bridge strong {
+  display:block;
+  font-size:1.4rem}
+.quote {
+  font-size:1.12rem;
+  border-left:4px solid var(--orange);
+  padding:12px 20px;
+  margin:14px 0;
+  background:var(--card)}
+.roles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px}
+.role {
+  border-top:2px solid var(--teal);
+  padding-top:12px}
+.role p {
+  color:var(--muted);
+  margin-bottom:0}
+.skills {
+  display:grid;
+  grid-template-columns:max-content 1fr;
+  gap:12px 22px}
+.skills dt {
+  font-weight:750;
+  color:var(--teal)}
+.skills dd {
+  margin:0}
+.footer {
+  margin-top:38px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.9rem}
+@media(max-width:700px) {
+  main {
+  padding:28px 18px}
+.grid,.roles {
+  grid-template-columns:1fr}
+.bus {
+  gap:12px}
+.bridge {
+  font-size:.8rem}
+.skills {
+  gap:12px}
+.nav {
+  margin-bottom:28px}
+}
+@media print {
+  main {
+  padding:0}
+.card,.role,.quote,.bus {
+  break-inside:avoid}
+body {
+  font-size:11pt;
+  background:white}
+h1 {
+  font-size:32pt}
+.nav {
+  margin:12px 0}
+.section {
+  margin-top:22px}
+a {
+  color:inherit}
+.grid {
+  grid-template-columns:repeat(3,1fr)}
+.roles {
+  grid-template-columns:repeat(3,1fr)}
+}
+
+
+table {width:100%;border-collapse:collapse} th,td {text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top} .table-wrap {overflow-x:auto} li {margin-bottom:8px}
+</style>
+</head>
+<body>
+<main>
+<header><p class="eyebrow">TAP · human cheat sheet</p><h1>Choose a harness. Save a preset.</h1><p class="intro">A harness is the agent CLI. A preset saves its model and tuning. Run <code>tap presets</code> to see the choices configured on your machine.</p><nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a></nav></header>
+<section><h2>Supported harnesses</h2><div class="table-wrap"><table><thead><tr><th>Harness key</th><th>Executable</th><th>Wizard detection</th><th>Permission policy</th></tr></thead><tbody>
+<tr><th scope="row">claude</th><td><code>claude</code></td><td>Yes</td><td>bypass / auto</td></tr>
+<tr><th scope="row">codex</th><td><code>codex</code></td><td>Yes</td><td>bypass / auto</td></tr>
+<tr><th scope="row">cursor</th><td><code>cursor-agent</code></td><td>Yes</td><td>bypass / auto</td></tr>
+<tr><th scope="row">opencode</th><td><code>opencode</code></td><td>Yes</td><td>No TAP auto selector; native permission configuration applies</td></tr>
+<tr><th scope="row">agy</th><td><code>agy</code></td><td>Yes</td><td>bypass / auto</td></tr>
+<tr><th scope="row">hermes</th><td><code>hermes</code></td><td>Yes; no simple starter. Choose a catalog preset or add your own</td><td>Native permission configuration applies</td></tr>
+</tbody></table></div><p>The wizard finds commands on PATH. Sign-in, model access and provider configuration still belong to each CLI.</p><p><strong>Bypass</strong> removes Claude, Codex, Cursor and Antigravity permission checks. <strong>Codex auto</strong> uses a workspace sandbox and automatic approval review, with no human approval dialog. Claude auto uses its harness approval policy; Cursor auto uses its automatic review; Antigravity auto stops for every permission request. Choose the mode in <code>tap setup --machine</code>; do not hide conflicting bypass flags in a preset.</p></section>
+<section class="section"><h2>Reference presets</h2><p>★ marks the wizard’s simple starter choices. For Claude/Codex starters, the wizard replaces the reference effort below with your chosen default. “Choose myself” keeps the selected catalog entries. Hermes has reference entries but no wizard starter.</p><div class="table-wrap"><table><thead><tr><th>Preset</th><th>Harness</th><th>Model</th><th>Reference effort</th></tr></thead><tbody>
+<tr data-preset="opus"><th scope="row"><code>opus</code> ★</th><td>claude</td><td><code>opus[1m]</code></td><td>medium</td></tr>
+<tr data-preset="opus-high"><th scope="row"><code>opus-high</code></th><td>claude</td><td><code>opus[1m]</code></td><td>high</td></tr>
+<tr data-preset="opus-xhigh"><th scope="row"><code>opus-xhigh</code></th><td>claude</td><td><code>opus[1m]</code></td><td>xhigh</td></tr>
+<tr data-preset="fable"><th scope="row"><code>fable</code> ★</th><td>claude</td><td><code>fable</code></td><td>medium</td></tr>
+<tr data-preset="fable-high"><th scope="row"><code>fable-high</code></th><td>claude</td><td><code>fable</code></td><td>high</td></tr>
+<tr data-preset="fable-xhigh"><th scope="row"><code>fable-xhigh</code></th><td>claude</td><td><code>fable</code></td><td>xhigh</td></tr>
+<tr data-preset="sonnet"><th scope="row"><code>sonnet</code> ★</th><td>claude</td><td><code>sonnet</code></td><td>high</td></tr>
+<tr data-preset="astra-med"><th scope="row"><code>astra-med</code></th><td>codex</td><td><code>gpt-6-astra</code></td><td>medium</td></tr>
+<tr data-preset="astra-fast"><th scope="row"><code>astra-fast</code></th><td>codex</td><td><code>gpt-6-astra</code></td><td>medium</td></tr>
+<tr data-preset="astra"><th scope="row"><code>astra</code> ★</th><td>codex</td><td><code>gpt-6-astra</code></td><td>high</td></tr>
+<tr data-preset="astra-ponytail"><th scope="row"><code>astra-ponytail</code></th><td>codex</td><td><code>gpt-6-astra</code></td><td>xhigh</td></tr>
+<tr data-preset="astra-xhigh"><th scope="row"><code>astra-xhigh</code></th><td>codex</td><td><code>gpt-6-astra</code></td><td>xhigh</td></tr>
+<tr data-preset="astra-max"><th scope="row"><code>astra-max</code></th><td>codex</td><td><code>gpt-6-astra</code></td><td>max</td></tr>
+<tr data-preset="gpt-spark"><th scope="row"><code>gpt-spark</code></th><td>codex</td><td><code>gpt-5.3-codex-spark</code></td><td>high</td></tr>
+<tr data-preset="sol"><th scope="row"><code>sol</code> ★</th><td>codex</td><td><code>gpt-6.1-sol</code></td><td>high</td></tr>
+<tr data-preset="sol-xhigh"><th scope="row"><code>sol-xhigh</code></th><td>codex</td><td><code>gpt-6.1-sol</code></td><td>xhigh</td></tr>
+<tr data-preset="sol-ponytail"><th scope="row"><code>sol-ponytail</code></th><td>codex</td><td><code>gpt-6.1-sol</code></td><td>xhigh</td></tr>
+<tr data-preset="sol-max"><th scope="row"><code>sol-max</code></th><td>codex</td><td><code>gpt-6.1-sol</code></td><td>max</td></tr>
+<tr data-preset="luna"><th scope="row"><code>luna</code> ★</th><td>codex</td><td><code>gpt-6-luna</code></td><td>high</td></tr>
+<tr data-preset="luna-fast"><th scope="row"><code>luna-fast</code></th><td>codex</td><td><code>gpt-6-luna</code></td><td>high</td></tr>
+<tr data-preset="grok"><th scope="row"><code>grok</code> ★</th><td>cursor</td><td><code>grok-4.7-high</code></td><td>in model name</td></tr>
+<tr data-preset="glm"><th scope="row"><code>glm</code></th><td>opencode</td><td><code>tokenrouter/z-ai/glm-5.2</code></td><td>—</td></tr>
+<tr data-preset="glm53"><th scope="row"><code>glm53</code></th><td>opencode</td><td><code>zai-coding-plan/glm-5.3</code></td><td>—</td></tr>
+<tr data-preset="glm53-flash"><th scope="row"><code>glm53-flash</code></th><td>opencode</td><td><code>zai-coding-plan/glm-5.3-flash</code></td><td>—</td></tr>
+<tr data-preset="kimi"><th scope="row"><code>kimi</code></th><td>opencode</td><td><code>synthetic/hf:moonshotai/Kimi-K3</code></td><td>—</td></tr>
+<tr data-preset="hermes-agent"><th scope="row"><code>hermes-agent</code></th><td>hermes</td><td><code>deepseek/deepseek-v4-pro</code></td><td>—</td></tr>
+<tr data-preset="hermes-goalie"><th scope="row"><code>hermes-goalie</code></th><td>hermes</td><td><code>deepseek/deepseek-v4-flash-0731</code></td><td>—</td></tr>
+<tr data-preset="gemini-low"><th scope="row"><code>gemini-low</code></th><td>agy</td><td><code>gemini-3.8-flash-low</code></td><td>in model name</td></tr>
+<tr data-preset="gemini"><th scope="row"><code>gemini</code> ★</th><td>agy</td><td><code>gemini-3.8-flash-high</code></td><td>in model name</td></tr>
+<tr data-preset="luna-xhigh"><th scope="row"><code>luna-xhigh</code></th><td>codex</td><td><code>gpt-6-luna</code></td><td>xhigh</td></tr>
+</tbody></table></div><p>This is the shipped catalog, not your active configuration. Source: <a href="https://github.com/TedYav/tap/blob/main/skills/tap/config/config.v3.toml">config.v3.toml</a>. Fast and Ponytail presets are optional catalog choices, not simple defaults.</p></section>
+<section class="section"><h2>Add a preset</h2><p>Add a uniquely named table to <code>~/.config/tap/config.toml</code> (or your XDG config location). For example:</p><pre><code>[presets.my-astra]
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=medium", "service_tier=default"]</code></pre><p>Claude uses <code>params.effort = "medium"</code>. Cursor and agy encode effort in the model name; OpenCode and Hermes keep provider-specific tuning. A preset is complete: <code>tap session launch</code> refuses <code>--model</code> and <code>--effort</code> alongside one, so edit the preset or choose a different one. It still accepts <code>--env NAME=value</code> for environment variables. <code>tap crew add --preset</code> is stricter and also refuses <code>--env</code>; a crew seat on a bare harness needs an explicit <code>--model</code>.</p><pre><code>tap presets
+tap session launch my-astra writer</code></pre></section>
+<section class="section"><h2>Add a shell shortcut</h2><p>The setup wizard offers Bash/Zsh aliases for its selected presets. Open a new terminal to load them. For a custom preset, a manual shell alias can be:</p><pre><code>alias my-astra='tap session launch my-astra'</code></pre><p>Put it in your shell’s startup file to keep it. Then <code>my-astra writer</code> launches that preset as <code>writer</code>. Wizard aliases also support a name suffix: <code>astra review</code> creates <code>astra-review</code>.</p></section>
+<footer class="footer">Works offline. <a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md">Full guide</a> · <a href="https://github.com/TedYav/tap/blob/main/skills/tap/USAGE.md">Command reference</a></footer>
+</main>
+</body>
+</html>

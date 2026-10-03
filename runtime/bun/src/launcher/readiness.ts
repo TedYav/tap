@@ -1,0 +1,264 @@
+import { codexHookTrust, CODEX_HOOK_TRUST_REASON, detectAgentState } from "../agent-state";
+import { paneHarness } from "../pane-harness";
+export { paneHarness } from "../pane-harness";
+import { paneAlertState } from "../pane/reader";
+import { opencodePromptReady } from "../seat-state";
+import { serverEpochFromRaw } from "../tmux";
+import { launchTmux } from "./process";
+import { LauncherError } from "./types";
+import { InvocationError } from "./invocation";
+
+export class PaneObservationTimeout extends LauncherError {
+  constructor(target: string) {
+    const detail = `pane observation timed out for ${target}`;
+    const action = `tmux attach -t ${target}   # inspect before deciding whether to relaunch`;
+    super(`${detail}; next: ${action}`, "pane_observation_timeout", action, detail);
+  }
+}
+
+export const PANE_FACTS_FORMAT = "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}\t#{pane_current_command}\t#{pid}:#{start_time}\t#{pane_dead}\t#{pane_pid}\t#{pane_current_path}";
+export type PaneFacts = { pane: string; pane_id: string; command: string; server_epoch: string; dead: boolean; pane_pid: number; path: string };
+
+export function parsePaneFacts(line: string, env: NodeJS.ProcessEnv = process.env): PaneFacts | null {
+  const fields = line.replace(/\n+$/, "").split("\t");
+  if (fields.length < 7 || !fields[0] || !fields[1] || !["0", "1"].includes(fields[4]!) || !/^\d+$/.test(fields[5]!)) return null;
+  return { pane: fields[0], pane_id: fields[1], command: fields[2]!, server_epoch: serverEpochFromRaw(fields[3]!, env),
+    dead: fields[4] === "1", pane_pid: Number(fields[5]), path: fields.slice(6).join("\t") };
+}
+
+export async function paneFacts(target: string, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal, nativeSocket = true, timeoutMs = 5000): Promise<PaneFacts | null> {
+  try {
+    const result = await launchTmux(["display-message", "-p", "-t", target, PANE_FACTS_FORMAT], env, signal, nativeSocket, timeoutMs);
+    signal?.throwIfAborted();
+    if (result.code === 124) throw new PaneObservationTimeout(target);
+    return result.code === 0 ? parsePaneFacts(result.stdout, env) : null;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+
+const PANE_SGR = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+export const stripPaneSgr = (frame: string): string => frame.replace(PANE_SGR, "");
+
+/** One startup screen capture, carrying startupBlocker's error contract:
+ * code 124 raises PaneObservationTimeout, errno failures observe nothing. */
+export async function captureStartupScreen(facts: PaneFacts, env: NodeJS.ProcessEnv, signal?: AbortSignal, nativeSocket = true, timeoutMs = 5000): Promise<string | null> {
+  try {
+    const result = await launchTmux(["capture-pane", "-p", "-J", "-t", facts.pane_id], env, signal, nativeSocket, timeoutMs);
+    signal?.throwIfAborted();
+    if (result.code === 124) throw new PaneObservationTimeout(facts.pane_id);
+    return result.code === 0 ? stripPaneSgr(result.stdout) : null;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if ((error as NodeJS.ErrnoException).code) return null;
+    throw error;
+  }
+}
+
+/** The startup blocker regexes over an already-captured screen. */
+export function startupBlockerFromScreen(facts: PaneFacts, harness: string, screen: string | null, detectResumePicker = true): string | null {
+  if (screen === null) return null;
+  if (codexHookTrust(harness, screen)) return `${CODEX_HOOK_TRUST_REASON}\nPane ${facts.pane_id}:\n${screen.trimEnd()}`;
+  return detectResumePicker && harness === "codex" && screen.includes("No results for your search") && /\b0\s*\/\s*0\b/.test(screen)
+    ? "codex resume picker has zero results; the stored conversation id is unavailable to the active account" : null;
+}
+
+export async function startupBlocker(facts: PaneFacts, harness: string, env: NodeJS.ProcessEnv, signal?: AbortSignal, nativeSocket = true, detectResumePicker = true, timeoutMs = 5000): Promise<string | null> {
+  return startupBlockerFromScreen(facts, harness, await captureStartupScreen(facts, env, signal, nativeSocket, timeoutMs), detectResumePicker);
+}
+
+/** One startup observation per observed facts object, so the startup blocker
+ * and the readiness signal share a single capture (plus one title read) per
+ * poll instead of capturing twice. The raw screen bytes carry the SGR
+ * attributes the roster's idle classifier corroborates the placeholder
+ * against; consumers that want plain text strip. The title rides the roster's
+ * own classifier input — a Braille spinner title means `working`, so Codex is
+ * still starting even beside a painted composer. */
+export interface StartupObservation {
+  screen: string | null;
+  /** null when the title read itself failed: no signal may rest on a title
+   * this observation could not take. */
+  title: string | null;
+}
+export function memoizedStartupObservation(env: NodeJS.ProcessEnv, signal?: AbortSignal, nativeSocket = true, timeoutMs = 5000): (facts: PaneFacts) => Promise<StartupObservation> {
+  const cache = new WeakMap<PaneFacts, Promise<StartupObservation>>();
+  return facts => {
+    let observed = cache.get(facts);
+    if (observed === undefined) {
+      observed = (async () => {
+        let screen: string | null = null, title: string | null = null;
+        try {
+          // -e keeps SGR sequences: the idle classifier corroborates the dim
+          // placeholder against them; consumers that want plain text strip.
+          const result = await launchTmux(["capture-pane", "-p", "-e", "-J", "-t", facts.pane_id], env, signal, nativeSocket, timeoutMs);
+          signal?.throwIfAborted();
+          if (result.code === 124) throw new PaneObservationTimeout(facts.pane_id);
+          if (result.code === 0) screen = result.stdout;
+          const titled = await launchTmux(["display-message", "-p", "-t", facts.pane_id, "#{pane_title}"], env, signal, nativeSocket, timeoutMs);
+          // A title read that times out ends the observation with the same
+          // timeout the capture raises, instead of repeating a second
+          // full-length read back to back.
+          if (titled.code === 124) throw new PaneObservationTimeout(facts.pane_id);
+          if (titled.code === 0) title = titled.stdout.split("\n", 1)[0] ?? "";
+        } catch (error) {
+          signal?.throwIfAborted();
+          if ((error as NodeJS.ErrnoException).code) return { screen: null, title: null };
+          throw error;
+        }
+        return { screen, title };
+      })();
+      cache.set(facts, observed);
+    }
+    return observed;
+  };
+}
+
+/** The Codex readiness signal: the roster's own idle judgment — the same one
+ * delivery licenses injection on. Selection menus reuse the › glyph as their
+ * cursor, so a loose composer line-match would call dialogs ready; the
+ * classifier separates an idle composer (dim placeholder corroboration) from
+ * blocked and working screens, with the pane title as one of its inputs. Needs
+ * the RAW screen, SGR bytes intact. A title this observation could not take
+ * (null) suppresses the signal: a spinner-titled Codex must never pass as
+ * idle on an unverified title. */
+export function codexComposerIdle(screen: string | null, title: string | null = null): boolean {
+  return screen !== null && title !== null && detectAgentState("codex", screen, title).agentState === "idle";
+}
+
+/** The OpenCode readiness signal, mirroring the roster's gate order exactly
+ * (seat-state): the bounded alert tail first — paneAlertState over the
+ * SGR-stripped screen plus a trailing newline, so a rate-limit or approval
+ * phrase near the prompt outranks everything — then opencodePromptReady: the
+ * composer box present with no `esc interrupt` marker below it. This is the
+ * roster's readiness predicate itself, not detectAgentState's narrower
+ * composer_idle, which additionally demands the `ctrl+p commands` footer. The
+ * roster classifies opencode over a plain capture, so the strip is normally a
+ * no-op; it keeps the predicate total over any screen. */
+export function opencodeComposerIdle(screen: string | null): boolean {
+  if (screen === null) return false;
+  const stripped = stripPaneSgr(screen);
+  return paneAlertState(`${stripped}\n`) === "" && opencodePromptReady(stripped) === 0;
+}
+
+/** The OpenCode launch readiness signal: one plain physical-row capture — no
+ * `-J`, because a renderer that marks rows wrapped must still show the box's
+ * border row as a physical row (the roster captures OpenCode unjoined), and no
+ * `-e`, because the predicate strips SGR itself — with no title read. Any
+ * capture failure (non-zero exit, timeout, thrown error) is no signal, so the
+ * readiness loop continues to its deadline instead of rolling back; only an
+ * aborted launch rethrows, as paneTailLines does. */
+export async function opencodeReadySignal(facts: PaneFacts, env: NodeJS.ProcessEnv, signal?: AbortSignal, timeoutMs = 2000): Promise<boolean> {
+  try {
+    const result = await launchTmux(["capture-pane", "-p", "-t", facts.pane_id], env, signal, true, timeoutMs);
+    signal?.throwIfAborted();
+    return result.code === 0 && opencodeComposerIdle(result.stdout);
+  } catch (error) {
+    signal?.throwIfAborted();
+    return false;
+  }
+}
+
+/** The pane's last non-empty visible lines: null when the capture failed, empty when the pane is blank. */
+export async function paneTailLines(facts: PaneFacts, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal,
+  maxLines = 5, timeoutMs = 2000): Promise<string[] | null> {
+  try {
+    const result = await launchTmux(["capture-pane", "-p", "-J", "-t", facts.pane_id], env, signal, true, timeoutMs);
+    signal?.throwIfAborted();
+    if (result.code !== 0) return null;
+    return stripPaneSgr(result.stdout).split("\n").map(line => line.replace(/\s+$/, ""))
+      .filter(line => line.trim() !== "").slice(-maxLines);
+  } catch (error) {
+    signal?.throwIfAborted();
+    return null;
+  }
+}
+
+/** After a positive readiness signal, the identity must survive this settle
+ * window before readiness returns; the full timeout remains the fallback. */
+export const READY_SETTLE_MS = 600;
+
+export async function awaitStableHarness(
+  read: () => Promise<PaneFacts | null>, matches: (facts: PaneFacts) => boolean,
+  timeoutMs: number, options: { signal?: AbortSignal; blocker?: (facts: PaneFacts) => Promise<string | null>; confirmations?: number; observeUntilDeadline?: boolean; blockerObservationMs?: number;
+    ready?: (facts: PaneFacts) => Promise<boolean>; readySettleMs?: number;
+    now?: () => number; sleep?: (ms: number) => Promise<unknown> } = {},
+): Promise<{ facts: PaneFacts | null; reason: string | null }> {
+  const now = options.now ?? (() => performance.now()), sleep = options.sleep ?? Bun.sleep;
+  const deadline = now() + timeoutMs;
+  const observing = !!(options.blocker || options.observeUntilDeadline);
+  let observationDeadline = deadline;
+  let previous: string | null = null, confirmed: string | null = null, observations = 0;
+  let readyDeadline: number | null = null;
+  let finalConfirmation = false;
+  while (true) {
+    options.signal?.throwIfAborted();
+    const preceding = previous;
+    const facts = await read();
+    // The facts are as old as their read, not as old as whatever the blocker
+    // spent time on afterwards (a Codex capture can consume seconds). Only
+    // facts sampled at or after the deadline may satisfy it, so a pane that
+    // died behind a slow capture is re-read — or missed — never returned as
+    // running on stale evidence (both the settle and the deadline paths).
+    const sampledAt = now();
+    if (facts && matches(facts)) {
+      const identity = JSON.stringify([facts.pane_id, facts.server_epoch, facts.pane_pid, facts.command]);
+      if (confirmed && identity !== confirmed) return { facts: null, reason: "harness process identity changed during readiness" };
+      observations = identity === previous ? observations + 1 : 1;
+      previous = identity;
+      if (observing && !confirmed && observations >= (options.confirmations ?? 2)) {
+        confirmed = identity;
+        // Stable Codex replacements need a bounded chance to reveal a startup
+        // dialog, not the entire readiness ceiling. Explicit full-window callers
+        // retain their deadline, including the initial-launch survival check.
+        if (!options.observeUntilDeadline) observationDeadline = Math.min(deadline, now() + (options.blockerObservationMs ?? 5000));
+      }
+      const reason = options.blocker ? await options.blocker(facts) : null;
+      if (reason) return { facts: null, reason };
+      // A positive readiness signal — evaluated only once the identity is
+      // confirmed, and firing once — replaces the observation deadline with a
+      // shorter settle window. Survival checks above stay armed through it.
+      if (options.ready && readyDeadline === null && observations >= (options.confirmations ?? 2)
+        && now() < deadline && await options.ready(facts)) {
+        readyDeadline = Math.min(deadline, now() + (options.readySettleMs ?? READY_SETTLE_MS));
+      }
+    } else {
+      if (confirmed) return { facts: null, reason: "harness exited or became unobservable during readiness" };
+      previous = null; observations = 0;
+    }
+    if (observations >= (options.confirmations ?? 2) && (!observing || sampledAt >= (readyDeadline ?? observationDeadline))) return { facts, reason: null };
+    if (now() >= deadline) {
+      if (!finalConfirmation && preceding === null && observations > 0 && observations === (options.confirmations ?? 2) - 1) {
+        finalConfirmation = true;
+        continue;
+      }
+      // A confirmed harness whose last sample predates the deadline (the clock
+      // moved during the ready poll or a blocker capture) gets one more read
+      // rather than a null return: the deadline check above decides on the
+      // fresh sample, and a pane that died in between is caught by it.
+      if (facts && observations >= (options.confirmations ?? 2)) continue;
+      return { facts: null, reason: null };
+    }
+    await sleep(50);
+  }
+}
+
+export async function awaitReplacedHarness(request: { pane_id: string; harness: string; timeout: number; expected_server_epoch: string;
+  previous_pane_pid: number; detect_resume_picker: boolean }, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<{ ready: boolean; reason: string | null }> {
+  if (!request.expected_server_epoch || !request.previous_pane_pid) throw new InvocationError("missing pre-respawn identity");
+  try {
+    const result = await awaitStableHarness(() => paneFacts(request.pane_id, env, signal), facts =>
+      facts.pane_id === request.pane_id && facts.server_epoch === request.expected_server_epoch && !facts.dead &&
+      !!facts.pane_pid && facts.pane_pid !== request.previous_pane_pid && paneHarness(facts, env) === request.harness,
+    request.timeout * 1000, { signal, blocker: request.harness === "codex"
+      ? facts => startupBlocker(facts, request.harness, env, signal, true, request.detect_resume_picker) : undefined });
+    signal?.throwIfAborted();
+    return { ready: result.facts !== null, reason: result.reason };
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof PaneObservationTimeout) return { ready: false, reason: error.message };
+    throw error;
+  }
+}

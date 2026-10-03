@@ -1,0 +1,70 @@
+  idle prompt lines are followed by status
+  chrome, so the current region cleaner
+  treats the status line as input too. The
+  courier already avoids that by using the
+  prompt input line, so I’m going to reuse
+  that path for state classification and
+  keep full-region sentinel handling only
+  where it matters.
+
+[2m•[0m [1mExplored
+[0;2m  └ [0m[38;5;6mRead[39m lib.sh
+
+[2m───────────────────────────────────────────
+
+• [0mI’m going to store the live escaped
+  captures under smoke fixtures now. For
+  the “working” side, I’ll keep real
+  captured working/status panes where
+  available and add focused real-derived
+  fixture slices for the parser rather than
+  trying to make another agent do fake work
+  just to manufacture a state.
+
+[1m[38;5;2m•[0m [1mRan[0m [38;2;255;255;255mrg[38;2;253;151;31m -n[38;2;255;255;255m "[38;2;230;219;116mWorked for|Working \(|Baked|[39m
+[2m  │ [0m[38;2;230;219;116mCooked|input_state: other-text|Find[39m
+[2m  │ [0m[38;2;230;219;116mand fix a bug|good morning[38;2;255;255;255m" .tap[39m
+[2m  │ … +1 lines[0m
+[2m  └ skills/tap/scripts/smoke/[0m
+[2m    … +10 lines (ctrl + t to view[0m
+[2m    transcript)[0m
+    [2m'Find and fix a bug in @filename' >[0m
+    [2m"$FAKE_TMUX_STATE/input"[0m
+
+[2m•[0m [1mExplored
+[0;2m  └ [0m[38;5;6mSearch[39m */fixtures/*[2m in [0m.
+
+[1m[38;5;2m•[0m [1mRan[0m [38;2;255;255;255mtap health [38;2;249;38;114m|[38;2;255;255;255m sed[38;2;253;151;31m -n[38;2;255;255;255m '[38;2;230;219;116m1,50p[38;2;255;255;255m'[39m
+[2m  └ tap health: bus=/Users/runner/Dev/[0m
+[2m    … +32 lines (ctrl + t to view[0m
+[2m    transcript)[0m
+    [2mregistry events:[0m
+    [2m  none
+
+───────────────────────────────────────────
+
+• [0m[38;5;6mtap health[39m is taking longer than usual
+  because it asks every seat-state adapter;
+  that’s useful evidence here, so I’m
+  waiting for its output before editing the
+  parser.
+
+[1m[38;5;2m•[0m [1mRan[0m [38;2;249;38;114mfor[38;2;255;255;255m h [38;2;249;38;114min[38;2;255;255;255m claude-opus codex fable[38;2;249;38;114m;[38;2;255;255;255m [38;2;249;38;114mdo[39m
+[2m  │ [0m[38;2;102;217;239mprintf[38;2;255;255;255m '[38;2;230;219;116m== %s ==\n[38;2;255;255;255m' "[38;2;230;219;116m$[38;2;255;255;255mh"[38;2;249;38;114m;[38;2;255;255;255m tap health[39m
+[2m  │ [0m[38;2;253;151;31m--json[38;2;255;255;255m [38;2;249;38;114m|[38;2;255;255;255m python3[38;2;253;151;31m -c[38;2;255;255;255m '[38;2;230;219;116mimport json,sys;[39m
+[2m  │ … +4 lines[0m
+[2m  └ {'handle': 'claude-opus', 'status':[0m
+[2m    … +10 lines (ctrl + t to view[0m
+[2m    transcript)[0m
+    [2m'harness': 'claude', 'state':[0m
+    [2m'working'}[0m
+
+[2m───────────────────────────────────────────
+
+• [0mI’ll keep fixture size small: tail
+  captures around the active prompt for
+  idle-hint cases, and pre-prompt slices
+  from the same real captures for working/
+  no-prompt cases. That preserves the real
+  SGR/chrome that broke us without
+  committing whole scrollbacks.

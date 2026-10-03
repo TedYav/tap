@@ -1,0 +1,24 @@
+Tip: You can start the Cursor CLI with `agent` (same as `cursor-agent`).
+
+
+  Cursor Agent
+  v2026.09.18-9a7762b
+  Tip: Use /mcp to connect Cursor to your tools and data sources.
+
+
+  Run the shell command: echo tap-probe
+
+
+  I'll run that command now.
+
+  $ echo tap-probe Waiting for approval...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ $  echo tap-probe in .
+
+ Run this command?
+ Shell allowlist is empty
+  → Run (once) (y)
+    Add Shell(echo) to allowlist? (tab)
+    Run Everything (shift+tab)
+    Skip & tell the agent what to do instead (esc or n)

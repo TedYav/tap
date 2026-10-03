@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A team in one project can ask another team about the code it owns.">
+<title>TAP level 3 — Teams across projects</title>
+<style>
+:root {
+  color-scheme:dark;
+  --ink:#e6edf3;
+  --muted:#a8b8c4;
+  --paper:#101820;
+  --card:#18252f;
+  --line:#3b505d;
+  --teal:#70d8cd;
+  --orange:#ffb071}
+
+* {
+  box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font:17px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main {
+  max-width:1100px;
+  margin:auto;
+  padding:48px 28px}
+a {
+  color:var(--teal);
+  text-underline-offset:.2em}
+a:focus-visible {
+  outline:3px solid var(--orange);
+  outline-offset:4px}
+h1,h2,h3,p {
+  margin-top:0}
+h1 {
+  font-size:clamp(2.6rem,7vw,4.8rem);
+  line-height:1.06;
+  letter-spacing:-.045em;
+  max-width:850px;
+  margin-bottom:20px}
+h2 {
+  font-size:1.5rem;
+  line-height:1.2;
+  margin-bottom:18px}
+h3 {
+  font-size:1.05rem;
+  margin-bottom:5px}
+.eyebrow {
+  font-size:.8rem;
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--teal)}
+.intro {
+  max-width:760px;
+  font-size:1.18rem}
+.nav {
+  display:flex;
+  gap:22px;
+  flex-wrap:wrap;
+  margin:24px 0 40px}
+.section {
+  margin-top:38px}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px}
+.card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:22px}
+.card p:last-child {
+  margin-bottom:0}
+.number {
+  display:block;
+  color:var(--orange);
+  font-size:.8rem;
+  font-weight:750;
+  margin-bottom:12px}
+code,kbd {
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:.87em}
+code {
+  overflow-wrap:anywhere}
+pre {
+  white-space:pre-wrap;
+  margin:12px 0 0}
+kbd {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-bottom-width:2px;
+  border-radius:4px;
+  padding:1px 5px}
+.bus {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:26px 12px;
+  margin:24px 0;
+  background:#183832;
+  border-radius:14px;
+  text-align:center}
+.seat {
+  font-weight:750}
+.seat small {
+  display:block;
+  font-weight:400;
+  color:var(--muted)}
+.bridge {
+  color:var(--teal);
+  font-size:.95rem}
+.bridge strong {
+  display:block;
+  font-size:1.4rem}
+.quote {
+  font-size:1.12rem;
+  border-left:4px solid var(--orange);
+  padding:12px 20px;
+  margin:14px 0;
+  background:var(--card)}
+.roles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px}
+.role {
+  border-top:2px solid var(--teal);
+  padding-top:12px}
+.role p {
+  color:var(--muted);
+  margin-bottom:0}
+.skills {
+  display:grid;
+  grid-template-columns:max-content 1fr;
+  gap:12px 22px}
+.skills dt {
+  font-weight:750;
+  color:var(--teal)}
+.skills dd {
+  margin:0}
+.footer {
+  margin-top:38px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.9rem}
+@media(max-width:700px) {
+  main {
+  padding:28px 18px}
+.grid,.roles {
+  grid-template-columns:1fr}
+.bus {
+  gap:12px}
+.bridge {
+  font-size:.8rem}
+.skills {
+  gap:12px}
+.nav {
+  margin-bottom:28px}
+}
+@media print {
+  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
+  main {
+  padding:0}
+.card,.role,.quote,.bus {
+  break-inside:avoid}
+body {
+  font-size:11pt;
+  color:#182c34;
+  background:white}
+h1 {
+  font-size:32pt}
+.nav {
+  margin:12px 0}
+.section {
+  margin-top:22px}
+a {
+  color:inherit}
+.grid {
+  grid-template-columns:repeat(3,1fr)}
+.roles {
+  grid-template-columns:repeat(3,1fr)}
+}
+
+
+main { max-width:940px }
+pre { padding:16px 20px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:16px }
+.level-nav { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap }
+[aria-current="page"] { color:var(--ink); font-weight:750 }
+li { margin-bottom:8px }
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">The five levels of TAP · 3 of 5</p>
+<h1>Teams across projects</h1>
+<p class="intro">A team in one project can ask another team about the code it owns.</p>
+<nav class="nav" aria-label="The five levels"><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html" aria-current="page">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a></nav>
+</header>
+<section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Ask the API team whether a field rename breaks clients. Have a web team request an example response. Let a shared-library team review a caller’s proposed change while each team keeps its own project context.</p></section>
+<section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>Use two existing projects whose directories are named <code>api</code> and <code>web</code>. In your terminal, replace these paths with yours:</p>
+<pre><code>cd /path/to/api
+tap init
+tap launch codex reviewer
+# Ctrl-b then d returns to your terminal.
+cd /path/to/web
+tap init
+tap launch claude builder</code></pre>
+<p>Tell the builder:</p>
+<blockquote class="quote">Ask api/reviewer whether renaming user_id to account_id in the export breaks a client. Show me the answer before changing anything.</blockquote>
+<p>From your terminal, after detaching:</p>
+<pre><code>tap teams
+tap team roster api
+tap attach api/reviewer</code></pre></section>
+<section class="section"><h2>What’s new since level 2</h2><p>An address gains a team name: <code>team/seat</code>. A team is named after the project directory when you initialize it. The agent’s question uses <code>tap send api/reviewer --ask -f question.md</code>, with its question saved in that file.</p>
+<p>The answer still returns to the asking seat. Seeing the other team on the roster does not establish that it read your request. TAP connects these projects on the same machine.</p></section>
+<section class="section"><h2>Go deeper</h2><p><a href="https://github.com/TedYav/tap/blob/main/skills/tap/QUICK-REFERENCE.md">The command reference</a> covers team addresses. <a href="cheatsheet-first-team.html">Visiting a seat</a> helps when an answer is waiting on a prompt.</p></section>
+<footer class="footer">
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-2.html">← Level 2</a><a href="cheatsheet-level-4.html">Level 4: Teams that organize themselves →</a></nav>
+<p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
+</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,68 @@
+  Settled laurel-drain-driver-20260903T085037Z-a34c7ab47c38.md:
+
+  ### PR !287 Slot Allocation (Cheapest-First)
+
+  • PR !287 State: recap.ts fix implemented and partner FIX-AND-SHIP satisfied at 93631b8c8.
+  • Slot Scheduling:
+      • cedar-gate currently running PR !191 independent full (trees/tap/Gate191).
+      • Per strategy doc cheapest-first ordering (1-slot items before 2-slot items), PR !287 (ORDINARY, 1 slot
+      total) is scheduled to run immediately upon Gate191 completion, ahead of 2-slot RETAIN suites (PR !298 and PR
+      !288).
+      • Informed laurel-drain-driver and updating Lane W5 driver (cedar-courier-driver).
+
+
+  Awaiting task completion.
+
+● Bash(tap poll willow-low-conductor) (ctrl+o to expand)
+
+  Slot schedule aligned per cheapest-first ordering:
+
+  1. Active: cedar-gate, PR !191 independent full (trees/tap/Gate191, ETA ~09:00Z).
+  2. Queue #1: PR !287 author full (laurel-drain-driver, ORDINARY 1-slot).
+  3. Queue #2: PR !298 author full (Lane W5, RETAIN-LIST).
+  4. Queue #3: PR !288 author full (Lane W0, RETAIN-LIST).
+
+  Bus is clear. Yielding and standing by.
+
+────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=cedar-send-driver to=willow-low-conductor id=cedar-send-driver-20260903T085211Z-9be054e5ea3c
+  kind=discuss reply=settle-only
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/cedar-send-driver-20260903T085211Z-9be054e5ea3c.md]]
+
+● Read(~/wrk/Example-Org/tap/.tap/bus/payloads/cedar-send-driver-20260903T085211Z-9be054e5ea3c.md)
+● Bash(tap done cedar-send-driver-20260903T085211Z-9be054e5ea3c)
+● Bash(tap send pine-coach --fyi -m "W0 driver calibration: Driver retired repeated hand-sweeps f...) (ctrl+o to
+expand)
+
+  Settled cedar-send-driver-20260903T085211Z-9be054e5ea3c.md:
+
+  • W0 Head Move & Invariant Mechanical Owner: Driver addressed partner U3 findings on incomplete wake carrier
+  sweeps by replacing ad-hoc sweeps with a mechanical test owner (skills/tap/scripts/smoke/wake-carrier-inventory.
+  test.sh, mutation-proven against real sites, scanning .sh/.md/.py across the repo). Head moved to bab275e3f.
+  • Re-pointed Lane W0's slot queue reservation to bab275e3f.
+
+  Logging calibration insight with pine-coach (task running).
+
+● Bash(tap poll willow-low-conductor) (ctrl+o to expand)
+
+  Slot queue updated with bab275e3f for Lane W0.
+  cedar-gate currently running PR !191 independent full in trees/tap/Gate191.
+
+  Bus is clear. Yielding and standing by.
+
+────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=palm-review to=willow-low-conductor id=palm-review-20260903T085504Z-1991554b00bc kind=discuss
+  reply=settle-only
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/palm-review-20260903T085504Z-1991554b00bc.md]]
+
+● Read(~/wrk/Example-Org/tap/.tap/bus/payloads/palm-review-20260903T085504Z-1991554b00bc.md) (ctrl+o to expand)
+
+▸ Thought for 6s, 413 tokens
+  Verifying Merge Requirements
+
+● Bash(gh pr view 697 --json files,statusCheckRollup,reviewDecision,mergeable,state,headRefOid) (ctrl+o to expand)
+⣻  Running command...
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+esc to cancel                                                                                Gemini 3.8 Flash · medium

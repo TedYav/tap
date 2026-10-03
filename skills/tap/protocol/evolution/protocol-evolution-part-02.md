@@ -1,0 +1,8 @@
+# TAP Contract (v0.23) — source part 2 of 18
+
+> Normative TAP v0.23 source fragment. Search the group index for adjacent parts.
+
+<!-- tap-source id=source-0002 start=8685 end=10063 sha256=9fbfbe69a1a75eda4633834406d849c60feee3c0c2d17c2b4a491db29752cf4a fragment=2/18 transform=wrapper_prefix -->
+<!-- TAP_SOURCE_BYTES_BEGIN -->
+**Lifecycle confirmation boundary (tap-7r9c, tap-fia1):** confirmation keys on irreversibility, not blast radius or ceremony. `tap team down`, `tap team shutdown`, and `tap team reset` proceed from TTY and non-TTY callers without a prompt because their state remains recoverable through the retained bus/registry, retained lineage, or a COMPLETE reset checkpoint. Down and shutdown emit advisory per-seat unprocessed-inbound counts on stderr when any team-local inbound remains; the warning never blocks, and stdout/JSON stay stable. These per-seat counts exclude originals with `.done`, `.cancelled`, or `.resent` supersession receipts; a `.sent` receipt alone remains nonterminal. Their accepted `--yes` flags, plus down/shutdown `--force`, are compatibility no-ops. `tap team purge` keeps the confirmation gate because it deletes the durable recovery archive itself; `tap admin migrate-registry --yes` keeps its explicit one-shot cutover authority, while `tap admin retire --force` is an override rather than confirmation. `tap team refresh --hard` is promptless but liveness-guarded: it deletes only parked rows whose exact session is positively not live, and `--dry-run` previews the same receipt set. Reset and `tap init` stay promptless (recoverable reboot / creative bootstrap); shutdown stays promptless per this boundary unless a future irreversibility line appears.
+

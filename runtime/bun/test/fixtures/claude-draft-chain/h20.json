@@ -1,0 +1,165 @@
+{
+ "source": "Claude Code 2.1.283, 100x20 probe pane, 15-line draft with one soft-wrapped line; C-u/BSpace alternating (tmp/clobberux/chain-probe.test.ts)",
+ "frames": [
+  {
+   "key": "initial",
+   "state": "busy",
+   "raw": "L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n  L13 draft line 13 of fifteen\n  L14 draft line 14 of fifteen\n  L15 draft line 15 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n  L13 draft line 13 of fifteen\n  L14 draft line 14 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n  L13 draft line 13 of fifteen\n  L14 draft line 14 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n  L13 draft line 13 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n  L13 draft line 13 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n  L12 draft line 12 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n  L11 draft line 11 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n  L10 draft line 10 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n  L09 draft line 9 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n  L08 draft line 8 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns\n  and forces a second visual row for the capture chain"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n  L07 this line is deliberately long so that it wraps inside the composer at one hundred columns"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n  L06 draft line 6 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n  L05 draft line 5 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n  L04 draft line 4 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n  L03 draft line 3 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n  L02 draft line 2 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen\n"
+  },
+  {
+   "key": "BSpace",
+   "state": "busy",
+   "raw": "L01 draft line 1 of fifteen"
+  },
+  {
+   "key": "C-u",
+   "state": "ready",
+   "raw": "Try \"fix lint errors\""
+  }
+ ]
+}

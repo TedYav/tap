@@ -1,0 +1,63 @@
+# Sourced reference for EASY-MODE and /tap:config-wizard; not machine config or a loader.
+# Checked 2026-09-18. Sources attached to each entry apply to the version below.
+# kind: param (CLI option), env (environment), unsupported (no verified TAP
+# params/env mapping for this knob). Unsupported is scoped to this snapshot,
+# not a claim that no future CLI or private extension can support it.
+# Known values are examples, not an account entitlement or recommendation.
+# TAP mapping was checked against launcher/catalog.ts and launcher/adapters.ts;
+# Python compatibility: skills/tap/scripts/session/{presets,launcher}.py.
+# Resume entries describe the native CLI; use tap session resume for TAP seats.
+
+[claude]
+executable = "claude"
+version = "2.1.257"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["sonnet", "opus", "haiku", "fable", "opus[1m]"], source = "claude --help; https://code.claude.com/docs/en/model-config#model-aliases" }
+effort = { kind = "param", flag = "--effort", tap = "params.effort", levels = ["low", "medium", "high", "xhigh", "max"], source = "claude --help (--effort); supported levels depend on model" }
+compaction = { kind = "env", key = "CLAUDE_CODE_AUTO_COMPACT_WINDOW", tap = "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW", units = "tokens, plain decimal string", semantics = "Auto-compact window, capped at the model context window; environment takes precedence over --autocompact and saved settings", source = "https://code.claude.com/docs/en/model-config#set-the-auto-compact-window" }
+permission_bypass = { kind = "param", flag = "--dangerously-skip-permissions", tap = "harness.claude.permissions = bypass (launcher-owned)", source = "claude --help; runtime/bun/src/launcher/permissions.ts" }
+resume = { kind = "param", flag = "--resume", value = "session ID or picker when omitted", source = "claude --help (-r, --resume)" }
+
+[codex]
+executable = "codex"
+version = "0.154.0"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["gpt-6.1-sol", "gpt-6-luna"], source = "codex --help; https://developers.openai.com/codex/config-reference/ (model); use the installed /model picker for account availability" }
+effort = { kind = "param", flag = "--config", key = "model_reasoning_effort", tap = '''params.config = ['model_reasoning_effort="high"']''', levels = ["minimal", "low", "medium", "high", "xhigh"], source = "codex --help (--config); https://developers.openai.com/codex/config-reference/ (model_reasoning_effort); documented levels are model-dependent" }
+compaction = { kind = "param", flag = "--config", key = "model_auto_compact_token_limit", tap = 'params.config = ["model_auto_compact_token_limit=500000"]', units = "integer tokens", semantics = "Automatic history compaction trigger; model_context_window is a separate capacity setting", source = "codex --help (--config); https://developers.openai.com/codex/config-reference/ (model_auto_compact_token_limit)" }
+permission_bypass = { kind = "param", flag = "--dangerously-bypass-approvals-and-sandbox", tap = "harness.codex.permissions = bypass (launcher-owned)", source = "codex --help; runtime/bun/src/launcher/permissions.ts" }
+resume = { kind = "param", command = "resume", flag = "--last", value = "codex resume <session-id>, or --last for latest", source = "codex --help; codex resume --help" }
+
+[cursor]
+executable = "cursor-agent"
+version = "2026.09.15-d2fe57e"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["auto", "grok-4.7-high-fast", "gpt-5.6-sol-high"], source = "cursor-agent --help; cursor-agent --list-models (account-specific snapshot)" }
+effort = { kind = "param", flag = "--model", tap = "params.model", levels = ["high"], semantics = "Model IDs encode effort; help also documents bracket effort=high on parameterized models. No separate --effort flag verified", source = "cursor-agent --help (--model example); cursor-agent --list-models" }
+compaction = { kind = "unsupported", semantics = "Help documents model context=1m, which selects capacity, not a token compaction trigger. No token trigger mapping verified", source = "cursor-agent --help (full options, --model)" }
+permission_bypass = { kind = "param", flag = "--yolo", aliases = ["--force"], tap = "harness.cursor.permissions = bypass adds --force --sandbox disabled; auto adds --auto-review instead (launcher-owned)", semantics = "Allows commands except explicit denials", source = "cursor-agent --help; runtime/bun/src/launcher/adapters.ts" }
+resume = { kind = "param", flag = "--resume", value = "optional chat ID", source = "cursor-agent --help" }
+
+[opencode]
+executable = "opencode"
+version = "1.18.31"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["anthropic/claude-sonnet-5", "openrouter/~moonshotai/kimi-latest"], semantics = "provider/model; run opencode models for this installation, then choose an available Kimi provider/model if desired", source = "opencode --help; opencode models (account-specific snapshot)" }
+effort = { kind = "unsupported", levels = [], semantics = "No effort flag in interactive opencode --help; --variant belongs to opencode run, not the TAP interactive launch", source = "opencode --help; opencode run --help (--variant high/max/minimal examples)" }
+compaction = { kind = "env", key = "OPENCODE_CONFIG_CONTENT", tap = "env.OPENCODE_CONFIG_CONTENT (merge JSON with existing value)", semantics = "JSON compaction.auto/prune/reserved; reserved is a token buffer, not an absolute trigger. Absolute token autocompact mapping unsupported", source = "https://opencode.ai/docs/config/#compaction; https://opencode.ai/docs/config/#precedence-order" }
+permission_bypass = { kind = "param", flag = "--auto", tap = "harness.opencode.params.auto = true", semantics = "Auto-approve permissions not explicitly denied; opt-in", source = "opencode --help (--auto)" }
+resume = { kind = "param", flag = "--session", aliases = ["--continue"], value = "session ID; --continue selects latest", source = "opencode --help" }
+
+[agy]
+executable = "agy"
+version = "1.2.6 (agy --version)"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"], source = "agy --help; agy models (account-specific snapshot)" }
+effort = { kind = "param", flag = "--effort", tap = "params.effort", levels = ["low", "medium", "high"], source = "agy --help (--effort); model IDs may also encode effort" }
+compaction = { kind = "unsupported", semantics = "No context/compaction option in installed help; no token threshold environment mapping verified", source = "agy --help (full options)" }
+permission_bypass = { kind = "param", flag = "--dangerously-skip-permissions", tap = "harness.agy.permissions = bypass adds this flag; auto omits it, so the seat stops on every permission request (launcher-owned)", source = "agy --help; runtime/bun/src/launcher/adapters.ts" }
+resume = { kind = "param", flag = "--conversation", aliases = ["--continue"], value = "conversation ID; --continue selects latest", source = "agy --help" }
+
+[hermes]
+executable = "hermes"
+version = "0.20.5 (2026.8.19), local build a4f16e3f"
+model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["anthropic/claude-sonnet-4.6"], semantics = "CLI help example, not an account-access claim. Provider model name; select from hermes model on this installation", source = "hermes --help; hermes --version" }
+effort = { kind = "param", flag = "--reasoning", tap = "params.reasoning", levels = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"], source = "hermes --help (--reasoning)" }
+compaction = { kind = "unsupported", semantics = "No compaction option in installed CLI help; native config.yaml compression.threshold_tokens caps the ratio-based trigger, but no per-launch params/env token mapping verified here", source = "hermes --help (full options); installed hermes_cli/config_defaults.py (compression.threshold_tokens) and hermes_cli/config.py compression display" }
+permission_bypass = { kind = "param", flag = "--yolo", tap = "harness.hermes.params.yolo = true", semantics = "Bypass dangerous-command approval prompts; opt-in", source = "hermes --help (--yolo)" }
+resume = { kind = "param", flag = "--resume", value = "session ID, title or latest", source = "hermes --help (-r, --resume); native capability, not a guarantee of TAP resume binding" }

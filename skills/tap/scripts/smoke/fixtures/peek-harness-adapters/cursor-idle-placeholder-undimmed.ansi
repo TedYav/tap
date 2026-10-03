@@ -1,0 +1,76 @@
+  [33m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m  [1m[33m⚠ [39mWorkspace Trust Required[0m                                                                                                            [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m  Cursor Agent can execute code and access files in this directory.                                                                     [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m  Do you trust the contents of this directory?                                                                                          [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m    [1m[36m/Users/runner/wrk/Example-Org/tap[0m                                                                                                   [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m  [2m  [a] Trust this workspace[0m                                                                                                            [33m│[39m
+  [33m│[39m  [2m  [q] Quit[0m                                                                                                                            [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m│[39m  [34m⏳ Trusting workspace...[39m                                                                                                              [33m│[39m
+  [33m│[39m                                                                                                                                        [33m│[39m
+  [33m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m
+
+
+  Cursor Agent
+  [2mv2026.07.01-41b2de7[0m
+  [2mTip: Use /skills to give Cursor specialized knowledge for tasks.[0m
+
+ [48;2;42;42;47m                                                                                                                                            [49m
+ [48;2;42;42;47m /tap register                                                                                                                              [49m
+ [48;2;42;42;47m                                                                                                                                            [49m
+
+  Registering this pane on the TAP bus.
+
+  $ tap register 2>/dev/null || bash /Users/runner/wrk/Example-Org/tap/scripts/tap.sh register [2m1.9s[0m [2min current dir[0m
+    [2mtap register: cursor -> tap-cursor:0.0 (registered)[0m
+
+  Registered on the TAP bus as [1m[38;2;168;181;230mcursor[0m ([38;2;168;181;230mtap-cursor:0.0[39m).
+
+  You can message teammates with [38;2;168;181;230mtap send <to> -m "..."[39m, and check your handle anytime with [38;2;168;181;230mtap whoami[39m.
+
+ [48;2;42;42;47m                                                                                                                                            [49m
+ [48;2;42;42;47m [[TAP v=0.3 from=fable-3 to=cursor id=fable-3-20260706T005836Z-4deb5de95566 kind=discuss reply=expected                                    [49m
+ [48;2;42;42;47m path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/fable-3-20260706T005836Z-4deb5de95566.md]]                                        [49m
+ [48;2;42;42;47m                                                                                                                                            [49m
+
+  Reading the TAP payload to see what fable-3 is asking.
+
+  [2m[37m [0m [1mRead[0m [2m.tap/bus/payloads/fable-3-20260706T005836Z-4deb5de95566.md[0m
+
+  Composing the story, then settling the payload with [38;2;168;181;230mtap reply[39m.
+
+  $ tap reply fable-3-20260706T005836Z-4deb5de95566 -m "done" [2m1.6s[0m [2min current dir[0m
+    [2mtap reply: replied to fable-3 and settled fable-3-20260706T005836Z-4deb5de95566[0m
+
+  [1mThe Lighthouse Keeper[0m
+
+  Every night, Mara climbed the spiral stairs with a tin of cold coffee and a book she never finished. The lamp above her village had
+  burned for ninety years; she had tended it for twelve. Storms came like arguments—loud, then spent—and she answered them with light.
+
+  Sailors said the beam felt like a hand on the shoulder. Mara believed that. Once, during a fog so thick it erased the sea, she heard a
+  horn below and counted seconds between blasts until a shape emerged: a fishing boat, listing, two men shouting her name though she could
+  not hear words.
+
+  She did not save them. The light did. That was the bargain she had made with solitude: not heroism, but constancy.
+
+  When the automation letter arrived, she filed it beneath the coffee tin. Machines could rotate lenses, but they could not stand watch
+  with the patience of someone who knew every creak in the tower and every soul who might be out there, hoping the dark would break.
+
+  [2m────────────────────────────────────────[0m
+
+  Settled with [38;2;168;181;230mtap reply[39m — fable-3 should have the acknowledgment.
+
+
+
+ [48;2;32;32;32m                                                                                                                                            [49m
+ [48;2;32;32;32m [0m→ [0;7m[48;2;32;32;32mA[0m[48;2;32;32;32mdd a follow-up[0m[48;2;32;32;32m                                                                                                                          [49m
+ [48;2;32;32;32m                                                                                                                                            [49m
+
+  [2mComposer 2.5 Fast[0m [2m·[0m [37mMAX[39m [2m·[0m [2m13.3%[0m                                                                                             [35mRun Everything[39m
+  [2m~/wrk/Example-Org/tap · HermesOpenCodeCursor[0m

@@ -1,0 +1,22 @@
+{
+  "name": "tap-poc-bun",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tap": "./tap"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "test": "bash test/run.sh",
+    "skills:generate": "bun src/skill-plugin.ts",
+    "skills:check": "bun src/skill-plugin.ts --check",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

@@ -1,0 +1,1564 @@
+{
+  "captured_from": {
+    "rev": "origin/main",
+    "head": "eca1c343fbed4e0bc1cc31682ee184432d8fe275",
+    "pinned": "Every read used the head SHA above, resolved once.",
+    "blobs": {
+      "skills/tap/scripts/clear_fence.py": "68b14386dd8ea62121682c30bdfc45eb267e5b4c"
+    },
+    "python": "3.14.6",
+    "floor_python": "3.11.14"
+  },
+  "why": "Frozen behavior of clear_fence's READER half, captured before S3 deletes clear_fence.inspect and notice_expired_once. Arms in session/tests/test_clear_fence.py import them directly and stop testing anything at the delete, and no Python caller survives to act as a live oracle. Regenerate only by checking out the blob id above.",
+  "malformed_vs_unreadable": "inspect returns `rec` at BOTH malformed exits (a dict whose since_epoch or ceiling_seconds is unusable) and `rec: null` ONLY when the file could not be read or parsed into a dict. A reader with one try/catch around the whole body collapses these, and a marker with a bad ceiling then loses the since/pid/nonce the Bash diagnostics print (lib.sh:445-452) -- a diagnostic that names the wedged clearer becomes one that says nothing.",
+  "raised_is_an_observable": "A `raised` row means the incumbent exited nonzero. At the only door that calls notice_expired_once, `[ \"$rc\" -eq 0 ] || return 0` maps that to SUPPRESSED: no warning, no sidecar, indistinguishable from an already-noticed nonce. The port must reproduce the door's observable, not the traceback.",
+  "cases": [
+    {
+      "group": "inspect",
+      "case": "absent_missing_file",
+      "marker": null,
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_empty_file",
+      "marker": "",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_whitespace_only",
+      "marker": "   \n\t ",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_invalid_json",
+      "marker": "{",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_list",
+      "marker": "[]",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_scalar",
+      "marker": "3",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_null",
+      "marker": "null",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_string",
+      "marker": "\"x\"",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_nonempty_list",
+      "marker": "[1]",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_object_array",
+      "marker": "[{\"since_epoch\":1,\"ceiling_seconds\":90}]",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "absent_json_true",
+      "marker": "true",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_missing_since_epoch",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":null,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": null
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_since_epoch_string",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"soon\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "soon"
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_missing_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":null}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": null,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_ceiling_string",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"ninety\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "ninety",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_ceiling_zero",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_ceiling_negative",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":-1}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": -1,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "malformed_empty_object",
+      "marker": "{}",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_one_second_in",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_just_under_boundary",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000089.999,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "boundary_exactly_at_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000090.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "expired_just_over_boundary",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000090.001,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "expired_long_past",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700010090.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_at_the_instant_of_stamp",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000000.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_before_the_stamp",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1699999900.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_dead_holder_fresh_content",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":999999,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 999999,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "expired_dead_holder_stale_content",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":999999,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000091.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 999999,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_numeric_strings",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"1700000000.0\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"90.0\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "90.0",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "1700000000.0"
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "inspect",
+      "case": "live_integer_fields",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_infinity_literal_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":Infinity}",
+      "now": 1001700000000.0,
+      "rec": {
+        "ceiling_seconds": {
+          "__nonfinite__": "inf"
+        },
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_negative_infinity_literal_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":-Infinity}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": {
+          "__nonfinite__": "-inf"
+        },
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_nan_literal_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":NaN}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": {
+          "__nonfinite__": "nan"
+        },
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_nan_literal_since",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":NaN,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90,
+        "nonce": "n1",
+        "since_epoch": {
+          "__nonfinite__": "nan"
+        }
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_huge_int_since_epoch_overflows",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":-10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "raised": "OverflowError",
+      "detail": "OverflowError: int too large to convert to float",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_huge_int_ceiling_overflows",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+      "now": 1700000001.0,
+      "raised": "OverflowError",
+      "detail": "OverflowError: int too large to convert to float",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_exponent_1e400_is_inf_not_overflow",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1e400,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90,
+        "nonce": "n1",
+        "since_epoch": {
+          "__nonfinite__": "inf"
+        }
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_exponent_ceiling_1e400",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":1e400}",
+      "now": 1001700000000.0,
+      "rec": {
+        "ceiling_seconds": {
+          "__nonfinite__": "inf"
+        },
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_big_but_safe_int_since",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90,
+        "nonce": "n1",
+        "since_epoch": 1700000000
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_sentinel_string_is_just_a_string",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":\"\\u0000py-inf\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "\u0000py-inf",
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_sentinel_nan_string_is_just_a_string",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":\"\\u0000py-nan\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "\u0000py-nan",
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_sentinel_uuid_shaped_string",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":\"py-nonfinite-x-inf\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "py-nonfinite-x-inf",
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_bare_infinity_as_key_is_invalid",
+      "marker": "{Infinity:0,\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_bare_nan_as_key_is_invalid",
+      "marker": "{NaN:0,\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_infinity_in_value_position_still_live",
+      "marker": "{\"nonce\":\"n1\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":Infinity}",
+      "now": 1001700000000.0,
+      "rec": {
+        "ceiling_seconds": {
+          "__nonfinite__": "inf"
+        },
+        "nonce": "n1",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "json",
+      "case": "json_nan_inside_a_string_is_not_substituted",
+      "marker": "{\"nonce\":\"NaN\",\"since_epoch\":1700000000.0,\"ceiling_seconds\":90}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90,
+        "nonce": "NaN",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_plain_live_after_expired",
+      "seats": [
+        [
+          "alpha",
+          "expired"
+        ],
+        [
+          "bravo",
+          "live"
+        ]
+      ],
+      "first_live": "bravo",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_first_live_wins_by_sort",
+      "seats": [
+        [
+          "alpha",
+          "live"
+        ],
+        [
+          "bravo",
+          "live"
+        ]
+      ],
+      "first_live": "alpha",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_none_live",
+      "seats": [
+        [
+          "alpha",
+          "expired"
+        ],
+        [
+          "bravo",
+          "expired"
+        ]
+      ],
+      "first_live": "",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_dotjson_marker_live_hides_nothing",
+      "seats": [
+        [
+          ".json",
+          "live"
+        ],
+        [
+          "alpha",
+          "live"
+        ]
+      ],
+      "first_live": ".json",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_dotjson_marker_live_alone",
+      "seats": [
+        [
+          ".json",
+          "live"
+        ]
+      ],
+      "first_live": ".json",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_dotjson_expired_with_live_sibling",
+      "seats": [
+        [
+          ".json",
+          "expired"
+        ],
+        [
+          "alpha",
+          "live"
+        ]
+      ],
+      "first_live": "alpha",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_empty_handle_marker_must_not_hide_a_live_sibling",
+      "seats": [
+        [
+          "",
+          "live"
+        ],
+        [
+          "alpha",
+          "live"
+        ]
+      ],
+      "first_live": "alpha",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_empty_handle_marker_live_alone",
+      "seats": [
+        [
+          "",
+          "live"
+        ]
+      ],
+      "first_live": "",
+      "floor_agrees": true
+    },
+    {
+      "group": "scan",
+      "case": "scan_empty_handle_expired_with_live_sibling",
+      "seats": [
+        [
+          "",
+          "expired"
+        ],
+        [
+          "alpha",
+          "live"
+        ]
+      ],
+      "first_live": "alpha",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_invalid_utf8_lone_continuation",
+      "marker_bytes": "{\"since_epoch\":1,\"ceiling_seconds\":90,\"x\":\"\u00ff\"}",
+      "raised": "UnicodeDecodeError",
+      "detail": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 43: invalid start byte",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_invalid_utf8_truncated_sequence",
+      "marker_bytes": "{\"since_epoch\":1,\"ceiling_seconds\":90,\"x\":\"\u00e2\u0082\"}",
+      "raised": "UnicodeDecodeError",
+      "detail": "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 43-44: invalid continuation byte",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_utf8_bom_then_object",
+      "marker_bytes": "\u00ef\u00bb\u00bf{\"since_epoch\":1,\"ceiling_seconds\":90}",
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_utf16_encoded_object",
+      "marker_bytes": "\u00ff\u00fe{\u0000\"\u0000s\u0000i\u0000n\u0000c\u0000e\u0000_\u0000e\u0000p\u0000o\u0000c\u0000h\u0000\"\u0000:\u00001\u0000,\u0000\"\u0000c\u0000e\u0000i\u0000l\u0000i\u0000n\u0000g\u0000_\u0000s\u0000e\u0000c\u0000o\u0000n\u0000d\u0000s\u0000\"\u0000:\u00009\u00000\u0000}\u0000",
+      "raised": "UnicodeDecodeError",
+      "detail": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_valid_utf8_multibyte_nonce",
+      "marker_bytes": "{\"nonce\":\"\u00c3\u00a9\u00e4\u00b8\u00ad\",\"since_epoch\":1,\"ceiling_seconds\":90}",
+      "rec": {
+        "ceiling_seconds": 90,
+        "nonce": "\u00e9\u4e2d",
+        "since_epoch": 1
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "readerr",
+      "case": "readerr_directory_in_place_of_marker",
+      "marker_bytes": "DIR",
+      "rec": null,
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_underscores_are_a_python_float",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"1_700_000_000\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "1_700_000_000"
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_surrounding_whitespace",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"  1700000000.0  \",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "  1700000000.0  "
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_empty_string_is_a_valueerror",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": ""
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_exponent_string",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"1.7e9\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"9e1\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "9e1",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "1.7e9"
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_infinity_word",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"infinity\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "infinity",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_inf_ceiling_never_expires",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"inf\"}",
+      "now": 1001700000000.0,
+      "rec": {
+        "ceiling_seconds": "inf",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_negative_inf_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"-inf\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "-inf",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_nan_since_epoch",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"nan\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "nan"
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_nan_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":\"nan\"}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": "nan",
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_bool_true_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":true}",
+      "now": 1700000000.5,
+      "rec": {
+        "ceiling_seconds": true,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_bool_false_ceiling",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":false}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": false,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_bool_true_since",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":true,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":5}",
+      "now": 3.0,
+      "rec": {
+        "ceiling_seconds": 5,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": true
+      },
+      "state": "live",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_hex_string_is_a_valueerror",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":\"0x10\",\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": "0x10"
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_list_is_a_typeerror",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":[1],\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":90.0}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 90.0,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": [
+          1
+        ]
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_dict_ceiling_is_a_typeerror",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":{\"a\":1}}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": {
+          "a": 1
+        },
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "absent",
+      "floor_agrees": true
+    },
+    {
+      "group": "numeric",
+      "case": "numeric_ceiling_tiny_positive",
+      "marker": "{\"nonce\":\"n1\",\"since\":\"2026-09-15T10:00:00Z\",\"since_epoch\":1700000000.0,\"pid\":4242,\"handle\":\"midclear\",\"harness\":\"codex\",\"ceiling_seconds\":1e-09}",
+      "now": 1700000001.0,
+      "rec": {
+        "ceiling_seconds": 1e-09,
+        "handle": "midclear",
+        "harness": "codex",
+        "nonce": "n1",
+        "pid": 4242,
+        "since": "2026-09-15T10:00:00Z",
+        "since_epoch": 1700000000.0
+      },
+      "state": "expired",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "first_call_for_a_nonce",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1"
+      },
+      "returned": true,
+      "sidecar": "n1\n",
+      "sidecar_exists": true,
+      "sidecar_hex": "6e310a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "second_call_same_nonce",
+      "sidecar_seed": "n1\n",
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1"
+      },
+      "returned": false,
+      "sidecar": "n1\n",
+      "sidecar_exists": true,
+      "sidecar_hex": "6e310a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "second_call_different_nonce",
+      "sidecar_seed": "n0\n",
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1"
+      },
+      "returned": true,
+      "sidecar": "n1\n",
+      "sidecar_exists": true,
+      "sidecar_hex": "6e310a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "sidecar_without_trailing_newline",
+      "sidecar_seed": "n1",
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1"
+      },
+      "returned": false,
+      "sidecar": "n1",
+      "sidecar_exists": true,
+      "sidecar_hex": "6e31",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "sidecar_with_surrounding_space",
+      "sidecar_seed": "  n1  \n",
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1"
+      },
+      "returned": false,
+      "sidecar": "  n1  \n",
+      "sidecar_exists": true,
+      "sidecar_hex": "20206e3120200a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "empty_nonce_is_not_a_once_key",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": ""
+      },
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "missing_nonce_key",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {},
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_none",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": null
+      },
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "rec_is_none",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": null,
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "rec_is_empty_dict",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {},
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_zero_is_falsy",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": 0
+      },
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_empty_list_is_falsy",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": []
+      },
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_false_is_falsy",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": false
+      },
+      "returned": true,
+      "sidecar": null,
+      "sidecar_exists": false,
+      "sidecar_hex": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_int_truthy_raises",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": 5
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+      "sidecar_hex_after": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_float_truthy_raises",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": 1.5
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: unsupported operand type(s) for +: 'float' and 'str'",
+      "sidecar_hex_after": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_true_truthy_raises",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": true
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: unsupported operand type(s) for +: 'bool' and 'str'",
+      "sidecar_hex_after": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_list_truthy_raises",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": [
+          "a"
+        ]
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: can only concatenate list (not \"str\") to list",
+      "sidecar_hex_after": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_dict_truthy_raises",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": {
+          "a": 1
+        }
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: unsupported operand type(s) for +: 'dict' and 'str'",
+      "sidecar_hex_after": null,
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_int_with_matching_sidecar_text",
+      "sidecar_seed": "5\n",
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": 5
+      },
+      "raised": "TypeError",
+      "detail": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+      "sidecar_hex_after": "350a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_embedded_newline",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "n1\nn2"
+      },
+      "returned": true,
+      "sidecar": "n1\nn2\n",
+      "sidecar_exists": true,
+      "sidecar_hex": "6e310a6e320a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "nonce_surrounding_space_in_rec",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": null,
+      "rec": {
+        "nonce": "  n1  "
+      },
+      "returned": true,
+      "sidecar": "  n1  \n",
+      "sidecar_exists": true,
+      "sidecar_hex": "20206e3120200a",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "sidecar_invalid_utf8_suppresses_and_preserves",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": "ff",
+      "rec": {
+        "nonce": "n1"
+      },
+      "raised": "UnicodeDecodeError",
+      "detail": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+      "sidecar_hex_after": "ff",
+      "floor_agrees": true
+    },
+    {
+      "group": "notice",
+      "case": "sidecar_invalid_utf8_mid_content",
+      "sidecar_seed": null,
+      "sidecar_seed_hex": "6e31ff0a",
+      "rec": {
+        "nonce": "n1"
+      },
+      "raised": "UnicodeDecodeError",
+      "detail": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 2: invalid start byte",
+      "sidecar_hex_after": "6e31ff0a",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_0",
+      "handle": "midclear",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_1",
+      "handle": "tap/midclear",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_2",
+      "handle": "a/b/midclear",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_3",
+      "handle": "  midclear  ",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_4",
+      "handle": "  tap/midclear  ",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_5",
+      "handle": "tap/  midclear",
+      "fence_path": "clear-fence/  midclear.json",
+      "notice_path": "clear-fence/  midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_6",
+      "handle": "midclear\t",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_7",
+      "handle": "midclear\n",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_8",
+      "handle": "midclear\u001c",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_9",
+      "handle": "midclear\u001f",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_10",
+      "handle": "midclear\u0085",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_11",
+      "handle": "midclear\u00a0",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_12",
+      "handle": "midclear\ufeff",
+      "fence_path": "clear-fence/midclear\ufeff.json",
+      "notice_path": "clear-fence/midclear\ufeff.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_13",
+      "handle": "midclear\u2028",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_14",
+      "handle": "midclear\u3000",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_15",
+      "handle": "midclear\u200b",
+      "fence_path": "clear-fence/midclear\u200b.json",
+      "notice_path": "clear-fence/midclear\u200b.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_16",
+      "handle": "",
+      "fence_path": "clear-fence/.json",
+      "notice_path": "clear-fence/.json.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_17",
+      "handle": "   ",
+      "fence_path": "clear-fence/.json",
+      "notice_path": "clear-fence/.json.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_18",
+      "handle": "/",
+      "fence_path": "clear-fence/.json",
+      "notice_path": "clear-fence/.json.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_19",
+      "handle": "tap/",
+      "fence_path": "clear-fence/.json",
+      "notice_path": "clear-fence/.json.json.expired-notice",
+      "floor_agrees": true
+    },
+    {
+      "group": "handle",
+      "case": "handle_20",
+      "handle": "/midclear",
+      "fence_path": "clear-fence/midclear.json",
+      "notice_path": "clear-fence/midclear.json.expired-notice",
+      "floor_agrees": true
+    }
+  ]
+}

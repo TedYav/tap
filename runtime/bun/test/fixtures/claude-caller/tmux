@@ -1,0 +1,156 @@
+#!/usr/bin/env bun
+// Mock tmux for claude-tool-caller-identity.test.ts, ported verbatim from the
+// deleted skills/tap/scripts/smoke/claude-tool-caller-identity.test.sh heredoc.
+// Answers only the command/format pairs the caller resolver, transaction probe
+// and submit path use; every behavior knob is env-driven. A private socket
+// (-S /fixture/tmux.sock) is required wherever the caller pinned one.
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const argv = process.argv.slice(2);
+let selectedSocket = false;
+if (argv[0] === "-S") {
+  if (argv[1] !== "/fixture/tmux.sock") {
+    console.error(`wrong socket: ${argv[1] ?? ""}`);
+    process.exit(96);
+  }
+  selectedSocket = true;
+  argv.splice(0, 2);
+}
+const cmd = argv.shift() ?? "";
+if (process.env.TMUX_MOCK_SLEEP === "1") Bun.sleepSync(0.2);
+
+function fail(msg: string, code = 97): never {
+  console.error(msg);
+  process.exit(code);
+}
+
+function requireTransactionSocket(what: string): void {
+  if (process.env.TMUX_MOCK_REQUIRE_TRANSACTION_SOCKET === "1" && !selectedSocket) {
+    console.error(`transaction ${what} lookup did not preserve selected socket`);
+    process.exit(98);
+  }
+}
+
+// The registry mutation a racing replacement performs between the selection
+// read and the final recheck; the flag file makes it fire exactly once.
+function replaceOwnerIfRequested(): void {
+  const flag = process.env.TMUX_MOCK_REPLACE_ON_OBSERVE_FILE ?? "";
+  if (!flag || existsSync(flag)) return;
+  const reg = process.env.TMUX_MOCK_REGISTRY;
+  if (!reg) fail("replace_owner_if_requested: TMUX_MOCK_REGISTRY unset");
+  const doc = JSON.parse(readFileSync(reg, "utf8"));
+  doc.seats.fable.instance = "fable|successor";
+  writeFileSync(reg, JSON.stringify(doc));
+  writeFileSync(flag, "");
+}
+
+switch (cmd) {
+  case "list-sessions": {
+    requireTransactionSocket("session");
+    console.log("T/fable\t900:200\t1");
+    break;
+  }
+  case "list-panes": {
+    if (process.env.TMUX_MOCK_DEFAULT_UNAVAILABLE === "1" && !selectedSocket) process.exit(1);
+    if (!argv.join(" ").includes("pane_tty")) console.log("T/fable\tT/fable:0.0\t%9\tclaude\t4242\t900:200\t0");
+    else if (process.env.TMUX_MOCK_CHANGED === "1") console.log("%8\t/dev/ttys003");
+    else console.log("%9\t/dev/ttys004");
+    break;
+  }
+  case "display-message": {
+    requireTransactionSocket("display");
+    let target = "";
+    let fmt = "";
+    for (let i = 0; i < argv.length; i++) {
+      if (argv[i] === "-p") continue;
+      if (argv[i] === "-t") {
+        target = argv[i + 1] ?? "";
+        i++;
+        continue;
+      }
+      fmt = argv[i]!;
+    }
+    switch (fmt) {
+      case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{socket_path}\t#{pane_current_path}":
+        replaceOwnerIfRequested();
+        console.log(`%9\t/dev/ttys004\tT/fable\t900:200\tT/fable:0.0\t4242\tclaude\t/fixture/tmux.sock\t${process.env.TMUX_MOCK_PANE_PATH ?? "/fixture"}`);
+        break;
+      case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}":
+        console.log("%9\t/dev/ttys004\tT/fable\t900:200");
+        break;
+      case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}\t#{socket_path}":
+        replaceOwnerIfRequested();
+        console.log("%9\t/dev/ttys004\tT/fable\t900:200\t/fixture/tmux.sock");
+        break;
+      case "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}":
+        console.log("%9\tT/fable\t900:200");
+        break;
+      case "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}\t#{socket_path}":
+        replaceOwnerIfRequested();
+        console.log("%9\tT/fable\t900:200\t/fixture/tmux.sock");
+        break;
+      // The native courier's one-record pane observation (tmux.ts observePaneResult).
+      case "#{pane_id}\t#{session_name}\t#{pane_pid}\t#{pane_current_command}\t#{pane_dead}\t#{session_name}:#{window_index}.#{pane_index}\t#{socket_path}\t#{pane_current_path}":
+        replaceOwnerIfRequested();
+        console.log(`%9\tT/fable\t4242\tclaude\t0\tT/fable:0.0\t/fixture/tmux.sock\t${process.env.TMUX_MOCK_PANE_PATH ?? "/fixture"}`);
+        break;
+      case "#{pane_id}\t#{session_name}\t#{pane_pid}\t#{pane_current_command}\t#{pane_dead}":
+        console.log("%9\tT/fable\t4242\tclaude\t0");
+        break;
+      case "#{pane_in_mode}":
+        console.log("0");
+        break;
+      case "#{socket_path}":
+        console.log("/fixture/tmux.sock");
+        break;
+      case "#{pid}:#{start_time}":
+        console.log("900:200");
+        break;
+      case "#{pane_current_command}":
+        console.log("claude");
+        break;
+      case "#{pane_pid}":
+        console.log("4242");
+        break;
+      case "#{pane_current_path}":
+        console.log(process.env.TMUX_MOCK_PANE_PATH ?? "/fixture");
+        break;
+      case "#{session_name}:#{window_index}.#{pane_index}": {
+        if (process.env.TMUX_MOCK_REQUIRE_ADDRESS_SOCKET === "1" && !selectedSocket) {
+          console.error("address lookup did not preserve selected socket");
+          process.exit(98);
+        }
+        console.log("T/fable:0.0");
+        break;
+      }
+      case "#{pane_id}":
+        console.log("%9");
+        break;
+      default:
+        // The submit path's own probes (mode, cursor, ...) answer empty for the
+        // tap self arm; outside it an unrecognized format is a fixture bug.
+        if (process.env.TMUX_MOCK_EFFECT_LOG) process.exit(0);
+        fail(`tmux mock: unexpected display format ${fmt} target ${target}`);
+    }
+    break;
+  }
+  case "capture-pane":
+  case "send-keys": {
+    // tap self's pane effects: record the socket each one used. A capture
+    // renders an idle Claude input band and may replace the owner first, so
+    // the shared submitter's owner guard must refuse before any keystroke.
+    const effectLog = process.env.TMUX_MOCK_EFFECT_LOG ?? "";
+    if (!effectLog) fail(`tmux mock: unexpected command ${cmd}`);
+    appendFileSync(effectLog, `${selectedSocket ? 1 : 0} ${cmd}\n`);
+    if (cmd === "capture-pane") {
+      const observeFlag = process.env.TMUX_MOCK_REPLACE_ON_OBSERVE_FILE;
+      process.env.TMUX_MOCK_REPLACE_ON_OBSERVE_FILE = process.env.TMUX_MOCK_REPLACE_ON_CAPTURE_FILE ?? "";
+      replaceOwnerIfRequested();
+      process.env.TMUX_MOCK_REPLACE_ON_OBSERVE_FILE = observeFlag;
+      console.log("› \n──────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle)");
+    }
+    break;
+  }
+  default:
+    fail(`tmux mock: unexpected command ${cmd}`);
+}

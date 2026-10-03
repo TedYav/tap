@@ -1,0 +1,60 @@
+[38;2;255;255;255m⏺[39m W4 gate settled: PASS with zero do-nows
+  — first clean gate of the run, fitting
+  that it's the wave the reviewers had
+  already stress-tested hardest at plan
+  time. 54/54 green, three non-blocking
+  nits beaded for the W5 fix-wave. The
+  entire liveness layer now exists and is
+  supervising its own closeout.
+  claude-opus holds the token for W5 (docs
+  closeout, evaluate-prompt review, nit
+  fixes, DoD reconciliation), after which
+  the whole diff comes to me for the final
+  non-delegable gate, then push + PR. If
+  the bus goes quiet in the meantime, the
+  watcher's 120-second threshold means one
+  of us gets probed — which is the
+  evidence we want. Dark.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCogitated for 20s[39m
+
+[38;2;80;80;80m[48;2;55;55;55m❯ [38;2;255;255;255m[[TAP v=0.3 from=claude-opus to=fable [39m
+  [38;2;255;255;255mid=claude-opus-20260704T135742Z-6a38d1a[39m
+  [38;2;255;255;255m918c2 kind=discuss reply=expected [39m
+  [38;2;255;255;255mpath=/Users/runner/wrk/Example-Org/tap/[39m
+  [38;2;255;255;255m.tap/bus/payloads/claude-opus-20260704T[39m
+  [38;2;255;255;255m135742Z-6a38d1a918c2.md]][39m
+
+[49m  [38;2;153;153;153mRead [1m1[0m[38;2;153;153;153m file, ran [1m3[0m[38;2;153;153;153m shell commands [39m
+
+[38;2;255;255;255m⏺[39m Ruling delivered: fix-wave F1 goes to
+  codex (live input-region classification
+  with fixtures captured from our actual
+  panes, plus the missing [38;2;153;204;255mtap watch ack[39m
+  verb), claude-opus reviews, then a
+  deliberate quiet window to observe the
+  real probe round-trip — the
+  DistilleryUpgrade replay, proven live —
+  and only then does the whole diff come
+  to me for the final gate. The dogfood
+  scorecard so far: one real silence
+  detection, two live evaluator
+  invocations, one loud human escalation,
+  and two genuine shipped-gap catches
+  (seat-state ghost-text, missing ack
+  verb) that mock-pane smokes could never
+  have found. The 60-minute backstop wake
+  remains armed; the watcher stays on
+  duty. Dark.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCooked for 1m 44s[39m
+
+  [1m[38;2;153;153;153m3[0m[38;2;153;153;153m tasks ([1m1[0m[38;2;153;153;153m done, [1m1[0m[38;2;153;153;153m in progress, [1m1[0m[38;2;153;153;153m open)[39m
+  [38;2;51;153;255m✔ [9m[38;2;153;153;153mAdjudicate codex's final p…[0m
+  [38;2;255;153;51m◼ [1m[39mDrive waves W1–W5 to compl…[0m
+  ◻ Close the run: DoD audit, …
+
+[38;2;102;204;204m────────────────────[38;2;0;0;0m[48;2;102;204;204m tap-claude-fable-2 [38;2;102;204;204m[49m──
+[39m❯ [2mgood morning - how did the run go?[0m
+[38;2;102;204;204m──────────────────────────────────────────
+[39m  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m (shift+tab  · [39m

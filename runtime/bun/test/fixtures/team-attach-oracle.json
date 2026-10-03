@@ -1,0 +1,1205 @@
+{
+  "captured_from": {
+    "head": "753f005c8bc2242428bebd637d471cec8c8f20a0",
+    "blobs": {
+      "skills/tap/scripts/tap-team-attach.sh": "fd196c9b4efeb153d0b298f014e4929ba945b1dc",
+      "skills/tap/scripts/tap-team.sh": "9d9b694e599c82edd3826495c6b28e8608dc7c07",
+      "skills/tap/scripts/tap.sh": "6479ceace3e6f6901bd0447b71cd247c79acf2a6",
+      "skills/tap/scripts/lib.sh": "2d671bb75aa9e0344b81420f4ff655e7ccd10347",
+      "skills/tap/scripts/style.sh": "998e0d035f7655eb0cefbabfca423db08f1e42ac",
+      "runtime/bun/src/launcher/attach-partition.ts": "97ef17e35cd75dfc951a23c8579d67d5f86c302e",
+      "skills/tap/scripts/session/launcher.py": "28831c42e3dccc7c4c73acae85fb1ba199175095"
+    },
+    "platform": "darwin",
+    "bash": "5.3.9(1)-release",
+    "python": "3.14.6"
+  },
+  "cases": [
+    {
+      "name": "dotted_plain_dry_run",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo.alpha.107-Renewal' (2 new viewer(s))\n  tmux attach -t '=demo-alpha-107-Renewal/fable'\n  tmux attach -t '=demo-alpha-107-Renewal/sol'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo.alpha.107-Renewal'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo-alpha-107-Renewal/fable'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  tell p1 to set p2 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo.alpha.107-Renewal'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo-alpha-107-Renewal/sol'\\\"'\\\"''\")\n  set columns of p1 to (totalColumns div 2)\n  set rows of p1 to (totalRows div 1)\n  set columns of p2 to (totalColumns div 2)\n  set rows of p2 to (totalRows div 1)\n  set name of p1 to \"fable\"\n  set name of p2 to \"sol\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: ghost (resume tier picker; next: tap session resume ghost)\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo-alpha-107-Renewal",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo.alpha.107-Renewal\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c0/demo.alpha.107-Renewal\"}, \"seats\": {\"fable\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c0/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/fable:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/fable\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"fable\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"sol\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c0/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/sol:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/sol\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"sol\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c0/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/ghost:0.0\", \"pane_id\": \"%103\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "fable": "%0",
+          "sol": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c0/demo.alpha.107-Renewal"
+      }
+    },
+    {
+      "name": "dotted_only_one",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo.alpha.107-Renewal' (1 new viewer(s))\n  tmux attach -t '=demo-alpha-107-Renewal/fable'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo.alpha.107-Renewal'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo-alpha-107-Renewal/fable'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"fable\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --only fable — every other seat\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo-alpha-107-Renewal",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo.alpha.107-Renewal\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c1/demo.alpha.107-Renewal\"}, \"seats\": {\"fable\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c1/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/fable:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/fable\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"fable\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"sol\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c1/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/sol:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/sol\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"sol\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c1/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/ghost:0.0\", \"pane_id\": \"%103\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "fable": "%0",
+          "sol": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c1/demo.alpha.107-Renewal"
+      }
+    },
+    {
+      "name": "dotted_only_whole_roster",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo.alpha.107-Renewal' (2 new viewer(s))\n  tmux attach -t '=demo-alpha-107-Renewal/fable'\n  tmux attach -t '=demo-alpha-107-Renewal/sol'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo.alpha.107-Renewal'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo-alpha-107-Renewal/fable'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  tell p1 to set p2 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo.alpha.107-Renewal'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo-alpha-107-Renewal/sol'\\\"'\\\"''\")\n  set columns of p1 to (totalColumns div 2)\n  set rows of p1 to (totalRows div 1)\n  set columns of p2 to (totalColumns div 2)\n  set rows of p2 to (totalRows div 1)\n  set name of p1 to \"fable\"\n  set name of p2 to \"sol\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: ghost (resume tier picker; next: tap session resume ghost)\ntap team attach: --only fable, sol, ghost matched every seat — none spared\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo-alpha-107-Renewal",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo.alpha.107-Renewal\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c2/demo.alpha.107-Renewal\"}, \"seats\": {\"fable\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c2/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/fable:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/fable\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"fable\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"sol\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c2/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/sol:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/sol\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"sol\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c2/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/ghost:0.0\", \"pane_id\": \"%103\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "fable": "%0",
+          "sol": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c2/demo.alpha.107-Renewal"
+      }
+    },
+    {
+      "name": "dotted_except_all_spared",
+      "expected": {
+        "stdout": "tap team attach: no seats matched after exclusions (excluded: fable, sol, ghost)\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --except: fable (live), ghost (unavailable), sol (live)\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo-alpha-107-Renewal",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo.alpha.107-Renewal\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c3/demo.alpha.107-Renewal\"}, \"seats\": {\"fable\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c3/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/fable:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/fable\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"fable\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"sol\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c3/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/sol:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/sol\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"sol\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"ghost\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c3/demo.alpha.107-Renewal\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo-alpha-107-Renewal/ghost:0.0\", \"pane_id\": \"%103\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo-alpha-107-Renewal/ghost\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo.alpha.107-Renewal\", \"tag\": \"ghost\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "fable": "%0",
+          "sol": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c3/demo.alpha.107-Renewal"
+      }
+    },
+    {
+      "name": "undotted_plain_dry_run",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (2 new viewer(s))\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  tell p1 to set p2 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set columns of p1 to (totalColumns div 2)\n  set rows of p1 to (totalRows div 1)\n  set columns of p2 to (totalColumns div 2)\n  set rows of p2 to (totalRows div 1)\n  set name of p1 to \"a\"\n  set name of p2 to \"b\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c4/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c4/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c4/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c4/demo"
+      }
+    },
+    {
+      "name": "except_one_dry_run",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --except: b (live)\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c5/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c5/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c5/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c5/demo"
+      }
+    },
+    {
+      "name": "foreign_prefix_row_not_planned",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c6/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c6/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"visitor\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c6/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"other-team/visitor:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"other-team/visitor\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"visitor\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "visitor": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c6/demo"
+      }
+    },
+    {
+      "name": "empty_roster_no_live_seats",
+      "expected": {
+        "stdout": "tap team attach: no live seats for team 'demo'; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c7/demo\"}, \"seats\": {}}\n",
+        "panes": {},
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c7/demo"
+      }
+    },
+    {
+      "name": "all_unavailable_no_live_seats",
+      "expected": {
+        "stdout": "tap team attach: no live seats for team 'demo'; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: a (resume tier picker; next: tap session resume a), b (resume tier picker; next: tap session resume b)\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c8/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c8/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"%101\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c8/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {},
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c8/demo"
+      }
+    },
+    {
+      "name": "except_unknown_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach --except names no seat on this team: nobody; roster: a, b; next: tap team\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c9/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c9/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c9/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c9/demo"
+      }
+    },
+    {
+      "name": "except_two_unknown_typed_order",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach --except names no seat on this team: z, y; roster: a, b; next: tap team\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c10/demo\"}, \"seats\": {\"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c10/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c10/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "b": "%0",
+          "a": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c10/demo"
+      }
+    },
+    {
+      "name": "except_all_unavailable_still_fails",
+      "expected": {
+        "stdout": "tap team attach: no live seats for team 'demo'; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --except: a (unavailable), b (unavailable)\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c11/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c11/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"%101\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c11/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"%102\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {},
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c11/demo"
+      }
+    },
+    {
+      "name": "only_unknown_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach --only names no seat on this team: nobody; roster: a; next: tap team\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c12/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c12/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c12/demo"
+      }
+    },
+    {
+      "name": "only_and_except_conflict",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach takes --only or --except, never both: they are complements, so naming both states the selection twice and the two statements can disagree; next: tap team attach [--only <handles> | --except <handles>]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c13/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c13/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c13/demo"
+      }
+    },
+    {
+      "name": "except_no_value",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except was given no value; name at least one handle to spare; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c14/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c14/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c14/demo"
+      }
+    },
+    {
+      "name": "only_no_value",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --only was given no value; name at least one handle to act on; next: tap team attach --only <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c15/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c15/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c15/demo"
+      }
+    },
+    {
+      "name": "except_empty_value",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except was given an empty value; name at least one handle to spare; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c16/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c16/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c16/demo"
+      }
+    },
+    {
+      "name": "except_empty_between_commas",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except 'a,,b' has an empty handle between commas; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c17/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c17/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c17/demo"
+      }
+    },
+    {
+      "name": "except_trailing_comma",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except 'a,' has an empty handle between commas; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c18/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c18/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c18/demo"
+      }
+    },
+    {
+      "name": "only_qualified_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --only takes bare handles from THIS team; 'demo/a' is team-qualified; next: tap team attach --only <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c19/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c19/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c19/demo"
+      }
+    },
+    {
+      "name": "except_colon_qualified_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except takes bare handles from THIS team; 'demo:a' is team-qualified; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c20/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c20/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c20/demo"
+      }
+    },
+    {
+      "name": "except_bad_charset",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except handle 'bad!x' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c21/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c21/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c21/demo"
+      }
+    },
+    {
+      "name": "except_del_handle_json_escaped",
+      "expected": {
+        "stdout": "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap team attach --except <handle>[,<handle>...]\",\"detail\":\"--except handle 'a\\u007f' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$\"}\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c22/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c22/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c22/demo"
+      }
+    },
+    {
+      "name": "except_leading_space_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except handle ' a' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c23/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c23/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c23/demo"
+      }
+    },
+    {
+      "name": "except_nbsp_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except handle 'a ' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c24/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c24/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c24/demo"
+      }
+    },
+    {
+      "name": "except_bom_handle",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except handle '﻿a' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c25/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c25/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c25/demo"
+      }
+    },
+    {
+      "name": "except_dedupes_and_orders",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/b'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"b\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --except: a (live), c (live)\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c26/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c26/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c26/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"c\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c26/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/c:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/c\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"c\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1",
+          "c": "%2"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c26/demo"
+      }
+    },
+    {
+      "name": "only_handle_named_up",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/up'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/up'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"up\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --only up — every other seat\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c27/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c27/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"up\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c27/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/up:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/up\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"up\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "up": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c27/demo"
+      }
+    },
+    {
+      "name": "except_handle_named_down",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: spared by --except: down (live)\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c28/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c28/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"down\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c28/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/down:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/down\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"down\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "down": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c28/demo"
+      }
+    },
+    {
+      "name": "unexpected_argument",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: unexpected argument 'fable'; next: tap help team\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c29/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c29/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c29/demo"
+      }
+    },
+    {
+      "name": "unknown_option",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: unexpected argument '--bogus'; next: tap help team\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c30/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c30/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c30/demo"
+      }
+    },
+    {
+      "name": "later_usage_error_wins_over_roster",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: unexpected argument '--wat'; next: tap help team\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c31/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c31/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c31/demo"
+      }
+    },
+    {
+      "name": "crew_in_except",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach: 'helper' is crew, not an independent seat; use tap crew remove to dismiss it; next: tap crew remove helper (parent: driver)\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c32/demo\"}, \"seats\": {\"driver\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c32/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/driver:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/driver\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"driver\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"helper\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c32/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/driver:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/driver\", \"crew\": true, \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"helper\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "driver": "%0",
+          "helper": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c32/demo"
+      }
+    },
+    {
+      "name": "crew_in_only",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: tap team attach: 'helper' is crew, not an independent seat; use tap crew remove to dismiss it; next: tap crew remove helper (parent: driver)\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c33/demo\"}, \"seats\": {\"driver\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c33/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/driver:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/driver\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"driver\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"helper\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c33/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/driver:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/driver\", \"crew\": true, \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"helper\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "driver": "%0",
+          "helper": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c33/demo"
+      }
+    },
+    {
+      "name": "eight_seats_tabs_layout",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (8 new viewer(s))\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\n  tmux attach -t '=demo/c'\n  tmux attach -t '=demo/d'\n  tmux attach -t '=demo/e'\n  tmux attach -t '=demo/f'\n  tmux attach -t '=demo/g'\n  tmux attach -t '=demo/h'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  tell w to set t2 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set p2 to current session of t2\n  tell w to set t3 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/c'\\\"'\\\"''\")\n  set p3 to current session of t3\n  tell w to set t4 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/d'\\\"'\\\"''\")\n  set p4 to current session of t4\n  tell w to set t5 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/e'\\\"'\\\"''\")\n  set p5 to current session of t5\n  tell w to set t6 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/f'\\\"'\\\"''\")\n  set p6 to current session of t6\n  tell w to set t7 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/g'\\\"'\\\"''\")\n  set p7 to current session of t7\n  tell w to set t8 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/h'\\\"'\\\"''\")\n  set p8 to current session of t8\n  set name of p1 to \"a\"\n  set name of p2 to \"b\"\n  set name of p3 to \"c\"\n  set name of p4 to \"d\"\n  set name of p5 to \"e\"\n  set name of p6 to \"f\"\n  set name of p7 to \"g\"\n  set name of p8 to \"h\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"c\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/c:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/c\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"c\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"d\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/d:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/d\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"d\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"e\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/e:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/e\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"e\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"f\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/f:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/f\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"f\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"g\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/g:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/g\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"g\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"h\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/h:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/h\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"h\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1",
+          "c": "%2",
+          "d": "%3",
+          "e": "%4",
+          "f": "%5",
+          "g": "%6",
+          "h": "%7"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c34/demo"
+      }
+    },
+    {
+      "name": "seven_seats_panes_layout",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (7 new viewer(s))\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\n  tmux attach -t '=demo/c'\n  tmux attach -t '=demo/d'\n  tmux attach -t '=demo/e'\n  tmux attach -t '=demo/f'\n  tmux attach -t '=demo/g'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  tell p1 to set p4 to (split horizontally with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/d'\\\"'\\\"''\")\n  tell p4 to set p6 to (split horizontally with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/f'\\\"'\\\"''\")\n  tell p1 to set p2 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  tell p2 to set p3 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/c'\\\"'\\\"''\")\n  tell p4 to set p5 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/e'\\\"'\\\"''\")\n  tell p6 to set p7 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/g'\\\"'\\\"''\")\n  set columns of p1 to (totalColumns div 3)\n  set rows of p1 to (totalRows div 3)\n  set columns of p2 to (totalColumns div 3)\n  set rows of p2 to (totalRows div 3)\n  set columns of p3 to (totalColumns div 3)\n  set rows of p3 to (totalRows div 3)\n  set columns of p4 to (totalColumns div 2)\n  set rows of p4 to (totalRows div 3)\n  set columns of p5 to (totalColumns div 2)\n  set rows of p5 to (totalRows div 3)\n  set columns of p6 to (totalColumns div 2)\n  set rows of p6 to (totalRows div 3)\n  set columns of p7 to (totalColumns div 2)\n  set rows of p7 to (totalRows div 3)\n  set name of p1 to \"a\"\n  set name of p2 to \"b\"\n  set name of p3 to \"c\"\n  set name of p4 to \"d\"\n  set name of p5 to \"e\"\n  set name of p6 to \"f\"\n  set name of p7 to \"g\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"c\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/c:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/c\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"c\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"d\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/d:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/d\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"d\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"e\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/e:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/e\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"e\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"f\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/f:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/f\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"f\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"g\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/g:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/g\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"g\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1",
+          "c": "%2",
+          "d": "%3",
+          "e": "%4",
+          "f": "%5",
+          "g": "%6"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c35/demo"
+      }
+    },
+    {
+      "name": "tabs_flag_two_seats",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (2 new viewer(s))\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  tell w to set t2 to (create tab with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set p2 to current session of t2\n  set name of p1 to \"a\"\n  set name of p2 to \"b\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c36/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c36/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c36/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c36/demo"
+      }
+    },
+    {
+      "name": "worktree_root_absent_bus_derived",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c37/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c37/demo"
+      }
+    },
+    {
+      "name": "root_with_quote_and_space",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/it'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'s a dir'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c38/it's a dir\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c38/it's a dir\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c38/it's a dir"
+      }
+    },
+    {
+      "name": "root_non_ascii",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/équipe é'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c39/\\u00e9quipe\\u00a0\\u00e9\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c39/\\u00e9quipe\\u00a0\\u00e9\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c39/équipe é"
+      }
+    },
+    {
+      "name": "root_with_quote_only",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/it'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'\\\"'sadir'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c40/it'sadir\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c40/it'sadir\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c40/it'sadir"
+      }
+    },
+    {
+      "name": "root_with_del_byte",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/dir'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c41/d\\u007fir\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c41/d\\u007fir\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c41/dir"
+      }
+    },
+    {
+      "name": "root_trailing_bom",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/a'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/root﻿'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"a\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c42/root\\ufeff\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c42/root\\ufeff\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c42/root﻿"
+      }
+    },
+    {
+      "name": "root_trailing_nel",
+      "expected": {
+        "stdout": "tap team attach: no live seats for team 'demo'; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c43/root\\u0085\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c43/root\\u0085\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c43/root"
+      }
+    },
+    {
+      "name": "root_trailing_file_separator",
+      "expected": {
+        "stdout": "tap team attach: no live seats for team 'demo'; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c44/root\\u001c\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c44/root\\u001c\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c44/root\u001c"
+      }
+    },
+    {
+      "name": "except_value_with_lf",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: --except handle 'a b' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$; next: tap team attach --except <handle>[,<handle>...]\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c45/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c45/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c45/demo"
+      }
+    },
+    {
+      "name": "unexpected_argument_with_cr",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: unexpected argument 'bad argument'; next: tap help team\n",
+        "rc": 1,
+        "effects": {}
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c46/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c46/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c46/demo"
+      }
+    },
+    {
+      "name": "already_attached_seat",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (1 new viewer(s))\n  tmux attach -t '=demo/b'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  set columns of p1 to (totalColumns div 1)\n  set rows of p1 to (totalRows div 1)\n  set name of p1 to \"b\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: a ({TTY})\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c47/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c47/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c47/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c47/demo"
+      }
+    },
+    {
+      "name": "all_already_attached",
+      "expected": {
+        "stdout": "tap team attach: no new viewers needed for team 'demo'; all 1 live seat(s) were already attached\ntap team attach: skipped because already attached: a ({TTY})\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c48/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c48/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c48/demo"
+      }
+    },
+    {
+      "name": "automation_unavailable_prints_commands",
+      "expected": {
+        "stdout": "tap team attach: iTerm automation unavailable; run these attach commands\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\ntap team attach: printed 2 attach command(s) for team 'demo'\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c49/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c49/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c49/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c49/demo"
+      }
+    },
+    {
+      "name": "stale_generation_non_dry_run",
+      "expected": {
+        "stdout": "tap team attach: iTerm automation unavailable; run these attach commands\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\ntap team attach: printed 2 attach command(s) for team 'demo'\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/registry.json": "{\n  \"schema\": \"0.20\",\n  \"seats\": {\n    \"a\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:900:100\",\n      \"server_socket\": \"{TMUX_TMPDIR}/tmux-502/default\",\n      \"session\": \"demo/a\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"server_restarted\",\n      \"tag\": \"a\"\n    },\n    \"b\": {\n      \"adopted_from_manual\": false,\n      \"base\": \"demo\",\n      \"delivery\": \"pane\",\n      \"harness\": \"claude\",\n      \"history\": [],\n      \"index\": 1,\n      \"model\": null,\n      \"passthrough\": [],\n      \"permissions\": \"bypass\",\n      \"registered_at\": \"2026-09-15T00:00:00Z\",\n      \"registered_from_worktree\": \"{CASE}/demo\",\n      \"server_epoch\": \"srv:900:100\",\n      \"server_socket\": \"{TMUX_TMPDIR}/tmux-502/default\",\n      \"session\": \"demo/b\",\n      \"status\": \"suspended\",\n      \"status_reason\": \"server_restarted\",\n      \"tag\": \"b\"\n    }\n  },\n  \"team\": {\n    \"name\": \"demo\",\n    \"worktree_root\": \"{CASE}/demo\"\n  }\n}\n",
+          ".tap/bus/registry-events.log": "ts={TS} actor=dispatcher action=server_restarted handle=a pane=demo/a:0.0 detail=cleared_stale_pane_binding team=demo\nts={TS} actor=dispatcher action=server_restarted handle=b pane=demo/b:0.0 detail=cleared_stale_pane_binding team=demo\n",
+          ".tap/bus/registry.json.lock": "",
+          ".tap/bus/registry-events.log.lock": "",
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c50/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c50/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"server_socket\": \"/private/tmp/tb.oTlzF2/tmux/tmux-502/default\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c50/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"server_socket\": \"/private/tmp/tb.oTlzF2/tmux/tmux-502/default\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c50/demo"
+      }
+    },
+    {
+      "name": "stale_generation_dry_run_control",
+      "expected": {
+        "stdout": "tap team attach: plan for team 'demo' (2 new viewer(s))\n  tmux attach -t '=demo/a'\n  tmux attach -t '=demo/b'\ntap team attach: generated AppleScript:\ntell application \"iTerm2\"\n  set w to (create window with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/a'\\\"'\\\"''\")\n  set t to current tab of w\n  set p1 to current session of t\n  set totalColumns to columns of p1\n  set totalRows to rows of p1\n  tell p1 to set p2 to (split vertically with default profile command \"/bin/sh -c 'unset TMUX TMUX_PANE; cd '\\\"'\\\"'{CASE}/demo'\\\"'\\\"' && exec '\\\"'\\\"'/opt/homebrew/bin/tmux'\\\"'\\\"' -S '\\\"'\\\"'{TMUX_TMPDIR}/tmux-502/default'\\\"'\\\"' attach-session -t '\\\"'\\\"'=demo/b'\\\"'\\\"''\")\n  set columns of p1 to (totalColumns div 2)\n  set rows of p1 to (totalRows div 1)\n  set columns of p2 to (totalColumns div 2)\n  set rows of p2 to (totalRows div 1)\n  set name of p1 to \"a\"\n  set name of p2 to \"b\"\n  return id of w\nend tell\ntap team attach: dry-run cannot prove attachment; no iTerm window was opened\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\n",
+        "stderr": "",
+        "rc": 0,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c51/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c51/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"server_socket\": \"/private/tmp/tb.oTlzF2/tmux/tmux-502/default\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}, \"b\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c51/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/b:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/b\", \"server_socket\": \"/private/tmp/tb.oTlzF2/tmux/tmux-502/default\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"b\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0",
+          "b": "%1"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c51/demo"
+      }
+    },
+    {
+      "name": "automation_accepted_but_unverified",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: no new tmux client observed after 10 bounded probe(s) for: a\ntap team attach: attachment proof incomplete; attach manually:\n  tmux attach -t '=demo/a'\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: a new tmux client was not observed for every planned seat; next: run the printed tmux attach commands\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c52/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c52/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c52/demo"
+      }
+    },
+    {
+      "name": "automation_rejected",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: iTerm automation failed; attach manually:\n  tmux attach -t '=demo/a'\ntap team attach: skipped because already attached: none\ntap team attach: unavailable: none\ntap team attach: iTerm did not accept the generated viewer plan; next: run the printed tmux attach commands\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c53/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c53/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c53/demo"
+      }
+    },
+    {
+      "name": "catalog_unavailable",
+      "expected": {
+        "stdout": "",
+        "stderr": "tap team attach: catalog exploded second line; next: tap session list --json\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c54/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c54/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c54/demo"
+      }
+    },
+    {
+      "name": "catalog_not_an_object",
+      "expected": {
+        "stdout": "",
+        "stderr": "TypeError: 'list' object has no attribute 'get'\ntap: slice_failed id=demo slice=attach-partition: classification failed\ntap team attach: the current session snapshot could not be planned; next: tap session list --json\n",
+        "rc": 1,
+        "effects": {
+          ".tap/bus/.tap-bus-authority": "bootstrapped_at_epoch={EPOCH}\n",
+          ".tap/.gitignore": "# TAP bus â ephemeral, machine-local runtime state (payloads, receipts, registry,\n# input backups). Never committed. `.tap/config` IS committed.\nbus/\n"
+        }
+      },
+      "inputs": {
+        "base": "demo",
+        "registry": "{\"schema\": \"0.20\", \"team\": {\"name\": \"demo\", \"worktree_root\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c55/demo\"}, \"seats\": {\"a\": {\"status\": \"active\", \"delivery\": \"pane\", \"registered_from_worktree\": \"/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c55/demo\", \"registered_at\": \"2026-09-15T00:00:00Z\", \"pane\": \"demo/a:0.0\", \"pane_id\": \"\", \"server_epoch\": \"srv:900:100\", \"session\": \"demo/a\", \"permissions\": \"bypass\", \"harness\": \"claude\", \"base\": \"demo\", \"tag\": \"a\", \"index\": 1, \"model\": null, \"passthrough\": [], \"adopted_from_manual\": false, \"history\": []}}}\n",
+        "panes": {
+          "a": "%0"
+        },
+        "serverSocket": "/private/tmp/tb.oTlzF2/tmux/tmux-502/default",
+        "root": "/tmp/tb.oTlzF2/tmux/tap-team-attach-oracle.sC6IpW/c55/demo"
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+  ⎿  $ tap read linden-low-context-genie-20260923T172016Z-2a5637f819d1 >/dev/null 2>&1; tap self compact --handoff [39m                              
+     [38;2;153;153;153m/Users/runner/wrk/Example-Org/tap/tmp/self-linden-nights-watch/handoff-20260923T1718Z.md -- 'preserve the Nightwatch gate loop for [39m         
+     [38;2;153;153;153mexample-org/tap: lead pine-cutter; cron bcb6ff50; in fligh… (8s)[39m                                                                            
+     [38;2;153;153;153m(ctrl+b ctrl+b (twice) to run in background)[39m                                                                                               
+                                                                                                                                                 
+[38;2;255;153;51m✽[39m [38;2;255;164;70mCatapulting…[38;2;255;153;51m [38;2;153;153;153m(19s · ↓[39m [38;2;153;153;153m706 tokens)[39m                                                                                                              
+
+[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── tap/linden-nights-watch ─
+[38;2;153;153;153m❯ [38;2;153;204;255m/compact[39m preserve the Nightwatch gate loop for example-org/tap: lead pine-cutter; cron bcb6ff50; in flight: gate on 6187a56ea run 35893189499  
+  (task bbynu1xij, chain-6187a56ea.out) with help and skill-path reds expected; pear-prelude owns skill-path fix PR !3706; load-flake          
+  specimens bus-archive and tmux-deadline handed to astra, tap-bnwo5 Ctrl-C flake bead assigned to astra; landed today !3656 !3674 !3680 !3683   
+  !3685 !3700 !3705; next report is report-25; next gate on e30d82799 or newer; handoff tmp/self-linden-nights-watch/handoff-20260923T1718Z.md   
+  is the durable record [[sv:self-20260923T172121Z-cbe03497]]                                                                                  
+[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [36mOpus 5.5 med[38;2;153;153;153m | 62%[32m↯[38;2;153;153;153m 264k/420k [94m●60m[38;2;153;153;153m [32m██████░░░░[38;2;153;153;153m | 📁 tap | 🌿 main[39m       
+  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m · [38;2;0;204;204m1 shell[39m                          

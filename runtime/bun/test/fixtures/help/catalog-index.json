@@ -1,0 +1,1441 @@
+[
+  {
+    "topic": [],
+    "key": "overview",
+    "exit": 0,
+    "page": "overview",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin"
+    ],
+    "key": "admin",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "dashboard"
+    ],
+    "key": "admin dashboard",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "migrate-registry"
+    ],
+    "key": "admin migrate-registry",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "prune"
+    ],
+    "key": "admin prune",
+    "exit": 1,
+    "page": "",
+    "dedicated": false,
+    "tombstone": true
+  },
+  {
+    "topic": [
+      "admin",
+      "ps"
+    ],
+    "key": "admin ps",
+    "exit": 0,
+    "page": "admin ps",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "rebuild-registry"
+    ],
+    "key": "admin rebuild-registry",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "refresh"
+    ],
+    "key": "admin refresh",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "admin",
+      "retire"
+    ],
+    "key": "admin retire",
+    "exit": 0,
+    "page": "admin",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "advisory"
+    ],
+    "key": "advisory",
+    "exit": 0,
+    "page": "advisory",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "approval-timeout"
+    ],
+    "key": "approval-timeout",
+    "exit": 0,
+    "page": "approval-timeout",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "ask"
+    ],
+    "key": "ask",
+    "exit": 0,
+    "page": "ask",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "assign"
+    ],
+    "key": "assign",
+    "exit": 0,
+    "page": "assign",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "attach"
+    ],
+    "key": "attach",
+    "exit": 0,
+    "page": "attach",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "bus"
+    ],
+    "key": "bus",
+    "exit": 0,
+    "page": "bus",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "bus",
+      "archive"
+    ],
+    "key": "bus archive",
+    "exit": 0,
+    "page": "bus",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "cancel"
+    ],
+    "key": "cancel",
+    "exit": 0,
+    "page": "cancel",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "clear"
+    ],
+    "key": "clear",
+    "exit": 0,
+    "page": "clear",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "command"
+    ],
+    "key": "command",
+    "exit": 0,
+    "page": "command",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "command",
+      "clear"
+    ],
+    "key": "command clear",
+    "exit": 0,
+    "page": "command",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "command",
+      "compact"
+    ],
+    "key": "command compact",
+    "exit": 0,
+    "page": "command",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "compact"
+    ],
+    "key": "compact",
+    "exit": 0,
+    "page": "compact",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "completion"
+    ],
+    "key": "completion",
+    "exit": 0,
+    "page": "completion",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "completion",
+      "zsh"
+    ],
+    "key": "completion zsh",
+    "exit": 0,
+    "page": "completion",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "config"
+    ],
+    "key": "config",
+    "exit": 0,
+    "page": "config",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "config",
+      "get"
+    ],
+    "key": "config get",
+    "exit": 0,
+    "page": "config",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "config",
+      "path"
+    ],
+    "key": "config path",
+    "exit": 0,
+    "page": "config",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "config",
+      "set"
+    ],
+    "key": "config set",
+    "exit": 0,
+    "page": "config",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew"
+    ],
+    "key": "crew",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "add"
+    ],
+    "key": "crew add",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "list"
+    ],
+    "key": "crew list",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "rearm"
+    ],
+    "key": "crew rearm",
+    "exit": 0,
+    "page": "crew rearm",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "relaunch"
+    ],
+    "key": "crew relaunch",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "remove"
+    ],
+    "key": "crew remove",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
+      "shutdown"
+    ],
+    "key": "crew shutdown",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "detective"
+    ],
+    "key": "detective",
+    "exit": 0,
+    "page": "detective",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "digest-window"
+    ],
+    "key": "digest-window",
+    "exit": 0,
+    "page": "digest-window",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "doctor"
+    ],
+    "key": "doctor",
+    "exit": 0,
+    "page": "doctor",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "done"
+    ],
+    "key": "done",
+    "exit": 1,
+    "page": "",
+    "dedicated": false,
+    "tombstone": true
+  },
+  {
+    "topic": [
+      "down"
+    ],
+    "key": "down",
+    "exit": 0,
+    "page": "down",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "draft"
+    ],
+    "key": "draft",
+    "exit": 0,
+    "page": "draft",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "escalate"
+    ],
+    "key": "escalate",
+    "exit": 0,
+    "page": "escalate",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie"
+    ],
+    "key": "goalie",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "off"
+    ],
+    "key": "goalie off",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "on"
+    ],
+    "key": "goalie on",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "reap"
+    ],
+    "key": "goalie reap",
+    "exit": 0,
+    "page": "goalie reap",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "run"
+    ],
+    "key": "goalie run",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "status"
+    ],
+    "key": "goalie status",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "tick"
+    ],
+    "key": "goalie tick",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "goalie",
+      "verdict"
+    ],
+    "key": "goalie verdict",
+    "exit": 0,
+    "page": "goalie",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "health"
+    ],
+    "key": "health",
+    "exit": 0,
+    "page": "health",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "in"
+    ],
+    "key": "register",
+    "exit": 0,
+    "page": "register",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "incapable"
+    ],
+    "key": "incapable",
+    "exit": 0,
+    "page": "incapable",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "init"
+    ],
+    "key": "init",
+    "exit": 0,
+    "page": "init",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "keybinding"
+    ],
+    "key": "keybinding",
+    "exit": 0,
+    "page": "keybinding",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "launch"
+    ],
+    "key": "launch",
+    "exit": 0,
+    "page": "launch",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "models"
+    ],
+    "key": "models",
+    "exit": 0,
+    "page": "models",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "nudge"
+    ],
+    "key": "nudge",
+    "exit": 0,
+    "page": "nudge",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "out"
+    ],
+    "key": "unregister",
+    "exit": 0,
+    "page": "unregister",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "outstanding"
+    ],
+    "key": "outstanding",
+    "exit": 0,
+    "page": "outstanding",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "peek"
+    ],
+    "key": "peek",
+    "exit": 0,
+    "page": "peek",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "pick"
+    ],
+    "key": "pick",
+    "exit": 0,
+    "page": "pick",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "poll"
+    ],
+    "key": "poll",
+    "exit": 0,
+    "page": "poll",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "presets"
+    ],
+    "key": "presets",
+    "exit": 0,
+    "page": "presets",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "provenance"
+    ],
+    "key": "provenance",
+    "exit": 0,
+    "page": "provenance",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "read"
+    ],
+    "key": "read",
+    "exit": 0,
+    "page": "read",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "recap"
+    ],
+    "key": "recap",
+    "exit": 0,
+    "page": "recap",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "refresh"
+    ],
+    "key": "refresh",
+    "exit": 0,
+    "page": "refresh",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "register"
+    ],
+    "key": "register",
+    "exit": 0,
+    "page": "register",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "remind"
+    ],
+    "key": "remind",
+    "exit": 0,
+    "page": "remind",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "remind",
+      "cancel"
+    ],
+    "key": "remind cancel",
+    "exit": 0,
+    "page": "remind",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "remind",
+      "kill"
+    ],
+    "key": "remind kill",
+    "exit": 0,
+    "page": "remind",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "remind",
+      "list"
+    ],
+    "key": "remind list",
+    "exit": 0,
+    "page": "remind",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "reply"
+    ],
+    "key": "reply",
+    "exit": 0,
+    "page": "reply",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "resend"
+    ],
+    "key": "resend",
+    "exit": 0,
+    "page": "resend",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "reset"
+    ],
+    "key": "reset",
+    "exit": 0,
+    "page": "reset",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "restore"
+    ],
+    "key": "restore",
+    "exit": 0,
+    "page": "restore",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "roster"
+    ],
+    "key": "roster",
+    "exit": 0,
+    "page": "roster",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self"
+    ],
+    "key": "self",
+    "exit": 0,
+    "page": "self",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self",
+      "clear"
+    ],
+    "key": "self clear",
+    "exit": 0,
+    "page": "self",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self",
+      "compact"
+    ],
+    "key": "self compact",
+    "exit": 0,
+    "page": "self",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self",
+      "goal"
+    ],
+    "key": "self goal",
+    "exit": 0,
+    "page": "self",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self",
+      "loop"
+    ],
+    "key": "self loop",
+    "exit": 0,
+    "page": "self",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "self",
+      "rebrief"
+    ],
+    "key": "self rebrief",
+    "exit": 0,
+    "page": "self",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "send"
+    ],
+    "key": "send",
+    "exit": 0,
+    "page": "send",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session"
+    ],
+    "key": "session",
+    "exit": 0,
+    "page": "session",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "fork"
+    ],
+    "key": "session fork",
+    "exit": 0,
+    "page": "session fork",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "launch"
+    ],
+    "key": "session launch",
+    "exit": 0,
+    "page": "session launch",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "list"
+    ],
+    "key": "session list",
+    "exit": 0,
+    "page": "session list",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "relaunch"
+    ],
+    "key": "session relaunch",
+    "exit": 0,
+    "page": "session relaunch",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "repair"
+    ],
+    "key": "session repair",
+    "exit": 0,
+    "page": "session repair",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "restart"
+    ],
+    "key": "session restart",
+    "exit": 0,
+    "page": "session restart",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "session",
+      "resume"
+    ],
+    "key": "session resume",
+    "exit": 0,
+    "page": "session resume",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "setup"
+    ],
+    "key": "setup",
+    "exit": 0,
+    "page": "setup",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "show"
+    ],
+    "key": "show",
+    "exit": 0,
+    "page": "show",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "shutdown"
+    ],
+    "key": "shutdown",
+    "exit": 0,
+    "page": "shutdown",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "spool"
+    ],
+    "key": "spool",
+    "exit": 0,
+    "page": "spool",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "spool",
+      "cancel"
+    ],
+    "key": "spool cancel",
+    "exit": 0,
+    "page": "spool",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "spool",
+      "list"
+    ],
+    "key": "spool list",
+    "exit": 0,
+    "page": "spool",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "spool",
+      "status"
+    ],
+    "key": "spool status",
+    "exit": 0,
+    "page": "spool",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team"
+    ],
+    "key": "team",
+    "exit": 0,
+    "page": "team",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "attach"
+    ],
+    "key": "team attach",
+    "exit": 0,
+    "page": "team attach",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "calibration"
+    ],
+    "key": "team calibration",
+    "exit": 0,
+    "page": "team calibration",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "detach"
+    ],
+    "key": "team detach",
+    "exit": 0,
+    "page": "team detach",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "doctor"
+    ],
+    "key": "team doctor",
+    "exit": 0,
+    "page": "team doctor",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "down"
+    ],
+    "key": "team down",
+    "exit": 0,
+    "page": "team down",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "list"
+    ],
+    "key": "team list",
+    "exit": 0,
+    "page": "team",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "out"
+    ],
+    "key": "team out",
+    "exit": 0,
+    "page": "team out",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "purge"
+    ],
+    "key": "team purge",
+    "exit": 0,
+    "page": "team purge",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "refresh"
+    ],
+    "key": "team refresh",
+    "exit": 0,
+    "page": "team refresh",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "reset"
+    ],
+    "key": "team reset",
+    "exit": 0,
+    "page": "team reset",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "restore"
+    ],
+    "key": "team restore",
+    "exit": 0,
+    "page": "team restore",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "roster"
+    ],
+    "key": "team roster",
+    "exit": 0,
+    "page": "team roster",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "shutdown"
+    ],
+    "key": "team shutdown",
+    "exit": 0,
+    "page": "team shutdown",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
+      "up"
+    ],
+    "key": "team up",
+    "exit": 0,
+    "page": "team up",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "teams"
+    ],
+    "key": "teams",
+    "exit": 0,
+    "page": "teams",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "teams",
+      "refresh"
+    ],
+    "key": "teams refresh",
+    "exit": 0,
+    "page": "teams refresh",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "teardown"
+    ],
+    "key": "teardown",
+    "exit": 0,
+    "page": "teardown",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "uninstall"
+    ],
+    "key": "uninstall",
+    "exit": 0,
+    "page": "uninstall",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "unregister"
+    ],
+    "key": "unregister",
+    "exit": 0,
+    "page": "unregister",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "up"
+    ],
+    "key": "up",
+    "exit": 0,
+    "page": "up",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch"
+    ],
+    "key": "watch",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "ack"
+    ],
+    "key": "watch ack",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "off"
+    ],
+    "key": "watch off",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "on"
+    ],
+    "key": "watch on",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "pause"
+    ],
+    "key": "watch pause",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "reminders"
+    ],
+    "key": "watch reminders",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "resume"
+    ],
+    "key": "watch resume",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "run"
+    ],
+    "key": "watch run",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "status"
+    ],
+    "key": "watch status",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "watch",
+      "tick"
+    ],
+    "key": "watch tick",
+    "exit": 0,
+    "page": "watch",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "who"
+    ],
+    "key": "who",
+    "exit": 0,
+    "page": "who",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "whoami"
+    ],
+    "key": "whoami",
+    "exit": 0,
+    "page": "whoami",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "withdraw"
+    ],
+    "key": "withdraw",
+    "exit": 0,
+    "page": "withdraw",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "worktree"
+    ],
+    "key": "worktree",
+    "exit": 0,
+    "page": "worktree",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "worktree",
+      "branch"
+    ],
+    "key": "worktree branch",
+    "exit": 0,
+    "page": "worktree",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "worktree",
+      "check"
+    ],
+    "key": "worktree check",
+    "exit": 0,
+    "page": "worktree",
+    "dedicated": false,
+    "tombstone": false
+  }
+]

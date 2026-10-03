@@ -1,0 +1,1 @@
+\[\[TAP|v=0\.2[0-9]|reply=(expected|settle-only)|kind=(digest|escalate|discuss|handoff|note|ask|probe|delivery-failed)|urgency=(urgent|critical)|tap_sentinel_render|tap_reconstruct_sentinel|tap_digest_sentinel|tap_stuck_sentinel|renderSentinel|parseSentinel|SENTINEL_VERSION

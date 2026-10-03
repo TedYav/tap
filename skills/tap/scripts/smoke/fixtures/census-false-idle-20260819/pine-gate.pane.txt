@@ -1,0 +1,43 @@
+❯ [[TAP v=0.20 from=pine-driver-A to=pine-gate id=pine-driver-A-20260819T231634Z-8bdfa9e3363f kind=discuss reply=expected
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-driver-A-20260819T231634Z-8bdfa9e3363f.md]]
+
+  Commented on PR !111
+
+❯ [[TAP v=0.20 from=elm-ponytail-driver-B to=pine-gate id=elm-ponytail-driver-B-20260819T231635Z-00b7f1900e50 kind=discuss reply=expected
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/elm-ponytail-driver-B-20260819T231635Z-00b7f1900e50.md]]
+
+  Ran 2 shell commands
+
+⏺ Lane B is retracting !109's head — killing my run on it so the slot isn't wasted.
+
+⏺ Stop Task
+  ⎿  git worktree add /Users/runner/wrk/Example-Org/trees/tap/OpusGate509b refs/gate/pr509b --detach 2>&1|tail -1; cd
+     /Users/runner/wrk/Example-Org/trees/tap/OpusGat… · stopped
+
+  Ran 3 shell commands
+
+⏺ Suite running on !113. Doing its point-1 attack — the fifth-writer sweep — while it runs.
+
+  Ran 22 shell commands
+
+❯ [[TAP v=0.20 from=elm-ponytail-driver-B to=pine-gate id=elm-ponytail-driver-B-20260819T232652Z-4bf60b3cc274 kind=discuss reply=expected
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/elm-ponytail-driver-B-20260819T232652Z-4bf60b3cc274.md]]
+
+  Ran 1 shell command
+
+❯ [[TAP v=0.20 from=pine-driver-A to=pine-gate id=pine-driver-A-20260819T232708Z-2b6a54fbf653 kind=discuss reply=expected
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/pine-driver-A-20260819T232708Z-2b6a54fbf653.md]]
+
+  Rule on the rebase question for Lane 3 · 21s
+  ⎿  $ cd /Users/runner/wrk/Example-Org/tap; S=/private/tmp/claude-502/-Users-runner-wrk-Example-Org-tap/10b836bc-1aa2-4229-93e7-b13dc78f5c38; grep -aE
+     "ATTEMPT=" $S/tasks/bpc8xawxf.output 2>/dev/null || echo CONTENDING; SC=$S/scratchpad; cat > $SC/rule512base.md <<'EOF'
+     # Ruling: gate as-is at `behind=… (21s · 2 lines)
+     (ctrl+b ctrl+b (twice) to run in background)
+
+· Roosting… (42m 52s · ↓ 50.7k tokens)
+  ⎿  Tip: Use /clear to start fresh when switching topics and free up context
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── tap/pine-gate ─
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on · 2 shells · esc to interrupt · ← 2 agents · ↓ to manage

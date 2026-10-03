@@ -1,0 +1,40 @@
+
+⚠ The context7 MCP server is not logged in. Run `codex mcp login context7`.
+
+• You have 1 usage limit reset available. Run /usage to use one.
+
+⚠ The context7 MCP server is not logged in. Run `codex mcp login context7`.
+
+⚠ MCP startup incomplete (failed: context7)
+
+
+› Run exactly: date > ~/.tap-onreq-probe.txt   and then report what happened. Do not retry with other flags.
+
+
+• The command failed with exit code 1:
+
+  zsh:1: operation not permitted: /Users/runner/.tap-onreq-probe.txt
+
+
+› Please retry that exact command by requesting escalated permissions to run it outside the sandbox (ask me for
+  approval); do not change the command.
+
+
+• The first attempt was blocked by the sandbox. I’m requesting approval to rerun the exact command outside it.
+
+• Running date > ~/.tap-onreq-probe.txt
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: May I run the exact requested command outside the sandbox to write ~/.tap-onreq-probe.txt?
+
+  $ date > ~/.tap-onreq-probe.txt
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `date > ~/.tap-onreq-probe.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

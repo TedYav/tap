@@ -1,0 +1,17 @@
+{
+  "native": {
+    "key": "team refresh",
+    "exit": 0,
+    "dedicated": true
+  },
+  "seat": {
+    "key": "refresh",
+    "exit": 0
+  },
+  "parent": {
+    "key": "team",
+    "exit": 0
+  },
+  "native_stdout_equals_seat": false,
+  "native_stdout_equals_parent": false
+}

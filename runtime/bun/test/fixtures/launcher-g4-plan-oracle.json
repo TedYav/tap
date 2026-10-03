@@ -1,0 +1,349 @@
+{
+ "source_commit": "2ce226a03e9ff31c9546a8661f07212dbb1f2efe",
+ "recorded_by": "R9a compute b889965d2e23; live Python bridge reference and native comparisons passed before deletion",
+ "cases": [
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "99",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
+   },
+   "id": "CLAUDE_NEW",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {},
+    "harness_session_id": null,
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "picker",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "99",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
+   },
+   "id": "CLAUDE_RESUME_GHOST",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {},
+    "harness_session_id": "ghost-id-0000",
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "picker",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume",
+    "live-id"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "99",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
+   },
+   "id": "CLAUDE_RESUME_ACTING",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {},
+    "harness_session_id": "live-id",
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "acting_hsid",
+    "split_brain": false,
+    "target": "live-id"
+   }
+  },
+  {
+   "argv": [
+    "opencode"
+   ],
+   "env": {},
+   "id": "OPENCODE_RESUME",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "opencode",
+    "harness_env": {},
+    "harness_session_id": null,
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "acting_hsid",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": null,
+   "env": {},
+   "id": "UNKNOWN",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "not-a-harness",
+    "harness_env": {},
+    "harness_session_id": null,
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": "LauncherError: unknown harness: not-a-harness",
+   "resume": {
+    "disclosure": null,
+    "source": "acting_hsid",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "9",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1",
+    "TAP_G4_SEAT": "won"
+   },
+   "id": "ENV_SEAT",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {
+     "CLAUDE_CODE_SCROLL_SPEED": "9",
+     "TAP_G4_SEAT": "won"
+    },
+    "harness_session_id": null,
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "picker",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat",
+    "--resume"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "99",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
+   },
+   "id": "PICKER_SPLIT",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {},
+    "harness_session_id": "ghost-a",
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": "/snap/projects/p1/ghost-b.jsonl"
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "picker",
+    "split_brain": true,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--name",
+    "seat"
+   ],
+   "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "99",
+    "CLAUDE_CODE_TMUX_TRUECOLOR": "1"
+   },
+   "id": "JSON_SAFE",
+   "json_safe": {
+    "big_int": {
+     "$int": "9007199254740993"
+    },
+    "bool_true": true,
+    "cafe": "caf\u00e9",
+    "date": "2026-08-18",
+    "date_year1": "0001-02-03",
+    "datetime_half": "2026-08-18T10:00:00.500000",
+    "datetime_naive": "2026-08-18T10:00:00",
+    "datetime_z": "2026-08-18T10:00:00+00:00",
+    "esc": "\u001b[0m",
+    "float_one": {
+     "$float": "1.0"
+    },
+    "int_one": {
+     "$int": "1"
+    },
+    "line_sep": "a\u2028b",
+    "nested": {
+     "since": "2026-01-01"
+    },
+    "none": null,
+    "time": "10:00:00",
+    "time_leading_us": "10:00:00.000005",
+    "time_micro": "10:00:00.123456",
+    "window": [
+     "2026-08-18",
+     "2026-08-19"
+    ]
+   },
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "claude",
+    "harness_env": {},
+    "harness_session_id": null,
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "picker",
+    "split_brain": false,
+    "target": null
+   }
+  },
+  {
+   "argv": [
+    "cursor-agent",
+    "--force",
+    "--sandbox",
+    "disabled",
+    "--workspace",
+    "/tmp/wt",
+    "--trust",
+    "--resume",
+    "ghost-id-0000"
+   ],
+   "env": {},
+   "id": "CURSOR_NEW_HSID",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "cursor",
+    "harness_env": {},
+    "harness_session_id": "ghost-id-0000",
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "acting_hsid",
+    "split_brain": false,
+    "target": "ghost-id-0000"
+   }
+  },
+  {
+   "argv": [
+    "codex",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "resume",
+    "ghost-id-0000"
+   ],
+   "env": {},
+   "id": "CODEX_RESUME",
+   "json_safe": null,
+   "record": {
+    "base": "team",
+    "cwd": "/tmp/wt",
+    "harness": "codex",
+    "harness_env": {},
+    "harness_session_id": "ghost-id-0000",
+    "model": null,
+    "name": "seat",
+    "quarantined_harness_session_id": null,
+    "transcript_path": null
+   },
+   "refusal": null,
+   "resume": {
+    "disclosure": null,
+    "source": "acting_hsid",
+    "split_brain": false,
+    "target": "ghost-id-0000"
+   }
+  }
+ ]
+}

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# tap-opencode-session-id — extract --session from argv or a pid's kernel argv.
+#
+# Fail CLOSED: empty stdout and exit 0 when the id cannot be proven (ps fails,
+# argv has no --session, pid is not a number). The OpenCode session-start plugin
+# treats empty as "no identity at init" and waits for session.created/updated —
+# today's behavior. A miss must never become a guess, and must never brick
+# OpenCode (nonzero would only matter if a caller used set -e on the spawn;
+# we still exit 0 on a miss so a careless caller does not).
+#
+# Bun rewrites process.argv to the worker script, so from-pid is the attach
+# path (tap-cpfu). from-argv exists so the same parser can be driven in a
+# fixture without a live process, and so a future OpenCode that stops rewriting
+# argv still binds.
+set -euo pipefail
+
+session_id_from_argv() {
+  # `--fork` makes --session name the conversation being COPIED (tap session
+  # fork), not this process's identity: binding it would claim the source's id.
+  # Fail closed; session.created reports the fork's own id.
+  local arg
+  for arg in "$@"; do
+    [ "$arg" = "--fork" ] && return 0
+  done
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        if [ "$#" -ge 2 ] && [ -n "$2" ]; then
+          printf '%s\n' "$2"
+        fi
+        return 0
+        ;;
+      --session=*)
+        local val="${1#--session=}"
+        if [ -n "$val" ]; then
+          printf '%s\n' "$val"
+        fi
+        return 0
+        ;;
+    esac
+    shift
+  done
+  return 0
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  from-argv)
+    shift
+    session_id_from_argv "$@"
+    ;;
+  from-pid)
+    pid="${2:-}"
+    case "$pid" in
+      ''|*[!0-9]*) exit 0 ;;
+    esac
+    args="$(ps -p "$pid" -ww -o args= 2>/dev/null)" || exit 0
+    # Intentional split: matches the plugin's former split(/\s+/) and what
+    # `ps -o args=` actually emits (one line, spaces between tokens).
+    # shellcheck disable=SC2086
+    session_id_from_argv $args
+    ;;
+  *)
+    exit 0
+    ;;
+esac

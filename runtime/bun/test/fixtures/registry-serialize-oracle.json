@@ -1,0 +1,5 @@
+{
+  "input": "{\"note\":\"café\",\"big\":9007199254740993,\"f\":1e0,\"😀\":2,\"\":1,\"del_raw\":\"xy\",\"del_esc\":\"a\\u007Fb\",\"zlast\":null,\"true_key\":true,\"nested\":{\"b\":[1,{\"deep\":\"λ\"}],\"a\":{},\"list\":[]},\"\":\"empty-key\"}",
+  "expected": "{\n  \"\": \"empty-key\",\n  \"big\": 9007199254740993,\n  \"del_esc\": \"a\\u007fb\",\n  \"del_raw\": \"x\\u007fy\",\n  \"f\": 1.0,\n  \"nested\": {\n    \"a\": {},\n    \"b\": [\n      1,\n      {\n        \"deep\": \"\\u03bb\"\n      }\n    ],\n    \"list\": []\n  },\n  \"note\": \"caf\\u00e9\",\n  \"true_key\": true,\n  \"zlast\": null,\n  \"\\ue000\": 1,\n  \"\\ud83d\\ude00\": 2\n}\n",
+  "note": "expected bytes captured once from python3 json.dumps(doc, indent=2, sort_keys=True) + trailing newline"
+}

@@ -1,0 +1,14 @@
+{"fn":"sanitize_component","got":"Foo-Bar","id":"sanitize:trim-dots"}
+{"fn":"sanitize_component","got":"agent","id":"sanitize:empty-fallback"}
+{"fn":"sanitize_component","got":"a-b__c","id":"sanitize:collapse-hyphens"}
+{"fn":"session_name_for_handle","got":"Tap-Repo/sol.max","id":"session_name_for_handle:keeps-handle-dots"}
+{"fn":"named_session_name","got":"Tap-Repo/sol-max","id":"named_session_name:sanitizes-handle"}
+{"fn":"allocate_name","got":"AESOP-Improvements/claude","id":"allocate:first-unsuffixed"}
+{"fn":"allocate_name","got":"AESOP-Improvements/claude-2","id":"allocate:second-gets-2"}
+{"fn":"allocate_name","got":"AESOP-Improvements/ponytail-3","id":"allocate:skips-taken-2"}
+{"fn":"allocate_name","got":"b/claude-2","id":"allocate:index-0-maps-to-1"}
+{"fn":"allocate_name","got":"tap/sol.max","id":"allocate:literal-handle-keeps-dots"}
+{"fn":"allocate_name","got":"tap/sol-max","id":"allocate:sanitized-handle-collapses-dots"}
+{"fn":"allocate_name","got":"b/claude-3","id":"N1:unicode-digit-suffix"}
+{"fn":"allocate_name","got":"b/claude-3","id":"N2:trailing-newline-is-taken"}
+{"fn":"allocate_name","got":"b/tap.2-2","id":"N3:dotted-prefix-is-literal"}

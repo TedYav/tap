@@ -1,0 +1,26 @@
+#!/usr/bin/env bun
+// Count-switched kern.boottime shim for boot-session-oracle.test.ts.
+// Mirrors the retired shell heredoc: kern.bootsessionuuid answers a fixed
+// UUID; kern.boottime increments BOOT_PROBE_COUNT and answers the stable
+// epoch on the first probe of a derivation pair (or whenever
+// BOOT_PROBE_MODE=stable), the slewed epoch afterwards.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const key = process.argv[3] ?? "";
+if (key === "kern.bootsessionuuid") {
+  console.log("7D669766-8A0C-4A4D-9B80-A2476810F46C");
+} else if (key === "kern.boottime") {
+  const countPath = process.env.BOOT_PROBE_COUNT ?? "";
+  let count = 0;
+  try { count = Number(readFileSync(countPath, "utf8").trim()) || 0; } catch {}
+  count += 1;
+  writeFileSync(countPath, `${count}\n`);
+  const stable = process.env.BOOT_PROBE_MODE === "stable" || count === 1;
+  console.log(
+    stable
+      ? "{ sec = 1785910737, usec = 900000 } Tue Aug  5 00:00:00 2026"
+      : "{ sec = 1785910738, usec = 100000 } Tue Aug  5 00:00:00 2026",
+  );
+} else {
+  process.exit(1);
+}

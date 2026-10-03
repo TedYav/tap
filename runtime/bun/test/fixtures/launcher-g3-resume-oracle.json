@@ -1,0 +1,76 @@
+{
+ "source_commit": "2ce226a03e9ff31c9546a8661f07212dbb1f2efe",
+ "recorded_by": "R9a compute b889965d2e23; live Python bridge reference and native comparisons passed before deletion",
+ "cases": [
+  {
+   "disclosure": null,
+   "id": "GHOST",
+   "source": "picker",
+   "split_brain": false,
+   "target": null
+  },
+  {
+   "disclosure": null,
+   "id": "ACTING",
+   "source": "acting_hsid",
+   "split_brain": false,
+   "target": "live-id"
+  },
+  {
+   "disclosure": null,
+   "id": "TPATH",
+   "source": "transcript_path",
+   "split_brain": true,
+   "target": "tpath-id"
+  },
+  {
+   "disclosure": "resuming quarantined session; attestation previously failed",
+   "id": "QUARANTINE",
+   "source": "quarantined",
+   "split_brain": true,
+   "target": "qid-id"
+  },
+  {
+   "disclosure": null,
+   "id": "SPLIT",
+   "source": "acting_hsid",
+   "split_brain": true,
+   "target": "live-id"
+  },
+  {
+   "disclosure": null,
+   "id": "CURSOR_ID",
+   "source": "acting_hsid",
+   "split_brain": false,
+   "target": "cursor-id"
+  },
+  {
+   "disclosure": null,
+   "id": "CLAUDE_NONE",
+   "source": "picker",
+   "split_brain": false,
+   "target": null
+  },
+  {
+   "disclosure": null,
+   "id": "OPENCODE_NONE",
+   "source": "acting_hsid",
+   "split_brain": false,
+   "target": null
+  },
+  {
+   "disclosure": null,
+   "id": "UNKNOWN",
+   "source": "acting_hsid",
+   "split_brain": false,
+   "target": null
+  },
+  {
+   "disclosure": null,
+   "id": "PICKER_SPLIT",
+   "source": "picker",
+   "split_brain": true,
+   "target": null
+  }
+ ]
+}

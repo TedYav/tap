@@ -1,0 +1,1 @@
+v=0\.2[0-9]|reply=(expected|settle-only)|kind=(digest|escalate|discuss|handoff|note|ask|probe|delivery-failed)|urgency=(urgent|critical)|(^|[^A-Za-z0-9_])(from|to)=

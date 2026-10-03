@@ -1,0 +1,9 @@
+
+✢ Inferring… (29s · ↓ 1.2k tokens · thinking with low effort)
+  ⎿  Tip: Run /ultrareview for a cloud-based multi-agent review that finds and
+     verifies bugs in your branch — 3 free reviews left
+
+────────────────────────────────────────────────────────────────────────────────
+❯ human follow-up still typing
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)                                     /rc

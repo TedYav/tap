@@ -1,0 +1,24 @@
+
+  ⎿  5 skills available
+
+⏺ API Error: 529 Overloaded. This is a server-side issue, usually
+  temporary — try again in a moment. If it persists, check
+  https://status.claude.com.
+
+✻ Cooked for 4m 12s · done 6:48 AM
+
+❯ [[TAP v=0.22 from=willow-low-conductor to=cedar-gate
+  id=willow-low-conductor-20260903T141022Z-46ea6b9c7165 kind=discuss
+  reply=settle-only path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/wi
+  llow-low-conductor-20260903T141022Z-46ea6b9c7165.md]]
+
+⏺ API Error: 529 Overloaded. This is a server-side issue, usually
+  temporary — try again in a moment. If it persists, check
+  https://status.claude.com.
+
+✻ Churned for 3m 23s · done 7:13 AM
+
+─────────────────────────────────────────────────────────────── tap/cedar-gate ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents        /rc failed

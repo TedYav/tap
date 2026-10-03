@@ -1,0 +1,122 @@
+[
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "hé\u001factive\u001fpane\u001fé\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001f\u001f\u001f\u001f\u001f\u001f\u001f\u001f\nb\u001factive\u001fpane\u001f\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001f\u001f\u001f\u001f\u001f\u001fTrue\u001f5\u001f1.5\u001f1e+16\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001fp\u001f\u001f\u001f\u001f\u001f\u001f\u001f\nb\u001factive\u001f\u001fp\u001f\u001f\u001f\u001f\u001f\u001f\u001f\nc\u001factive\u001fpoll\u001f\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001f[1, 'a', None, True]\u001f{'k': None, 'z': [1.0]}\u001fit's \"q\"\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001f0.1\u001f\u001f\u001f9007199254740993\u001f\u001finf\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001fnan\u001f-inf\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "hé\u001factive\u001fpane\u001f　﻿x\u001fé😀\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001flast\u001f\u001f\u001f\u001f\u001f\u001f\u001f\nb\u001factive\u001fpane\u001f\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001fx\ny\u001ft\u001fu\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001fok\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 1,
+    "err": "UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud800' in position 14: surrogates not allowed"
+  },
+  {
+    "out": "",
+    "rc": 1,
+    "err": "UnicodeEncodeError: 'utf-8' codec can't encode character '\\udc80' in position 0: surrogates not allowed"
+  },
+  {
+    "out": "a\u001factive\u001fpane\u001f😀\u001f\u001f\u001f\u001f\u001f\u001f\u001f\n",
+    "rc": 0,
+    "err": ""
+  },
+  {
+    "out": "",
+    "rc": 0,
+    "err": ""
+  }
+]

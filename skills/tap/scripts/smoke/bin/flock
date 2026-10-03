@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Minimal flock(1) shim for macOS smokes (util-linux flock absent).
+set -euo pipefail
+nonblock=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -n|--nb|--nonblock) nonblock=1; shift ;;
+    -*) echo "flock shim: unsupported option $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+[ "$#" -ge 1 ] || { echo "flock shim: usage: flock [-n] FD|FILE [cmd...]" >&2; exit 2; }
+target="$1"; shift
+case "$target" in
+  ''|*[!0-9]*)
+    exec python3 -B - "$target" "$nonblock" "$@" <<'PY'
+import fcntl, os, sys, subprocess
+path, nb = sys.argv[1], sys.argv[2] == "1"
+cmd = sys.argv[3:]
+fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+flags = fcntl.LOCK_EX | (fcntl.LOCK_NB if nb else 0)
+try:
+    fcntl.flock(fd, flags)
+except BlockingIOError:
+    sys.exit(1)
+if not cmd:
+    sys.exit(0)
+os.execvp(cmd[0], cmd)
+PY
+    ;;
+  *)
+    exec python3 -B - "$target" "$nonblock" "$@" <<'PY'
+import fcntl, os, sys, subprocess
+fd = int(sys.argv[1])
+nb = sys.argv[2] == "1"
+cmd = sys.argv[3:]
+flags = fcntl.LOCK_EX | (fcntl.LOCK_NB if nb else 0)
+try:
+    fcntl.flock(fd, flags)
+except BlockingIOError:
+    sys.exit(1)
+if cmd:
+    raise SystemExit(subprocess.call(cmd))
+raise SystemExit(0)
+PY
+    ;;
+esac

@@ -1,0 +1,1779 @@
+{
+ "captured_from": {
+  "head": "f4099de37",
+  "blobs": {
+   "skills/tap/scripts/tap-watch.sh": "b78957e7d576919b183a5e81ae9e75475488b123",
+   "skills/tap/scripts/lib.sh": "c92c19c3ea16a6ffab71f20fd1b30afa8db9131a",
+   "skills/tap/scripts/supervision-lib.sh": "e78b342fcb341d12bbe732291f9e49223dbdba49",
+   "runtime/bun/src/watch-lease.ts": "446d457f85802eb13f6ea718f3c17e6af9687b8c"
+  },
+  "now": "2000",
+  "generator": "runtime/bun/test/support/watch-run-capture.py"
+ },
+ "cases": [
+  {
+   "case": "unarmed-at-start",
+   "world": {
+    "armed": false,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [],
+    "delays": [],
+    "sleeps": [],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": null
+   }
+  },
+  {
+   "case": "one-tick-lease-gone-after-tick",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "delete_arm": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "two-ticks-lease-gone-in-sleep",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "tick-status-ignored",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 1
+     },
+     {
+      "rc": 3,
+      "delete_arm": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {}
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "2"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-empty-default-60",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead"
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "60"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-non-integer",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "abc"
+    },
+    "ticks": [
+     {
+      "rc": 0
+     },
+     {
+      "rc": 0,
+      "delete_arm": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {}
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "sleep: invalid time interval abc\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "abc"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "2"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-decimal",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "1.5"
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "1.5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-decimal-with-reminders",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "1.5"
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": "real",
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "tap remind: interval must be an integer\ntap: slice_failed id=delay slice=remind: classification failed\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "real",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "1.5"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "1.5",
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-non-integer-with-reminders",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "abc"
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": "real",
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "tap remind: interval must be an integer\ntap: slice_failed id=delay slice=remind: classification failed\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "real",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "abc"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": "abc",
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-integer-with-reminders",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": "real",
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "real",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "interval-zero",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 0
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "0"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "reminders-delay-used",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": [
+     {
+      "rc": 0,
+      "out": "3"
+     }
+    ],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "1",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "sleep",
+      "1",
+      "3"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "reminders-delay-fails",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": [
+     {
+      "rc": 1,
+      "out": ""
+     }
+    ],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "tap: slice_failed id=delay slice=remind: classification failed\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "1",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "reminders-queue-corrupt",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "corrupt_reminders": true
+     },
+     {
+      "rc": 0,
+      "delete_arm": true
+     }
+    ],
+    "delays": "real",
+    "sleeps": [
+     {}
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "tap remind: JSON Parse error: Expected '}'\ntap: slice_failed id=delay slice=remind: classification failed\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "real",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "reminders-delay-empty",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": [
+     {
+      "rc": 0,
+      "out": ""
+     }
+    ],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "sleep: invalid time interval \n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "delay",
+      "1",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "sleep",
+      "1",
+      ""
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "reminders-added-later",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     },
+     {
+      "rc": 0,
+      "add_reminders": true
+     }
+    ],
+    "delays": [
+     {
+      "rc": 0,
+      "out": "9"
+     }
+    ],
+    "sleeps": [
+     {},
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "2"
+     ],
+     [
+      "delay",
+      "1",
+      "remind",
+      "delay",
+      "remind.ts",
+      "<WORK>/bus/watch/reminders.json",
+      "delay",
+      "5"
+     ],
+     [
+      "sleep",
+      "2",
+      "9"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "signal-term-in-sleep",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "signal": "TERM"
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "signal",
+      "TERM"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "signal-int-in-sleep",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "signal": "INT"
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "signal",
+      "INT"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "signal-hup-in-sleep",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "signal": "HUP"
+     }
+    ],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "signal",
+      "HUP"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "args-pass-through",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "delete_arm": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [],
+    "refresh": "shim",
+    "args": [
+     "--extra",
+     "x y"
+    ],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run",
+      "--extra",
+      "x y"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "heartbeat-directory",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "delete_arm": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [],
+    "refresh": "shim",
+    "args": [],
+    "heartbeat": "directory"
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "<BASE>/skills/tap/scripts/tap-watch.sh: line 192: <WORK>/bus/watch/heartbeat: Is a directory\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "heartbeat_mtime": null
+   }
+  },
+  {
+   "case": "refresh-real-same",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {
+      "delete_arm": true
+     }
+    ],
+    "refresh": "real",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": null,
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "refresh-real-changed",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "touch_source": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {}
+    ],
+    "refresh": "real",
+    "args": [
+     "run-arg"
+    ],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": "tap sidecar: source-changed; re-exec: <BASE>/skills/tap/scripts/tap-watch.sh\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run",
+      "run-arg"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run",
+      "run-arg"
+     ],
+     [
+      "reexec",
+      "bash",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run",
+      "run-arg"
+     ],
+     [
+      "exit",
+      "0"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  },
+  {
+   "case": "refresh-real-unreadable",
+   "world": {
+    "armed": true,
+    "arm": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5
+    },
+    "ticks": [
+     {
+      "rc": 0,
+      "delete_source": true
+     }
+    ],
+    "delays": [],
+    "sleeps": [
+     {}
+    ],
+    "refresh": "real",
+    "args": [],
+    "heartbeat": null
+   },
+   "result": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "tap sidecar: source-unreadable; refusing another iteration: <BASE>/skills/tap/scripts/tap-watch.sh\n",
+    "effects": [
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "set",
+      "heartbeat_at",
+      "2000",
+      "heartbeat_path",
+      "<WORK>/bus/watch/heartbeat",
+      "watcher_pid",
+      "<PID>",
+      "watcher_command",
+      "tap-watch.sh run"
+     ],
+     [
+      "tick",
+      "1"
+     ],
+     [
+      "sleep",
+      "1",
+      "5"
+     ],
+     [
+      "refresh",
+      "<BASE>/skills/tap/scripts/tap-watch.sh",
+      "run"
+     ],
+     [
+      "exit",
+      "1"
+     ]
+    ],
+    "arm_after": {
+     "armed_at": "1000",
+     "armed_by": "lead",
+     "tick_interval_seconds": 5,
+     "heartbeat_at": 2000,
+     "heartbeat_path": "<WORK>/bus/watch/heartbeat",
+     "watcher_pid": "<PID>",
+     "watcher_command": "tap-watch.sh run"
+    },
+    "heartbeat_mtime": 2000
+   }
+  }
+ ]
+}

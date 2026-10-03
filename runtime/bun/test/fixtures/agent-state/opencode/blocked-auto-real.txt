@@ -1,0 +1,59 @@
+  ┃
+                                                                                                                                                                TAP v0.23 probe-driver note
+     + Thought: 1.3s
+                                                                                                                                                                Context
+  ┃                                                                                                                                                             18,664 tokens
+  ┃  $ head -1 /etc/hosts                                                                                                                                       2% used
+  ┃                                                                                                                                                             $0.00 spent
+  ┃  ##
+  ┃                                                                                                                                                             LSP
+                                                                                                                                                                LSPs are disabled
+     + Thought: 4.2s
+
+  ┃
+  ┃  $ tap send probe-driver "First line of /etc/hosts: \`##\`"
+  ┃
+  ┃  tap send: payload not found: First line of /etc/hosts: `##`. Did you mean: tap send probe-driver -m First\ line\ of\ /etc/hosts:\ \`\#\#\`; next:
+  ┃  check the payload path, then retry
+  ┃
+
+  ┃
+  ┃  $ tap send probe-driver -m "First line of /etc/hosts: ##"
+  ┃
+  ┃  tap send: queued probe-opencode-20261001T165315Z-8410ad02bd11
+  ┃
+
+     + Thought: 3ms
+
+     Replied to probe-driver: the first line of /etc/hosts is ##.
+
+     ▣  Build · GLM-5.3-Flash · 26.6s
+
+  ┃
+  ┃  [[TAP v0.23 note probe-driver-20261001T165607Z-22d0ddb38455]]
+  ┃
+
+     + Thought: 3ms
+
+  ┃
+  ┃  $ tap read probe-driver-20261001T165607Z-22d0ddb38455
+  ┃
+  ┃  tap read: note probe-driver-20261001T165607Z-22d0ddb38455 from=probe-driver settled
+  ┃  Use your read tool (not bash) to read the file /etc/hosts and tell me its first line.
+  ┃
+
+     ⠸ Read /etc/hosts [limit=1]
+
+     ▣  Build · GLM-5.3-Flash
+
+  ┃
+  ┃  △ Permission required
+  ┃    ← Access external directory /etc
+  ┃
+  ┃  Patterns
+  ┃
+  ┃  - /etc/*
+  ┃
+  ┃                                                                                                                                                             /private/tmp/tap-3oox6-probe/repo:main
+  ┃   Allow once   Allow always   Reject                                                                       ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃                                                                                                                                                             • OpenCode 1.18.33

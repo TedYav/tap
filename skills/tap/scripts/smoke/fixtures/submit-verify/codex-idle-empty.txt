@@ -1,0 +1,24 @@
+╭──────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                               │
+│                                                          │
+│ model:     gpt-6-astra medium   /model to change         │
+│ directory: /private/var/folders/…/T/tap-d1-vuqpn6gd/work │
+╰──────────────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-
+  art in coding, computer use, science, and professional work. Give it a hard
+  problem, a half-formed idea, or anything you've been meaning to build. See
+  where it takes you.
+
+
+› You are a disposable TAP UI specimen. Reply only Ready, then await input. Do
+  not run tools or perform other work.
+
+
+• Ready
+ 
+ 
+› Ask Codex to do anything
+ 
+  gpt-6-astra medium · Context 99% left · weekly 42% left 
+

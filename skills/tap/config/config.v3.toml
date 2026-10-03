@@ -1,0 +1,587 @@
+# TAP global config — presets, harness policy, fun.
+# THIS FILE IS THE CHECKED-IN REFERENCE (tap-2z5r): the catalog `tap setup --machine`
+# installs starters and named presets from. Do not copy it over a machine config;
+# setup adds the selected entries and preserves everything else. For a fuller,
+# real-world config to read for ideas, see example-operator-config.toml beside it.
+# Location contract for the live copy: ${XDG_CONFIG_HOME:-~/.config}/tap/config.toml
+# Presets supply HARNESS TUNING only — never identity, team, cwd, bus,
+# or TAP_* (design consult, 2026-08-06). A preset is COMPLETE: --model/--effort
+# refuse over --preset (tap crew add also refuses --env; tap ask refuses
+# --model), while --env/--unset-env and the -- tail compose over a preset on
+# tap launch and on tap session relaunch of a durable seat; crew relaunch
+# refuses them. Precedence + error
+# classes: skills/tap/protocol/delivery/cli-surface-the-whole-thing-part-04.md §Session launch presets.
+# [harness.*] policy is read fresh on EVERY launch/resume, never persisted.
+
+version = 3
+
+# Claude/Codex/Cursor/AGY permission mode: "bypass" (also the absent-key default) or "auto".
+# Their launcher owns permission flags; OpenCode and Hermes keep theirs in params.
+# Harness policy is read fresh on launch and resume.
+
+[harness.agy]
+permissions = "bypass"
+
+[harness.claude]
+permissions = "bypass"
+
+[harness.codex]
+permissions = "bypass"
+env.PONYTAIL_DEFAULT_MODE = "off"
+
+[harness.cursor]
+permissions = "bypass"
+
+[harness.hermes]
+
+[harness.opencode]
+
+# Show derived body previews when enabled; --preview overrides the body hint.
+[sentinel]
+preview = false
+preview_chars = 120
+
+[roles]
+monitor = "Samples a declared subject on a regular cadence, writes a timestamped heartbeat with numbers each cycle, and reports crossings or errors to its charter recipient. Nightwatch, goalie and context genie are monitor variants. See skills/tap/protocol/supervision/monitor.md."
+driver = "Drives an implementation lane. May also implement code, or delegate its lane to an implementer. See /tap:drive"
+implementer = "Implements code from a prompt or a spec" # Todo: We should write our own skill that's like /subagent-driven-development + /executing-plans, but is TAP aware
+reviewer = "Reviews code, plans, proposals, etc, either as itself, or as a particular reviewer agent definition provided to it"
+partner = "A situational role for pair programming, pair research, or other tasks. Partners are agents that are strong implementers and reviewers, and can offer a turn by turn perspective on a task before escalating to a driver/conductor/leader. Generally, the partner should be a stronger model than the implementer or researcher in the pair."
+debugger = "Debugs issues in code or on the machine"
+leader = "Leads a TAP team, responsible for choreographing other agents, adding and removing teammates, managing teammate context. Delegates most or all of actual implementation work to other agents. May write plans, or review important parts of plans written by other agents. Pair with a conductor to save tokens! See /tap:lead"
+conductor = "A conductor assists the leader with the variety of messages recieved from an active TAP team. Drivers, implementers, reviewers, etc send agents to the conductor, who will selectively relay questions to the leader as needed."
+planner = "Comes up with ideas, and pressure tests ideas with other agents."
+researcher = "Researches a given problem space, using both internet research and /ref-search"
+prose_writer = "Writes or edits prose, such as comments, design documents, ADRs, and so forth."
+architect = "Designs and refines the architecture of a system, including the codebase, the data model, the API, the UI, and the overall system design."
+approver = "Approves a design or code change after other agents have reviewed it. The leader will assign an approver to various gates in the development process. (Or the leader may designate themselves as the approver). Approvers are generally a distinct seat from reviewers, to avoid rubber stamping something they've already seen."
+goalie = "A monitor variant that checks team progress and reports stalled work or unmet objectives to the leader. Its charter defines cadence, heartbeat, escalation and any recovery authority."
+tasker = "Runs tasks, such as running scripts, executing simple operations, gathering data from the machine, and other tasks that don't require a lot of intelligence."
+prototyper = "Prototypes code, designs, and other artifacts quickly, to get a sense of what is possible. Generally top tier frontier models on lower effort settings are useful for this - to see if an ideas is feasible before handing robust implementation to cheaper seats."
+
+# -- Intelligence Levels --
+
+[intelligences]
+s-tier = "Absolute top of the line frontier models to be used for situations requiring exceptional intelligence and capabilities."
+frontier = "Frontier model with top of the line intelligence and capabilities, that is strong for executing agentic tasks, doing code reviews, and producing quality software"
+advanced = "An advanced model which is useful for general execution tasks, implementation, and research."
+medium = "A model useful for basic implementation, data analysis, quick scripting, and other tasks where the goal is very well defined and a more advanced model will check its work."
+dumb = "A model which is generally fast and cheap, and useful for offloading more mechanical tasks from more expensive agents, such as detecting team deadlocks, running mechanical gates, data collecting and parsing, etc."
+
+# Starter entries are the simple-mode wizard choices; fast and Ponytail variants are opt-in.
+# OpenCode has no starter: its models depend on the providers a person has configured, so setup asks.
+# Claude: params.effort. Codex: one model_reasoning_effort assignment in params.config.
+# Cursor/AGY encode effort in params.model; other harnesses keep their model default.
+
+[presets.opus]
+description = "opus[1m] at medium"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "medium"
+metadata.model_family = "anthropic"
+metadata.starter = true
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Great all around model. Tends to be very verbose, and not as strong as Fable at leading teams. Medium speed overall, but great for driving implementation or being a conductor."
+metadata.primary_roles = ["driver", "implementer", "conductor"]
+metadata.secondary_roles = ["reviewer", "debugger", "researcher", "partner"]
+metadata.avoid_roles = ["prose_writer"]
+
+[presets.opus-high]
+description = "opus[1m] at high"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "high"
+metadata.model_family = "anthropic"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, high effort. Slower and more verbose. Good for architecture and design, and as a partner."
+metadata.primary_roles = ["debugger", "reviewer", "partner"]
+metadata.secondary_roles = ["driver", "implementer", "leader", "researcher", "conductor"]
+metadata.avoid_roles = ["prose_writer", "architect", "approver"]
+
+[presets.opus-xhigh]
+description = "opus[1m] at xhigh"
+harness = "claude"
+params.model = "opus[1m]"
+params.effort = "xhigh"
+metadata.model_family = "anthropic"
+metadata.intelligence = "advanced"
+metadata.cost_level = "medium high"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Opus, extra high effort. Slower and may overengineer. Good for important architecture and design, and as a partner."
+metadata.primary_roles = ["debugger", "reviewer", "partner"]
+metadata.secondary_roles = ["driver", "implementer", "leader", "researcher", "conductor"]
+metadata.avoid_roles = ["prose_writer", "architect", "approver"]
+
+[presets.fable]
+description = "fable at medium"
+harness = "claude"
+params.model = "fable"
+params.effort = "medium"
+metadata.model_family = "anthropic"
+metadata.starter = true
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Default leader model. Medium effort to avoid overthinking, but great for intelligently orchestrating a team and assigning work where it's needed. Good for planning simpler tasks as well as prototyping."
+metadata.primary_roles = ["leader", "prototyper"]
+metadata.secondary_roles = ["debugger", "reviewer", "architect", "approver", "driver", "planner"]
+metadata.avoid_roles = ["researcher", "prose_writer", "implementer", "conductor", "partner"]
+
+[presets.fable-high]
+description = "fable at high"
+harness = "claude"
+params.model = "fable"
+params.effort = "high"
+metadata.model_family = "anthropic"
+metadata.pronouns = "he/him"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Leader model for scenarios requiring extra intelligence. High effort to increase intelligence somewhat at the expense of some cost."
+metadata.primary_roles = ["leader", "architect", "approver", "reviewer"]
+metadata.secondary_roles = ["debugger", "driver", "planner"]
+metadata.avoid_roles = ["researcher", "prose_writer", "implementer", "conductor", "partner"]
+
+[presets.fable-xhigh]
+description = "fable at xhigh"
+harness = "claude"
+params.model = "fable"
+params.effort = "xhigh"
+metadata.model_family = "anthropic"
+metadata.pronouns = "he/him"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "very high"
+metadata.speed = "slow"
+metadata.summary = "Top tier frontier model. Very expensive, very slow. xHigh effort set - good for architecture and planning."
+metadata.primary_roles = ["architect", "approver", "reviewer", "planner"]
+metadata.secondary_roles = ["debugger"]
+metadata.avoid_roles = ["researcher", "prose_writer", "driver", "implementer", "leader", "conductor"]
+
+[presets.sonnet]
+description = "sonnet at high"
+harness = "claude"
+params.model = "sonnet"
+params.effort = "high"
+metadata.model_family = "anthropic"
+metadata.starter = true
+metadata.pronouns = "he/him"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium"
+metadata.summary = "Strong implementer and researcher. Good for simple, well defined tasks when speed is needed and we want another claude model. Solid choice for a claude subagent."
+metadata.primary_roles = ["implementer", "researcher"]
+metadata.secondary_roles = ["debugger"]
+metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "prose_writer", "driver"]
+
+[presets.astra-med]
+description = "gpt-6-astra at medium"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=medium", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort. Use for implementation, prototyping, writing, and partnering, or other tasks where frontier intelligence but less effort is required."
+metadata.primary_roles = ["prototyper", "partner", "prose_writer", "implementer"]
+metadata.secondary_roles = ["driver", "reviewer", "leader"]
+metadata.avoid_roles = ["tasker", "architect", "approver", "researcher"]
+
+[presets.astra-fast]
+description = "gpt-6-astra at medium, fast mode"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=medium", "service_tier=fast"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "very fast"
+metadata.summary = "Top tier frontier model from OpenAI on medium effort in fast mode. 2.5x the normal price, USE SPARINGLY! Agents should not launch this without asking."
+metadata.primary_roles = ["prototyper", "tasker", "prose_writer", "implementer"]
+metadata.secondary_roles = ["leader"]
+metadata.avoid_roles = ["architect", "approver", "researcher"]
+
+[presets.astra]
+description = "gpt-6-astra at high"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=high", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.starter = true
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.primary_roles = ["driver", "prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer"]
+metadata.secondary_roles = ["leader", "researcher"]
+metadata.avoid_roles = ["tasker"]
+
+[presets.astra-ponytail]
+description = "gpt-6-astra at xhigh, Ponytail mode"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in Ponytail Mode. Very Expensive. Use as an overengineering gate on the team."
+metadata.primary_roles = ["architect", "approver", "reviewer", "prose_writer"]
+metadata.secondary_roles = []
+metadata.avoid_roles = ["driver", "tasker", "implementer", "leader"]
+
+[presets.astra-xhigh]
+description = "gpt-6-astra at xhigh"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "medium slow"
+metadata.summary = "Top tier frontier model from OpenAI in xHigh Effort. Very Expensive and Slow. Use for complex debugging or architecture work."
+metadata.primary_roles = ["debugger", "reviewer", "architect"]
+metadata.secondary_roles = ["approver"]
+metadata.avoid_roles = ["driver", "tasker", "implementer", "leader", "partner"]
+
+[presets.astra-max]
+description = "gpt-6-astra at max"
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=max", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "ultra high"
+metadata.budget_capacity = "medium high"
+metadata.speed = "slow"
+metadata.summary = "Top tier frontier model from OpenAI in Max Effort. Use sparinglyfor the most complex debugging or review tasks."
+metadata.primary_roles = ["debugger", "reviewer", "architect"]
+metadata.secondary_roles = []
+metadata.avoid_roles = ["driver", "tasker", "implementer", "leader", "partner", "approver"]
+
+[presets.gpt-spark]
+description = "gpt-5.3-codex-spark at high"
+harness = "codex"
+params.model = "gpt-5.3-codex-spark"
+params.config = ["model_reasoning_effort=high"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "dumb"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "ultra fast"
+metadata.summary = "Limited-capability, very fast model. Do not use for writing code. Can be used for very simple tasks, coordinating between other agents, or anything where a large volume of input might happen and need near realtime actions."
+metadata.primary_roles = ["conductor", "tasker"]
+metadata.secondary_roles = []
+metadata.banned_roles = ["implementer", "researcher", "leader", "architect", "approver", "reviewer", "prose_writer", "driver"]
+
+[presets.sol]
+description = "gpt-6.1-sol at high"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = ["model_reasoning_effort=high", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.starter = true
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong reviewer and debugger. Great pair programmer and implementer. Solid choice to drive an implementation lane, or pair program with another agent building an implementation lane. Also a very strong writer."
+metadata.primary_roles = ["reviewer", "debugger", "implementer", "prose_writer", "partner"]
+metadata.secondary_roles = ["driver", "leader", "researcher"]
+metadata.avoid_roles = ["architect", "approver"]
+
+[presets.sol-xhigh]
+description = "gpt-6.1-sol at xhigh"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Top tier frontier model. Very expensive, very slow. xHigh effort set - good for architecture and planning."
+metadata.primary_roles = ["reviewer", "debugger", "implementer", "prose_writer", "partner"]
+metadata.secondary_roles = ["driver", "leader", "researcher"]
+metadata.avoid_roles = ["architect", "approver"]
+
+[presets.sol-ponytail]
+description = "gpt-6.1-sol at xhigh, Ponytail mode"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong adversarial reviewer that is relentless at demanding simplifications. Great counterweight on the team. For complicated architecture or design, a necessary voice to combat overengineering."
+metadata.primary_roles = ["reviewer", "architect", "partner"]
+metadata.secondary_roles = ["debugger", "prose_writer", "implementer", "approver", "researcher"]
+metadata.avoid_roles = ["leader", "driver"]
+
+[presets.sol-max]
+description = "gpt-6.1-sol at max, Ponytail mode"
+harness = "codex"
+params.model = "gpt-6.1-sol"
+params.config = ["model_reasoning_effort=max", "service_tier=default"]
+env.PONYTAIL_DEFAULT_MODE = "full"
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very high"
+metadata.budget_capacity = "medium"
+metadata.speed = "slow"
+metadata.summary = "Strong reviewer, architect, and debugger. Great for architecture and design. Slow and expensive, but great when needed."
+metadata.primary_roles = ["reviewer", "architect", "debugger"]
+metadata.secondary_roles = ["prose_writer", "approver", "researcher", "partner"]
+metadata.avoid_roles = ["leader", "driver"]
+
+[presets.luna]
+description = "gpt-6-luna at high"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = ["model_reasoning_effort=high", "service_tier=default"]
+metadata.model_family = "openai"
+metadata.starter = true
+metadata.pronouns = "she/her"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "medium"
+metadata.speed = "very fast"
+metadata.summary = "Cheap agent that is still a lot smarter than many other models. Great for automation tasks, running scripts, and executing simple operations. Less good for heavy coding."
+metadata.primary_roles = ["tasker"]
+metadata.secondary_roles = ["implementer", "researcher"]
+metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "debugger", "prose_writer"]
+
+[presets.luna-fast]
+description = "gpt-6-luna at high, fast mode"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = ["model_reasoning_effort=high", "service_tier=fast"]
+metadata.model_family = "openai"
+metadata.pronouns = "she/her"
+metadata.intelligence = "medium"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "ultra fast"
+metadata.summary = "Cheap agent in fast mode for quick tasks and implementation. Great for conducting or roles that require near realtime responses and actions.."
+metadata.primary_roles = ["conductor"]
+metadata.secondary_roles = ["tasker"]
+metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "debugger", "prose_writer", "implementer", "researcher"]
+
+[presets.grok]
+description = "grok-4.7-high at high"
+harness = "cursor"
+params.model = "grok-4.7-high"
+metadata.model_family = "xai"
+metadata.starter = true
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "fast"
+metadata.summary = "Very strong implementer and adversarial reviewer. Use liberally for implementation or partnere pair programming reviews, as well as for pressure testing designs."
+metadata.primary_roles = ["reviewer", "implementer", "partner"]
+metadata.secondary_roles = ["debugger", "prose_writer", "architect", "driver"]
+metadata.avoid_roles = ["leader", "approver", "researcher"]
+
+[presets.glm]
+description = "tokenrouter/z-ai/glm-5.2 at default effort"
+harness = "opencode"
+params.model = "tokenrouter/z-ai/glm-5.2"
+metadata.model_family = "zhipu"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "api"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Strong adversarial reviewer. Because it's API based, use for decorrelated reviews of plans and code, rather than for implementation or research."
+metadata.primary_roles = ["reviewer"]
+metadata.secondary_roles = ["architect"]
+metadata.avoid_roles = ["implementer", "leader", "approver", "researcher", "prose_writer", "driver"]
+
+[presets.glm53]
+description = "zai-coding-plan/glm-5.3 at default effort"
+harness = "opencode"
+params.model = "zai-coding-plan/glm-5.3"
+metadata.model_family = "zhipu"
+metadata.pronouns = "he/him"
+metadata.intelligence = "frontier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Very strong reviewer. Great at catching bugs, security issues, and software design. Now that we have subscription access, may be used for implementation, or as a very powerful as reviewer or pair programming partner."
+metadata.primary_roles = ["reviewer", "partner"]
+metadata.secondary_roles = ["architect"]
+metadata.avoid_roles = ["leader", "approver", "researcher", "prose_writer", "driver"]
+
+[presets.glm53-flash]
+description = "zai-coding-plan/glm-5.3-flash at default effort"
+harness = "opencode"
+params.model = "zai-coding-plan/glm-5.3-flash"
+metadata.model_family = "zhipu"
+metadata.pronouns = "he/him"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "medium"
+metadata.speed = "fast"
+metadata.summary = "."
+metadata.primary_roles = ["implementer", "conductor"]
+metadata.secondary_roles = ["tasker"]
+metadata.avoid_roles = ["architect", "leader", "approver", "researcher", "prose_writer", "driver"]
+
+[presets.kimi]
+description = "synthetic/hf:moonshotai/Kimi-K3 at default effort"
+harness = "opencode"
+params.model = "synthetic/hf:moonshotai/Kimi-K3"
+metadata.model_family = "moonshot"
+metadata.pronouns = "she/her"
+metadata.intelligence = "s-tier"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "high"
+metadata.budget_capacity = "low"
+metadata.speed = "medium"
+metadata.summary = "Very strong reviewer, great at catching edge cases and providing architectural feedback. Low capacity - do not use for implementation or research."
+metadata.primary_roles = ["reviewer", "architect"]
+metadata.secondary_roles = []
+metadata.avoid_roles = ["implementer", "leader", "approver", "researcher", "prose_writer", "driver"]
+
+[presets.hermes-agent]
+description = "deepseek/deepseek-v4-pro at default effort"
+harness = "hermes"
+params.provider = "nous-portal"
+params.model = "deepseek/deepseek-v4-pro"
+metadata.model_family = "deepseek"
+metadata.pronouns = "she/they"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "api"
+metadata.cost_level = "medium"
+metadata.budget_capacity = "medium"
+metadata.speed = "medium"
+metadata.summary = "Specialized model and agent, only needed when we need to interface with hermes service on the machine. Do not add to TAP teams unless specifically asked."
+
+[presets.hermes-goalie]
+description = "deepseek/deepseek-v4-flash-0731 at default effort"
+harness = "hermes"
+params.provider = "nous-portal"
+params.model = "deepseek/deepseek-v4-flash-0731"
+metadata.model_family = "deepseek"
+metadata.pronouns = "she/they"
+metadata.intelligence = "dumb"
+metadata.cost_basis = "api"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "medium"
+metadata.speed = "very fast"
+metadata.summary = "Very dumb model, very fast. Great for things like being team goalie. Do not use for code reviews or implementation."
+metadata.primary_roles = ["goalie"]
+metadata.avoid_roles = ["implementer", "leader", "approver", "researcher", "prose_writer", "driver", "reviewer", "debugger"]
+
+[presets.gemini-low]
+description = "gemini-3.8-flash-low at low"
+harness = "agy"
+params.model = "gemini-3.8-flash-low"
+metadata.model_family = "google"
+metadata.pronouns = "she/her"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "very low"
+metadata.budget_capacity = "very high"
+metadata.speed = "very fast"
+metadata.summary = "Very fast model to use for assistive roles, like conducting, tasking, triaging messages for more expensive models."
+metadata.primary_roles = ["conductor", "tasker"]
+metadata.secondary_roles = []
+metadata.avoid_roles = ["leader", "approver", "driver", "reviewer", "debugger", "architect", "implementer", "prose_writer", "researcher"]
+
+[presets.gemini]
+description = "gemini-3.8-flash-high at high"
+harness = "agy"
+params.model = "gemini-3.8-flash-high"
+metadata.model_family = "google"
+metadata.starter = true
+metadata.pronouns = "she/her"
+metadata.intelligence = "advanced"
+metadata.cost_basis = "subscription"
+metadata.cost_level = "low"
+metadata.budget_capacity = "very high"
+metadata.speed = "medium fast"
+metadata.summary = "Strong reviewer and great at catching bugs that other models may have missed. Major improvements in 3.8 release, sufficient for simple implementation with a partner. Has a tendency to review very quickly and may not go as deep as other agents, but good for quick answers. If using for a research task, give it a partner such as glm53 or grok to supervise and ensure it delivers on the task."
+metadata.primary_roles = ["reviewer", "architect", "partner", "conductor"]
+metadata.secondary_roles = ["prose_writer", "researcher", "implementer"]
+metadata.avoid_roles = ["leader", "approver", "driver"]
+
+[presets.luna-xhigh]
+description = "gpt-6-luna at xhigh"
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = ["model_reasoning_effort=xhigh"]
+
+# Session-creating commands start an absent tmux server from HOME.
+[tmux]
+bootstrap = true
+
+# File-only lifecycle details; adds command-capture and disk I/O overhead.
+# Set to "verbose" for developer diagnostics. Never enables tmux tracing.
+[diagnostics]
+level = "off"
+
+# Human notifications: macOS osascript or Linux notify-send by default.
+# macOS needs terminal notification permission; Linux needs a desktop service.
+[notifications]
+notifier = "system"
+timeout_seconds = 20
+# To use an external transport, set command first, then notifier = "command".
+# command = ["my-notifier", "--title", "{title}", "--urgency", "{urgency}", "--", "{body}"]
+# Tokens are literal argv; urgency is routine|urgent. No shell or fallback.

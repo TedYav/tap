@@ -1,0 +1,17 @@
+Waiting for approval — Run this command? ctrl+c to stop
+Completed line 01
+Completed line 02
+Completed line 03
+Completed line 04
+Completed line 05
+Completed line 06
+Completed line 07
+Completed line 08
+Completed line 09
+Completed line 10
+Completed line 11
+Completed line 12
+Completed line 13
+Completed line 14
+  → Add a follow-up
+  Composer 2.5 Fast · MAX

@@ -1,0 +1,77 @@
+[38;5;231m[48;5;22m+```[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+`bash -n` on the file confirms the parse error. The script has 351 lines; line 350
+ is the last significant line (`tap_index_enroll_team "$WORKTREE"`), but the parse
+error indicates an unmatched double-quote detected somewhere earlier that the parse
+r can't close.[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+## Suspected cause[39m[49m
+[38;5;231m[48;5;22m+The script uses two `<<'PY'` heredocs:[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+1. **Lines 138–167** (offline path) — works fine. Simple `if ! python3 ... <<'PY'`
+ without wrapping.[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+2. **Lines 203–325** (normal registration path) — **the problematic one**. Wraps t
+he python call in a double-quoted command substitution:[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+```bash[39m[49m
+[38;5;231m[48;5;22m+if ! _write_out="$(python3 -B - ... 2>"$_write_err" <<'PY'[39m[49m
+[38;5;231m[48;5;22m+...[39m[49m
+[38;5;231m[48;5;22m+PY[39m[49m
+[38;5;231m[48;5;22m+)[39m[49m
+[38;5;231m[48;5;22m+"; then[39m[49m
+[38;5;231m[48;5;22m+```[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+The pattern `_write_out="$(... <<'PY'\n...\nPY\n)"` — heredoc inside `$()` inside
+double-quotes — may be tripping up bash 3.2's parser. The offline path (without the
+ `_write_out="$(...)"` wrapper) parses fine.[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+## Verification steps[39m[49m
+[38;5;231m[48;5;22m+```bash[39m[49m
+[38;5;231m[48;5;22m+# Confirm parse error[39m[49m
+[38;5;231m[48;5;22m+bash -n /Users/runner/.hermes/skills/tap/scripts/tap-register.sh[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+# Test that a minimal version of the pattern works in bash 3.2[39m[49m
+[38;5;231m[48;5;22m+# (heredoc in $() in double-quotes)[39m[49m
+[38;5;231m[48;5;22m+```[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+## Possible fixes[39m[49m
+[38;5;231m[48;5;22m+1. **Refactor the `_write_out` capture** to use a temp file instead of `$()` + her
+edoc (most robust across bash versions)[39m[49m
+[38;5;231m[48;5;22m+2. **Use a different heredoc wrapper** (e.g. `<<-PY` with indented terminator, or
+avoid the double-quote wrapping)[39m[49m
+[38;5;231m[48;5;22m+3. **Upgrade bash** to 4+ (unlikely to be acceptable — macOS ships 3.2)[39m[49m
+[38;5;231m[48;5;22m+4. **Split the Python into a standalone script** and call it without heredoc gymna
+stics[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+## What succeeds[39m[49m
+[38;5;231m[48;5;22m+The script gets as far as:[39m[49m
+[38;5;231m[48;5;22m+- Resolving tmux context (pane, session, handle derivation)[39m[49m
+[38;5;231m[48;5;22m+- Ensuring directories exist[39m[49m
+[38;5;231m[48;5;22m+- Writing the team block to the registry[39m[49m
+[38;5;231m[48;5;22m+- Worktree-path guard passing[39m[49m
+[38;5;231m[48;5;22m+[39m[49m
+[38;5;231m[48;5;22m+It fails when reaching the Python block that writes the agent entry to `registry.j
+son` (lines 203–325).[39m[49m
+
+[1m[38;5;220m╭─ ⚕ Hermes ──────────────────────────────────────────────────────────────────────╮
+[0m    [38;5;230mReport written at /tmp/tap-register-bug-report.md. Summary:[39m
+
+    [38;5;230m- Symptom: tap register prints "derived handle hermes" but never actually write
+s to the registry[39m
+    [38;5;230m- Root cause: Shell syntax error in tap-register.sh — bash -n confirms "unexpec
+ted EOF looking for matching ""[39m
+    [38;5;230m- Suspected cause: The _write_out="$(python3 ... <<'PY' ... PY)" pattern (hered
+oc inside $() inside double-quotes) on lines 203-326 trips up bash 3.2 (macOS defau
+lt)[39m
+    [38;5;230m- Evidence: The offline path (lines 138-167) uses <<'PY' without the _write_out
+="$(...)" wrapper and parses fine[39m
+
+    [38;5;230mThe team is claude-opus, codex, cursor, fable, fable-3, opencode. Want me to se
+nd it to one of them, or you'll handle it?[39m
+[1m[38;5;220m╰─────────────────────────────────────────────────────────────────────────────────╯
+[0m[38;5;230m[48;5;234m ⚕ [1m[38;5;220mdeepseek-v4-pro[0m[38;5;136m[48;5;234m │ 50K/1M │ [1m[38;5;71m[░░░░░░░░░░][0m[38;5;136m[48;5;234m [1m[38;5;71m5%[0m[38;5;136m[48;5;234m │ 8m │ ⏲ 33s │ ✓ 0s[38;5;230m [39m[49m
+[38;5;173m───────────────────────────────────────────────────────────────────────────────────
+[38;5;230m❯ [39m
+[38;5;173m───────────────────────────────────────────────────────────────────────────────────
+[39m

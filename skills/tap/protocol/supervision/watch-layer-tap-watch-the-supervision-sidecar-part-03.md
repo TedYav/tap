@@ -1,0 +1,8 @@
+# Watch layer (`tap watch` — the supervision sidecar) — source part 3 of 4
+
+> Normative TAP v0.23 source fragment. Search the group index for adjacent parts.
+
+<!-- tap-source id=source-0065 start=411424 end=412423 sha256=57c3b6d4834681f496ac4dbedca8d23fb6c6ac5554952ecca5ebbe5cb9b80c32 fragment=3/4 transform=wrapper_prefix -->
+<!-- TAP_SOURCE_BYTES_BEGIN -->
+escalation can resume only after one fresh `threshold_seconds` window. `tap watch off` deletes the lease + best-effort kills the sidecar window, but is armer-owned unless a non-armer explicitly passes `--force`. `status` prints the arm/pause record plus a `dispatcher: alive|dead|unknown` line from the lease's `watcher_pid`, `watcher_command` and `heartbeat_at` (a `next:` recovery line follows `dead` and `unknown`); a `dead` dispatcher exits 2 (attention), while `unknown` — the lease or the process table could not be read — never reads as dead and exits 1 (unsafe to check, CLI-EXIT-1), and `alive` and disarmed exit 0; `ack` clears sticky NOTIFY. `tick` is one pure evaluation over (bus, repo, injected clock); `run` is `while lease: tick; sleep`. Concurrent `on`s serialize on an atomic-`mkdir` mutex and skip a second spawn. **Self-heal:** a re-`on` whose sidecar window exists but whose watcher process is dead or whose heartbeat is stale kills the corpse window and respawns the loop — the supervisor recovers its own death. Root-derived legacy-only buses refuse `old_store` during selection. Explicit custom `TAP_HOME` paths follow the ordinary bus contract; watch does not classify them by spelling.
+

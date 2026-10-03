@@ -1,0 +1,2 @@
+tap help: no help topic 'team notasub'.
+For subcommand details, see: tap help team

@@ -1,0 +1,68 @@
+
+────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=maple-9-3-leader to=willow-low-conductor id=maple-9-3-leader-20260903T074013Z-5b6dbd26b215
+  kind=discuss reply=settle-only
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/maple-9-3-leader-20260903T074013Z-5b6dbd26b215.md]]
+
+● Read(~/wrk/Example-Org/tap/.tap/bus/payloads/maple-9-3-leader-20260903T074013Z-5b6dbd26b215.md) (ctrl+o to expand)
+
+▸ Thought for 5s, 334 tokens
+  Analyzing Delivery Failure Trace
+
+● Bash(tap done maple-9-3-leader-20260903T074013Z-5b6dbd26b215)
+● Bash(tap send pine-coach --fyi -m "Ruling 13: On delivery-failed to roster-healthy working seat...) (ctrl+o to
+expand)
+
+  Settled maple-9-3-leader-20260903T074013Z-5b6dbd26b215.md.
+
+  ### Ruling 13 (maple-9-3-leader, 07:40Z)
+
+  • Delivery-failed to working roster seat: Check the payload's .done receipt in .tap/bus/receipts before taking
+  action; do not re-send (courier 5-minute timeout emits a false-negative delivery-failed notice while recipient
+  polls and settles upon waking).
+  • Root defect filed as tap-92v3r (P1, courier).
+  • Added to active rulings register.
+
+  Logging Ruling 13 with pine-coach (task running).
+
+● Bash(tap poll willow-low-conductor) (ctrl+o to expand)
+
+  Ruling 13 logged with pine-coach (maple-9-3-leader-20260903T074013Z-5b6dbd26b215.md).
+
+  ### Active Suite Slot Lease
+
+  • Holder: laurel-drain-driver (W1)
+  • Target: PR !191 author full at head 9dc504c02 (trees/tap/Straddle)
+  • Status: Running bash scripts/smoke-all.sh
+
+  Yielding and standing by for lane completions, reviews, and notifications.
+
+────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=maple-9-3-leader to=willow-low-conductor id=maple-9-3-leader-20260903T074331Z-fa87c4a99ea8
+  kind=discuss reply=settle-only
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/maple-9-3-leader-20260903T074331Z-fa87c4a99ea8.md]]
+
+● Read(~/wrk/Example-Org/tap/.tap/bus/payloads/maple-9-3-leader-20260903T074331Z-fa87c4a99ea8.md)
+● Bash(tap done maple-9-3-leader-20260903T074331Z-fa87c4a99ea8)
+● Bash(tap send pine-coach --fyi -m "Charter scope addition: Lane W5 added for tap-92v3r (fix courier injector
+false...)
+● Read(~/wrk/Example-Org/tap/tmp/lane-lead-9-3/plans/W5-courier-readiness.md)
+● Bash(tap poll willow-low-conductor) (ctrl+o to expand)
+
+  Settled maple-9-3-leader-20260903T074331Z-fa87c4a99ea8.md.
+
+  ### Scope Expansion: Lane W5 Added
+
+  • Mission / Ticket: tap-92v3r (Courier Antigravity pane readiness & placed payload delivery policy).
+  • Staffing: cedar-courier-driver (driver) / elm-courier-partner (partner).
+  • Worktree / Branch: trees/tap/CourierReadiness / fix/tap-92v3r-agy-readiness.
+  • Plan: W5-courier-readiness.md.
+  • Risk Tier: RETAIN-LIST (author full + cedar-gate independent full + panel review).
+  • Conductor Tracking: Conductor digests now cover six lanes (W0–W5). Notified pine-coach.
+
+  Yielding and standing by.
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                                 Gemini 3.8 Flash · low

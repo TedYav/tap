@@ -1,0 +1,15 @@
+{
+  "arm_count": 273,
+  "capture_command": "LC_ALL=C python3 -I -B hooks/tap-shell-body-guard.py < arm-stdin (per arm, via a throwaway builder script)",
+  "captured_at": "2026-09-25T02:40Z",
+  "captured_from": "hooks/tap-shell-body-guard.py",
+  "divergences": [
+    "Locale: production hooks may run under LANG=en_US.UTF-8 (no UTF-8 mode), where Python exits 1 with a traceback on invalid UTF-8 (fail open via crash) while Bun pins the C-locale surrogateescape semantics and denies on the parsed payload. Bun's choice is the safer, locale-independent direction; recorded deliberately (partner review F2).",
+    "NaN/Infinity: reproduced via a string-aware rescue pass after strict JSON.parse fails; literals inside JSON strings are never rewritten (arm nan-in-string-is-never-rewritten)."
+  ],
+  "locale_env": "LC_ALL=C",
+  "note": "stdout bytes and exit status captured once per arm from the Python hook (cwd normalized to /tmp/x, 2026-09-25T02:40Z re-capture); labels verified consistent per arm. Corpus replay evidence: builder label check 273/273 green, partner independent replay of the 270-arm predecessor 0 mismatches, Bun corpus test byte-exact.",
+  "python": "Python 3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "python_stdio_under_lc_all_c": "utf8_mode=1 (PEP 540 auto under C locale); stdin strict UTF-8 with surrogateescape: each invalid byte decodes to U+DC80..U+DCFF and parses, so Python never crashes on invalid UTF-8 in the C locale (arms decoder-invalid-byte-in-comment-tmux and decoder-invalid-bytes-attached-repair pin this).",
+  "sha256": "39472573c6e444c692d9f9adc17d50fb7dcf20b7d209643a120a1453d129077f"
+}

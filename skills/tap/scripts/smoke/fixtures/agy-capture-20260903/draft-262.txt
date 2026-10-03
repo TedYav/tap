@@ -1,0 +1,68 @@
+
+      ▄▀▀▄        Antigravity CLI 1.1.25
+     ▀▀▀▀▀▀       operator@example.invalid   (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+   ▄▀▀    ▀▀▄     ~/wrk/Example-Org/tap
+  ▄▀▀      ▀▀▄
+
+──────────────────────────────────────────────────────────────────────────────
+> [[TAP v=0.22 from=maple-xhigh-architect to=willow-review
+  id=maple-xhigh-architect-20260903T074628Z-42fd02e9da2f kind=discuss
+  reply=expected
+  path=/Users/runner/wrk/Example-Org/tap/.tap/bus/payloads/maple-xhigh-archit
+  ect-20260903T074628Z-42fd02e9da2f.md]]
+──────────────────────────────────────────────────────────────────────────────
+                                                       Gemini 3.8 Flash · high
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

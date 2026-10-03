@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# bin/tap — cwd-independent TAP entry point (the installed `tap` command).
+#
+# Resolves its OWN real path through any chain of symlinks (so `~/.local/bin/tap ->
+# <repo>/bin/tap` works), then execs the Bun router (runtime/bun/main.ts). The bus
+# is NOT anchored here: the router derives it from the caller's cwd enrollment
+# (TAP_HOME only when no ancestor is enrolled), so `tap` behaves identically whether
+# run as `bin/tap`, via the `~/.local/bin` symlink, or from a deep subdirectory.
+set -euo pipefail
+
+src="${BASH_SOURCE[0]}"
+while [ -h "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+here="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
+
+# A release artifact (tap-7r3fn.192) ships the compiled router at libexec/tap/tap and
+# libexec/tap/bun, the shim that runs that router as Bun for TAP's own children: no Bun on
+# PATH is needed. A BUN_BE_BUN leaked from a caller would turn the router into the Bun CLI,
+# so it never reaches it. A checkout has no libexec/ and keeps `bun` from PATH.
+tap_router="" tap_bun=bun
+if [ -x "$here/../libexec/tap/tap" ] && [ -x "$here/../libexec/tap/bun" ]; then
+  unset BUN_BE_BUN
+  tap_router="$here/../libexec/tap/tap" tap_bun="$here/../libexec/tap/bun"
+fi
+
+# Internal handoff from the native pre-dispatcher to a Bash fallback. Never
+# trust an inherited copy from the caller.
+unset TAP_INTERNAL_OVERDUE_CHECKED
+
+# A stateless `tap ask` child skips this whole wrapper block: every debug route below execs its
+# own entry point and writes or stops the machine recorder, so main.ts (which refuses `debug`
+# with stateless_child and serves `help debug` as static help) must be the only door it has.
+if [ "${TAP_STATELESS:-}" != 1 ]; then
+# Debug is machine-wide and must work without initializing any team's bus.
+# Global -v/--verbose flags ahead of it are stripped here, as main.ts strips
+# them for every other verb, so `tap -v debug` never enters the router.
+tap_lead=0
+for tap_arg in "$@"; do
+  case "$tap_arg" in -v|--verbose) tap_lead=$((tap_lead + 1)) ;; *) break ;; esac
+done
+if [ "$tap_lead" -gt 0 ]; then
+  tap_after=("${@:tap_lead+1}")
+  if [ "${tap_after[0]:-}" = debug ] || { [ "${tap_after[0]:-}" = help ] && [ "${tap_after[1]:-}" = debug ]; }; then
+    export TAP_VERBOSE=1
+    shift "$tap_lead"
+  fi
+fi
+if [ "${1:-}" = debug ] && [ "${2:-}" = recovery ]; then
+  exec "$tap_bun" "$here/../runtime/bun/src/recovery/artifacts.ts" "${@:3}"
+fi
+if [ "${1:-}" = debug ]; then
+  case "${2:-}" in
+    _attempt|_frame)
+      tap_debug_rc=0
+      tap_debug_error="$(
+        [ ! -t 0 ] || exec </dev/null
+        BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 exec "$tap_bun" "$here/../runtime/bun/src/debug-capture.ts" "${@:2}" 2>&1
+      )" || tap_debug_rc=$?
+      [ -z "$tap_debug_error" ] || printf '%s\n' "$tap_debug_error" >&2
+      exit "$tap_debug_rc"
+      ;;
+  esac
+fi
+if [ "${1:-}" = help ] && [ "${2:-}" = debug ]; then
+  set -- debug --help
+fi
+if [ "${1:-}" = debug ]; then
+  # Keep Bun off every stdio TTY without mixing diagnostics into public JSON.
+  BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 exec "$tap_bun" "$here/../runtime/bun/src/debug.ts" "${@:2}" </dev/null 9>&- > >(cat) 2> >(cat >&2)
+fi
+fi
+# The verb is the first non-verbose argument: global -v/--verbose flags are
+# stripped by main.ts, so `tap --verbose doctor` is still doctor. The
+# subcommand is the first non-verbose argument AFTER the verb.
+tap_verb="" tap_sub="" tap_seen_verb=0
+for tap_arg in "$@"; do
+  case "$tap_arg" in
+    -v|--verbose) continue ;;
+  esac
+  if [ "$tap_seen_verb" -eq 0 ]; then tap_verb="$tap_arg"; tap_seen_verb=1; continue; fi
+  tap_sub="$tap_arg"
+  break
+done
+
+# The provenance report, health, doctor, show, and models promise no state creation,
+# including Bun startup cache (Bun documents 0 as disabling it). The admin
+# census joins them: its read-only public promise covers a fresh HOME, first
+# invocation included — its transpile cache is the only thing that ever wrote.
+# Ask and its help have no TAP context and carry the same promise. The
+# completion producer and the list snapshot carry it on the session door:
+# no positional subcommand at all is the bare `tap session` list form, and
+# non-list subverbs (resume, launch, stop, ...) stay unpinned.
+case "$tap_verb" in
+  ask|provenance|who|health|doctor|show|admin|models|completion) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ;;
+  # Ask's help pins under every help spelling; the skill lookup's pin is
+  # specific to literal `help skill` (skill-path.test.sh pins both).
+  help)
+    case "$tap_sub" in ask|skill) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ;; esac ;;
+  -h|--help)
+    case "$tap_sub" in ask) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ;; esac ;;
+  session)
+    case "$tap_sub" in ""|list|complete|--*) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ;; esac ;;
+esac
+
+# Help-looking launch argv must not create Bun's startup cache. Native help
+# routing owns the exact grammar (values and harness passthrough stay literal).
+if [ "$tap_verb" = launch ] || { [ "$tap_verb" = session ] && [ "$tap_sub" = launch ]; }; then
+  for tap_arg in "$@"; do
+    case "$tap_arg" in -h|--help) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0; break ;; esac
+  done
+fi
+
+if [ -n "$tap_router" ]; then
+  # The compiled router is main.ts; it journals this public command in-process.
+  TAP_INTERNAL_PUBLIC_COMMAND=1 exec "$tap_router" "$@"
+fi
+main="$here/../runtime/bun/main.ts"
+bun_bin="$(command -v bun 2>/dev/null || true)"
+# Every verb runs in the Bun tree; without Bun or main.ts there is no fallback.
+if [ -n "$bun_bin" ] && [ -x "$bun_bin" ] && [ -s "$main" ]; then
+  shopt -s execfail
+  set +e
+  # main.ts journals this public command in-process when recording is on.
+  TAP_INTERNAL_PUBLIC_COMMAND=1 exec "$bun_bin" "$main" "$@"
+  set -e
+fi
+
+# A completion keystroke without a runtime offers nothing: an error line here
+# would print under the prompt on every TAB press.
+if [ "$tap_verb" = session ] && [ "$tap_sub" = complete ]; then exit 0; fi
+if [ "$tap_verb" = completion ] && [ "$tap_sub" = candidates ]; then exit 0; fi
+echo "tap: bun and runtime/bun/main.ts are required; next: brew install oven-sh/bun/bun, then rerun ./install.sh" >&2
+exit 1

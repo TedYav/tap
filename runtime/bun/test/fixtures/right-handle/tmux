@@ -1,0 +1,105 @@
+#!/usr/bin/env bun
+// Mock tmux for session-context-right-handle.test.ts, ported verbatim from the
+// deleted skills/tap/scripts/smoke/session-context-right-handle.test.sh
+// heredoc. The hook runs in crew pane %99999 (`fake:1.0`) while the detached
+// crew window leaves driver pane %11111 (`fake:0.0`) current; this fake
+// distinguishes an untargeted display (MOCK_CURRENT_PANE) from one targeted at
+// the process-owning pane. MOCK_REBIRTH_* recycles %99999 onto another tty with
+// a bumped generation after the caller-tty reassertion, to prove the caller tty
+// and generation must come from one observation.
+import { existsSync, writeFileSync } from "node:fs";
+
+const argv = process.argv.slice(2);
+const cmd = argv.shift() ?? "";
+
+function fail(msg: string): never {
+  console.error(msg);
+  process.exit(97);
+}
+
+function paneFor(resolved: string): "%99999" | "%11111" {
+  if (resolved === "%99999" || resolved === "fake:1.0") return "%99999";
+  if (resolved === "%11111" || resolved === "fake:0.0") return "%11111";
+  return fail(`tmux mock: unknown target '${resolved}'`);
+}
+
+switch (cmd) {
+  case "list-panes": {
+    let all = false;
+    let filter = "";
+    let fmt = "";
+    for (let i = 0; i < argv.length; i++) {
+      if (argv[i] === "-a") all = true;
+      else if (argv[i] === "-f") filter = argv[++i] ?? "";
+      else if (argv[i] === "-F") fmt = argv[++i] ?? "";
+      else fail(`tmux mock: unexpected list-panes argument '${argv[i]}'`);
+    }
+    if (!all) fail("tmux mock: list-panes requires -a");
+    if (filter !== "#{!=:#{pane_dead},1}") fail(`tmux mock: unexpected list-panes filter '${filter}'`);
+    if (fmt !== "#{pane_id}\t#{pane_tty}") fail(`tmux mock: unexpected list-panes format '${fmt}'`);
+    console.log("%11111\t/dev/ttys111");
+    if ((process.env.MOCK_CREW_VISIBLE ?? "1") === "1") console.log("%99999\t/dev/ttys999");
+    break;
+  }
+  case "display-message": {
+    let target = "";
+    let fmt = "";
+    for (let i = 0; i < argv.length; i++) {
+      if (argv[i] === "-p") continue;
+      if (argv[i] === "-t") {
+        target = argv[i + 1] ?? "";
+        i++;
+        continue;
+      }
+      fmt = argv[i]!;
+    }
+    // An untargeted display resolves against the fixture's current pane.
+    const resolved = target || process.env.MOCK_CURRENT_PANE || "%11111";
+    const pane = paneFor(resolved);
+    const serverRaw = process.env.MOCK_SERVER_RAW || "900:200";
+    switch (fmt) {
+      case "#{pane_id}":
+        console.log(pane);
+        break;
+      case "#{session_name}:#{window_index}.#{pane_index}":
+        console.log(pane === "%99999" ? "fake:1.0" : "fake:0.0");
+        break;
+      case "#{pane_id}\t#{pane_tty}":
+        if (pane === "%99999") {
+          console.log("%99999\t/dev/ttys999");
+          if (process.env.MOCK_REBIRTH_AFTER_TTY === "1") {
+            const state = process.env.MOCK_REBIRTH_STATE;
+            if (!state) fail("MOCK_REBIRTH_STATE unset");
+            writeFileSync(state, "");
+          }
+        } else {
+          console.log("%11111\t/dev/ttys111");
+        }
+        break;
+      case "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}":
+        if (pane === "%99999" && process.env.MOCK_REBIRTH_AFTER_TTY === "1" && existsSync(process.env.MOCK_REBIRTH_STATE!)) {
+          console.log("%99999\tfake\t901:300");
+        } else {
+          console.log(`${pane}\tfake\t${serverRaw}`);
+        }
+        break;
+      case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}":
+        if (pane === "%99999" && process.env.MOCK_REBIRTH_AFTER_TTY === "1") {
+          console.log("%99999\t/dev/ttys111\tfake\t901:300");
+        } else if (pane === "%99999") {
+          console.log(`%99999\t/dev/ttys999\tfake\t${serverRaw}`);
+        } else {
+          console.log(`%11111\t/dev/ttys111\tfake\t${serverRaw}`);
+        }
+        break;
+      case "#{pid}:#{start_time}":
+        console.log("900:200");
+        break;
+      default:
+        fail(`tmux mock: unexpected display format '${fmt}'`);
+    }
+    break;
+  }
+  default:
+    fail(`tmux mock: unexpected command '${cmd}'`);
+}

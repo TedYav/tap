@@ -1,0 +1,21 @@
+# TAP bus state (worktree-local runtime, never committed)
+tmp/
+
+# TAP research receipts + clean-pair registry (runtime artifacts, never committed)
+.tap/research/
+
+# Incident/probe specimens: raw pane captures, tmux server logs, crash-report
+# decodes. Machine-specific, large (562MB as of 2026-07-27), and they carry
+# whatever was on screen — env vars, absolute paths, transcript text. Never
+# committed. Durable copies live outside the repo; findings belong on the bead
+# and procedures in docs/solutions/, so nothing tracked may depend on these files.
+.tap/specimens/
+
+# Tooling state
+.serena/
+.DS_Store
+__pycache__/
+tailspin-trace_*.tailspin
+
+# Tap directory itself
+.tap

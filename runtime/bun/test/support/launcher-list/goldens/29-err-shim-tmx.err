@@ -1,0 +1,1 @@
+tap session: tmux session-name snapshot is unobservable; refusing to treat the session namespace as empty

@@ -1,0 +1,25 @@
+
+✻ Brewed for 29s · done 7:14 AM
+
+❯ run bash command rm -f /tmp/test-file
+
+⏺ Removing /tmp/test-file if it exists
+  ⎿  $ rm -f /tmp/test-file
+
+─────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you —
+ choose "switch to auto mode" below
+
+   rm -f /tmp/test-file
+   Remove /tmp/test-file if it exists
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /tmp from this
+      project
+   3. Yes, and switch to auto mode · auto mode
+      handles these prompts for you
+   4. No
+
+ Esc to cancel · Tab to amend

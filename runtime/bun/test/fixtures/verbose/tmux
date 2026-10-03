@@ -1,0 +1,6 @@
+#!/usr/bin/env bun
+// Seam shim for verbose.test.ts: a tmux that answers on stdout and stderr
+// and fails, so the run result AND its verbose echoes are observable.
+process.stdout.write("seam-out");
+process.stderr.write("seam-err");
+process.exit(7);

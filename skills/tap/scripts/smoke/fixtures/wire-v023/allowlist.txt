@@ -1,0 +1,57 @@
+# wire-v023 residual allowlist — files that deliberately still carry PRE-0.23
+# sentinel bytes, each with the reason it is not a conversion candidate.
+#
+# The residual control (wire-v023-sweep.test.sh) scans every `[[TAP`-bearing line
+# for a retired wire token and fails on any file not listed here. Adding a path to
+# this file is a DECISION, not a silencer: state why the old bytes are the point.
+#
+# The scan covers `v=0.2x`, `reply=`, `kind=`, `urgency=` AND `from=`/`to=`. The
+# route keys are in it because the L6 plan's residual regex omitted them, and that
+# omission also kept `regress/machine-index` and `regress/xwt-addressing` out of
+# U0's manifest entirely — two files with live v0.22 assertions that no scan saw.
+# A residual control blind to half the retired grammar is not a control.
+#
+# TAB-separated: <path> <reason>
+#
+# --- real pane captures: the historical bytes ARE the fixture -----------------
+skills/tap/scripts/smoke/fixtures/census-false-idle-20260819/pine-driver-C.pane.txt	captured pane, 2026-08-19 census incident — rewriting it would forge the evidence
+skills/tap/scripts/smoke/fixtures/census-false-idle-20260819/pine-driver-D.pane.txt	captured pane, same incident
+skills/tap/scripts/smoke/fixtures/census-false-idle-20260819/pine-gate.pane.txt	captured pane, same incident
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-code-idle.ansi	captured harness rendering — the adapter is tested against what the terminal really drew
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-code-session-limit.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-code-working.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-idle-placeholder-undimmed.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-idle-stale-ctrlc.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-idle.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-midfill-idle.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-working-wrapped.ansi	captured harness rendering — the wrap is the fixture
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/cursor-working.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/hermes-working.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/opencode-narrow-sentinel.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/opencode-narrow-working.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/opencode-wide-idle.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/opencode-wide-working.ansi	captured harness rendering
+skills/tap/scripts/smoke/fixtures/submit-verify/claude-slash-courier-residue.ansi	captured pane showing courier residue beside a slash command
+skills/tap/scripts/smoke/fixtures/agy-capture-20260903/draft-262.txt	real agy pane capture, 2026-09-03 — the historical v0.22 bytes ARE the fixture
+skills/tap/scripts/smoke/fixtures/agy-capture-20260903/generating-243.txt	real agy pane capture, 2026-09-03 — the historical v0.22 bytes ARE the fixture
+skills/tap/scripts/smoke/fixtures/agy-capture-20260903/generating-taskcard-243.txt	real agy pane capture, 2026-09-03 — the historical v0.22 bytes ARE the fixture
+skills/tap/scripts/smoke/fixtures/agy-capture-20260903/idle-243.txt	real agy pane capture, 2026-09-03 — the historical v0.22 bytes ARE the fixture
+runtime/bun/test/fixtures/agent-state/claude/idle-real.txt	captured pane transcript
+#
+# --- the transition path: a pre-0.23 sentinel must still be READ --------------
+# v0.23 retired the old shape on the PRODUCER side only. The parser keeps a
+# distinct pre-0.23 verdict so a sentinel already sitting in a pane when this
+# installs is submitted rather than clobbered, and these files are what prove it.
+# Converting them would delete the coverage of the transition itself.
+runtime/bun/test/stuck-sentinel.test.ts	the pre-0.23 verdict on the shared parser: :43 the full old wire, :124 its `to=` under every whitespace character, :187 the native adapter, :227 the CLI — all four assert the old bytes yield `pre023` and the recipient read off them
+skills/tap/scripts/smoke/sentinel-pointer.test.sh	hand-built path-less v0.20 sentinel: every one already in a scrollback stays readable by bare id
+skills/tap/scripts/regress/nudge-submit-verify.test.sh	seeds sentinels ACROSS VERSIONS into the band — the version spread is the test
+skills/tap/scripts/regress/nudge-cross-team.test.sh	seeds a v0.6 sentinel; cross-team recovery must survive an old band
+skills/tap/scripts/regress/communication-identity-full.test.sh	hand-built v0.6 sentinels feeding nudge's identity path
+runtime/bun/test/deliver-effect.test.ts	pendingSentinel's pre-0.23 branch — the old bytes are its input
+runtime/bun/test/existing-sentinel.test.ts	:154 feeds a literal v=0.22 shape through the real submit/verify adapter to assert its own handling — the old bytes are the input, not an accident
+#
+# --- prose describing the retired shape ---------------------------------------
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-truncated.ansi	Historical tap-vvmth capture; the truncated legacy wire is retained verbatim as incident evidence.
+skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-truncated.txt	Historical tap-vvmth capture; the truncated legacy wire is retained verbatim as incident evidence.
+runtime/bun/test/pane-submit-lock-physics.test.ts	The physics pin submits real retired-wire sentinel bytes through submitVerify; the [[TAP literal is the fixture under test.

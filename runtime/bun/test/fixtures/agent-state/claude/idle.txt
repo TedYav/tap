@@ -1,0 +1,5 @@
+⏺ Finished the requested change.
+──────────────────── tap-claude-fable-2 ──
+❯
+──────────────────────────────────────────
+  bypass permissions on

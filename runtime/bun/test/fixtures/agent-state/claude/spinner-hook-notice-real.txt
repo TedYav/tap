@@ -1,0 +1,10 @@
+⏺ Update(src/example.ts)
+  ⎿  Added 2 lines
+
+✽ Elucidating… (running PreToolUse hook · 1m 19s · ↓ 5.5k tokens)
+                                                                              ✔ Update installed · Restart to update
+────────────────────────────────────────────────────────────────────────────────────────── tap/example-seat ─
+❯ Press up to edit queued messages
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 high | 38% 162k/420k | 📁 tap | 🌿 main
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 3 agents

@@ -1,0 +1,2 @@
+name             harness  live  seated  revive  model  last seen             cwd
+tap-claude-live  claude   yes   yes     picker  -      2025-06-15T15:06:40Z  /va

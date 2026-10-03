@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAP — Install once. Keep the clone.</title>
+<style>
+:root {
+  color-scheme:light;
+  --ink:#182c34;
+  --muted:#465a63;
+  --paper:#f6f3eb;
+  --card:#fffdf7;
+  --line:#b9c7c7;
+  --teal:#076a66;
+  --orange:#a74716}
+
+* {
+  box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font:17px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main {
+  max-width:1100px;
+  margin:auto;
+  padding:48px 28px}
+a {
+  color:var(--teal);
+  text-underline-offset:.2em}
+a:focus-visible {
+  outline:3px solid var(--orange);
+  outline-offset:4px}
+h1,h2,h3,p {
+  margin-top:0}
+h1 {
+  font-size:clamp(2.6rem,7vw,4.8rem);
+  line-height:1.06;
+  letter-spacing:-.045em;
+  max-width:850px;
+  margin-bottom:20px}
+h2 {
+  font-size:1.5rem;
+  line-height:1.2;
+  margin-bottom:18px}
+h3 {
+  font-size:1.05rem;
+  margin-bottom:5px}
+.eyebrow {
+  font-size:.8rem;
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--teal)}
+.intro {
+  max-width:760px;
+  font-size:1.18rem}
+.nav {
+  display:flex;
+  gap:22px;
+  flex-wrap:wrap;
+  margin:24px 0 40px}
+.section {
+  margin-top:38px}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px}
+.card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:22px}
+.card p:last-child {
+  margin-bottom:0}
+.number {
+  display:block;
+  color:var(--orange);
+  font-size:.8rem;
+  font-weight:750;
+  margin-bottom:12px}
+code,kbd {
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:.87em}
+code {
+  overflow-wrap:anywhere}
+pre {
+  white-space:pre-wrap;
+  margin:12px 0 0}
+kbd {
+  background:white;
+  border:1px solid var(--line);
+  border-bottom-width:2px;
+  border-radius:4px;
+  padding:1px 5px}
+.bus {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:26px 12px;
+  margin:24px 0;
+  background:#e3efea;
+  border-radius:14px;
+  text-align:center}
+.seat {
+  font-weight:750}
+.seat small {
+  display:block;
+  font-weight:400;
+  color:var(--muted)}
+.bridge {
+  color:var(--teal);
+  font-size:.95rem}
+.bridge strong {
+  display:block;
+  font-size:1.4rem}
+.quote {
+  font-size:1.12rem;
+  border-left:4px solid var(--orange);
+  padding:12px 20px;
+  margin:14px 0;
+  background:var(--card)}
+.roles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px}
+.role {
+  border-top:2px solid var(--teal);
+  padding-top:12px}
+.role p {
+  color:var(--muted);
+  margin-bottom:0}
+.skills {
+  display:grid;
+  grid-template-columns:max-content 1fr;
+  gap:12px 22px}
+.skills dt {
+  font-weight:750;
+  color:var(--teal)}
+.skills dd {
+  margin:0}
+.footer {
+  margin-top:38px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.9rem}
+@media(max-width:700px) {
+  main {
+  padding:28px 18px}
+.grid,.roles {
+  grid-template-columns:1fr}
+.bus {
+  gap:12px}
+.bridge {
+  font-size:.8rem}
+.skills {
+  gap:12px}
+.nav {
+  margin-bottom:28px}
+}
+@media print {
+  main {
+  padding:0}
+.card,.role,.quote,.bus {
+  break-inside:avoid}
+body {
+  font-size:11pt;
+  background:white}
+h1 {
+  font-size:32pt}
+.nav {
+  margin:12px 0}
+.section {
+  margin-top:22px}
+a {
+  color:inherit}
+.grid {
+  grid-template-columns:repeat(3,1fr)}
+.roles {
+  grid-template-columns:repeat(3,1fr)}
+}
+
+
+table {width:100%;border-collapse:collapse} th,td {text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top} .table-wrap {overflow-x:auto} li {margin-bottom:8px}
+</style>
+</head>
+<body>
+<main>
+<header><p class="eyebrow">TAP · human cheat sheet</p><h1>Install once. Keep the clone.</h1><p class="intro">TAP links your agent tools to a permanent source directory. On a Mac, start with the requirements below.</p><nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a></nav></header>
+<section><h2>1 / Prepare your terminal</h2>
+<p>TAP needs Git, Bash 5+, Bun 1.4+, jq, tmux and tar. It does not need Python. With Homebrew already installed:</p>
+<pre><code>brew install git bash jq tmux
+brew install oven-sh/bun/bun
+export PATH="$(brew --prefix)/bin:$PATH"
+hash -r
+bash --version
+bun --version
+jq --version
+tmux -V
+tar --version</code></pre>
+<p>macOS ships an old Bash, so confirm that <code>bash --version</code> reports 5 or newer after the PATH line. On Linux, install the same tools with your package manager and Bun from its <a href="https://bun.sh">official installer</a>; the <a href="https://github.com/TedYav/tap/blob/main/docs/AGENT-SETUP.md">installation runbook</a> lists the commands.</p>
+<p>If <code>brew</code> is missing from PATH, follow Homebrew’s printed <code>shellenv</code> step. Keep the PATH setup in your shell startup file; the <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md">guide</a> covers Apple Silicon, Intel and shell differences. Install and sign in to your chosen agent CLIs separately.</p></section>
+<section class="section"><h2>2 / Clone and install</h2><pre><code>git clone https://github.com/TedYav/tap.git ~/tap
+cd ~/tap
+./install.sh</code></pre><p>TAP is a pre-release preview. If cloning fails with a permission error, ask the maintainer for access. Keep your TAP clone wherever you choose; <code>~/tap</code> is only an example. The installed command points into that clone. If the installer refuses, follow its exact repair message and rerun it.</p></section>
+<section class="section"><h2>3 / Answer the wizard</h2><p>On a first interactive install without a machine config, the wizard runs automatically. To revisit it: <code>tap setup --machine</code>.</p>
+<ol><li><strong>First use in a new project:</strong> <code>ask</code> (the default) has TAP ask before it sets up a team; <code>auto</code> sets one up without asking.</li><li><strong>Messages that arrive while you type:</strong> <code>interrupt</code> (fastest) or <code>wait</code> until your input is empty. Interrupt may clear a draft; see <a href="cheatsheet-first-team.html">First team</a> for recovery.</li><li><strong>Each detected harness:</strong> simple starter presets, choose numbered presets, or skip. <strong>Skip is the default.</strong> Detection checks executables, not login or model access.</li><li><strong>Default effort</strong>, asked only if you selected Claude/Codex starter presets: default (the harness chooses), low, medium, high or xhigh.</li><li><strong>Permission mode</strong> for each detected Claude, Codex, Cursor and Antigravity harness: <code>auto</code> or <code>bypass</code>. A saved choice is kept; a new one defaults to auto. See <a href="cheatsheet-harnesses.html">what the modes mean</a>.</li><li><strong>Optional full skill kit:</strong> no on first setup; later runs keep the saved choice. <strong>Notifier:</strong> keep the existing setting.</li><li><strong>Existing config:</strong> update it with a backup, or write a candidate to review. A candidate is not active.</li><li><strong>Shell integration</strong> for Bash/Zsh, if the active config was written: the wizard shows the startup file and each alias line before asking.</li><li><strong>Optional plugins</strong> for detected Claude/Codex, offered only if you chose the full skill kit: each plugin is offered separately, and the default is no.</li></ol><p>Note: in auto mode you may have to approve the first TAP message, unless you run <code>tap init</code> in the project first.</p><p>The wizard opens the getting-started sheet on macOS and prints a launch command for your work directory.</p></section>
+<section class="section"><h2>Project instructions</h2><p>Choose the permission mode yourself: bypass grants the agents your permissions, so enable it only if you accept that. Creating the first team adds TAP instructions to the project’s <code>AGENTS.md</code>, preserving existing instructions. Codex’s automatic reviewer uses this project context for TAP messages in auto mode; no separate setup command is needed.</p></section>
+<section class="section"><h2>4 / Verify</h2><pre><code>export PATH="$HOME/.local/bin:$PATH"
+tap help
+tap presets</code></pre><p>Use the bin path the installer prints if you chose another location. Keep it in your shell startup file if the alias wizard has not already added it. Next: <a href="cheatsheet-first-team.html">launch your first team</a>.</p></section>
+<section class="section"><h2>Where things live</h2><div class="grid"><article class="card"><h3>Software</h3><p>Your TAP clone (for example <code>~/tap</code>) holds the source. <code>~/.local/bin/tap</code> links to the command.</p></article><article class="card"><h3>Choices</h3><p><code>~/.config/tap/config.toml</code> holds machine presets and harness policy (or under <code>$XDG_CONFIG_HOME</code>).</p></article><article class="card"><h3>History</h3><p><code>~/.tap</code> holds machine state; project <code>.tap/</code> directories hold team state.</p></article></div></section>
+<section class="section"><h2>Update or uninstall</h2><pre><code>cd ~/tap
+./install.sh --sync</code></pre><p>Run updates from the permanent clone, never a disposable worktree. A refused sync means the update is incomplete.</p><p><code>tap uninstall</code> shows the recorded removal list, asks for confirmation, then offers <strong>keep</strong>, <strong>archive</strong> or <strong>delete</strong> for history and config. Archive writes a tarball before removing originals. Dependencies and plugins remain installed.</p></section>
+<footer class="footer">Works offline. <a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md">Full guide</a> · <a href="https://github.com/TedYav/tap/blob/main/skills/tap/USAGE.md">Command reference</a></footer>
+</main>
+</body>
+</html>

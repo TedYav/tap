@@ -1,0 +1,12 @@
+status:delivered
+status:denied
+status:dropped
+status:expired
+status:held
+status:refused
+tok:file_attachments
+tok:notify_when_idle
+tok:peer_idle_notice
+tok:peer_message_status
+tok:rename
+tok:session_id

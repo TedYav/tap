@@ -1,0 +1,57 @@
+name: pages
+run-name: publish cheat-sheet guide ${{ github.sha }}
+
+# Publishes ONLY the human cheat-sheet guide to GitHub Pages. The site is an
+# allowlist: index.html, the cheatsheet*.html sheets and the five level pages,
+# staged by explicit cp into a fresh _site/ with a generated .nojekyll. Nothing
+# else in the tree may reach the artifact. A Pages site is always public, so it
+# is hosted from this public repository only.
+# Enable once in Settings -> Pages -> Source: GitHub Actions.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "docs/index.html"
+      - "docs/cheatsheet*.html"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Stage allowlisted pages
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp docs/index.html _site/
+          cp docs/cheatsheet.html docs/cheatsheet-install.html _site/
+          cp docs/cheatsheet-first-team.html docs/cheatsheet-harnesses.html _site/
+          cp docs/cheatsheet-collaboration.html _site/
+          cp docs/cheatsheet-level-1.html docs/cheatsheet-level-2.html docs/cheatsheet-level-3.html _site/
+          cp docs/cheatsheet-level-4.html docs/cheatsheet-level-5.html _site/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,23 @@
+#compdef tap
+# TAP's finite candidate producer owns target grammar and authority reads.
+# Returning success with no matches prevents zsh's default file completion.
+local -a line_words values descriptions
+local candidate description
+local file_position=0
+line_words=("${words[@]}")
+line_words[CURRENT]="$PREFIX"
+while IFS=$'\t' read -r candidate description; do
+  [[ -n "$candidate" ]] || continue
+  if [[ "$candidate" == $'\x1fFILES' ]]; then
+    file_position=1
+    continue
+  fi
+  values+=("$candidate")
+  descriptions+=("$candidate — $description")
+done < <(command tap completion candidates --cursor "$CURRENT" -- "${line_words[@]}" 2>/dev/null)
+if (( file_position )); then
+  _files
+  return
+fi
+(( ${#values} )) && compadd -Q -d descriptions -- "${values[@]}"
+return 0

@@ -1,0 +1,170 @@
+{
+ "captured_from": {
+  "head": "9bf012997dbe2e5978c5b48edbd2dd35a8ecd055",
+  "blobs": {
+   "skills/tap/scripts/session/launcher.py": "a0aecb34a3ba217130fa30938f0c35644d66458e"
+  },
+  "python": "3.14.6",
+  "how": "the launcher port recorded each case from launcher.py new (the incumbent) while it still existed, in the same test run that required new.ts to agree; volatile values are masked by the test's own mask()."
+ },
+ "why": "Frozen outcomes of live `tap session launch` scenarios through the public session wrapper on the incumbent (status, stdout, stderr, and selected seat rows/files). new.ts must reproduce them.",
+ "cases": {
+  "reserved help handle": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: handle 'help' is reserved as the CLI help keyword and cannot name a seat; choose another --tag\n"
+  },
+  "subdirectory launch": {
+   "status": 0,
+   "stdout": "tap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": ""
+  },
+  "subdirectory launch cwd": "<root>/sub\n",
+  "child ignores old index and foreign bus": {
+   "status": 0,
+   "stdout": "tap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": ""
+  },
+  "session appearing after claim": {
+   "status": 1,
+   "stdout": "",
+   "stderr": "tap session: command failed (exit 1): tmux new-session\n"
+  },
+  "shell mentioning claude": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: harness did not start for fixture/reviewer: the login shell (bash) had not started claude after 5000 ms; it may be waiting for input\npane %N shows:\n  claude\nnext: answer the login-shell prompt in a terminal with /bin/bash -lic exit, then retry the launch\n"
+  },
+  "claude SIGTERM after binding": {
+   "code": 143,
+   "stdout": "",
+   "stderr": ""
+  },
+  "codex SIGTERM after binding": {
+   "code": 143,
+   "stdout": "",
+   "stderr": ""
+  },
+  "failed claude start": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: created pane identity changed during readiness\n"
+  },
+  "failed codex start": {
+   "status": 2,
+   "stdout": "",
+   "stderr": "tap session: created pane identity changed during readiness\n"
+  },
+  "--fresh over a live seated seat": {
+   "status": 0,
+   "stdout": "tap session: killed fixture/reviewer; backup: <root>/.tap/backup/session-kill/<backup>; restore: tap restore reviewer --archive <root>/.tap/backup/session-kill/<backup>\ntap session: reseated fixture/reviewer fresh (previous claude conversation <uuid> kept in history)\ntap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": ""
+  },
+  "--fresh over a live seated seat row": {
+   "adopted_from_manual": false,
+   "base": "fixture",
+   "boot_id": "bootuuid:<uuid>",
+   "delivery": "pane",
+   "harness": "claude",
+   "harness_env": {
+    "FEATURE_ENABLED": "yes"
+   },
+   "harness_session_id": "<uuid>",
+   "history": [
+    "<uuid>"
+   ],
+   "identity_capture": {
+    "expected_harness_session_id": "<uuid>",
+    "mode": "launcher_new"
+   },
+   "index": 1,
+   "instance": "reviewer|<instance>",
+   "last_launched": "<time>",
+   "model": "model-test",
+   "pane": "fixture/reviewer:0.0",
+   "pane_current_command": "sleep",
+   "pane_id": "%N",
+   "passthrough": [
+    "--append-system-prompt",
+    "literal $(touch SHOULD_NOT_EXIST)"
+   ],
+   "passthrough_from_config": true,
+   "permissions": "bypass",
+   "preset": {
+    "config_digest": "sha256:6e5db05db47ddf8f2aec0bcf169f337494767daf574c3864c5086e924ab8b651",
+    "name": "testseat",
+    "source_path": "<root>/.config/tap/config.toml"
+   },
+   "registered_at": "<time>",
+   "registered_from_worktree": "<root>",
+   "server_epoch": "srv:<epoch>",
+   "server_socket": "<tmux>/tmux-<uid>/<socket>",
+   "session": "fixture/reviewer",
+   "status": "active",
+   "status_reason": "",
+   "tag": "reviewer"
+  },
+  "live text-mode launch": {
+   "status": 0,
+   "stdout": "tap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": "tap config: unknown top-level table 'unknown' in <root>/.config/tap/config.toml — ignoring it and continuing\n"
+  },
+  "live text-mode --fresh reseat": {
+   "status": 0,
+   "stdout": "tap session: killed fixture/reviewer; backup: <root>/.tap/backup/session-kill/<backup>; restore: tap restore reviewer --archive <root>/.tap/backup/session-kill/<backup>\ntap session: reseated fixture/reviewer fresh (previous claude conversation <uuid> kept in history)\ntap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": "tap config: unknown top-level table 'unknown' in <root>/.config/tap/config.toml — ignoring it and continuing\n"
+  },
+  "live launch over a leftover record": {
+   "status": 0,
+   "stdout": "tap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": "tap config: unknown top-level table 'unknown' in <root>/.config/tap/config.toml — ignoring it and continuing\ntap session: ignoring leftover record fixture/reviewer — not on roster; launch creates a new seat (tap session resume reviewer to restore history)\n"
+  },
+  "unattended shell reseat": {
+   "status": 0,
+   "stdout": "tap session: killed fixture/reviewer; no seat state existed, so restore as a seat is unavailable; forensic backup: <root>/.tap/backup/session-kill/<backup>\ntap session: fixture/reviewer is running detached (no controlling terminal); next: tmux attach -t fixture/reviewer\n",
+   "stderr": ""
+  },
+  "unattended shell reseat row": {
+   "adopted_from_manual": false,
+   "base": "fixture",
+   "boot_id": "bootuuid:<uuid>",
+   "delivery": "pane",
+   "harness": "claude",
+   "harness_env": {
+    "FEATURE_ENABLED": "yes"
+   },
+   "harness_session_id": "<uuid>",
+   "history": [],
+   "identity_capture": {
+    "expected_harness_session_id": "<uuid>",
+    "mode": "launcher_new"
+   },
+   "index": 1,
+   "instance": "reviewer|<instance>",
+   "last_launched": "<time>",
+   "model": "model-test",
+   "pane": "fixture/reviewer:0.0",
+   "pane_current_command": "sleep",
+   "pane_id": "%N",
+   "passthrough": [
+    "--append-system-prompt",
+    "literal $(touch SHOULD_NOT_EXIST)"
+   ],
+   "passthrough_from_config": true,
+   "permissions": "bypass",
+   "preset": {
+    "config_digest": "sha256:6e5db05db47ddf8f2aec0bcf169f337494767daf574c3864c5086e924ab8b651",
+    "name": "testseat",
+    "source_path": "<root>/.config/tap/config.toml"
+   },
+   "registered_at": "<time>",
+   "registered_from_worktree": "<root>",
+   "server_epoch": "srv:<epoch>",
+   "server_socket": "<tmux>/tmux-<uid>/<socket>",
+   "session": "fixture/reviewer",
+   "status": "active",
+   "status_reason": "",
+   "tag": "reviewer"
+  }
+ }
+}

@@ -1,0 +1,18 @@
+△ Permission required · enter confirm · esc interrupt
+Completed line 01
+Completed line 02
+Completed line 03
+Completed line 04
+Completed line 05
+Completed line 06
+Completed line 07
+Completed line 08
+Completed line 09
+Completed line 10
+Completed line 11
+Completed line 12
+Completed line 13
+Completed line 14
+  ┃  Build · DeepSeek V4 Flash Free OpenCode Zen · medium
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  16.0K (8%)  ctrl+p commands · OpenCode 1.17.13

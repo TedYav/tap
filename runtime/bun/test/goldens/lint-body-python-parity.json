@@ -1,0 +1,574 @@
+{
+ "captured_from": "hooks/tap-shell-body-guard.py (python3 3.14.6)",
+ "shell_segments": {
+  "&> /tmp/out tap send peer": [
+   "&> /tmp/out tap send peer"
+  ],
+  "2>&1 tap send peer": [
+   "2>&1 tap send peer"
+  ],
+  ">|/tmp/out tap send peer": [
+   ">|/tmp/out tap send peer"
+  ],
+  "echo \"a | b\" | cat": [
+   "echo \"a | b\" ",
+   " cat"
+  ],
+  "echo a | tap send peer -m x": [
+   "echo a ",
+   " tap send peer -m x"
+  ],
+  "tap send a; tap send b": [
+   "tap send a",
+   " tap send b"
+  ],
+  "true && tap send peer -m x": [
+   "true ",
+   "",
+   " tap send peer -m x"
+  ]
+ },
+ "shell_tokens": {
+  "": [],
+  "  tap   send  ": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ]
+  ],
+  "\"\"": [
+   [
+    "",
+    false,
+    "\"\""
+   ]
+  ],
+  "\"$PY\" - <<'DATA'": [
+   [
+    "$PY",
+    false,
+    "\"$PY\""
+   ],
+   [
+    "-",
+    false,
+    "-"
+   ],
+   [
+    "<<DATA",
+    false,
+    "<<'DATA'"
+   ]
+  ],
+  "\"foo\"bar": [
+   [
+    "foobar",
+    false,
+    "\"foo\"bar"
+   ]
+  ],
+  "''": [
+   [
+    "",
+    false,
+    "''"
+   ]
+  ],
+  "/usr/bin/env -i /abs/path/tap send": [
+   [
+    "/usr/bin/env",
+    false,
+    "/usr/bin/env"
+   ],
+   [
+    "-i",
+    false,
+    "-i"
+   ],
+   [
+    "/abs/path/tap",
+    false,
+    "/abs/path/tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ]
+  ],
+  "2>&1 tap send peer": [
+   [
+    "2>&1",
+    false,
+    "2>&1"
+   ],
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "<<EOF tap send peer -f -": [
+   [
+    "<<EOF",
+    false,
+    "<<EOF"
+   ],
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ],
+   [
+    "-f",
+    false,
+    "-f"
+   ],
+   [
+    "-",
+    false,
+    "-"
+   ]
+  ],
+  "TAP_HOME=/tmp tap send peer": [
+   [
+    "TAP_HOME=/tmp",
+    false,
+    "TAP_HOME=/tmp"
+   ],
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "command -p /abs/path/tap": [
+   [
+    "command",
+    false,
+    "command"
+   ],
+   [
+    "-p",
+    false,
+    "-p"
+   ],
+   [
+    "/abs/path/tap",
+    false,
+    "/abs/path/tap"
+   ]
+  ],
+  "echo \\$(date)": [
+   [
+    "echo",
+    false,
+    "echo"
+   ],
+   [
+    "$(date)",
+    false,
+    "\\$(date)"
+   ]
+  ],
+  "echo python3 - <<'DATA'": [
+   [
+    "echo",
+    false,
+    "echo"
+   ],
+   [
+    "python3",
+    false,
+    "python3"
+   ],
+   [
+    "-",
+    false,
+    "-"
+   ],
+   [
+    "<<DATA",
+    false,
+    "<<'DATA'"
+   ]
+  ],
+  "foo#bar": [
+   [
+    "foo#bar",
+    false,
+    "foo#bar"
+   ]
+  ],
+  "tap\u001csend peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap send # comment": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ]
+  ],
+  "tap send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap send peer -m \"report $(date)\"": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ],
+   [
+    "-m",
+    false,
+    "-m"
+   ],
+   [
+    "report $(date)",
+    true,
+    "\"report $(date)\""
+   ]
+  ],
+  "tap send peer -m \"report `date`\"": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ],
+   [
+    "-m",
+    false,
+    "-m"
+   ],
+   [
+    "report `date`",
+    true,
+    "\"report `date`\""
+   ]
+  ],
+  "tap send peer -m \"retry $((n+1))\"": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ],
+   [
+    "-m",
+    false,
+    "-m"
+   ],
+   [
+    "retry $((n+1))",
+    false,
+    "\"retry $((n+1))\""
+   ]
+  ],
+  "tap send peer -m 'literal `date`'": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ],
+   [
+    "-m",
+    false,
+    "-m"
+   ],
+   [
+    "literal `date`",
+    false,
+    "'literal `date`'"
+   ]
+  ],
+  "tap\u0085send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap\u00a0send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap\u2003send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap\u2028send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap\u2029send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ],
+  "tap\u3000send peer": [
+   [
+    "tap",
+    false,
+    "tap"
+   ],
+   [
+    "send",
+    false,
+    "send"
+   ],
+   [
+    "peer",
+    false,
+    "peer"
+   ]
+  ]
+ },
+ "tool_and_flags": {
+  "/usr/bin/env -i /abs/path/tap send peer": [
+   2,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ],
+  "2>&1 tap send peer -m x": [
+   1,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ],
+  "bd update x -d y": [
+   0,
+   [
+    "--append-notes",
+    "--body",
+    "--description",
+    "--notes",
+    "-d"
+   ]
+  ],
+  "command -p /abs/path/tap send peer": [
+   2,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ],
+  "echo tap send peer -m x": [
+   null,
+   null
+  ],
+  "env TAP_HOME=/tmp tap send peer -m x": [
+   2,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ],
+  "tap assign peer -m x": [
+   0,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ],
+  "tap send peer -m x": [
+   0,
+   [
+    "--message",
+    "--preview",
+    "-m"
+   ]
+  ]
+ },
+ "unquoted_heredoc_is_unsafe": {
+  "<<EOF tap send peer -f -\nran `date`\nEOF": true,
+  "bd update x -d - <<A <<B\nharmless\nA\ncost $(date)\nB": true,
+  "tap send peer -f - 3<<A 4<<B\nsafe\nA\ncost $(date)\nB": true,
+  "tap send peer -f - <<'EOF'\nliteral `date`\nEOF": false,
+  "tap send peer -f - <<EOF\nran $(date)\nEOF": true,
+  "tap send peer -f - <<EOF\nran `date`\nEOF": true,
+  "tap send peer -f - <<EOF\nretry in $((n+1)); literal \\$(date)\nEOF": false
+ },
+ "without_heredoc_bodies_quoted_only": {
+  "echo \"see <<'EOF' below\"\nbd update x -d \"ran $(date)\"\nafter": "echo \"see <<'EOF' below\"\nbd update x -d \"ran $(date)\"\nafter",
+  "tap send peer -f - <<'END-MSG'\nliteral `date`\nEND-MSG\nafter": "tap send peer -f - <<'END-MSG'\nafter",
+  "tap send peer -f - <<'EOF'\nliteral `date`\nEOF\nafter": "tap send peer -f - <<'EOF'\nafter"
+ }
+}

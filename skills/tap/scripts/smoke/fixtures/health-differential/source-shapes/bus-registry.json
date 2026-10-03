@@ -1,0 +1,80 @@
+{
+  "agents": {
+    "decoy-probe-2": {
+      "adopted_handles": [
+        "decoy-probe-seat"
+      ],
+      "boot_id": "bootuuid:2cbfc821-19ad-4043-ac3c-88caf1ee38f4",
+      "cost_mode": "subscription",
+      "delivery": "pane",
+      "derived_at": "2026-08-19T10:21:38Z",
+      "harness": "claude",
+      "include_policy": "always",
+      "registered_at": "2026-08-19T10:21:38Z",
+      "registered_from_worktree": "/Users/runner/wrk/Example-Org/tap",
+      "server_epoch": "srv:59805:1787128319",
+      "session": "tap/pine-driver",
+      "session_attribution_candidates": 91,
+      "session_attribution_detail": "91 transcripts in project dir; enumerate to disambiguate",
+      "session_attribution_trust": "derived_ambiguous",
+      "session_store_kind": "dir",
+      "session_store_path": "/Users/runner/.claude/projects/-Users-runner-wrk-Example-Org-tap",
+      "status": "suspended",
+      "status_reason": "server_restarted"
+    },
+    "maple-lane-1": {
+      "boot_id": "bootuuid:bb4a74e1-d062-47a5-a0f8-cd2a1dd8199c",
+      "cost_mode": "subscription",
+      "delivery": "pane",
+      "derived_at": "2026-08-27T11:20:14Z",
+      "harness": "opencode",
+      "harness_session_id": "ses_fbe054bf2ffegNU565M1uWRDxr",
+      "identity_capture_result": {
+        "decision": "accepted",
+        "mode": "unattested",
+        "observed_harness_session_id": "ses_fbe054bf2ffegNU565M1uWRDxr"
+      },
+      "include_policy": "always",
+      "registered_at": "2026-08-27T11:20:14Z",
+      "registered_from_worktree": "/Users/runner/wrk/Example-Org/tap",
+      "server_epoch": "srv:32205:1787637724",
+      "session": "tap/maple-lane-1",
+      "session_attribution_detail": "env capture",
+      "session_attribution_trust": "env",
+      "status": "suspended",
+      "status_reason": "server_restarted"
+    },
+    "oak-regress": {
+      "boot_id": "bootuuid:a3aa79c7-535b-48c2-a8de-55ec240363a5",
+      "cost_mode": "subscription",
+      "delivery": "pane",
+      "derived_at": "2026-08-31T13:07:31Z",
+      "harness": "cursor",
+      "harness_session_id": "894cdf64-d551-43f8-bb2a-a61573734b79",
+      "identity_capture_result": {
+        "decision": "accepted",
+        "mode": "unattested",
+        "observed_harness_session_id": "894cdf64-d551-43f8-bb2a-a61573734b79"
+      },
+      "include_policy": "always",
+      "pane": "tap/oak-regress:0.0",
+      "pane_current_command": "node",
+      "pane_id": "%98",
+      "registered_at": "2026-08-31T13:07:31Z",
+      "registered_from_worktree": "/Users/runner/wrk/Example-Org/tap",
+      "server_epoch": "srv:39326:1788061042",
+      "session": "tap/oak-regress",
+      "session_attribution_detail": "env capture",
+      "session_attribution_trust": "env",
+      "status": "active",
+      "status_reason": ""
+    }
+  },
+  "team": {
+    "branch_at_bootstrap": "main",
+    "created_at": "2026-08-19T10:20:05Z",
+    "name": "tap",
+    "schema_version": "1",
+    "worktree_root": "/Users/runner/wrk/Example-Org/tap"
+  }
+}

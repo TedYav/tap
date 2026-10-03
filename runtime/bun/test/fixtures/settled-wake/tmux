@@ -1,0 +1,117 @@
+#!/usr/bin/env bun
+// Fixture tmux for settled-wake.test.ts — Bun port of the retired shell
+// heredoc. Answers for three seats in one session (peer %401/sess:0.0,
+// alice %402/sess:0.1, bob %403/sess:0.2), keeps per-pane busy/input band
+// state, logs every send, and provides the drain-ordering barriers the
+// delivery-first and lock-order arms pause on: when DRAIN_BARRIER_ID is set
+// and the bus file state matches the requested stage, the FIRST matching
+// tmux call writes `<dir>/entered` and parks until `<dir>/release` appears.
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
+
+const state = process.env.FAKE_TMUX_STATE;
+if (!state) { process.stderr.write("FAKE_TMUX_STATE is required\n"); process.exit(1); }
+mkdirSync(state, { recursive: true });
+
+let args = process.argv.slice(2);
+// Native submit targets immutable pane ids; resolve them to the same fake pane.
+args = args.map((arg) => (arg === "%401" ? "sess:0.0" : arg === "%402" ? "sess:0.1" : arg === "%403" ? "sess:0.2" : arg));
+const cmd = args[0]!;
+const rest = args.slice(1);
+
+// Drain ordering barriers, keyed on bus file state: the drain runs readiness,
+// identity and harness reads as fresh spawns that no in-process override
+// reaches, but every one of them still calls this PATH tmux.
+const barrierId = process.env.DRAIN_BARRIER_ID ?? "";
+const barrierDir = process.env.DRAIN_BARRIER_DIR ?? "";
+if (barrierId && barrierDir && !existsSync(join(barrierDir, "entered"))) {
+  const bus = process.env.DRAIN_BARRIER_BUS ?? "";
+  let hit = false;
+  const stage = process.env.DRAIN_BARRIER_STAGE ?? "";
+  if (stage === "canonical") {
+    hit = existsSync(join(bus, "payloads", `${barrierId}.md`)) && !existsSync(join(bus, "spool", `${barrierId}.md`));
+  } else if (stage === "claimed") {
+    hit = existsSync(join(bus, "spool", `${barrierId}.claim`)) && existsSync(join(bus, "spool", `${barrierId}.md`))
+      && !existsSync(join(bus, "payloads", `${barrierId}.md`));
+  }
+  if (hit) {
+    writeFileSync(join(barrierDir, "entered"), "");
+    for (let i = 0; i < 300 && existsSync(join(barrierDir, "release")) === false; i++) Bun.sleepSync(50);
+  }
+}
+
+const fakeCmd = process.env.FAKE_TMUX_CMD ?? "codex";
+
+if (cmd === "list-sessions") {
+  console.log("sess\t4242:100");
+} else if (cmd === "list-panes") {
+  console.log(`sess\tsess:0.0\t%401\t${fakeCmd}\t5001\t4242:100\t0`);
+  console.log("sess\tsess:0.1\t%402\tcodex\t5002\t4242:100\t0");
+  console.log("sess\tsess:0.2\t%403\tcodex\t5003\t4242:100\t0");
+} else if (cmd === "display-message") {
+  const fmt = rest[rest.length - 1] ?? "";
+  // Pane identity is per-TARGET: a fixture that answers one id for every pane
+  // cannot exercise a send BACK to the sender (identity_mismatch on every reply).
+  let target = "";
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "-t") target = rest[i + 1] ?? "";
+  }
+  const pid = target === "sess:0.1" ? "%402" : target === "sess:0.2" ? "%403" : process.env.FAKE_PANE_ID ?? "%401";
+  if (fmt.includes("pid") && fmt.includes("start_time")) {
+    console.log("4242:100");
+  } else if (fmt.includes("pane_id") && fmt.includes("session_name") && fmt.includes("pane_pid") && fmt.includes("pane_current_command")) {
+    // Four-field calling observe. Order matters: shorter globs must not win.
+    console.log(`${pid}\tsess\t4242\t${pid === "%402" ? "codex" : fakeCmd}\t0`);
+  } else if (fmt.includes("pane_id") && fmt.includes("pane_tty") && fmt.includes("session_name")) {
+    console.log(`${pid}\t/dev/faketty\tsess\t4242:100`);
+  } else if (fmt.includes("pane_id") && fmt.includes("session_name")) {
+    console.log(`${pid}\tsess\t4242:100`);
+  } else if (fmt.includes("session_name")) {
+    console.log("sess");
+  } else if (fmt.includes("pane_id")) {
+    console.log(pid);
+  } else if (fmt.includes("pane_pid")) {
+    console.log("4242");
+  } else if (fmt.includes("pane_in_mode")) {
+    console.log(existsSync(join(state, "copy_mode")) ? "1" : "0");
+  } else if (fmt.includes("pane_current_command")) {
+    console.log(fakeCmd);
+  } else if (fmt.includes("pane_current_path")) {
+    console.log(process.env.FAKE_WORKTREE ?? "");
+  } else if (fmt.includes("window_activity")) {
+    console.log("100");
+  } else {
+    console.log("");
+  }
+} else if (cmd === "select-pane") {
+  appendFileSync(join(state, "send-keys.log"), `select-pane ${rest.join(" ")}\n`);
+} else if (cmd === "capture-pane") {
+  // Busy AND the input band are per-PANE: one shared input file would make
+  // one pane's stuck submit look like pending human input on every OTHER pane.
+  let target = "";
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "-t") { target = rest[i + 1] ?? ""; i++; }
+  }
+  const key = target.replace(/[:./]/g, "_");
+  if (existsSync(join(state, "busy")) || (key && existsSync(join(state, `busy.${key}`)))) {
+    console.log("model is generating a response...");
+  } else if (key && existsSync(join(state, `input.${key}`))) {
+    console.log(`❯ ${readFileSync(join(state, `input.${key}`), "utf8")}`);
+  } else {
+    console.log("❯ ");
+  }
+} else if (cmd === "send-keys") {
+  appendFileSync(join(state, "send-keys.log"), `${rest.join(" ")}\n`);
+  let key = "";
+  let opts = rest;
+  if (opts[0] === "-t") { key = (opts[1] ?? "").replace(/[:./]/g, "_"); opts = opts.slice(2); }
+  if (opts[0] === "-X" && opts[1] === "cancel") { rmSync(join(state, "copy_mode")); process.exit(0); }
+  if (opts[0] === "-l") {
+    let text = opts[1] ?? "";
+    if (text === "--") text = opts[2] ?? "";
+    writeFileSync(join(state, `input.${key}`), text);
+    process.exit(0);
+  }
+  if (opts[0] === "C-u") { rmSync(join(state, `input.${key}`), { force: true }); process.exit(0); }
+  if (opts[0] === "Enter") { rmSync(join(state, `input.${key}`), { force: true }); process.exit(0); }
+}

@@ -1,0 +1,4 @@
+tap team: demo
+handle  harness  status   attached  preset
+claude  claude   unknown  yes       -
+codex   codex    unknown  yes       -

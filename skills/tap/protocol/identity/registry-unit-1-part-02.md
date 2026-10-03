@@ -1,0 +1,53 @@
+# Registry (Unit 1) — source part 2 of 14
+
+> Normative TAP v0.23 source fragment. Search the group index for adjacent parts.
+
+<!-- tap-source id=source-0028 start=168389 end=175705 sha256=14773be08f12164a4a1e99370acdd3ab9fd18222f94dfae8db3dcf664d692ff0 fragment=2/14 transform=wrapper_prefix -->
+<!-- TAP_SOURCE_BYTES_BEGIN -->
+**Registry writers write the current format only.** A team registry is current as an object with `schema: "0.20"`, a `seats` object, no `agents` key, and `team` absent or an object; a missing file stays absent, an existing `{}` is old, and a non-object is malformed. Writers mutate only a current registry and refuse any other as `old_store`, keeping the bytes. Readers apply the same predicate before any effect; machine-wide scanners show the team in its own `old_store` row, never purged. Only a missing registry is created, born `{"schema":"0.20","team":{...},"seats":{}}`; `tap admin rebuild-registry` never creates one. The launcher's duplicate-session scans walk the global registry's enrollments, never `teams.json`.
+
+**Registration lock scope.** Registration prepares independent socket, harness and session-store observations before acquiring reset custody. It retains custody continuously through team bootstrap, registry read/decision/write, any predecessor-mail adoption, registry events and the reset-generation reuse mark. Registry-dependent collision observations remain after the registry lock wait, with socket and server-generation revalidation before publication. Reset-custody and registry-lock acquisition each default to ten seconds; `TAP_REGISTER_LOCK_TIMEOUT` can specify another positive finite duration in seconds, and custody never waits less than one second. The bound must outlast an ordinary holder, so a SessionStart bind does not give up and leave a just-launched seat without its harness identity (tap-6g90c). Since tap-0p7hx, send and reply hold reset custody only across their placement, park, retraction, receipt or settle writes, never across pane delivery. The SessionStart adapter uses the ten-second bound, and a bind refused by custody, registry-lock or reset-fence contention prints a context line naming the refusal and `tap in` instead of vanishing. After the durable mutation, registration releases reset custody before enrollment and briefing. An enrollment failure after a committed registration is reported as a warning on stderr and does not undo the registration. The warning's next step is a same-seat retry (`tap register <committed handle>` with the caller's safe original options, shell-quoted, including `--harness-session-id` and the scope consents the retry needs again, and never `--fresh` or `--restore`) for `enroll_retry`, `enroll_failed`, a skipped enrollment and a name collision; a name collision first points at the retire-or-rename recovery its detail names. Index damage (`invalid_flip`, `ambiguous_root`) still points at `tap doctor`, and a temporary root at a sandbox `TAP_INDEX_HOME`. A post-commit enrollment that was skipped because the root stopped qualifying after it qualified at entry also warns; a root that was never indexable stays silent. The exit status is unchanged and no effect is replayed (tap-hpp4h). Registration does not drain queued mail inline; existing spool waiters and watcher ticks retain delivery ownership, and recipients can discover and read parked mail through `tap poll` and `tap read`. After release, the read-only briefing counts authorized, unsettled local parked mail, emits a `tap poll <handle>` hint when nonzero, and includes `parked_count` in JSON. This bounds registry waits, not the full command: a started adoption rewrite must finish before its ownership grants are published.
+
+**v0.20 instance binding (U3 — dormant until the same flip).** When the flip is live: `tap send` stamps `recipient_instance` (from an atomic snapshot, revalidated under registry SH through publication) and `sender_instance` (from the **sender team's** acting registry — never the recipient's: a same-handle seat on the destination team must not leak into the stamp, tap-w66z); omit either field when unbound. A manual `--cross-worktree --pane` send is deliberately unbound and unstamped on the recipient side — the caller named an explicit pane with no registry binding, so there is no seat instance to lock-stamp (null means unbound by construction, not an oversight); pane-less senders likewise omit `sender_instance`. `tap poll` / `tap read` / `tap reply` (including reply’s external `--payload` settlement arm) filter by `(handle, recipient_instance)` when the stamp is present; `tap outstanding` filters by `(from-handle, sender_instance)` when present. `tap cancel` likewise filters by sender instance, and its live-addressee refusal (`seat_active` / `seat_launching`) applies only when the current recipient instance matches the envelope stamp — a fresh same-handle recipient that cannot settle predecessor-bound mail must not strand the sender. For a stamped delivered payload, a positively observed different current recipient instance authorizes sender cancellation with `reason=instance_retired`, including when the flip marker is absent; an unknown or empty current instance is not that proof. The addressed current handle may read a predecessor-bound note and settle it with the same reason only when the instance stamp belongs to that handle and the envelope has no local adoption rewrite. Adopted mail still requires its recorded instance grant and retains adoption provenance, without a retirement reason. Stale asks retain the instance refusal, and team/addressee, invalid-marker, and unreachable-registry guards still apply. Those ACTS obligation gates refuse with `error_class=invalid_flip` (or `marker_unreadable` when the marker read itself fails) rather than treating a damaged marker as pre-flip absence and silently skipping the filter (tap-zex3); only an explicit absent marker keeps today's handle-only path. Fresh same-handle instances therefore begin with an empty obligation set (wn9w). Plain `tap out` writes a tombstone under `team-history/` before removing the current seat. Flip-live `tap out --kill` publishes a **final** (list-visible) tombstone under the same lock **before** the registry save and **before** `tmux kill-session` — publish-after cannot run when `--kill` targets the caller session (the process dies inside the kill). Nested cleanup on that path is fallible and partial outcomes are named, not papered over. A registry-save failure after publish leaves the original registry file untouched (save is replace-atomic) and **attempts** to unlink the tombstone: when unlink succeeds the refusal is `registry_save_failed` (retry `tap out <handle> --kill` — the registry store is not corrupt); when unlink itself fails the refusal is `history_cleanup_failed` with action `rm -f <tombstone> && tap out <handle> --kill` — a current row and a final retirement **can** coexist until that tombstone is removed. A live-kill failure after a successful save **attempts** to restore the registry row and unlink the tombstone: restore+unlink success → `session_kill_failed` (retry the out); restore success but unlink failure → still `session_kill_failed`, action names `rm -f <tombstone>` before retry (a bare retry does not reconcile a false retirement); restore failure (with or without a retained tombstone) → `registry_restore_failed`, naming repair of the row and any leftover history path before retry. `tap in <handle> --restore <instance>` / `--fresh` remain the intentional-retirement doors once the seat should stay gone. Pre-flip `--kill` has no tombstone side effects. `tap in` gains `--list-history [--json]`, `--restore <instance-id>`, and `--fresh` for the case-3 historical door (non-TTY refuses a bare historical `tap in` naming those flags). Pre-flip: no stamps, no tombstones, no case-3 gate — today's handle-only behavior.
+
+**Reset admission modes.** Every admission rechecks the fence. Mail/registry
+mutations use SH; fence publication and teardown/restore use EX. Launch
+transactions are registry mutations (tap-7t3ag): each holds reset SH across
+its whole transaction, harness start included, so sends, replies, courier
+delivery and unrelated relaunches proceed during a launch; same-name
+serialization comes from the pending reservation under the registry lock,
+and the generation reuse mark goes through the shared bounded helper under
+`locks/`. EX holders record a holder note (pid, operation, since) inside
+the lock file while they hold it. An interactive verb that meets a busy
+sidecar (tap-7t3ag) — send and reply (synchronous; a Ctrl-C terminates
+through the kernel default), and a relaunch stamp backed by a signal (the
+wait yields, so the door's own SIGINT handler aborts it promptly and
+concurrent members keep running) — auto-waits up to a generous bound with a
+stderr progress line naming a live holder, then refuses naming it; the
+progress line appears only on a TTY and never in JSON mode, and a dead
+holder's stale note is not named. Non-interactive callers and cleanup
+consumes keep the bounded, quiet refusal, so an abort never blocks its own
+cleanup. A published fence stays terminal: the waiter refuses as fenced,
+promptly. Pre-fence
+mutations finish before publication; later ones refuse. Order:
+
+| Holder | Acquisition order |
+| --- | --- |
+| Mail publication | obligation, reset SH, sorted distinct registry SH |
+| Admitted registry mutation | reset SH, registry EX |
+| Launch transaction | reset SH (whole transaction), registry EX per step |
+| Structural cut | reset EX (holder note recorded), try-once ledger EX |
+
+Multiple SH ledgers use sorted distinct literal index-recorded paths and hold no
+EX ledger. Final sender/route validation through canonical publication shares both
+registries; release them before the generation mark. EX ledgers stay one at a time.
+Registry-only refresh takes EX alone; it never acquires reset under a ledger. Registry SH waits use the one-second held-lock
+bound. No pane I/O or repair runs in publication custody. Lifecycle ledger
+transactions retain bounded control observations and guarded unregister kill.
+Mail releases admission before pane delivery. Generation marking uses a bounded
+lock under `locks/`, falling back to the atomic reused mark on contention.
+Fence bytes are staged and fsynced under classified `tmp/`; initial publication
+links exclusively, replacements rename. Pre-publication crashes leave scratch,
+not partial fences. Flock has no writer preference: sustained SH traffic —
+including overlapping launches, which now hold SH (tap-7t3ag) — may exhaust
+either reset EX or registry EX's bounded wait.

@@ -1,0 +1,5 @@
+{
+  "name": "tap",
+  "description": "Coordinate agents through TAP. Requires the installed tap CLI.",
+  "skills": "./skills/"
+}
