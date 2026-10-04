@@ -200,7 +200,7 @@ li { margin-bottom:8px }
 <p class="eyebrow">The five levels of TAP · 5 of 5</p>
 <h1>Teams that run and evolve</h1>
 <p class="intro">Keep a team working through a long backlog, with supervision, handoffs and roles that grow from repeated needs.</p>
-<nav class="nav" aria-label="The five levels"><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html" aria-current="page">Level 5</a></nav>
+<nav class="nav" aria-label="The five levels"><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html" aria-current="page">Level 5</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
 </header>
 <section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Work through a migration over several sessions. Keep a test-watching seat on new commits. Add a coach to record lessons, or a context watcher to prompt handoffs before conversations fill up. A team can become a software factory while you keep steering its goals.</p></section>
 <section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>Start with the level 4 team. Ask its registered lead to supervise one bounded run:</p>
@@ -211,6 +211,29 @@ tap watch status</code></pre>
 <pre><code>tap self compact --handoff tmp/me/handoff.md -- "Preserve: open work and review state"</code></pre>
 <p>This arms compaction. The seat ends its turn and checks the resume note before continuing; arming alone does not prove recovery finished.</p></section>
 <section class="section"><h2>What’s new since level 4</h2><p>The team survives context changes and evolves its own working habits. Add a role when you repeatedly do its job by hand. Describe what it watches, when to act, whom to tell and when to stop. Save proven instructions as a <code>SKILL.md</code> so the next seat can use them.</p></section>
+<section class="section"><h2>Make your own role skills</h2>
+<p>A team with a coach, a nights watch and a context genie feels like working with a crew, and it makes development fun.</p>
+<p>These are examples of roles users can create, not extra skills bundled in the TAP plugin:</p>
+<ul><li>A <strong>context genie</strong> watches context pressure and asks seats to write handoffs.</li>
+<li>A <strong>nights watch</strong> checks new commits and reports test failures.</li>
+<li>A <strong>coach</strong> records lessons and recognizes useful work.</li>
+<li>A <strong>monitor</strong> samples a declared subject and reports threshold crossings or errors.</li></ul>
+<p>Write a <code>SKILL.md</code> with the role’s inputs, actions, recipient, evidence and stop condition; include a cadence if it needs one. A TOML role description helps choose a seat. It does not create a skill or schedule it. Avoid waking a model just to check whether a peer replied.</p>
+<details><summary>Preset example: Luna for routine tasks</summary>
+<p>This quoted example records one operator’s strengths and staffing judgments, not defaults or benchmarks. The summary describes strengths and limits; primary, secondary and avoid lists guide the team without enforcing assignments. Check account access and revise these notes for your work. This preset excerpt keeps only the effort entry from <code>params.config</code>; other tuning entries are omitted.</p>
+<pre><code>[presets.luna]
+harness = &quot;codex&quot;
+params.model = &quot;gpt-6-luna&quot;
+params.config = [&quot;model_reasoning_effort=high&quot;]
+metadata.intelligence = &quot;medium&quot;
+metadata.cost_level = &quot;very low&quot;
+metadata.speed = &quot;very fast&quot;
+metadata.summary = &quot;Cheap agent that is still a lot smarter than many other models. Great for automation tasks, running scripts, and executing simple operations. Less good for heavy coding.&quot;
+metadata.primary_roles = [&quot;tasker&quot;]
+metadata.secondary_roles = [&quot;implementer&quot;, &quot;researcher&quot;]
+metadata.avoid_roles = [&quot;leader&quot;, &quot;architect&quot;, &quot;approver&quot;, &quot;reviewer&quot;, &quot;debugger&quot;, &quot;prose_writer&quot;]</code></pre>
+<p>After adapting and saving it with <code>tap:config-wizard</code>, use <code>tap launch luna tasker</code>. See the <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md#level-4-roles-and-presets">complete roles and presets excerpt</a>. Astra and Luna share a model family; they are not a cross-family review pair.</p></details>
+<p>Use the <a href="cheatsheet-skills.html">factory-skills reference</a> to find the shipped instructions before writing your own.</p></section>
 <section class="section"><h2>Go deeper</h2><p><a href="https://github.com/TedYav/tap/blob/main/skills/tap/protocol/supervision/README.md">Supervision and reminders</a> and <a href="https://github.com/TedYav/tap/blob/main/docs/solutions/best-practices/write-before-reset.md">write before you reset</a> cover long runs. The <code>tap-context</code> skill helps choose a context transition.</p><p><a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md#when-another-tool-fits">When another tool fits</a> compares other kinds of agent systems.</p></section>
 <footer class="footer">
 <nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-4.html">← Level 4</a><a href="index.html">Back to the guide →</a></nav>

@@ -12,6 +12,11 @@ TAP lets agents communicate by injecting keystrokes into one another's terminals
 on one machine.
 **Bypass mode grants the agents your permissions.**
 
+TAP is duct tape, not fiber optic. **But dammit, it works.** Modern agents don't
+need much to coordinate and get work done: a way to reach one another, a clear
+task, and a few shared rules. TAP supplies the messages and wakes; the agents
+bring the judgment.
+
 ## Get your first reply
 
 Install TAP once, initialize your project, launch Claude and Codex, and ask
@@ -152,7 +157,12 @@ covers saved choices and shell shortcuts. The installation runbook also covers
 
 TAP writes a message to local files and types a short notification into the
 receiving agent's tmux pane. That agent reads the message and decides what to do.
-TAP's delivery receipt does not prove the agent processed it. The
+TAP's delivery receipt does not prove the agent processed it.
+
+[Push, not poll](docs/PHILOSOPHY.md#push-not-poll): after sending, an agent keeps
+doing useful work that does not depend on the reply. When it needs the answer,
+it yields and lets the reply wake its pane. This avoids repeated model turns
+spent checking for mail; it does not make coordination token-free. The
 [protocol guide](skills/tap/protocol/README.md) documents delivery, drafts,
 identity checks and reply obligations.
 

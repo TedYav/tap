@@ -46,6 +46,7 @@ jobs:
           cp docs/cheatsheet.html docs/cheatsheet-install.html _site/
           cp docs/cheatsheet-first-team.html docs/cheatsheet-harnesses.html _site/
           cp docs/cheatsheet-collaboration.html _site/
+          cp docs/cheatsheet-skills.html _site/
           cp docs/cheatsheet-level-1.html docs/cheatsheet-level-2.html docs/cheatsheet-level-3.html _site/
           cp docs/cheatsheet-level-4.html docs/cheatsheet-level-5.html _site/
           touch _site/.nojekyll

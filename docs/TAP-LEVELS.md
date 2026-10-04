@@ -42,6 +42,111 @@ This is often all you need.
 [Start the five-page guide](cheatsheet-level-1.html) or follow the
 [first-team walkthrough](GETTING-STARTED.md).
 
+Levels 2 and 3 are covered by the linked pages in the table above. The
+advanced sections below add configuration and role examples.
+
+## Level 4: Roles and presets
+
+A role describes the job; a preset saves a harness, model and tuning. These
+quoted excerpts from one operator’s configuration show how to record
+strengths and staffing preferences. They are examples, not defaults or model
+benchmarks. Check the models available to your account and revise the notes as
+you learn. Ask `tap:config-wizard` to help adapt them to your configuration;
+do not replace your config with this excerpt. Only a private skill reference,
+a TODO comment and two typos have been removed or corrected. The quoted
+`/drive` and `/lead` shorthand refers to `tap:drive` and `tap:lead`.
+
+```toml
+[roles]
+driver = "Drives an implementation lane. May also implement code, or delegate its lane to an implementer. See /drive"
+implementer = "Implements code from a prompt or a spec"
+reviewer = "Reviews code, plans, proposals, etc, either as itself, or as a particular reviewer agent definition provided to it"
+partner = "A situational role for pair programming, pair research, or other tasks. Partners are agents that are strong implementers and reviewers, and can offer a turn by turn perspective on a task before escalating to a driver/conductor/leader. Generally, the partner should be a stronger model than the implementer or researcher in the pair."
+debugger = "Debugs issues in code or on the machine"
+leader = "Leads a TAP team, responsible for choreographing other agents, adding and removing teammates, managing teammate context. Delegates most or all of actual implementation work to other agents. May write plans, or review important parts of plans written by other agents. Pair with a conductor to save tokens! See /lead"
+conductor = "A conductor assists the leader with the variety of messages received from an active TAP team. Drivers, implementers, reviewers, etc send agents to the conductor, who will selectively relay questions to the leader as needed."
+planner = "Comes up with ideas, and pressure tests ideas with other agents."
+researcher = "Researches a given problem space, using internet research"
+prose_writer = "Writes or edits prose, such as comments, design documents, ADRs, and so forth."
+architect = "Designs and refines the architecture of a system, including the codebase, the data model, the API, the UI, and the overall system design."
+approver = "Approves a design or code change after other agents have reviewed it. The leader will assign an approver to various gates in the development process. (Or the leader may designate themselves as the approver). Approvers are generally a distinct seat from reviewers, to avoid rubber stamping something they've already seen."
+goalie = "Acts as the team goalie, keeping it on track, blocking deadlocks, failures, and other issues. Can maintain a /goal for the team as a whole. Goalie's job is to let the leader rest and avoid using frontier tokens for micromanaging the team and herding cats."
+tasker = "Runs tasks, such as running scripts, executing simple operations, gathering data from the machine, and other tasks that don't require a lot of intelligence."
+prototyper = "Prototypes code, designs, and other artifacts quickly, to get a sense of what is possible. Generally top tier frontier models on lower effort settings are useful for this - to see if an idea is feasible before handing robust implementation to cheaper seats."
+monitor = "Samples a declared subject on a regular cadence, writes a timestamped heartbeat with numbers each cycle, and reports crossings or errors to its charter recipient. Nightwatch, goalie and context genie are monitor variants. See skills/tap/protocol/supervision/monitor.md."
+
+[intelligences]
+s-tier = "Absolute top of the line frontier models to be used for situations requiring exceptional intelligence and capabilities."
+frontier = "Frontier model with top of the line intelligence and capabilities, that is strong for executing agentic tasks, doing code reviews, and producing quality software"
+advanced = "An advanced model which is useful for general execution tasks, implementation, and research."
+medium = "A model useful for basic implementation, data analysis, quick scripting, and other tasks where the goal is very well defined and a more advanced model will check its work."
+dumb = "A model which is generally fast and cheap, and useful for offloading more mechanical tasks from more expensive agents, such as detecting team deadlocks, running mechanical gates, data collecting and parsing, etc."
+```
+
+`metadata.summary` describes strengths and limitations. `intelligence`,
+`cost_level` and `speed` are the operator’s qualitative notes; the quoted
+`[intelligences]` table defines those intelligence labels. `primary_roles`
+lists preferred jobs, `secondary_roles` lists other suitable jobs, and
+`avoid_roles` records jobs to steer away from. These fields brief the agents;
+they do not enforce assignments or prove model access. All role names used
+below are defined in the `[roles]` excerpt. The preset excerpts keep only
+the effort entry from `params.config`; other tuning entries are omitted.
+
+```toml
+[presets.astra]
+harness = "codex"
+params.model = "gpt-6-astra"
+params.config = ["model_reasoning_effort=high"]
+metadata.intelligence = "s-tier"
+metadata.cost_level = "high"
+metadata.speed = "medium fast"
+metadata.summary = "Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.primary_roles = ["prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer"]
+metadata.secondary_roles = ["driver", "leader", "researcher"]
+metadata.avoid_roles = ["tasker"]
+
+[presets.luna]
+harness = "codex"
+params.model = "gpt-6-luna"
+params.config = ["model_reasoning_effort=high"]
+metadata.intelligence = "medium"
+metadata.cost_level = "very low"
+metadata.speed = "very fast"
+metadata.summary = "Cheap agent that is still a lot smarter than many other models. Great for automation tasks, running scripts, and executing simple operations. Less good for heavy coding."
+metadata.primary_roles = ["tasker"]
+metadata.secondary_roles = ["implementer", "researcher"]
+metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "debugger", "prose_writer"]
+```
+
+Use `tap models` for model guidance and `tap presets` for saved recipes.
+After adapting and saving these presets, `tap launch astra builder` or
+`tap launch luna tasker` uses that recipe for a new seat. Both examples use
+the same model family; choose a different family when the work calls for
+cross-family review.
+
+## Level 5: Create the roles your team needs
+
+A team with a coach, a nights watch and a context genie feels like working
+with a crew, and it makes development fun.
+
+Add a role when you repeatedly do its job by hand. A **context genie** can
+watch context pressure and ask seats to write handoffs. A **nights watch** can
+check new commits and report test failures. A **coach** can record lessons and
+recognize useful work. A **monitor** samples a declared subject and reports
+threshold crossings or errors.
+
+These are examples of role skills you can write, not additional skills shipped
+in the TAP plugin. Give each a `SKILL.md` with its inputs, actions, recipient,
+evidence, cadence when needed, and stop condition. A role description in TOML
+helps choose a seat; it does not create the skill or schedule it. Keep monitoring
+bounded and event-driven where possible; avoid waking a model just to check
+whether a peer replied.
+
+The [factory-skills reference](cheatsheet-skills.html) lists every shipped TAP
+skill and when to use it. Start with those, then add your own instructions for
+repeated needs. [Level 5](cheatsheet-level-5.html) covers bounded supervision
+and handoffs.
+
 ## When another tool fits
 
 TAP is a file bus and a tmux courier on one machine. There is no server to run,
