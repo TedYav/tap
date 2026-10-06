@@ -1,21 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Every shipped TAP factory skill: what it does, when to use it and where to find its instructions.">
 <title>TAP factory skills — when to use each one</title>
+<script src="assets/theme.js"></script>
+<script>initTheme();</script>
 <style>
-:root {
-  color-scheme:dark;
-  --ink:#e6edf3;
-  --muted:#a8b8c4;
-  --paper:#101820;
-  --card:#18252f;
-  --line:#3b505d;
-  --teal:#70d8cd;
-  --orange:#ffb071}
-
 * {
   box-sizing:border-box}
 body {
@@ -102,7 +94,7 @@ kbd {
   gap:20px;
   padding:26px 12px;
   margin:24px 0;
-  background:#183832;
+  background:var(--bus);
   border-radius:14px;
   text-align:center}
 .seat {
@@ -163,7 +155,6 @@ kbd {
   margin-bottom:28px}
 }
 @media print {
-  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
   main {
   padding:0}
 .card,.role,.quote,.bus {
@@ -188,9 +179,7 @@ a {
 
 
 main { max-width:940px }
-pre { padding:16px 20px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:16px }
 .level-nav { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap }
-[aria-current="page"] { color:var(--ink); font-weight:750 }
 li { margin-bottom:8px }
 
 .skill-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px }
@@ -198,52 +187,63 @@ li { margin-bottom:8px }
 .skill-grid .when { color:var(--muted) }
 @media(max-width:650px) { .skill-grid { grid-template-columns:1fr } }
 </style>
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body><main>
-<header><p class="eyebrow">TAP · factory skills</p>
-<h1>Give the team the instructions it needs.</h1>
-<p class="intro">These 23 shipped skills help agents communicate, divide work, review it and keep going across sessions. Start with the few your task needs.</p>
-<nav class="nav" aria-label="Documentation"><a href="index.html">All documentation</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a></nav>
+<header>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" aria-pressed="false" disabled>Light theme</button>
+<p class="eyebrow">TAP · skills</p>
+<h1>Skills for you and your agents.</h1>
+<p>TAP&#x27;s skills are going to be overhauled. For now, start with the key skills below: <code>tap:help</code> for help, <code>tap:config-wizard</code> for settings, and <code>tap:lead</code> when you want an agent to lead a team.</p>
+<nav class="nav" aria-label="Documentation"><a href="index.html">All documentation</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html" aria-current="page">Factory skills</a></nav>
 </header>
-<section><h2>Find the canonical instructions</h2>
-<p>Claude and Codex use the native plugin names shown below, such as <code>tap:lead</code>. Other harnesses use flat names such as <code>tap-lead</code>; the all-seat entry is <code>tap</code>. Ask your agent to load the named skill. Some message helpers are agent-invoked rather than slash-menu entries.</p>
-<pre><code>tap help skill lead</code></pre>
-<p>This command returns the canonical file for your installed TAP version. Open that file before using the skill. Namespaced and flat names resolve there too.</p>
-<p>The native plugin exposes the complete set. Flat hosts start with <code>tap</code>, <code>tap-in</code>, <code>tap-send</code>, <code>tap-escalate</code>, <code>tap-config-wizard</code> and <code>tap-help</code>; the full-kit setting adds the rest. Skills are instructions for agents, not a fixed workflow enforced by the transport.</p></section>
-<section class="section"><h2>Start and configure</h2><div class="skill-grid">
-<article class="card" id="help"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/help/SKILL.md"><code>tap:help</code></a></h3><p>Get two harnesses exchanging a real reply, then choose the next useful capability.</p><p class="when">Use when you are new to TAP or want it to fit your workflow.</p><p><code>tap help skill help</code></p></article>
-<article class="card" id="config-wizard"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/config-wizard/SKILL.md"><code>tap:config-wizard</code></a></h3><p>Choose presets, permissions, notifications, aliases and other machine settings.</p><p class="when">Use for first setup or a named setting you want to change.</p><p><code>tap help skill config-wizard</code></p></article>
-<article class="card" id="tap"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/tap/SKILL.md"><code>tap:tap</code></a></h3><p>Apply the shared rules for messages, liveness and tree custody.</p><p class="when">Use whenever agents coordinate through TAP.</p><p><code>tap help skill tap</code></p></article>
-<article class="card" id="in"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/in/SKILL.md"><code>tap:in</code></a></h3><p>Register or reconnect the current pane.</p><p class="when">Use after pane or session changes, or when registration is uncertain; launched seats are already registered.</p><p><code>tap help skill in</code></p></article>
-<article class="card" id="team"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/team/SKILL.md"><code>tap:team</code></a></h3><p>Inspect the roster and seat metadata.</p><p class="when">Use to choose a recipient or understand who is on the team.</p><p><code>tap help skill team</code></p></article>
-<article class="card" id="out"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/out/SKILL.md"><code>tap:out</code></a></h3><p>Unregister a seat and free its handle, with an explicit handoff when needed.</p><p class="when">Use when leaving the bus or removing an exited teammate.</p><p><code>tap help skill out</code></p></article>
-</div></section>
-<section class="section"><h2>Send work and answers</h2><div class="skill-grid">
-<article class="card" id="assign"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/assign/SKILL.md"><code>tap:assign</code></a></h3><p>Send a work order with a tracked reply obligation.</p><p class="when">Use to ask a teammate to review, fix, build or investigate something.</p><p><code>tap help skill assign</code></p></article>
-<article class="card" id="send"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/send/SKILL.md"><code>tap:send</code></a></h3><p>Choose a note, a question with an answer owed, or an assignment.</p><p class="when">Use to communicate with a seat; an informational note is not a work order.</p><p><code>tap help skill send</code></p></article>
-<article class="card" id="reply"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/reply/SKILL.md"><code>tap:reply</code></a></h3><p>Answer an incoming request and settle its obligation.</p><p class="when">Use when the payload says reply: expected; a progress reply keeps unfinished work open.</p><p><code>tap help skill reply</code></p></article>
-<article class="card" id="outstanding"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/outstanding/SKILL.md"><code>tap:outstanding</code></a></h3><p>List messages you sent that still await settlement.</p><p class="when">Use before yielding or when checking what you still owe supervision on.</p><p><code>tap help skill outstanding</code></p></article>
-<article class="card" id="escalate"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/escalate/SKILL.md"><code>tap:escalate</code></a></h3><p>Ask the configured notifier to alert the user with a question.</p><p class="when">Use when only the user can unblock work; notifier acceptance does not prove they saw it.</p><p><code>tap help skill escalate</code></p></article>
-</div></section>
-<section class="section"><h2>Choose a collaboration shape</h2><div class="skill-grid">
-<article class="card" id="ask"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/ask/SKILL.md"><code>tap:ask</code></a></h3><p>Run one stateless harness prompt and print its answer.</p><p class="when">Use for a bounded question with no follow-up conversation, TAP pane or seat lifecycle.</p><p><code>tap help skill ask</code></p></article>
-<article class="card" id="crew"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/crew/SKILL.md"><code>tap:crew</code></a></h3><p>Manage a short-lived consult or review seat in the current tmux session.</p><p class="when">Use when a conversation needs follow-up but no durable implementation lane; crews are not parallel writers.</p><p><code>tap help skill crew</code></p></article>
-<article class="card" id="collab"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/collab/SKILL.md"><code>tap:collab</code></a></h3><p>Agree who writes, challenges and decides, then choose pair or discuss.</p><p class="when">Use when collaborating with a named peer on a bounded task.</p><p><code>tap help skill collab</code></p></article>
-<article class="card" id="pair"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/pair/SKILL.md"><code>tap:pair</code></a></h3><p>Coordinate one writer and a partner who independently reviews each published unit.</p><p class="when">Use while producing code, prose or research together, with review tied to an exact range.</p><p><code>tap help skill pair</code></p></article>
-<article class="card" id="discuss"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/discuss/SKILL.md"><code>tap:discuss</code></a></h3><p>Resolve a plan, review or decision through bounded exchanges and a driver-owned issue ledger.</p><p class="when">Use to converge on finished material; agreement does not itself authorize execution or publication.</p><p><code>tap help skill discuss</code></p></article>
-<article class="card" id="adapt"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/adapt/SKILL.md"><code>tap:adapt</code></a></h3><p>Recompose skills into a written proposal with cuts, preserved requirements and executor routing.</p><p class="when">Use for material changes to a skill workflow or a composition across TAP seats; ordinary choices within a skill need no adaptation.</p><p><code>tap help skill adapt</code></p></article>
-</div></section>
-<section class="section"><h2>Run the team</h2><div class="skill-grid">
-<article class="card" id="lead"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/lead/SKILL.md"><code>tap:lead</code></a></h3><p>Design the team strategy, staffing and independent final gate.</p><p class="when">Use when leading a mission or choosing how its work should be delegated.</p><p><code>tap help skill lead</code></p></article>
-<article class="card" id="drive"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/drive/SKILL.md"><code>tap:drive</code></a></h3><p>Own an implementation lane, including custody, commits, checks and closeout.</p><p class="when">Use when responsible for a lane from assignment through delivery.</p><p><code>tap help skill drive</code></p></article>
-<article class="card" id="conduct"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/conduct/SKILL.md"><code>tap:conduct</code></a></h3><p>Run dispatch, staffing, review routing and milestone reporting under a leader’s charter.</p><p class="when">Use when a busy leader delegates the recurring coordination work.</p><p><code>tap help skill conduct</code></p></article>
-<article class="card" id="choreography"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/choreography/SKILL.md"><code>tap:choreography</code></a></h3><p>Coordinate readers, writers, evidence and wakes.</p><p class="when">Use for parallel reviews or edits, shared trees, or supervision with a concrete coverage gap.</p><p><code>tap help skill choreography</code></p></article>
-</div></section>
-<section class="section"><h2>Preserve continuity</h2><div class="skill-grid">
-<article class="card" id="context"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/context/SKILL.md"><code>tap:context</code></a></h3><p>Choose the least disruptive recovery: leave alone, compact, clear and rebrief, or restart.</p><p class="when">Use at task boundaries or when context threatens reliable work; preserve custody and the standing assignment.</p><p><code>tap help skill context</code></p></article>
-<article class="card" id="self"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/self/SKILL.md"><code>tap:self</code></a></h3><p>Invoke supported compact, rebrief, goal, loop or clear controls in the current seat.</p><p class="when">Use for an authorized self-transition with an authored handoff where required; support varies by harness and arming is not completion.</p><p><code>tap help skill self</code></p></article>
-</div></section>
-<section class="section"><h2>Your factory can grow its own skills</h2>
-<p>The inventory above comes from <code>plugins/tap/skills/*/SKILL.md</code>. A context genie, nights watch, coach or monitor is an example of a role you can write for your own team, not an extra skill in this inventory. <a href="cheatsheet-level-5.html">Level 5</a> shows what to put in a role skill; <a href="cheatsheet-level-4.html#role-notes">level 4</a> shows how roles and presets help with staffing.</p></section>
+<section class="section" id="skills-you-invoke"><h2>Skills you invoke</h2>
+<p>These are instructions you give an agent. The examples use native plugin names; ask your agent to load the named skill if its harness uses another spelling.</p>
+<div class="skill-grid">
+<article class="card" id="help"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/help/SKILL.md">tap:help</a></h3><p>Find documentation or help with a particular issue. For a new team, get two harnesses exchanging a real reply, then choose the next useful capability.</p></article>
+<article class="card" id="config-wizard"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/config-wizard/SKILL.md">tap:config-wizard</a></h3><p>Help you configure TAP, including advanced settings, presets, permissions and notifications.</p></article>
+<article class="card" id="lead"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/lead/SKILL.md">tap:lead</a></h3><p>Lead the team: choose a strategy, staff the work and ensure it gets an independent review.</p></article>
+<article class="card" id="self"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/self/SKILL.md">tap:self</a></h3><p>Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal, loop and clear support depends on the harness; the skill handles required handoffs.</p></article>
+<article class="card" id="collab"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/collab/SKILL.md">tap:collab</a></h3><p>Work with another agent on a task as equal collaborators. They agree who writes, challenges and decides, then use pair or discuss.</p></article>
+<article class="card" id="pair"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/pair/SKILL.md">tap:pair</a></h3><p>Pair program: one agent writes and the other independently reviews after each work turn, tied to the published unit or commit range. It also works for prose and research.</p></article>
+<article class="card" id="adapt"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/adapt/SKILL.md">tap:adapt</a></h3><p>Give a modern frontier agent permission to use its judgment to simplify a legacy skill or make it useful across TAP teams. It records the proposed changes and preserves authority boundaries. Interactive mode waits for your go; <code>mode:agent</code> applies the changes and records its decisions.</p></article>
+<article class="card" id="escalate"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/escalate/SKILL.md">tap:escalate</a></h3><p>Reach you out of band when it needs your decision, through your configured notifier. Notifier acceptance does not prove you saw the question.</p></article>
+<article class="card" id="discuss"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/discuss/SKILL.md">tap:discuss</a></h3><p>Discuss a plan, review or decision with another agent using a defined protocol, and arrive at a recommendation. Exchanges are bounded and open issues are recorded.</p></article>
+</div>
+<p>For larger teams, you can also ask for these roles or workflows:</p>
+<div class="skill-grid">
+<article class="card" id="crew"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/crew/SKILL.md">tap:crew</a></h3><p>Bring in a short-lived consult or review seat when the conversation needs follow-up. Crew seats share the current tmux session; they are not parallel implementation writers.</p></article>
+<article class="card" id="drive"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/drive/SKILL.md">tap:drive</a></h3><p>Give an agent ownership of one implementation lane, including custody, commits, checks and closeout.</p></article>
+<article class="card" id="conduct"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/conduct/SKILL.md">tap:conduct</a></h3><p>Have an agent assist a leader with staffing, dispatch, review routing and escalation under the leader&#x27;s charter.</p></article>
+<article class="card" id="context"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/context/SKILL.md">tap:context</a></h3><p>Ask an agent to choose the least disruptive context recovery at a safe task boundary: leave alone, compact, clear and rebrief, or restart. It preserves assignments and writer custody.</p></article>
+</div>
+<p>Agents may select these skills themselves when their assignment calls for them. This split tells you which skills are useful to ask for, not who is allowed to load a file.</p>
+</section>
+<section class="section" id="run-a-shell-command-directly"><h2>Run a shell command directly</h2>
+<p>For a simple TAP command, use your harness's shell shortcut, such as <code>!tap in</code>, instead of the skill form (<code>/tap in</code> or <code>/tap:in</code>). It uses fewer tokens and is simpler. Use the skill when you want the agent to manage a lifecycle or make decisions.</p>
+</section>
+<section class="section" id="skills-an-agent-invokes"><h2>Skills an agent invokes</h2>
+<p>You normally describe the work and let the agent use these helpers. Some are deliberately absent from the user slash menu.</p>
+<div class="skill-grid">
+<article class="card" id="tap"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/tap/SKILL.md">tap:tap</a></h3><p>Apply the shared messaging, liveness and tree-custody rules.</p></article>
+<article class="card" id="in"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/in/SKILL.md">tap:in</a></h3><p>Register or reconnect the current pane when its binding changes or is uncertain.</p></article>
+<article class="card" id="out"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/out/SKILL.md">tap:out</a></h3><p>Unregister a seat and free its handle, with a handoff when needed.</p></article>
+<article class="card" id="team"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/team/SKILL.md">tap:team</a></h3><p>Inspect the roster and choose a recipient.</p></article>
+<article class="card" id="send"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/send/SKILL.md">tap:send</a></h3><p>Send a note or a question; use assign for work orders.</p></article>
+<article class="card" id="assign"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/assign/SKILL.md">tap:assign</a></h3><p>Send a work order with a tracked reply obligation.</p></article>
+<article class="card" id="reply"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/reply/SKILL.md">tap:reply</a></h3><p>Answer an incoming request and settle it; a progress reply keeps unfinished work open.</p></article>
+<article class="card" id="outstanding"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/outstanding/SKILL.md">tap:outstanding</a></h3><p>Check sent messages that still await settlement before yielding.</p></article>
+<article class="card" id="ask"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/ask/SKILL.md">tap:ask</a></h3><p>Run one stateless harness question and print the answer, without a TAP seat or follow-up lifecycle.</p></article>
+<article class="card" id="choreography"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/choreography/SKILL.md">tap:choreography</a></h3><p>Coordinate readers, writers, review evidence and supervision.</p></article>
+</div>
+</section>
+<section class="section" id="find-the-canonical-instructions"><h2>Find the canonical instructions</h2>
+<p>Claude and Codex use native plugin names such as <code>tap:lead</code>. Other harnesses use flat names such as <code>tap-lead</code>; the all-seat entry is <code>tap</code>. To find the canonical file for your installed version, run:</p>
+<pre><code>
+tap help skill lead
+</code></pre>
+<p>Open the returned file before using the skill. Namespaced and flat names resolve there too. The native plugin exposes all 23 skills. Flat hosts start with <code>tap</code>, <code>tap-in</code>, <code>tap-send</code>, <code>tap-escalate</code>, <code>tap-config-wizard</code> and <code>tap-help</code>; the full-kit setting adds the rest. Skills guide agent behavior; TAP transports messages rather than enforcing a fixed workflow.</p>
+<p>Your team can write its own role skills, such as a coach, monitor or context genie. See <a href="cheatsheet-level-1.html">the five levels of TAP</a> for roles and growing teams, or browse this reference as a <a href="https://tedyav.github.io/tap/cheatsheet-skills.html">web guide</a>.</p>
+</section>
 <footer class="footer"><a href="index.html">All documentation</a> · <a href="cheatsheet-level-4.html">Roles and presets</a> · <a href="cheatsheet-level-5.html">Teams that run and evolve</a></footer>
 </main></body></html>

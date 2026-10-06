@@ -21,12 +21,14 @@ function trackedAtHead(): string[] {
 
 const selection = () => selectArtifactPaths(trackedAtHead(), skillLists(readFileSync(join(REPO, "runtime/bun/src/skill-policy.ts"), "utf8")));
 
-// Check the inline Markdown links readers encounter before and during setup.
+// Check Markdown links and HTML links/assets readers encounter before and during setup.
 function missingReaderLinks(selected: Set<string>): string[] {
   const missing: string[] = [];
   for (const page of ["README.md", "SECURITY.md", "docs/AGENT-SETUP.md", "docs/GETTING-STARTED.md", "docs/EASY-MODE.md",
-    "docs/TAP-LEVELS.md", "docs/COMMUNITY-FEATURES.md", "docs/CHEATSHEET.md", "docs/RELEASE-ARTIFACTS.md"]) {
-    for (const match of readFileSync(join(REPO, page), "utf8").matchAll(/\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+    "docs/TAP-LEVELS.md", "docs/SKILLS.md", "docs/COMMUNITY-FEATURES.md", "docs/CHEATSHEET.md", "docs/RELEASE-ARTIFACTS.md",
+    ...[...selected].filter(path => path.startsWith("docs/") && path.endsWith(".html"))]) {
+    const links = page.endsWith(".html") ? /(?:href|src)="([^"]+)"/g : /\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
+    for (const match of readFileSync(join(REPO, page), "utf8").matchAll(links)) {
       const target = match[1]!.split(/[?#]/)[0]!;
       if (!target || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(target)) continue;
       const path = posix.normalize(target.startsWith("/") ? target.slice(1) : posix.join(posix.dirname(page), target));
@@ -41,6 +43,10 @@ test("the shipped reader entry pages have no missing local link targets", () => 
   expect(missingReaderLinks(selected)).toEqual([]);
   selected.delete("docs/GETTING-STARTED.md");
   expect(missingReaderLinks(selected)).toContain("README.md -> docs/GETTING-STARTED.md");
+  selected.delete("docs/assets/theme.js");
+  expect(missingReaderLinks(selected)).toContain("docs/cheatsheet.html -> docs/assets/theme.js");
+  selected.delete("docs/index.html");
+  expect(missingReaderLinks(selected)).toContain("docs/cheatsheet-skills.html -> docs/index.html");
 });
 
 test("skill lists parse from skill-policy.ts source exactly as the module exports them", () => {

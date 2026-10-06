@@ -1,20 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TAP — Choose a harness. Save a preset.</title>
+<script src="assets/theme.js"></script>
+<script>initTheme();</script>
 <style>
-:root {
-  color-scheme:light;
-  --ink:#182c34;
-  --muted:#465a63;
-  --paper:#f6f3eb;
-  --card:#fffdf7;
-  --line:#b9c7c7;
-  --teal:#076a66;
-  --orange:#a74716}
-
 * {
   box-sizing:border-box}
 body {
@@ -89,7 +81,7 @@ pre {
   white-space:pre-wrap;
   margin:12px 0 0}
 kbd {
-  background:white;
+  background:var(--card);
   border:1px solid var(--line);
   border-bottom-width:2px;
   border-radius:4px;
@@ -101,7 +93,7 @@ kbd {
   gap:20px;
   padding:26px 12px;
   margin:24px 0;
-  background:#e3efea;
+  background:var(--bus);
   border-radius:14px;
   text-align:center}
 .seat {
@@ -168,6 +160,7 @@ kbd {
   break-inside:avoid}
 body {
   font-size:11pt;
+  color:#182c34;
   background:white}
 h1 {
   font-size:32pt}
@@ -186,10 +179,13 @@ a {
 
 table {width:100%;border-collapse:collapse} th,td {text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top} .table-wrap {overflow-x:auto} li {margin-bottom:8px}
 </style>
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
 <main>
-<header><p class="eyebrow">TAP · human cheat sheet</p><h1>Choose a harness. Save a preset.</h1><p class="intro">A harness is the agent CLI. A preset saves its model and tuning. Run <code>tap presets</code> to see the choices configured on your machine.</p><nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a></nav></header>
+<header>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" aria-pressed="false" disabled>Light theme</button>
+<p class="eyebrow">TAP · human cheat sheet</p><h1>Choose a harness. Save a preset.</h1><p class="intro">A harness is the agent CLI. A preset saves its model and tuning. Run <code>tap presets</code> to see the choices configured on your machine.</p><nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html" aria-current="page">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav></header>
 <section><h2>Supported harnesses</h2><div class="table-wrap"><table><thead><tr><th>Harness key</th><th>Executable</th><th>Wizard detection</th><th>Permission policy</th></tr></thead><tbody>
 <tr><th scope="row">claude</th><td><code>claude</code></td><td>Yes</td><td>bypass / auto</td></tr>
 <tr><th scope="row">codex</th><td><code>codex</code></td><td>Yes</td><td>bypass / auto</td></tr>

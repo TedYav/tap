@@ -92,7 +92,8 @@ has a name you can address; the **team** is the group working in this project.
 Incoming mail may wait while the receiver works or has a draft; a red flash
 warns that TAP is about to use the input box. In auto mode, TAP waits for an
 empty composer. See the
-[first-team sheet](cheatsheet-first-team.html) for delivery and draft recovery.
+[first-team sheet (web guide)](https://tedyav.github.io/tap/cheatsheet-first-team.html)
+for delivery and draft recovery.
 
 ## When Codex asks to review hooks
 
@@ -121,12 +122,11 @@ answer.
 ## After the first answer
 
 Give one agent a real task and ask another to review the change. The
-[collaboration sheet](cheatsheet-collaboration.html) shows ways to divide work.
+[collaboration sheet (web guide)](https://tedyav.github.io/tap/cheatsheet-collaboration.html) shows ways to divide work.
 You can use ordinary language; the agents handle TAP's commands.
 
 To see where TAP can go from here, and why two strong agents are often enough,
-read [the five levels of TAP](cheatsheet-level-1.html)
-([Markdown guide](TAP-LEVELS.md)).
+read [the five levels of TAP](TAP-LEVELS.md).
 
 For another model, start with `tap models`. Personal calibration wins when
 present; otherwise guidance is labeled **reference; access unverified**. Inspect
@@ -202,9 +202,12 @@ tap attach writer
 ```
 
 Inside the agent CLI, run its own `/resume` command and select the old
-conversation. Then, in that resumed conversation, ask the agent to run `tap in`
-(in Claude Code, the `/tap:in` command does the same). Ask the agent
-to run `tap whoami` and confirm it is `writer`. The conversation comes from the
+conversation. Then reconnect that pane with `tap in`. For a simple TAP command,
+use your harness's shell shortcut, such as `!tap in`, instead of the skill form
+(`/tap in` or `/tap:in`): it uses fewer tokens and is simpler. Use the skill when
+you want the agent to manage a lifecycle or make decisions. This reconnects an
+existing conversation; newly TAP-launched seats are already registered. Ask the
+agent to run `tap whoami` and confirm it is `writer`. The conversation comes from the
 harness; the seat's name comes from TAP. Stop if the reported name differs, and
 have the agent resolve the mismatch before sending it work. The tmux session label
 may still show the launcher’s original name after resume; `tap whoami` reports

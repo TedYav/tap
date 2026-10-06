@@ -1,20 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TAP — the guide</title>
+<script src="assets/theme.js"></script>
+<script>initTheme();</script>
 <style>
-:root {
-  color-scheme:dark;
-  --ink:#e6edf3;
-  --muted:#a8b8c4;
-  --paper:#101820;
-  --card:#18252f;
-  --line:#3b505d;
-  --teal:#70d8cd;
-  --orange:#ffb071}
-
 * {
   box-sizing:border-box}
 body {
@@ -101,7 +93,7 @@ kbd {
   gap:20px;
   padding:26px 12px;
   margin:24px 0;
-  background:#183832;
+  background:var(--bus);
   border-radius:14px;
   text-align:center}
 .seat {
@@ -162,7 +154,6 @@ kbd {
   margin-bottom:28px}
 }
 @media print {
-  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
   main {
   padding:0}
 .card,.role,.quote,.bus {
@@ -186,17 +177,19 @@ a {
 }
 
 </style>
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
 <main>
 <header>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" aria-pressed="false" disabled>Light theme</button>
 <p class="eyebrow">TAP · guide</p>
 <h1>Start with two agents.<br>Grow when you need to.</h1>
 <p class="intro">Get your first answer, then explore five levels of teamwork. Two strong agents are often all you need.</p>
 <nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
 </header>
 <section class="section" aria-labelledby="duct-tape"><h2 id="duct-tape">Duct tape for agents</h2>
-<p>TAP is duct tape, not fiber optic. <strong>But dammit, it works.</strong> Modern agents don't need much to coordinate and get work done: a way to reach one another, a clear task, and a few shared rules.</p>
+<p>TAP is duct tape, not fiber optic, <strong>but it works!</strong> Modern agents don't need much to coordinate and get work done: a way to reach one another, a clear task, and a few shared rules.</p>
 <p>TAP writes messages to local files and types a short notification into the receiving agent’s tmux pane. The agent reads the message and decides what to do. Delivery alone does not prove it processed the message.</p>
 <p><a href="https://github.com/TedYav/tap/blob/main/docs/PHILOSOPHY.md#push-not-poll">Push, not poll</a>: after sending, keep doing useful work that does not depend on the reply. When the answer is needed, yield and let the reply wake the pane. This avoids repeated model turns spent checking for mail; coordination still uses tokens.</p>
 </section>

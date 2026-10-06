@@ -2,7 +2,7 @@ name: pages
 run-name: publish cheat-sheet guide ${{ github.sha }}
 
 # Publishes ONLY the human cheat-sheet guide to GitHub Pages. The site is an
-# allowlist: index.html, the cheatsheet*.html sheets and the five level pages,
+# allowlist: index.html, the cheatsheet*.html sheets, the five level pages and theme assets,
 # staged by explicit cp into a fresh _site/ with a generated .nojekyll. Nothing
 # else in the tree may reach the artifact. A Pages site is always public, so it
 # is hosted from this public repository only.
@@ -15,6 +15,8 @@ on:
     paths:
       - "docs/index.html"
       - "docs/cheatsheet*.html"
+      - "docs/assets/theme.css"
+      - "docs/assets/theme.js"
       - ".github/workflows/pages.yml"
 
 permissions:
@@ -49,6 +51,8 @@ jobs:
           cp docs/cheatsheet-skills.html _site/
           cp docs/cheatsheet-level-1.html docs/cheatsheet-level-2.html docs/cheatsheet-level-3.html _site/
           cp docs/cheatsheet-level-4.html docs/cheatsheet-level-5.html _site/
+          mkdir -p _site/assets
+          cp docs/assets/theme.css docs/assets/theme.js _site/assets/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

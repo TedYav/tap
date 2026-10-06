@@ -1,21 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Give a lead a goal. It can split the work, staff lanes and bring their results through review.">
 <title>TAP level 4 — Teams that organize themselves</title>
+<script src="assets/theme.js"></script>
+<script>initTheme();</script>
 <style>
-:root {
-  color-scheme:dark;
-  --ink:#e6edf3;
-  --muted:#a8b8c4;
-  --paper:#101820;
-  --card:#18252f;
-  --line:#3b505d;
-  --teal:#70d8cd;
-  --orange:#ffb071}
-
 * {
   box-sizing:border-box}
 body {
@@ -102,7 +94,7 @@ kbd {
   gap:20px;
   padding:26px 12px;
   margin:24px 0;
-  background:#183832;
+  background:var(--bus);
   border-radius:14px;
   text-align:center}
 .seat {
@@ -163,7 +155,6 @@ kbd {
   margin-bottom:28px}
 }
 @media print {
-  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
   main {
   padding:0}
 .card,.role,.quote,.bus {
@@ -188,15 +179,15 @@ a {
 
 
 main { max-width:940px }
-pre { padding:16px 20px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:16px }
 .level-nav { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap }
-[aria-current="page"] { color:var(--ink); font-weight:750 }
 li { margin-bottom:8px }
 </style>
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
 <main>
 <header>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" aria-pressed="false" disabled>Light theme</button>
 <p class="eyebrow">The five levels of TAP · 4 of 5</p>
 <h1>Teams that organize themselves</h1>
 <p class="intro">Give a lead a goal. It can split the work, staff lanes and bring their results through review.</p>
@@ -237,7 +228,7 @@ metadata.avoid_roles = [&quot;tasker&quot;]</code></pre>
 <p>The <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md#level-4-roles-and-presets">full roles and presets example</a> defines the other roles named here. Ask <code>tap:config-wizard</code> to adapt the excerpt to your config. After saving it, <code>tap launch astra builder</code> starts a new seat with that recipe.</p></details></section>
 <section class="section"><h2>Go deeper</h2><p><code>tap help skill tap-lead</code> locates the lead’s instructions. <a href="cheatsheet-collaboration.html">Collaboration</a> and <a href="cheatsheet-harnesses.html">presets</a> explain the pieces.</p></section>
 <footer class="footer">
-<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-3.html">← Level 3</a><a href="cheatsheet-level-5.html">Level 5: Teams that run and evolve →</a></nav>
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-3.html">← Level 3</a><a href="cheatsheet-level-5.html">Level 5: Teams that run and evolve →</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
 <p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
 </footer>
 </main>

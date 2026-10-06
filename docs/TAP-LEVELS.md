@@ -6,11 +6,11 @@ and where to go deeper.
 
 | Level | What you can do |
 |---|---|
-| [1. Two agents, one conversation](cheatsheet-level-1.html) | Claude talks to Codex. That alone can take a change from an idea to a reviewed implementation. |
-| [2. A team in one project](cheatsheet-level-2.html) | Give seats names and jobs. You can hand off work, track answers and let several writers move at once. |
-| [3. Teams across projects](cheatsheet-level-3.html) | A team in one project can ask another team about the code it owns. |
-| [4. Teams that organize themselves](cheatsheet-level-4.html) | Give a lead a goal. It can split the work, staff lanes and bring their results through review. |
-| [5. Teams that run and evolve](cheatsheet-level-5.html) | Keep a team working through a long backlog, with supervision, handoffs and roles that grow from repeated needs. |
+| [1. Two agents, one conversation (web guide)](https://tedyav.github.io/tap/cheatsheet-level-1.html) | Claude talks to Codex. That alone can take a change from an idea to a reviewed implementation. |
+| [2. A team in one project (web guide)](https://tedyav.github.io/tap/cheatsheet-level-2.html) | Give seats names and jobs. You can hand off work, track answers and let several writers move at once. |
+| [3. Teams across projects (web guide)](https://tedyav.github.io/tap/cheatsheet-level-3.html) | A team in one project can ask another team about the code it owns. |
+| [4. Teams that organize themselves (web guide)](https://tedyav.github.io/tap/cheatsheet-level-4.html) | Give a lead a goal. It can split the work, staff lanes and bring their results through review. |
+| [5. Teams that run and evolve (web guide)](https://tedyav.github.io/tap/cheatsheet-level-5.html) | Keep a team working through a long backlog, with supervision, handoffs and roles that grow from repeated needs. |
 
 ## Level 1: Two agents, one conversation
 
@@ -39,7 +39,7 @@ Done means the **answer text in the asking pane**. Two seats can plan and build,
 review across model families, compare designs or investigate a bug together.
 This is often all you need.
 
-[Start the five-page guide](cheatsheet-level-1.html) or follow the
+[Start the five-page guide (web guide)](https://tedyav.github.io/tap/cheatsheet-level-1.html) or follow the
 [first-team walkthrough](GETTING-STARTED.md).
 
 Levels 2 and 3 are covered by the linked pages in the table above. The
@@ -142,9 +142,9 @@ helps choose a seat; it does not create the skill or schedule it. Keep monitorin
 bounded and event-driven where possible; avoid waking a model just to check
 whether a peer replied.
 
-The [factory-skills reference](cheatsheet-skills.html) lists every shipped TAP
+The [factory-skills reference](SKILLS.md) lists every shipped TAP
 skill and when to use it. Start with those, then add your own instructions for
-repeated needs. [Level 5](cheatsheet-level-5.html) covers bounded supervision
+repeated needs. [Level 5 (web guide)](https://tedyav.github.io/tap/cheatsheet-level-5.html) covers bounded supervision
 and handoffs.
 
 ## When another tool fits

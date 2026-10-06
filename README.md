@@ -12,7 +12,7 @@ TAP lets agents communicate by injecting keystrokes into one another's terminals
 on one machine.
 **Bypass mode grants the agents your permissions.**
 
-TAP is duct tape, not fiber optic. **But dammit, it works.** Modern agents don't
+TAP is duct tape, not fiber optic, **but it works!** Modern agents don't
 need much to coordinate and get work done: a way to reach one another, a clear
 task, and a few shared rules. TAP supplies the messages and wakes; the agents
 bring the judgment.
@@ -67,9 +67,9 @@ downloadable assets are not published yet.
    (in capitals) to hold deliveries for two minutes.
 
 [Your first TAP team](docs/GETTING-STARTED.md) covers prompts and returning to
-seats. [The five levels of TAP](docs/cheatsheet-level-1.html) shows what you
-can do with two agents and when a larger team helps
-([Markdown guide](docs/TAP-LEVELS.md)).
+seats. [The five levels of TAP](docs/TAP-LEVELS.md) shows what you
+can do with two agents and when a larger team helps. The
+[skills guide](docs/SKILLS.md) separates skills you invoke from agent helpers.
 
 ## Visit the agents
 
@@ -106,7 +106,7 @@ points to tools built for that.
 
 ### Larger teams
 
-The [collaboration sheet](docs/cheatsheet-collaboration.html) covers dividing work
+The [collaboration sheet (web guide)](https://tedyav.github.io/tap/cheatsheet-collaboration.html) covers dividing work
 among agents. The skills `tap:lead`, `tap:drive` and `tap:conduct`
 cover team planning, lane ownership and delegated work. Run `tap help skill tap-lead`
 (or the other skill name) to find its instructions. The

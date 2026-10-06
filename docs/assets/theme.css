@@ -1,0 +1,65 @@
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e6edf3;
+  --muted: #a8b8c4;
+  --paper: #101820;
+  --card: #18252f;
+  --line: #3b505d;
+  --teal: #70d8cd;
+  --orange: #ffb071;
+  --bus: #183832;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ink: #182c34;
+  --muted: #465a63;
+  --paper: #f6f3eb;
+  --card: #fffdf7;
+  --line: #b9c7c7;
+  --teal: #076a66;
+  --orange: #a74716;
+  --bus: #e3efea;
+}
+
+.theme-toggle {
+  float: right;
+  margin: 0 0 12px 16px;
+  padding: 6px 12px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.theme-toggle:focus-visible {
+  outline: 3px solid var(--orange);
+  outline-offset: 4px;
+}
+.theme-toggle:disabled { cursor: default; }
+pre {
+  padding: 16px 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+[aria-current="page"] { color: var(--ink); font-weight: 750; }
+
+@media print {
+  :root, :root[data-theme] {
+    color-scheme: light;
+    --ink: #182c34;
+    --muted: #465a63;
+    --paper: white;
+    --card: white;
+    --line: #b9c7c7;
+    --teal: #076a66;
+    --orange: #a74716;
+    --bus: #e3efea;
+  }
+  .theme-toggle { display: none; }
+}

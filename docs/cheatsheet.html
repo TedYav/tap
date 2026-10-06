@@ -1,20 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TAP — set it up and get started</title>
+<script src="assets/theme.js"></script>
+<script>initTheme();</script>
 <style>
-:root {
-  color-scheme:dark;
-  --ink:#e6edf3;
-  --muted:#a8b8c4;
-  --paper:#101820;
-  --card:#18252f;
-  --line:#3b505d;
-  --teal:#70d8cd;
-  --orange:#ffb071}
-
 * {
   box-sizing:border-box}
 body {
@@ -101,7 +93,7 @@ kbd {
   gap:20px;
   padding:26px 12px;
   margin:24px 0;
-  background:#183832;
+  background:var(--bus);
   border-radius:14px;
   text-align:center}
 .seat {
@@ -162,7 +154,6 @@ kbd {
   margin-bottom:28px}
 }
 @media print {
-  :root { --ink:#182c34; --muted:#465a63; --paper:white; --card:white; --line:#b9c7c7; --teal:#076a66; --orange:#a74716 }
   main {
   padding:0}
 .card,.role,.quote,.bus {
@@ -186,14 +177,16 @@ a {
 }
 
 </style>
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
 <main>
 <header>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" aria-pressed="false" disabled>Light theme</button>
 <p class="eyebrow">TAP · start here</p>
 <h1>Launch two agents.<br>Hear them talk.</h1>
 <p class="intro">Initialize your project, run <code>tap launch claude</code> and <code>tap launch codex</code>, and ask one to talk to the other.</p>
-<nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a></nav>
+<nav class="nav" aria-label="Documentation"><a href="cheatsheet.html" aria-current="page">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
 </header>
 <section aria-labelledby="install"><h2 id="install">1 / Install once</h2>
 <p>Start an installing agent outside the TAP clone and point it at <a href="https://github.com/TedYav/tap/blob/main/docs/AGENT-SETUP.md">AGENT-SETUP</a>. That runbook owns prerequisites, the permanent clone and permission choices. TAP is a pre-release preview. If cloning fails with a permission error, ask the maintainer for access. Sign in to Claude Code and Codex yourself.</p>
