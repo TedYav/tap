@@ -1182,14 +1182,8 @@ function submitVerifyLockedBody(
   // downgrades to ordinary delivery BEFORE any pane effect, warning once
   // (tap-send.sh:1582-1591). Everything urgent-scoped below keys off this
   // local, so a downgraded auto seat takes the ordinary path throughout.
-  // EXCEPTION (tap-pkh9c): deliveryFacts.recoveryInterrupt is `tap nudge
-  // --interrupt`'s explicit authority — the caller selected this seat to be
-  // interrupted — so the urgent class survives the downgrade. The fact is
-  // honored only alongside urgent and is unreachable from public send argv;
-  // a drained/parked note rebuilds facts without it and downgrades as before.
   let urgent = authority?.deliveryFacts?.urgent === true;
-  const recoveryInterrupt = urgent && authority?.deliveryFacts?.recoveryInterrupt === true;
-  if (urgent && auto && !recoveryInterrupt) {
+  if (urgent && auto) {
     process.stderr.write("tap send: warning: auto_mode_no_interrupt: auto seat cannot be interrupted; queued as ordinary delivery\n");
     urgent = false;
   }
@@ -1299,11 +1293,11 @@ function submitVerifyLockedBody(
   // parks the entry; the record's cooldown schedules the next look.
   const opencodeFamily = (bound?.harness ?? "").split("/").pop() === "opencode";
   // The booting cure is the AUTOMATIC path's: an attempt carrying special
-  // authority (recovery interrupts, force sends, urgent, no-spool) keeps the
+  // authority (force sends, urgent, no-spool) keeps the
   // incumbent behavior — a composer-less wedge is indistinguishable from
   // booting to the band reader, and force must not grow a resize.
   const forceable = authority?.forceNoPrompt === true || authority?.noPromptOk === true
-    || authority?.deliveryFacts?.noSpool === true || authority?.deliveryFacts?.recoveryInterrupt === true || urgent;
+    || authority?.deliveryFacts?.noSpool === true || urgent;
   const repaintCause: "overprint" | "booting" | null = band.state !== "unobservable" ? null
     : band.cause === "overprint" ? "overprint"
     : opencodeFamily && !band.cause && !forceable ? "booting"
@@ -1360,7 +1354,7 @@ function submitVerifyLockedBody(
   // The idle staged path expects a BUSY band — the staged sentinel itself —
   // so the auto seat's ready-band requirement does not apply to it; its own
   // frame gates below are stricter than this check.
-  if (auto && !authority?.idleStaged && (band.state !== "ready" || !fx.submitFrame) && !(recoveryInterrupt && fx.submitFrame)) {
+  if (auto && !authority?.idleStaged && (band.state !== "ready" || !fx.submitFrame)) {
     return { status: "band_busy", detail: "auto seat has no positively ready empty band" };
   }
   // This is the courier-local band, REASSIGNED after an urgent interrupt: the
@@ -1926,11 +1920,7 @@ function submitVerifyLockedBody(
     }
     // Shell input and a feedback draft are never chat delivery targets, even after an authorized interrupt.
     if (finalBand.state === "unobservable" && (finalBand.cause === "shell-mode" || finalBand.cause === "feedback-draft")) return surfaceHold(finalBand.cause);
-    // Post-interrupt reread: a recovery-interrupt expects the band to still be
-    // in motion (tap-pkh9c), so it skips the ready requirement and falls through
-    // to the ordinary urgent path: copy-mode, pane death and re-authorize still
-    // refuse.
-    if (auto && finalBand.state !== "ready" && !recoveryInterrupt) {
+    if (auto && finalBand.state !== "ready") {
       return { status: "band_busy", detail: "auto seat band changed before paste" };
     }
     // Default-deny (tap-rlebf.1): the last read before paste may find the band

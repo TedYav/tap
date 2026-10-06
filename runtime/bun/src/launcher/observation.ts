@@ -46,11 +46,19 @@ export async function shellHasChildren(pid: string, env: NodeJS.ProcessEnv, sign
   }
 }
 
-export async function classifySession(name: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string> {
+/** The seat a classification judges. Without one, any harness pane makes the session live. */
+export type SessionSeat = { harness: string; crewPanes?: ReadonlySet<string> };
+
+/**
+ * live, busy, shell, attached-shell, unknown, or — for a named seat — seat-gone:
+ * the session survives, but no pane runs the seat's harness while other harness
+ * panes (crews; registered crew panes never count as the seat) hold it (tap-9rrat).
+ */
+export async function classifySession(name: string, env: NodeJS.ProcessEnv, signal?: AbortSignal, seat?: SessionSeat): Promise<string> {
   const format = "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}\t#{pane_current_command}\t#{pane_pid}\t#{session_attached}";
   const run = await launchTmux(["list-panes", "-s", "-t", `=${name}`, "-F", format], env, signal);
   if (run.code !== 0 || !run.stdout.trim()) return "unknown";
-  let parsed = 0, attached = false, harness = false, busy = false;
+  let parsed = 0, attached = false, harness = false, seatPane = false, busy = false;
   const shells: string[] = [];
   for (const line of run.stdout.split("\n")) {
     const p = line.split("\t");
@@ -58,17 +66,33 @@ export async function classifySession(name: string, env: NodeJS.ProcessEnv, sign
     parsed++;
     attached ||= p[4] !== "" && p[4] !== "0";
     const facts: PaneFacts = { pane: p[0]!, pane_id: p[1]!, command: p[2]!, path: "", server_epoch: "", dead: false, pane_pid: Number(p[3]) };
-    if (HARNESSES.includes(paneHarness(facts, env))) harness = true;
+    const family = paneHarness(facts, env);
+    if (HARNESSES.includes(family)) {
+      harness = true;
+      seatPane ||= !!seat && family === seat.harness && !seat.crewPanes?.has(facts.pane_id);
+    }
     else if (!isLoginShell(facts.command)) busy = true;
     else if (/^\d+$/.test(p[3]!)) shells.push(p[3]!);
     else busy = true;
   }
   if (!parsed) return "unknown";
-  if (harness) return "live";
+  if (harness) return !seat || seatPane ? "live" : "seat-gone";
   if (busy) return "busy";
   for (const pid of shells) if (await shellHasChildren(pid, env, signal)) return "busy";
   return attached ? "attached-shell" : "shell";
 }
+
+/** The registered crew panes in one session: never the seat's own pane, whatever their harness. */
+export function crewPanesIn(seats: Iterable<[string, unknown]>, session: string): Set<string> {
+  const panes = new Set<string>();
+  for (const [, row] of seats) {
+    if (isDict(row) && (row.crew === true || row.crew === 1) && row.session === session && isPaneId(row.pane_id)) panes.add(row.pane_id as string);
+  }
+  return panes;
+}
+
+/** Resume's attach predicate: a present session reattaches unless it holds no seat to attach to. */
+export const attachableState = (classification: string): boolean => !["shell", "attached-shell", "seat-gone"].includes(classification);
 
 export async function verifiedSession(entry: Row, env: NodeJS.ProcessEnv, signal?: AbortSignal, strict = false): Promise<string | null> {
   const epoch = await currentEpoch(env, signal);

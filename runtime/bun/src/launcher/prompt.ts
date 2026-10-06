@@ -148,6 +148,19 @@ const GREY = "\x1b[90m", UNGREY = "\x1b[39m";
 /** A chooser row: key, label, gloss; a fourth `true` lists it greyed out, its gloss the reason. */
 export type ChoiceOption = [key: string, label: string, gloss: string, unavailable?: boolean];
 
+/** The chooser's rows as askChoice draws them, each with its newline; labels pad to the widest. */
+export function choiceRows(options: ChoiceOption[], width: number, grey: boolean): string[] {
+  const labelWidth = Math.max(...options.map(([, label]) => label.length));
+  return options.map(option => choiceRow(option, labelWidth, width, grey));
+}
+
+function choiceRow([key, label, gloss, unavailable]: ChoiceOption, labelWidth: number, width: number, grey: boolean): string {
+  const shown = unavailable && !grey ? `(unavailable: ${gloss})` : gloss;
+  // A narrow menu drops glosses, never an unavailable row's reason.
+  const text = width <= 40 ? `  [${key}] ${label}${unavailable ? ` (unavailable: ${gloss})` : ""}` : `  [${key}] ${label.padEnd(labelWidth)}  ${shown}`;
+  return unavailable && grey ? `${GREY}${text}${UNGREY}\n` : `${text}\n`;
+}
+
 /** prompt_choice: a single-key chooser; Enter takes the default, a bare Esc quits.
  *  An unavailable row stays listed (greyed, or "(unavailable: reason)" without colour)
  *  and its key only says why before the menu returns. */
@@ -168,7 +181,6 @@ function askChoice(verb: string, question: string, options: ChoiceOption[], fall
     throw new Error("choice options must be one-character key, label, gloss triples including q and the default");
   }
   const width = terminalColumns();
-  const labelWidth = Math.max(...options.map(([, label]) => label.length));
   const grey = promptGreyCapable();
   const saved = spawnSync("stty", ["-g"], { stdio: ["inherit", "pipe", "ignore"], encoding: "utf8" });
   const state = saved.status === 0 ? saved.stdout.trim() : "";
@@ -180,15 +192,10 @@ function askChoice(verb: string, question: string, options: ChoiceOption[], fall
     return read.stdout as Buffer;
   };
   const decode = (bytes: Buffer): string => bytes[0]! < 0x80 ? String.fromCharCode(bytes[0]!) : "�";
-  const row = ([key, label, gloss, unavailable]: ChoiceOption): string => {
-    const shown = unavailable && !grey ? `(unavailable: ${gloss})` : gloss;
-    // A narrow menu drops glosses, never an unavailable row's reason.
-    const text = width <= 40 ? `  [${key}] ${label}${unavailable ? ` (unavailable: ${gloss})` : ""}` : `  [${key}] ${label.padEnd(labelWidth)}  ${shown}`;
-    return unavailable && grey ? `${GREY}${text}${UNGREY}\n` : `${text}\n`;
-  };
+  const rows = choiceRows(options, width, grey).join("");
   for (;;) {
     process.stderr.write(`tap ${verb}: ${question}\n\n`);
-    for (const option of options) process.stderr.write(row(option));
+    process.stderr.write(rows);
     process.stderr.write(`\nChoice [${fallback}] (Esc quits): `);
     const bytes = readByte(READ_KEY);
     if (bytes.length === 0) throw new InvocationError("interactive prompt ended before a choice");

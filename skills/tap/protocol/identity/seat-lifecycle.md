@@ -57,7 +57,8 @@ crew pane is retained with an explicit reason. Crew up/down refuse.
 
 A supervised crew also ends when its original parent harness generation ends,
 even after either or both roster rows retire. A replacement parent cannot adopt
-that crew. Harness identity includes the observed command family, so an in-place
+that crew; only a resume reviving the same seat instance into its surviving
+session reclaims it, under the guards in [crew revival](../delivery/crew-revival.md). Harness identity includes the observed command family, so an in-place
 exec into a different command family ends the captured harness lifetime. A child
 relaunch retains the original parent binding; if that parent ends during a
 verified replacement, TAP stops that exact replacement child. Unknown process or

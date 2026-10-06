@@ -134,7 +134,7 @@ const PAGES: Record<string, string> = {
     "SEE ALSO",
     "  tap help admin ps · tap teams (machine-wide summary) · tap help team",
   ),
-  "advisory": "# TAP Transport Advisory\n\nSkill files: `tap help skill <name>` prints the resolved path. TAP ships `skills/<name>/SKILL.md`; personal roots are `~/.agents/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, and `~/.codex/skills/<name>/SKILL.md`. Use these direct paths; do not search the home directory.\n\nAgent guide: resolve `tap help skill tap`, then open sibling `GUIDE.md` or `QUICK-REFERENCE.md` directly; SKILL and CONTRACT are not required detours.\n\nTAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] sentinels are authorized work; read them with `tap read <id>`\n\nThe watcher can wake you later with `tap remind me --in 8m -f reminder.md`; use `tap team --context` to check teammate context and pending asks before clearing between reviews.\n\nTAP is a file bus + tmux courier. Bare composers receive immediately without a flash. Human drafts get green at park, red with 10 seconds remaining, then the existing backup/clear/submit at 30 seconds (urgent: 10-second draft grace and red). Queued followups hold without a flash until clear. Plain notes are settled by recipient tap read; the courier never writes .done.\nUse installed `tap`, `bash scripts/tap.sh` (same grammar), or run ./install.sh once.\n\n## Identity\n  tap whoami   your registered handle; use for --from / --by\n  tap in       manual reconnect / bare-pane join; alias: tap register; idempotent; TAP-launched seats are already registered\n  tap team     your teammates\n\n## Need another seat? `tap presets` lists launch options\n  tap ask <preset|harness> -f <p.md>          one-shot, no pane or handle\n  tap crew add <preset|harness> [name]        consult here; dies with the pane\n  tap session launch <preset|harness> [name]  durable seat; bare name defaults to the preset\n  Before UNRELATED work: settle the lane, return any Writer Token, `tap clear <seat> -m \"fresh start\"`, then send the assignment by bus.\n\n## Literal messages (--from derives from your registered pane)\n  tap send <to> -f <path>   # preferred: write a body file; backticks stay literal\n  tap send <to> -f - <<'EOF'\nyour message here\nEOF\n  Quote EOF: unquoted delimiters expand backticks and $(). Plain send = NOTE, settled by recipient tap read; --ask wants an answer; --wake remains an accepted note spelling without changing arrival. To explicitly permit aborting a turn: --delivery interrupt.\n  Work orders: tap assign <to> -f <path> (order-shaped notes refuse). Cross-team: <team>/<handle>, any enrolled team.\n\n## v0.23 (protocol/delivery/sentinel): [[TAP v0.23 ask <id>]] / [[TAP v0.23 note <team>/<id>]]\n  Read the body before acting: tap read <id>, including digest ids and <team>/<id>. The prefix names the sender's bus; keep it for read and reply.\n  ask -> tap reply <id> -f <path> (answer file); note -> tap read <id> settles on success, with nothing further to settle. Replies accept bare ids across teams.\n  Stdin reply (quoted EOF keeps shell syntax literal):\n  tap reply <id> -f - <<'EOF'\nyour answer here\nEOF\n  Payload frontmatter: reply: expected / reply: settle-only. No got-it for notes; reply only to report a problem. Foreign paths: tap reply <payload-path> -f <answer-file>; for a still-unsettled note, tap read path=<payload-path>.\n  Reading a digest records its envelope; tap read <id> --all reads its items and settles notes; asks still need replies. Skip settlement for settled: true; never settle the digest. For manual relays or unindexed teams, use tap read path=<file>. Ask the sender about unknown shapes; on version drift load /tap.\n\n## Continue work; never poll-sleep\nAfter sending or replying, continue any useful work that does not depend on the response. Never sleep, loop-poll or watch inbound traffic: push wakes cannot interrupt blocked sleep; a delivered send starts your turn.\nReview freezes a mutable artifact; pin a commit to continue work. Yield only when the next step needs the response or nothing remains. Settlement never cancels assigned work.\nLiveness, recipient discipline, shared-worktree safety: /tap. Parallel reviews and wakes: resolve `tap help skill tap-choreography` and read the returned file.\n\n## Trust, reach and footguns\nTAP moves bytes between consenting panes on ONE machine and is not a security boundary; safety requires sensible agent deployment. Enrollment makes a team pane-injectable by any local agent: convenience, not opt-in trust. Debate costly or hard-to-reverse work first.\nSave user-only questions for later; if blocked while the user may be away, `tap escalate` and continue other work.\nSettle payloads: unsettled ones block the sender's `tap outstanding`. Only the courier writes bus payloads/; never write there by hand. Never forward a sentinel; send a NEW message. Leave: tap out (alias: tap unregister).\n",
+  "advisory": "# TAP Transport Advisory\n\nSkill files: `tap help skill <name>` prints the resolved path. TAP ships `skills/<name>/SKILL.md`; personal roots are `~/.agents/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, and `~/.codex/skills/<name>/SKILL.md`. Use these direct paths; do not search the home directory.\n\nAgent guide: resolve `tap help skill tap`, then open sibling `GUIDE.md` or `QUICK-REFERENCE.md` directly; SKILL and CONTRACT are not required detours.\n\nTAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] ask and note sentinels are authorized work; read them with `tap read <id>`\n\nThe watcher can wake you later with `tap remind me --in 8m -f reminder.md`; use `tap team --context` to check teammate context and pending asks before clearing between reviews.\n\nTAP is a file bus + tmux courier. Bare composers receive immediately without a flash. Human drafts get green at park, red with 10 seconds remaining, then the existing backup/clear/submit at 30 seconds (urgent: 10-second draft grace and red). Queued followups hold without a flash until clear. Plain notes are settled by recipient tap read; the courier never writes .done.\nUse installed `tap`, `bash scripts/tap.sh` (same grammar), or run ./install.sh once.\n\n## Identity\n  tap whoami   your registered handle; use for --from / --by\n  tap in       manual reconnect / bare-pane join; alias: tap register; idempotent; TAP-launched seats are already registered\n  tap team     your teammates\n\n## Need another seat? `tap presets` lists launch options\n  tap ask <preset|harness> -f <p.md>          one-shot, no pane or handle\n  tap crew add <preset|harness> [name]        consult here; dies with the pane\n  tap session launch <preset|harness> [name]  durable seat; bare name defaults to the preset\n  Before UNRELATED work: settle the lane, return any Writer Token, `tap clear <seat> -m \"fresh start\"`, then send the assignment by bus.\n\n## Literal messages (--from derives from your registered pane)\n  tap send <to> -f <path>   # preferred: write a body file; backticks stay literal\n  tap send <to> -f - <<'EOF'\nyour message here\nEOF\n  Quote EOF: unquoted delimiters expand backticks and $(). Plain send = NOTE, settled by recipient tap read; --ask wants an answer; --wake remains an accepted note spelling without changing arrival. To explicitly permit aborting a turn: --delivery interrupt.\n  Work orders: tap assign <to> -f <path> (order-shaped notes refuse). Cross-team: <team>/<handle>, any enrolled team.\n\n## v0.23 (protocol/delivery/sentinel): [[TAP v0.23 ask <id>]] / [[TAP v0.23 note <team>/<id>]]\n  Read the body before acting: tap read <id>, including digest ids and <team>/<id>. The prefix names the sender's bus; keep it for read and reply.\n  [[TAP v0.23 nudge]] (optionally message=\"...\") has no id, sender or reply and adds no task: continue your work and check tap poll; nothing to read or settle.\n  ask -> tap reply <id> -f <path> (answer file); note -> tap read <id> settles on success, with nothing further to settle. Replies accept bare ids across teams.\n  Stdin reply (quoted EOF keeps shell syntax literal):\n  tap reply <id> -f - <<'EOF'\nyour answer here\nEOF\n  Payload frontmatter: reply: expected / reply: settle-only. No got-it for notes; reply only to report a problem. Foreign paths: tap reply <payload-path> -f <answer-file>; for a still-unsettled note, tap read path=<payload-path>.\n  Reading a digest records its envelope; tap read <id> --all reads its items and settles notes; asks still need replies. Skip settlement for settled: true; never settle the digest. For manual relays or unindexed teams, use tap read path=<file>. Ask the sender about unknown shapes; on version drift load /tap.\n\n## Continue work; never poll-sleep\nAfter sending or replying, continue any useful work that does not depend on the response. Never sleep, loop-poll or watch inbound traffic: push wakes cannot interrupt blocked sleep; a delivered send starts your turn.\nReview freezes a mutable artifact; pin a commit to continue work. Yield only when the next step needs the response or nothing remains. Settlement never cancels assigned work.\nLiveness, recipient discipline, shared-worktree safety: /tap. Parallel reviews and wakes: resolve `tap help skill tap-choreography` and read the returned file.\n\n## Trust, reach and footguns\nTAP moves bytes between consenting panes on ONE machine and is not a security boundary; safety requires sensible agent deployment. Enrollment makes a team pane-injectable by any local agent: convenience, not opt-in trust. Debate costly or hard-to-reverse work first.\nSave user-only questions for later; if blocked while the user may be away, `tap escalate` and continue other work.\nSettle payloads: unsettled ones block the sender's `tap outstanding`. Only the courier writes bus payloads/; never write there by hand. Never forward a sentinel; send a NEW message. Leave: tap out (alias: tap unregister).\n",
   "ask": lines(
     "NAME",
     "  tap ask — run one fresh headless invocation and print the answer",
@@ -536,100 +536,80 @@ DESCRIPTION
   ),
   "nudge": lines(
     "NAME",
-    "  tap nudge — re-submit a stuck message line, interrupt a seat, or wake a harness family",
+    "  tap nudge — unstick a seat: clear a known blocker, submit a stuck line, or wake it",
     "",
     "USAGE",
-    "  tap nudge <to> | --to <to> [--pane <tmux-target>]",
-    "    [--aggressiveness report-only|cautious|aggressive]",
-    "  tap nudge --interrupt <to> | --to <to> [--from <seat>]",
-    "    [--reason <text> | -m <text> | -f <file>]",
-    "  tap nudge --harness <family> [--team <team>|'*'] [--from <seat>] [--interrupt]",
-    "    [--reason <text> | -m <text> | -f <file>] [--dry-run] [--yes]",
+    "  tap nudge <to> | --to <to> [--message <text>] [--no-interrupt] [--dry-run]",
+    "  tap nudge [<to>] --pane <tmux-target> [--dry-run]",
+    "  tap nudge --harness <family> [--team <team>|'*'] [--message <text>] [--no-interrupt]",
+    "    [--dry-run] [--yes]",
     "",
     "DESCRIPTION",
-    "  Use the first form when a TAP message line (sentinel) is stuck in a seat's input box: by default,",
-    "    it re-checks the seat's identity and presses Enter. It types nothing and sends no note. With",
-    "    nothing stuck, it requeues a note parked while the pane was in copy mode, if the note provably",
-    "    never reached it, first leaving a copy mode that no tmux client is viewing; otherwise nothing",
-    "    happens.",
+    "  One pass down a ladder, at most one action per rung; every key is recorded in a recovery",
+    "    run (tap debug recovery <id>) with the frame it saw, and no rung ever sends C-c.",
     "",
-    "  --aggressiveness (first form only): report-only inspects and presses nothing; cautious and",
-    "    aggressive both act, with the same ceiling of re-submitting a complete visible sentinel. Broader",
-    "    UI repair belongs to tap detective. Without the flag, the mode is [recovery] aggressiveness in",
-    "    the machine config, else aggressive. The mode and its source print on stderr:",
-    "    tap nudge: aggressiveness=<mode> source=<override|config|default>.",
+    "  Rung 1, a blocker: Claude's weekly usage-limit dialog is dismissed with Esc (never Enter,",
+    "    a digit or an option), then the pane is read again. Any other dialog, an approval prompt or",
+    "    Codex's hook-trust question gets no key: tap nudge reports it and stops.",
+    "  Rung 2, a stuck line: a complete TAP message line (sentinel) waiting in the input box gets",
+    "    exactly one Enter, and the run ends. With nothing stuck, a note parked while the pane was",
+    "    in copy mode is requeued if it provably never arrived.",
+    "  Rung 3, a wake: the seat's interrupt key, then one doorbell line, submitted once:",
+    "    [[TAP v0.23 nudge]], or [[TAP v0.23 nudge message=\"<text>\"]] with --message.",
+    "    The doorbell has no sender, needs no reply and grants no new task: it asks the seat to",
+    "    continue what it was doing and check tap poll. A draft, queued follow-ups or an unreadable",
+    "    input box holds the nudge with nothing sent (tap send keeps drafts).",
     "",
-    "  Use --interrupt when a seat is stuck mid-turn and ignores input (an API timeout, a dropped",
-    "    connection): it sends the seat's interrupt key, then an urgent note asking it to continue.",
+    "  Interrupt keys: claude, codex, agy: Escape; opencode: Escape Escape.",
+    "    cursor has no safe interrupt key: after the doorbell, Enter at +5000 ms, then Enter",
+    "    +200 ms later, which interrupts with the queued doorbell.",
+    "    hermes: the bare doorbell's submission is the interrupt.",
+    "  --no-interrupt skips only the interrupt: no key; cursor skips its two Enters; hermes queues",
+    "    the doorbell behind /queue instead.",
+    "  --message: one line, at most 200 UTF-8 bytes, no [[ or ]], and no word starting with @ or /",
+    "    (it opens the input's picker). Quotes and backslashes are kept. Anything else: tap send.",
+    "  --pane repairs a pane that no registered seat matches: rungs 1 and 2 only. Rung 3 only",
+    "    ever targets a registered seat's own pane.",
+    "  --dry-run reads the pane and prints what each rung would do; it presses nothing. A",
+    "    [recovery] aggressiveness = \"report-only\" machine config makes every nudge a dry run;",
+    "    the mode and its source print on stderr:",
+    "    tap nudge: aggressiveness=<mode> source=<config|default>.",
     "",
-    "  Use --harness to wake live seats of one harness family, such as after a usage reset; each",
-    "    gets an ordinary note, or the interrupt treatment with --interrupt. It skips the sender",
-    "    and seats that are offline, suspended, gone or receive messages only through tap poll.",
+    "  <to> is a seat's registered name (peer) or team/peer; give it positionally or with --to.",
+    "  The run records who nudged: the seat bound to this pane, else user at a terminal with no",
+    "    seat. Nudges carry no sender, so --from is gone.",
+    "  --harness nudges every live seat of one family (claude, codex, opencode, cursor, hermes or",
+    "    agy) on --team (default: yours; '*' for all), skipping you and seats that are offline,",
+    "    suspended, gone or poll-only. More than one target, or '*', asks y/N at a terminal or",
+    "    needs --yes.",
     "",
-    "  <to> is a seat's registered name (peer) or team/peer; give it positionally or with --to,",
-    "    not both. Flags go in any order.",
-    "  <family> is claude, codex, opencode, cursor, hermes or agy. --team defaults to the sender's team;",
-    "    '*' selects every team. More than one target, or '*', asks y/N at a terminal or needs --yes.",
-    "    --dry-run previews targets and sends nothing; it asks neither confirmation prompt.",
-    "",
-    "  Sender (--interrupt and --harness; the first form sends no note and takes no --from):",
-    "    TAP uses --from <seat or team/seat>, then TAP_SELF, then the seat registered for this pane.",
-    "    With none of those at an interactive terminal, tap asks on stderr:",
-    "    No TAP seat in this terminal. Send this nudge as you (the operator)? [Y/n]",
-    "    Enter, y or yes sends as user, so the recipient sees a person sent it; anything else sends",
-    "    nothing. Sending as the operator requires this prompt, even with --yes.",
-    "    Without a terminal, pass --from. --dry-run at a terminal previews the operator sender",
-    "    without prompting.",
-    "",
-    "  Interrupt note text: Nudge: continue what you were working on.",
-    "    With --reason \"Internet dropout\": Nudge: Internet dropout. Continue what you were working on.",
-    "    --reason requires --interrupt.",
-    "",
-    "  Ordinary --harness note text:",
-    "    Automated nudge from <sender>: your usage limit may have reset. Check your queue (tap poll)",
-    "    and continue your assigned work.",
-    "",
-    "  For either note, -m or -f replaces the whole text (-f - reads stdin).",
-    "    --reason cannot be combined with -m or -f.",
-    "",
-    "  Interrupt keys: claude, codex, agy: Escape; opencode: Escape Escape; cursor: C-c;",
-    "    hermes: none, submitting the note is the interrupt.",
+    "  Retired, refused with nothing sent: --interrupt (now the default), --reason (use",
+    "    --message), --aggressiveness (use --dry-run), --from (nudges have no sender), -m and -f",
+    "    (use tap send).",
     "",
     "EXAMPLES",
-    "  # Re-submit a stuck sentinel",
+    "  # Unstick a seat: blocker, stuck line, or interrupt and wake",
     "  tap nudge tap/fable",
-    "  # Wake a wedged seat from your own terminal",
-    "  tap nudge tap/fable --interrupt --reason \"Internet dropout\"",
-    "  # Nudge across teams, naming both sides",
-    "  tap nudge --interrupt --to other-team/reviewer --from my-team/builder",
-    "  # Send the note from a file",
-    "  tap nudge --interrupt tap/fable --from tap/jevver -f note.md",
+    "  # Wake it with one line of context",
+    "  tap nudge tap/fable --message \"the API is back\"",
+    "  # Wake it without interrupting its turn",
+    "  tap nudge tap/fable --no-interrupt",
+    "  # See what each rung would do",
+    "  tap nudge tap/fable --dry-run",
     "  # Wake every codex seat after a usage reset",
     "  tap nudge --harness codex --team '*' --yes",
     "",
     "EXIT CODES",
-    "  Each interrupt target prints: tap nudge: <team/peer>  <outcome>",
-    "  FORM       OUTCOME                                                          EXIT",
-    "  interrupt  interrupted (delivered)                                          0",
-    "  interrupt  interrupted; note queued (<disposition>)                         0",
-    "  interrupt  interrupted; note UNVERIFIED (possible effect; do not re-nudge)  5",
-    "  interrupt  UNVERIFIED (possible effect; ...) with no keys sent              5",
-    "  interrupt  refused (no sender, or not another active seat); nothing sent    1",
-    "  fan-out    every target delivered or queued; skips are not failures         0",
-    "  fan-out    any delivery unverified                                          5",
-    "  fan-out    any seat failed, or a team was unreadable                        1",
-    "  recovery   re-submitted, copy-mode park requeued or held, or nothing stuck  0",
-    "  recovery   pane gone                                                        3",
-    "  recovery   submit unverified                                                5",
-    "  recovery   OpenCode screen still unreadable after its repaint               8",
-    "  recovery   refused, e.g. the sentinel names a different seat                1",
-    "",
-    "  hermes always reports queued-harness: its submit cannot be verified.",
-    "  Exit 5 is a possible effect: check tap outstanding <sender>; do not nudge again.",
+    "  0  done: dismissed and continued, submitted, delivered, requeued, or nothing to do",
+    "  1  held or refused with nothing sent (a dialog, a draft, a retired flag); the message says why",
+    "  3  pane gone",
+    "  5  possible effect: a key may have landed unconfirmed. Look (tap peek); do not nudge again.",
+    "  8  OpenCode screen still unreadable after its repaint",
+    "  --harness: 5 if any seat ended with a possible effect, else 1 if any was held or failed.",
     "",
     "SEE ALSO",
-    "  Details: skills/tap/protocol/delivery/nudge.md (aggressiveness, the OpenCode repaint, identity",
-    "    re-checks, fan-out skips, --dry-run).",
+    "  Details: skills/tap/protocol/delivery/nudge.md (the ladder, its recovery-run evidence, the",
+    "    doorbell grammar, the OpenCode repaint, identity re-checks, fan-out skips).",
   ),
   "outstanding": lines(
     "NAME",
@@ -641,7 +621,7 @@ DESCRIPTION
     "DESCRIPTION",
     "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal. Exit 0 none / 2 some. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
   ),
-  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets · models              saved launches and model guidance\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding             fuzzy-find a teammate (prefix @ popup)\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
+  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets · models              saved launches and model guidance\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
   "peek": "NAME\n  tap peek — read a teammate's pane without touching it\n\nUSAGE\n  tap peek <handle> [--pane <tmux-target>] [--json]\n\nDESCRIPTION\n  Supervision read. Prints the seat's input_state and a transcript tail with the\n  ACTIVE INPUT REGION STRIPPED, so a draft your teammate has not submitted is never\n  quoted back at them. It sends nothing, submits nothing, and wakes nobody.\n\n  <handle> names a seat on your team. `help` can never be a registered handle, so\n  the bare `tap peek help` is unambiguous and prints this page.\n\nOPTIONS\n  --pane   read an explicit tmux target instead of the handle's registered pane\n  --json   emit {handle, pane, harness, input_state, transcript}\n\nEXIT CODES\n  0  read\n  1  usage error, or the handle is not registered\n  3  the seat's pane is gone — re-register it against a live target\n\nSEE ALSO\n  tap team (who exists) · tap health (liveness) · tap nudge (recover a stuck sentinel)\n",
   "poll": lines(
     "NAME",
@@ -1403,6 +1383,50 @@ EXIT CODES
 
 SEE ALSO
   tap help pick
+`;
+
+PAGES["tmux-defaults"] = `NAME
+  tap tmux-defaults — sensible tmux defaults so tmux disappears behind the harness
+
+USAGE
+  tap tmux-defaults install [--dry-run] [--json]
+  tap tmux-defaults remove [--dry-run] [--json]
+  tap tmux-defaults status [--json]
+
+DESCRIPTION
+  Installs one TAP-managed defaults file, ~/.config/tap/tmux-defaults.conf, so
+  tmux behaves like a bare terminal: truecolor (tmux-256color, RGB/Tc), mouse
+  on, 10-line wheel scrolling in both copy modes, middle click leaves copy
+  mode, focus events on, 10k-line history, and an update-environment without
+  SSH_CONNECTION so mouse copies reach the local clipboard. The clipboard is
+  chosen at install time: pbcopy on macOS, wl-copy or xclip on Linux, OSC 52
+  (set-clipboard on) over SSH or without a tool.
+  Your tmux.conf gets exactly one source-file line ending in
+  # tap-tmux-defaults, INSERTED BEFORE your own lines, because tmux is
+  last-write-wins and your settings must beat TAP's defaults. remove deletes
+  exactly that line and TAP's file; a file you edited is never overwritten or
+  deleted. tmux builds its own tmux-256color terminfo entry, so the pinned
+  default-terminal needs nothing else on the host. Escape-time and
+  extended-keys are deliberately not set; see the "TAP and tmux" section of
+  docs/GETTING-STARTED.md for Shift+Enter options.
+  A running server is given the file directly when it changes; your own
+  settings re-assert on the next tmux start.
+
+OPTIONS
+  --dry-run      resolve and validate, print the exact lines, change nothing
+
+EXAMPLES
+  tap tmux-defaults install
+  tap tmux-defaults status --json
+  tap tmux-defaults remove
+
+EXIT CODES
+  0  done, already in the requested state, or --json status printed
+  1  refusal (TAP's file was edited, unreadable config, tmux missing or older than 3.2)
+  2  status: not installed (stdout is still ok:true JSON; parse it regardless of exit code)
+
+SEE ALSO
+  tap help keybinding
 `;
 
 PAGES["uninstall"] = lines(

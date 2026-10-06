@@ -20,7 +20,7 @@ import { HARNESSES } from "./catalog";
 import { buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
 import { type SessionRecord, type Invocation, type ResumeIdentity, UNBOUND_RESUME_IDENTITY } from "./types";
 import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, type StartupObservation } from "./readiness";
-import { currentEpoch, hasSession, classifySession, entrySession, verifiedSession, entryObservedDead, destructiveTarget, sessionPaneIds } from "./observation";
+import { currentEpoch, hasSession, classifySession, crewPanesIn, entrySession, verifiedSession, entryObservedDead, destructiveTarget, sessionPaneIds } from "./observation";
 import { launchCommand, launchTmux, LaunchCommandError } from "./process";
 import { ensureTmuxServer, tmuxBootstrapFailure } from "./tmux-bootstrap";
 import { seatIsRelaunchable } from "./complete";
@@ -29,7 +29,7 @@ import { rootForCwd } from "./records";
 import { enrolledTeams } from "../index-home";
 import { oldStoreAction, oldStoreRefusalText, teamRegistryRefusal } from "../register-authority";
 import { sanitizeComponent } from "./naming";
-import { pyRepr, recordHasResumeArtifact, seatHarnessEnv } from "./resume-identity";
+import { pyRepr, recordHasResumeArtifact, resolvedResumeIdentity, seatHarnessEnv } from "./resume-identity";
 import { opencodeStorePath, opencodeStoredSession } from "../opencode-store";
 import { launchPhase, launchTracked } from "./progress";
 import { tapScriptsDir, artifactBun } from "../scripts-dir";
@@ -43,6 +43,9 @@ export type LaunchRecord = SessionRecord & {
   kill_backup_required?: boolean; kill_backup_path?: string | null; kill_backup_has_seat_state?: boolean;
   launch_id?: string | null; launch_failure_reason?: string | null; identity_capture_action?: string | null;
   ensure_action?: string; ensure_vessel?: string | null; ensure_receipts?: string[];
+  /** "window": a resume revives the seat into its surviving session, beside its crews (tap-9rrat). */
+  /** The surviving session's server generation and id ("<pid>:<start>\t$N"), pinned at the resume's preflight. */
+  revive_vessel?: "window" | null; revive_session?: string | null;
 };
 export type TransactionKind = "new" | "adopted" | "resume" | "resume-all" | "restart" | "seat-up";
 export type TransactionRequest = {
@@ -399,6 +402,29 @@ export function resumeIdentityBinding(kind: TransactionRequest["kind"], record: 
   return kind === "seat-up" ? record.harness_session_id ?? null : UNBOUND_RESUME_IDENTITY;
 }
 
+/** A revival beside crews resumes exactly the recorded conversation, bound before any effect so no
+ * later resolution can turn it into a fallback id, a picker or a fresh start (tap-9rrat). */
+/** "<server pid>:<start>\t$<session id>" for the named session, or "" when tmux cannot say. */
+export async function survivingSession(name: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string> {
+  const run = await launchTmux(["display-message", "-p", "-t", `=${name}:`, "#{pid}:#{start_time}\t#{session_id}"], env, signal);
+  const value = run.code === 0 ? run.stdout.trim() : "";
+  return /^\d+:\d+\t\$\d+$/.test(value) ? value : "";
+}
+
+export function exactRevivalIdentity(record: LaunchRecord, env: NodeJS.ProcessEnv): string {
+  const stored = record.harness_session_id ?? null;
+  // hermes ignores resume ids, so it cannot bind an exact target.
+  if (!stored || !["claude", "codex", "opencode", "cursor", "agy"].includes(record.harness)) refuseRevival(record);
+  // The ordinary resume gate first: cursor's chat store and OpenCode's session store refuse a missing id.
+  resumeIdentityBinding("resume", record, env);
+  if (resolvedResumeIdentity(record, env) !== stored) refuseRevival(record);
+  return stored!;
+}
+function refuseRevival(record: LaunchRecord): never {
+  throw new TransactionError(`${record.name} has no resumable recorded ${record.harness} conversation; nothing was revived and its other windows keep running`,
+    undefined, "no_exact_resume_identity", `tmux attach -t ${shlexQuote(record.name)}`);
+}
+
 function assertUniqueResume(record: LaunchRecord, selection: Selection, local: Row): void {
   if (!record.harness_session_id) return;
   const check = (doc: Row, root: string, team: string) => {
@@ -539,7 +565,9 @@ export async function rollbackOwned(evidence: FailureEvidence, reason: string | 
     // This critical section stays held through the server-side effect. Our own
     // rollback changed the token, so a second token check here would be wrong.
     if (cleanup && evidence.vessel) {
-      const cleaned = await ownedEffect(evidence.vessel, ["kill-session", "-t", evidence.vessel.session], env);
+      // A revived seat's window is all it owns: its session still holds the crews.
+      const cleaned = await ownedEffect(evidence.vessel, evidence.record.revive_vessel === "window"
+        ? ["kill-window", "-t", evidence.vessel.window] : ["kill-session", "-t", evidence.vessel.session], env);
       if (!cleaned) process.stderr.write(`tap session: cleanup retained residue for ${evidence.record.name}; created vessel identity changed or is gone\n`);
     }
     // No exit-hook/registration observation while their registry lock is held.
@@ -638,14 +666,25 @@ export async function suspendAndStop(evidence: FailureEvidence, request: Transac
   const resume = request.kind === "resume";
   const session = request.kind === "restart" || resume ? record.name : record.replaces_session;
   if (!session || (resume && !await hasSession(session, env, signal))) return;
-  launchPhase(`Stopping ${session} for replacement`, true);
   await registry(evidence.selection, signal, async (doc, seats) => {
     const keeper = seats[evidence.handle];
     if (!owns(keeper, evidence) || keeper.status !== "pending") throw new TransactionError(`replacement reservation changed before teardown for ${evidence.handle}; retry the launch`);
     if (resume) {
-      const classification = await classifySession(session, env, signal);
+      const classification = await classifySession(session, env, signal, { harness: record.harness, crewPanes: crewPanesIn(Object.entries(seats), session) });
+      // The seat's harness exited but its crews hold the session: revive beside them, stop nothing.
+      // Only a caller that preflighted the revival (exact id, crew snapshot) may take that path.
+      if (classification === "seat-gone") {
+        if (record.revive_vessel !== "window") throw new TransactionError(`${session}'s seat exited while the resume was starting; nothing was changed; retry the resume`);
+        // The revival targets the session generation its caller preflighted, never a later one under the same name.
+        if (!record.revive_session || await survivingSession(session, env, signal) !== record.revive_session) {
+          throw new TransactionError(`session ${session} changed after the resume checked it; nothing was changed; retry the resume`);
+        }
+        return;
+      }
+      record.revive_vessel = null;
       if (classification !== "shell") throw new TransactionError(`refusing to adopt ${session}: it is ${classification}, not a bare shell session; attach once it is live, or replace it with tap session restart --force`);
     }
+    launchPhase(`Stopping ${session} for replacement`, true);
     const original = record.replacement_registry_entry ?? null;
     if (request.kind === "new" && !record.kill_backup_required && original && string(original.pane_id)) {
       if (await destructiveTarget(original, session, env, signal) !== session &&
@@ -864,18 +903,26 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
   try { await ensureTmuxServer(env, { signal }); }
   catch (error) { signal?.throwIfAborted(); throw new TransactionError(tmuxBootstrapFailure(error)); }
   signal?.throwIfAborted();
-  if (await hasSession(record.name, env, signal)) throw new TransactionError(`session appeared after reserving ${record.name}; retry the launch`);
-  startupTrace("create_session", { session: record.name, harness: record.harness, launch_id: evidence.token });
+  const intoWindow = record.revive_vessel === "window";
+  const sessionId = record.revive_session?.split("\t")[1] ?? "";
+  if (intoWindow && (!sessionId || await survivingSession(record.name, env, signal) !== record.revive_session)) {
+    throw new TransactionError(`session ${record.name} ended or was replaced before the seat could be revived into it; retry the resume`);
+  }
+  if (!intoWindow && await hasSession(record.name, env, signal)) throw new TransactionError(`session appeared after reserving ${record.name}; retry the launch`);
+  startupTrace("create_session", { session: record.name, harness: record.harness, launch_id: evidence.token, ...(intoWindow ? { vessel: "window" } : {}) });
   // The launch door reports its own phases and interruptions, in every mode.
   const progress = request.terminal?.stderr_tty && !launchTracked() ? `tap session: starting ${pyRepr(record.name)}...` : "";
   if (progress) process.stderr.write(`\r${progress}`);
   try {
-    const created = await launchTmux(["new-session", "-d", "-x", "200", "-y", "60", "-s", record.name, "-c", launchWorkdir(record),
-      "-P", "-F", VESSEL_FORMAT, `tmux wait-for tap-launch-${randomUUID()}`], env, signal);
+    const waitCommand = `tmux wait-for tap-launch-${randomUUID()}`;
+    // A revival adds the seat's window to its surviving session; crew windows stay untouched.
+    const created = await launchTmux(intoWindow
+      ? ["new-window", "-d", "-t", `${sessionId}:`, "-n", record.harness, "-c", launchWorkdir(record), "-P", "-F", VESSEL_FORMAT, waitCommand]
+      : ["new-session", "-d", "-x", "200", "-y", "60", "-s", record.name, "-c", launchWorkdir(record), "-P", "-F", VESSEL_FORMAT, waitCommand], env, signal);
     evidence.vessel = parseVessel(created.stdout);
     if (signal?.aborted && !evidence.vessel) throw new TransactionError(`cannot identify created session ${record.name}; interrupted creation outcome is unverified and reservation retained`);
     if (created.code !== 0 && !evidence.vessel && !/duplicate session/.test(created.stderr)) throw new TransactionError(`cannot identify created session ${record.name}; creation outcome is unverified and reservation retained`);
-    if (created.code !== 0) throw new LaunchCommandError(["tmux", "new-session"], created);
+    if (created.code !== 0) throw new LaunchCommandError(["tmux", intoWindow ? "new-window" : "new-session"], created);
     if (!evidence.vessel) throw new TransactionError(`cannot identify created session ${record.name}; retained without further effects`);
     signal?.throwIfAborted();
     const vessel = evidence.vessel;
@@ -962,6 +1009,9 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     await configure(["set-hook", "-p", "-u", "-t", vessel.pane, "pane-died"]);
     launchPhase(`Marking ${evidence.handle} ready on team ${evidence.selection.team}`, true);
     await bindTransaction(evidence, result.facts, true, env, signal);
+    // An attach lands on the revived seat, not on whichever crew window was current.
+    // Best effort: the seat is already bound, so a lost focus is no rollback.
+    if (intoWindow) await ownedEffect(vessel, ["select-window", "-t", vessel.window], env, signal).catch(() => false);
   } finally {
     if (progress) process.stderr.write(`\r${" ".repeat([...progress].length)}\r`);
     if (progress && signal?.aborted && signal.reason instanceof LaunchInterrupted && signal.reason.exitCode === 130) {
@@ -1030,7 +1080,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   // refuses on: a stale cursor identity refuses the transaction before any
   // reservation or registry mutation.
   const invocationOptions: { env: NodeJS.ProcessEnv; nativeQuery?: string | null; resume: ResumeIdentity } = { env, nativeQuery: request.kind === "adopted" ? request.native_query ?? null : undefined,
-    resume: action === "resume" ? resumeIdentityBinding(request.kind, record, env) : UNBOUND_RESUME_IDENTITY };
+    resume: action === "resume" ? record.revive_vessel === "window" ? exactRevivalIdentity(record, env) : resumeIdentityBinding(request.kind, record, env) : UNBOUND_RESUME_IDENTITY };
   if (request.kind === "restart" && !request.preflight_done) launchInvocation("resume", record, notices, { ...invocationOptions, notify: false, receipts: discardReceipts });
   if (request.kind === "new") buildInvocation(action, record, notices, env, null, UNBOUND_RESUME_IDENTITY, undefined, discardReceipts);
   const expectedReceipt = () => {

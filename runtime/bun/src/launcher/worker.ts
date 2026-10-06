@@ -3,7 +3,7 @@ import { writeSync } from "node:fs";
 import { isDict, jsonDumpBytes, parseJsonPreserving, PyFloat } from "../spool-publication";
 import { Notices } from "./catalog-notices";
 import { LauncherError, UNBOUND_RESUME_IDENTITY, type SessionRecord, type Invocation } from "./types";
-import { buildInvocation, applyInvocationEnv, composeInvocation, launchInvocation, invocationShellCommand, resolveLoginShell, pinOpenCodeSession, InvocationError } from "./invocation";
+import { buildInvocation, applyInvocationEnv, composeInvocation, launchInvocation, resumeTuning, invocationShellCommand, resolveLoginShell, pinOpenCodeSession, InvocationError } from "./invocation";
 import { resolvedResumeIdentity, resolveResumeTarget, emitResumeTargetReceipts } from "./resume-identity";
 import { enforcePermissions, permissionArgv } from "./permissions";
 import { resolveHarnessPolicy } from "./catalog";
@@ -36,7 +36,7 @@ async function dispatch(packet: Packet, notices: Notices, signal: AbortSignal): 
     }
     case "build": value = buildInvocation(p.action, record, notices, env, p.initial_prompt, resume); break;
     case "native-resume": value = buildInvocation("resume", record, notices, env, null, resume, p.native_query ?? null); break;
-    case "compose": value = composeInvocation(p.invocation, record, notices, env, p.notify !== false); break;
+    case "compose": value = composeInvocation(p.invocation, record, notices, env, p.notify !== false, p.action === "resume" ? resumeTuning(record, resume === UNBOUND_RESUME_IDENTITY ? record.harness_session_id : resume, env) : undefined); break;
     case "invocation": value = launchInvocation(p.action, record, notices, { env, prompt: p.initial_prompt, resume, notify: p.notify !== false }); break;
     case "env": value = applyInvocationEnv(p.invocation, record, notices, env, p.notify !== false); break;
     case "splice": value = { ...p.invocation, argv: spliceTokensIfAbsent(p.invocation.argv, record.harness_passthrough ?? [], {

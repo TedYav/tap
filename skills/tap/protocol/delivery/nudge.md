@@ -1,96 +1,135 @@
-# `tap nudge`: recovery, interrupt and fan-out
+# `tap nudge`: the unstick ladder and fan-out
 
-Normative page for `tap nudge` (tap-voys3, tap-s1k5j, tap-pkh9c, tap-gridx). `tap help nudge`
-carries the usage, one example per form and the outcome table; this page carries the rest.
-The grammar lines in [CLI surface part 10](./cli-surface-the-whole-thing-part-10.md) and
-[part 11](./cli-surface-the-whole-thing-part-11.md) point here.
+Normative page for `tap nudge` (tap-voys3, tap-s1k5j, tap-gridx, tap-xe42x). `tap help nudge`
+carries usage, examples and exits; [CLI surface](./cli-surface-the-whole-thing-part-10.md) points here.
 
 ```text
-tap nudge <to> | --to <to> [--pane <tmux-target>] [--aggressiveness report-only|cautious|aggressive]
-tap nudge --interrupt <to> | --to <to> [--from <seat>] [--reason <text> | -m <text> | -f <file>]
-tap nudge --harness <family> [--team <team>|'*'] [--from <seat>] [--interrupt] [--reason <text> | -m <text> | -f <file>] [--dry-run] [--yes]
+tap nudge <to> | --to <to> [--message <text>] [--no-interrupt] [--dry-run]
+tap nudge [<to>] --pane <tmux-target> [--dry-run]
+tap nudge --harness <family> [--team <team>|'*'] [--message <text>] [--no-interrupt] [--dry-run] [--yes]
 ```
 
-## Target and sender
+Superseded 2026-10-05 (tap-xe42x): the `--interrupt` form and its urgent note, the operator
+`[Y/n]` prompt, the `--from` sender, `--reason`, `-m`/`-f` and `--aggressiveness`. Each retired
+flag now refuses with `retired_option`, names its replacement and sends nothing.
 
-`<to>` is `peer` or `team/peer`. `--to` is the named spelling of the positional; both together
-refuse (`usage_error`). Every flag is accepted before or after the target, and routing signals
-count only in flag position: `-m --interrupt` is a body, not the interrupt form.
+## The ladder
 
-The interrupt and fan-out forms send a note, so they have a sender. Precedence, resolved and
-validated once before any key or send:
+One pass, top to bottom. Each rung presses at most one recorded key action. After any key may
+have landed, every later stop exits 5 (`possible effect; do not re-nudge`), never retrying; only a
+refusal before the first key exits 1. No rung sends
+`C-c` on any harness: on an idle composer it can exit the harness.
 
-1. `--from <seat|team/seat>`. A `team/seat` sender selects its own team's acting bus, so a
-   caller outside every enrolled checkout still resolves. A `TAP_HOME` pin is honoured exactly:
-   a sender on another team refuses (`usage_error`) rather than redirecting the pin.
-2. `TAP_SELF`.
-3. The seat registered for the calling pane. A pane that is a seat on another enrolled team
-   refuses with `--from <team>/<seat>`; a stale, contested or unobservable pane identity
-   refuses rather than falling through.
-4. The operator, below.
+Every key is one `recoveryEffect` in a recovery run under `TAP_INDEX_HOME/debug/recovery`
+(`tap debug recovery <id>`), the one evidence store: the frame before, the intent, the gate
+re-read at the key boundary, the target re-proof and the outcome. The run opens at the ladder's
+first key (`createRun` with no payloads and no hold) and records the actor (below); a nudge that
+only submits a staged sentinel keeps rung 2's own run, as before.
 
-A derived sender must be an active seat on its team (`unregistered_sender`); a poll seat is an
-active sender, since settle-only mail needs no pane to answer from. The interrupt form refuses
-the sender's own seat as its target (`not_a_target`); fan-out skips it.
+**Rung 1, a known blocker.** Capture the frame before any key. Exactly one row is allowlisted:
+Claude's weekly usage-limit dialog (`claude-weekly-usage-limit`), matched on its bounded bottom
+region (the `You've hit your weekly limit` line above `What do you want to do?`, exactly the
+three captured options in order, `1. Stop and wait for limit to reset`, `2. Wait here, then
+continue automatically at …` and `3. Switch to usage credits`, and the closing
+`Enter to confirm · Esc to cancel` row). The
+license is the match itself, re-proved inside the effect's gate on two fresh, byte-identical
+samples taken at the key boundary; it licenses exactly one Escape, never Enter, a digit or an
+option (option 3 spends money; 1 and 2 park the seat). Only a positively observed dismissal
+continues: the pane is read again, and a still-showing, unreadable or newly blocked frame stops
+at exit 5.
 
-The stuck-sentinel form types nothing new and sends no note, so it has no sender: `--from`
-refuses with `recovery sends no note; --from applies to --interrupt and --harness`. Its recovery
-run records only the invoking `TMUX_PANE`.
+Any other dialog, an approval prompt, and Codex's hook-trust question get no key: nudge reports
+`blocker_held` and the run ends, rungs 2 and 3 included.
 
-### The operator (`user`)
+The dialog could not be staged on demand. Its recognizer is pinned to a real 2.1.282 capture
+(`runtime/bun/test/fixtures/usage-limit-modal/`); a manual Esc restoring the composer
+is provenance for the key, not evidence that a hidden draft survives it.
 
-When no seat can be derived and both stdin and stderr are terminals, nudge asks on stderr:
+**Rung 2, a staged sentinel.** A complete sentinel alone in the composer gets exactly one Enter.
+The wire (ask, note or id-less doorbell) must be the composer's only text, read before the key,
+so the Enter never sends a human draft along; a composer TAP cannot bound holds instead. This
+rule is nudge's own: `tap send` delivery keeps its existing staged-submit proof. It applies
+for every family (no four-Enter ladder), and the run ends. A Hermes wire staged bare or behind
+`/queue ` gets the Enter only, never retyping. With nothing staged, the copy-mode park recovery
+below runs.
+
+**Rung 3, the doorbell.** Only for a registered seat's own bound pane, and only when the
+composer reads `ready` through the full pane-state classification (`observePaneKind`: band,
+height and copy mode) at every key boundary. A draft, queued follow-ups, partial TAP text or an
+unreadable composer hold the nudge (`nudge_held`) with no key: nudge never types over a draft.
+
+1. Interrupt (default): claude, codex, agy: Escape; opencode: Escape Escape. Then the composer
+   must still read `ready`, or the run stops at exit 5 with nothing typed (an Escape that flushed
+   queued input, for example).
+2. Type the doorbell: one `send-keys -l` under the recovery effect's one literal-text license.
+   It admits only the action `nudge type` whose text is byte-for-byte a rendered nudge wire
+   (Hermes: optionally behind its `/queue ` prefix), and refuses typing when the frame classifies
+   as blocked or unknown.
+3. One Enter, verified by the wire leaving the composer (`nudgeExpected` binds the exact wire).
+
+Cursor has no non-exiting interrupt key. After the doorbell's Enter it waits
+`CURSOR_INTERRUPT_SETTLE_MS` (5000 ms), presses Enter, waits `CURSOR_INTERRUPT_GAP_MS` (200 ms) and
+presses Enter again, each a recorded `cursor message-interrupt Enter` gated on a `ready`
+composer. The submission and the two Enters are one effect for the no-retry ceiling.
+
+Hermes has no interrupt key either: by default the bare doorbell's submission is its interrupt.
+
+`--no-interrupt` skips only the interrupt: no key; Cursor skips its two Enters; Hermes types
+`/queue <wire>` so the doorbell waits behind the current turn.
+
+## The doorbell wire
 
 ```text
-No TAP seat in this terminal. Send this nudge as you (the operator)? [Y/n]
+[[TAP v0.23 nudge]]
+[[TAP v0.23 nudge message="<text>"]]
 ```
 
-Enter, `y` or `yes` sends from the reserved non-seat identity `user`, so the recipient sees that
-a person sent it. Any other answer, or EOF, refuses with `cancelled` and sends nothing (exit 1).
-Without a terminal the sender is unknown: `unregistered_sender`, recovery `pass --from
-<seat|team/seat>, or run from an interactive terminal to send as the operator`. `--dry-run` at a
-terminal previews `sender: user (operator; would prompt)` and asks nothing, but refuses whatever the
-real run would refuse, a legacy `user` seat included. After the last answer, and before each fan-out send for any sender, nudge re-resolves the bus and
-refuses `team_moved` if the team was reset, retired or moved while the person decided. The interrupt form asks only after every target refusal has passed; fan-out asks after it has
-printed its targets, and not at all when there are none, so a person never consents to a nudge
-that cannot go out.
+It names no payload, sender or recipient, owes no reply and grants no task: it asks the seat to
+continue what it was doing and check `tap poll`. There is nothing to `tap read`. `tap nudge` is
+its only producer. The message value is a JSON string literal, so quotes and backslashes
+round-trip. `--message` refuses, naming `tap send`: a newline or other control character,
+`[[` or `]]`, a word starting with `@` or `/` (the composer's picker eats the Enter; the
+inline-body rule `sentinelBodyInlineable`), or more than 200 UTF-8 bytes of the decoded text. It
+never strips or rewrites the text. The payload parser refuses an id-less nudge (`a nudge doorbell
+names no payload id`), so no reader treats it as a payload.
 
-There is deliberately no flag and no `--yes` for this path, an exception to the CLI rule that a
-prompt has a scriptable alternative. The prompt is a consent guard, not proof of a person: an
-agent's tool shell has no terminal, so it cannot answer and never becomes `user` by accident,
-but anything that drives a terminal can answer it. A script names a seat with `--from`.
+## Target, `--pane` and the actor
 
-`user` is reserved: `tap register`, the launchers, `tap restore` and `tap admin rebuild-registry` refuse it as a handle, `tap
-send --from user` and `tap send user` refuse (`reserved_handle`), and only nudge's in-process
-operator authority may stamp it. A team that still has a seat named `user` from before the
-reservation, on the sender's team or any target's, refuses operator nudges (`reserved_handle`)
-before the prompt, until that seat re-registers under another handle. Its notes are settle-only, so no reply is owed and none can be
-addressed back. A parked note from `user` is never retired as `sender_gone`: a missing seat row
-cannot prove the operator left. Past the escalation grace (and only while no seat named `user` exists; a legacy seat's mail keeps the ordinary path) it retires as
-`operator_undeliverable` with a `.cancelled` receipt, so it never strands `tap outstanding user`. If an operator note is undeliverable, the delivery-failed notice
-has no seat to reach and is recorded as an event (`spool_notice_operator_recorded`), never a payload addressed to `user`.
+`<to>` is `peer` or `team/peer`; `--to` is the named spelling; both together refuse. Nudging
+your own seat refuses (`not_a_target`). A poll member refuses (`poll_mode_member`).
 
-When the caller's directory anchors no bus, an operator note to a `team/peer` target rides that
-team's bus as a local send.
+`--pane` repairs a pane no registered seat matches: rungs 1 and 2 only, and the output says
+delivery was skipped because `--pane` overrides the registered seat. With `--message` or
+`--no-interrupt` it refuses. Rung 3 only ever targets a registered seat's own pane.
 
-## Stuck-sentinel recovery
+The recovery run records who nudged as its `caller.actor`: the seat bound to the calling pane
+(its verified active binding), else `user` at an interactive terminal with no seat binding,
+else `unknown`. `TAP_SELF` is not consulted. The actor is audit evidence, never a sender or a
+license: no rung refuses because the caller cannot be proven, and the doorbell carries none. `user` stays reserved and unclaimable (`tap register`, the launchers,
+`tap restore`, `tap admin rebuild-registry` and `tap send --from user`/`tap send user` refuse
+it). Operator notes already on a bus from before this change keep their delivery and
+`operator_undeliverable` retirement rules.
 
-Re-submits a stuck, unsubmitted sentinel in a peer's input box; a safe no-op when none is
-visible. The visible sentinel's recipient must agree with `<to>`; TAP re-authorizes the exact
-session, designated pane and harness before copy-mode cancellation and before every Enter, and
-never retypes the wire. Cross-team recovery names `team/peer`; `--pane` alone supplies no team
-identity. A poll member refuses (`poll_mode_member`).
+## Dry run and machine policy
 
-The shared `[recovery] aggressiveness` in the launcher's `config.toml` applies, and
-`--aggressiveness` overrides it; with no setting the mode is `aggressive`. The run reports
-`aggressiveness=<mode> source=<source>`. `report-only` captures the pane without keys or a
-recovery hold; `cautious` and `aggressive` share nudge's complete-visible-sentinel ceiling.
-Broader UI repair belongs to `tap detective`.
+`--dry-run` reads the pane and prints each rung's would-be action; it presses nothing and opens
+no hold. `[recovery] aggressiveness = "report-only"` in the launcher's `config.toml` makes every
+nudge a dry run; `cautious` and `aggressive` both act. The run reports
+`aggressiveness=<mode> source=<config|default>` on stderr. Broader UI repair belongs to
+`tap detective`. A detective worker's own nudge (inside its `TAP_RECOVERY_RUN`) is rung 2 only,
+under that run's mode.
+
+## Stuck-sentinel identity and copy-mode recovery
+
+The visible sentinel's recipient must agree with `<to>`; TAP re-authorizes the exact session,
+designated pane and harness before copy-mode cancellation and before the Enter, and never
+retypes the wire. Cross-team recovery names `team/peer`; `--pane` alone supplies no team
+identity.
 
 If an OpenCode seat's input band is unobservable (a terminal overprint, or a stuck
 `input_band_absent` boot), nudge first runs the input-free repaint (window resize and restore,
 never a keystroke), re-reads, and prints the before and after band state. A healed pane with no
-stuck sentinel exits 0; exit 8 reports a band still stuck after the repaint.
+stuck sentinel continues down the ladder; exit 8 reports a band still stuck after the repaint.
 
 With no stuck sentinel, nudge also recovers a stale copy-mode park (tap-w85su). A copy-mode
 refusal parks as `safety_gate`. Past its busy deadline the entry is escalated, and the drain
@@ -132,56 +171,22 @@ under the effect's mutex between two target proofs, records `verified` and print
 <pane-id> (...; recovery=<id>)`; otherwise `copy-mode cancel refused|unverified: <why>`. The
 unchanged requeue then re-reads the mode under custody, so a cancel that did not take holds.
 
-Exit codes: 0 re-submitted, queued in the harness, a park requeued or held, or nothing stuck;
-3 the pane is gone; 5 the submit is unverified; 8 the OpenCode band is still unreadable after
-its repaint; 1 any refusal.
-
-## Interrupt
-
-The caller selects one registered, active, pane-backed seat. The courier's U4 interrupt for the
-seat's family clears its pane (claude, codex, agy: Escape; opencode: Escape Escape; cursor: C-c;
-hermes: no key, the note's own submission is the interrupt), then the note is submitted as an
-urgent settle-only note carrying recovery-interrupt authority, so an auto-permission seat is
-interrupted instead of parked. A human decision on screen is never interrupted.
-Target refusals (`seat_launching`, `identity_unverified`, `poll_mode_member`, a suspended or
-offline row) come before the sender is resolved, so the operator is never asked to authorize a
-note to a seat that would refuse it.
-
-The note body is `Nudge: continue what you were working on.`, or with `--reason "<text>"`,
-`Nudge: <text>. Continue what you were working on.` `-m`/`-f` replace the whole body; `-f -`
-reads stdin; `--reason` with `-m`/`-f` refuses. `--pane` is not available; suspended, offline
-and poll members refuse. One explicit target needs no confirmation.
-
-Outcome lines branch on the interrupt fact first:
-
-| Outcome | Exit |
-|---|---|
-| `interrupted (delivered)` | 0 |
-| `interrupted; note queued (<disposition>)` | 0 |
-| `interrupted; note UNVERIFIED (possible effect; do not re-nudge)` | 5 |
-| `UNVERIFIED (possible effect; ...)` with no keys fallen | 5 |
-| `delivered (no interrupt keys sent)` / `<disposition> (no interrupt keys sent)` | 0 |
-| refusal or `failed` | 1 |
-
-A hermes target reports `interrupted; note queued (queued-harness)`: its no-prompt submit cannot
-verify consumption, so it never claims delivery. Exit 5 is a possible effect; never re-nudge it.
+Exit codes: 0 dismissed and continued, re-submitted, delivered, queued in the harness, a park
+requeued or held, or nothing to do; 1 held or refused with nothing sent; 3 the pane is gone; 5 a
+possible effect (an unverified key, submit or Enter); 8 the OpenCode band is still unreadable
+after its repaint.
 
 ## Fan-out
 
 Wakes every live seat of one harness family, for example after a usage limit resets. `--team`
-defaults to the sender's team; `'*'` is every enrolled team. Seats are the ones `tap team` reports
-active; poll, offline, suspended and gone seats and the sender are skipped and listed, and a team
-whose registry cannot be read is reported and fails the run. Each target gets one ordinary
-settle-only note (`tap send --fyi`), so receipts, spool and occupancy rules apply unchanged.
-Default body: `Automated nudge from <sender>: your usage limit may have reset. Check your queue
-(tap poll) and continue your assigned work.`; `-m`/`-f` replace it (`-f -` is read once for every
-seat).
+defaults to the caller's team; `'*'` is every enrolled team. Seats are the ones `tap team` reports
+active; poll, offline, suspended and gone seats and the caller's own seat are skipped and listed,
+and a team whose registry cannot be read is reported and fails the run. Each target runs the
+ladder above with the same `--message` and `--no-interrupt`; `--to` and `--pane` refuse.
 
 Each seat's `instance` is pinned at selection and its harness, delivery mode and active status
-are rechecked just before its send (`target_changed`). More than one target, or `'*'`, needs a y/N
-confirmation at a terminal or `--yes` without one (`confirmation_required`). `--dry-run` resolves
-the sender and previews the same targets, skips and unreadable teams, and sends nothing.
-
-With `--interrupt`, each target takes the interrupt form above; the dry-run previews the family's
-own interrupt keys and the exact note. Exit 0 when every target was delivered or queued; 5 when
-any delivery was unverified (check `tap outstanding <sender>`; do not re-run); otherwise 1.
+are rechecked just before its nudge (`target_changed`). More than one target, or `'*'`, needs a
+y/N confirmation at a terminal or `--yes` without one (`confirmation_required`). `--dry-run`
+previews the targets, skips, unreadable teams and the wire, and presses nothing. A held seat is
+listed and never stops the others. Exit 5 when any seat ended with a possible effect (inspect it
+with `tap peek`; do not re-run), else 1 when any was held or failed, else 0.

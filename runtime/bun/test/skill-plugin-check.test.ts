@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateSkillPlugin } from "../src/skill-plugin";
@@ -42,4 +42,25 @@ test("a generated symlink is reported and never written through", () => {
   symlinkSync(join(root, "skills", name, "SKILL.md"), file);
   expect(generateSkillPlugin(root, true)).toEqual([`generated symlink: ${file}`]);
   expect(() => generateSkillPlugin(root, false)).toThrow("refusing generated symlink");
+});
+
+test("a user-only skill also carries the Codex implicit-invocation policy, and losing the flag retires it", () => {
+  const root = repo(), name = PUBLIC_SKILLS[0]!, source = join(root, "skills", name, "SKILL.md");
+  const manifest = join(root, "plugins/tap/skills", name, "agents/openai.yaml");
+  writeFileSync(source, `---\nname: ${name}\ndescription: user-only fixture\ndisable-model-invocation: true\n---\n\nBody.\n`);
+  expect(generateSkillPlugin(root, true)).toEqual([`stale plugin skill: ${name}`, `stale plugin agents/openai.yaml: ${name}`]);
+  expect(generateSkillPlugin(root, false)).toEqual([]);
+  expect(readFileSync(manifest, "utf8")).toBe("policy:\n  allow_implicit_invocation: false\n");
+  expect(readFileSync(join(root, "plugins/tap/skills", name, "SKILL.md"), "utf8")).toContain("disable-model-invocation: true");
+  writeFileSync(source, `---\nname: ${name}\ndescription: model-invocable again\n---\n\nBody.\n`);
+  expect(generateSkillPlugin(root, true)).toEqual([`stale plugin skill: ${name}`, `stale plugin agents/openai.yaml: ${name}`]);
+  expect(generateSkillPlugin(root, false)).toEqual([]);
+  expect(existsSync(manifest)).toBe(false);
+});
+
+test("a hand-written Codex manifest on a model-invocable skill is reported", () => {
+  const root = repo(), name = PUBLIC_SKILLS[0]!;
+  mkdirSync(join(root, "plugins/tap/skills", name, "agents"));
+  writeFileSync(join(root, "plugins/tap/skills", name, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
+  expect(generateSkillPlugin(root, true)).toEqual([`stale plugin agents/openai.yaml: ${name}`]);
 });

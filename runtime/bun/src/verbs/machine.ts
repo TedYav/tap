@@ -1,4 +1,5 @@
 import { keybindingInstalled, uninstallKeybinding } from "./keybinding";
+import { defaultsInstalled, uninstallDefaults } from "./tmux-defaults";
 import { closeSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -793,14 +794,31 @@ export function installSourceAdvice(repo: string, preserved: boolean): string {
 
 export type UninstallOptions = { dryRun?: boolean; yes?: boolean; history?: "keep" | "archive" | "delete" };
 
-/** The tmux lookup key lives outside the install manifest, so it is removed (or previewed) even when the manifest has nothing else. */
+/** The tmux lookup key and the tmux defaults live outside the install manifest, so they are removed (or previewed) even when the manifest has nothing else. */
 async function uninstallKeybindingOnly(ask: Prompt, options: UninstallOptions): Promise<number> {
-  if (!keybindingInstalled()) return 0;
-  if (options.dryRun) { for (const line of uninstallKeybinding(false).lines) console.log(line); return 0; }
-  if (!options.yes && !(await confirm(ask, "Remove the tmux lookup key (tap keybinding)?", "n"))) { console.log("Uninstall cancelled; next: tap keybinding remove when ready."); return 0; }
-  const outcome = uninstallKeybinding(true);
-  for (const line of outcome.lines) console.log(line);
-  return outcome.preserved ? 2 : 0;
+  let code = 0;
+  if (keybindingInstalled()) {
+    if (options.dryRun) { for (const line of uninstallKeybinding(false).lines) console.log(line); }
+    else if (!options.yes && !(await confirm(ask, "Remove the tmux lookup key (tap keybinding)?", "n"))) { console.log("Uninstall cancelled; next: tap keybinding remove when ready."); }
+    else {
+      const outcome = uninstallKeybinding(true);
+      for (const line of outcome.lines) console.log(line);
+      if (outcome.preserved) { console.log("Uninstall stopped before removing TAP itself, so the tmux binding does not point at a deleted executable. next: fix the problem above (or restart tmux), then rerun tap uninstall"); return 2; }
+    }
+  }
+  if (defaultsInstalled()) {
+    if (options.dryRun) { for (const line of uninstallDefaults(false).lines) console.log(line); return code; }
+    if (!options.yes && !(await confirm(ask, "Remove the tmux defaults (tap tmux-defaults)?", "n"))) { console.log("Uninstall cancelled; next: tap tmux-defaults remove when ready."); return code; }
+    const outcome = uninstallDefaults(true);
+    for (const line of outcome.lines) console.log(line);
+    if (outcome.preserved) console.log(uninstallDefaultsPreservedNote());
+  }
+  return code;
+}
+
+/** Unlike the keybinding, unreadable defaults strand nothing that points at TAP's executable: uninstall continues past them. */
+function uninstallDefaultsPreservedNote(): string {
+  return "TAP's tmux defaults could not be removed (their files cannot be read); they are inert once TAP is gone — tmux's source-file -q ignores an unreadable file — so uninstall continues. next: when readable, tap tmux-defaults remove, or delete the file and its marked source line yourself";
 }
 
 export async function uninstallMachine(ask: Prompt, options: UninstallOptions = {}): Promise<number> {
@@ -825,6 +843,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     const gone = new Set([...plan].filter(([, text]) => text === null).map(([path]) => path));
     for (const line of leftovers(gone, false)) console.log(line);
     for (const line of uninstallKeybinding(false).lines) console.log(line);
+    for (const line of uninstallDefaults(false).lines) console.log(line);
     const choice = options.history ?? "keep";
     console.log(`History (${choice}${options.history ? "" : ", the default"}):\n${history.map(p=>`  ${p}`).join("\n")}`);
     console.log(`next: tap uninstall --yes${options.history ? ` --history ${choice}` : ""}`);
@@ -834,6 +853,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     console.log("Recorded removal list:");
     for (const entry of manifest.entries) console.log(entry.kind === "migration" ? `  migration history (no removal): ${entry.path} -> ${entry.destination}` : `  ${entry.kind}: ${entry.path}${entry.event ? ` (${entry.event})` : ""}`);
     if (keybindingInstalled()) console.log("  tmux lookup key: TAP's own tmux conf, its source line in your tmux.conf, and its live binding (tap keybinding)");
+    if (defaultsInstalled()) console.log("  tmux defaults: TAP's tmux-defaults.conf and its marked source line in your tmux.conf (tap tmux-defaults)");
     console.log("Changed files/targets are preserved. Dependencies and unrelated plugins stay. Recorded TAP plugin registrations are removed only while their source matches.");
     if (!(await confirm(ask, "Remove these TAP artifacts?", "n"))) { console.log("Uninstall cancelled; next: tap uninstall when ready."); return 0; }
   }
@@ -841,6 +861,9 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
   const keybinding = uninstallKeybinding(true);
   for (const line of keybinding.lines) console.log(line);
   if (keybinding.preserved) { console.log("Uninstall stopped before removing TAP itself, so the tmux binding does not point at a deleted executable. next: fix the problem above (or restart tmux), then rerun tap uninstall"); return 2; }
+  const defaults = uninstallDefaults(true);
+  for (const line of defaults.lines) console.log(line);
+  if (defaults.preserved) console.log(uninstallDefaultsPreservedNote());
   const remaining: Entry[] = [], gone = new Set<string>();
   let retained = false; // a marketplace listing that still names the clone
   // The run may already have removed the tap launcher, so recovery names the clone's own executable.

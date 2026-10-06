@@ -11,7 +11,7 @@ ask your agent to load the named skill if its harness uses another spelling.
 
 | Skill | What you ask the agent to do |
 |---|---|
-| [tap:help](../skills/help/SKILL.md) | Find documentation or help with a particular issue. For a new team, get two harnesses exchanging a real reply, then choose the next useful capability. |
+| [tap:help](../skills/help/SKILL.md) | Get started, or diagnose something that seems off. Getting started gets two harnesses exchanging a real reply, then chooses the next useful capability. Diagnosis starts from your symptom (mail not arriving, a stuck seat, copy or Shift+Enter not working, odd colors), runs checks that leave your setup alone, and changes nothing without your yes. Type it as `/tap:help`; bare `/help` is the harness's own help. |
 | [tap:config-wizard](../skills/config-wizard/SKILL.md) | Help you configure TAP, including advanced settings, presets, permissions and notifications. |
 | [tap:lead](../skills/lead/SKILL.md) | Lead the team: choose a strategy, staff the work and ensure it gets an independent review. |
 | [tap:self](../skills/self/SKILL.md) | Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal, loop and clear support depends on the harness; the skill handles required handoffs. |
@@ -30,9 +30,13 @@ For larger teams, you can also ask for these roles or workflows:
 | [tap:conduct](../skills/conduct/SKILL.md) | Have an agent assist a leader with staffing, dispatch, review routing and escalation under the leader's charter. |
 | [tap:context](../skills/context/SKILL.md) | Ask an agent to choose the least disruptive context recovery at a safe task boundary: leave alone, compact, clear and rebrief, or restart. It preserves assignments and writer custody. |
 
-Agents may select these skills themselves when their assignment calls for them.
-This split tells you which skills are useful to ask for, not who is allowed to
-load a file.
+Agents may select these skills themselves when their assignment calls for them,
+except `tap:help`, which is meant for you to start. Claude Code and Codex hide it
+from agents entirely, so its onboarding and diagnosis text loads only when you
+ask. Some other harnesses ignore that setting and still list its one-line
+description to agents. Agents use `tap help` and `tap:tap`
+instead. This split tells you which skills are useful to ask for, not who is
+allowed to load a file.
 
 ## Run a shell command directly
 
@@ -43,8 +47,9 @@ decisions.
 
 ## Skills an agent invokes
 
-You normally describe the work and let the agent use these helpers. Some are
-deliberately absent from the user slash menu.
+You normally describe the work and let the agent use these helpers. `send`,
+`assign`, `reply`, `outstanding` and `team` are deliberately absent from the
+user slash menu; the rest also work when you type them.
 
 | Skill | Agent's use |
 |---|---|

@@ -72,7 +72,11 @@ export function recoveryCli(argv: string[]): number {
     if (process.env.TAP_RECOVERY_RUN) {
       const run = readRun(process.env.TAP_RECOVERY_RUN);
       if (run.mode !== mode || run.target.paneId !== paneId || !canAct(run)) throw new Error("parent recovery does not authorize nudge");
-      updateRun(run.id, current => { current.nudgeExpected = expected; });
+      // A run `tap nudge` opened for its ladder (tap-xe42x) learns the staged payload here.
+      updateRun(run.id, current => {
+        current.nudgeExpected = expected;
+        if (!current.payloads.some(ref => ref.id === payloadId && ref.home === home)) current.payloads.push({ home, id: payloadId });
+      });
       console.log(run.id); return 0;
     }
     const run = createRun(target, recoveryPolicy("aggressive", mode).mode,

@@ -15,19 +15,12 @@
 
 ### Nudge recovery policy
 
-`tap nudge <peer|team/peer> [--pane <target>] [--aggressiveness report-only|cautious|aggressive]`
-reads `[recovery] aggressiveness` from the launcher's `config.toml`. An explicit
-option takes precedence. With no setting, nudge now uses `aggressive` (changed from `cautious`).
-The two acting modes presently share the same deterministic sentinel-only behavior. It reports the effective mode and whether it
-came from the option, configuration, or default. Invalid selected configuration
-refuses before pane effects; an explicit valid option can override it.
-
-`report-only` captures a live target pane and returns success without pane keys
-or a recovery hold, including when a shell or unrecognized process is present.
-Both acting modes retain nudge's complete-visible-sentinel ceiling: existing
-harness, canonical recipient, pane identity, and submission-verification checks
-still apply. Broader UI interventions are detective's scope; accepting the shared
-policy here does not enable them or automatic recovery.
+`tap nudge` reads `[recovery] aggressiveness` from the launcher's `config.toml`
+(default `aggressive`). `report-only` makes every nudge a dry run: it captures the
+pane and presses nothing, with no recovery hold. `cautious` and `aggressive` both
+run the unstick ladder; `--aggressiveness` is retired (use `--dry-run`). The ladder,
+its recovery-run evidence and the doorbell are specified in
+[nudge](../delivery/nudge.md). Broader UI interventions remain detective's scope.
 
 
 ### Detective recovery and post-mortem evidence

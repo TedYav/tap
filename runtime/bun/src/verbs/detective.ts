@@ -137,7 +137,7 @@ async function action(ctx: ResolvedContext, options: Options): Promise<number> {
     });
     atomicWrite(join(runDirectory(run.id), "submit-request.json"), JSON.stringify({ reason, payload: found, at: new Date().toISOString() }));
     const beforeAttempts = new Set(phaseRows(found.home, found.id).map(p => p.attempt));
-    const result = await tapCommand(ctx, ["nudge", `${run.target.team}/${run.target.handle}`, "--aggressiveness", run.mode],
+    const result = await tapCommand(ctx, ["nudge", `${run.target.team}/${run.target.handle}`],
       { env: { TAP_RECOVERY_RUN: run.id }, timeoutMs: Math.max(1, run.deadline - Date.now()) });
     const phases = phaseRows(found.home, found.id).filter(p => !beforeAttempts.has(p.attempt) && p.recovery_id === run.id);
     const verified = phases.some(p => p.phase === "verify-result" && p.result === "verified" && p.enter_count > 0);

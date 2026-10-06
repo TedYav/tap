@@ -62,9 +62,9 @@ seat, `/resume` the source conversation, then `/fork` it".
 - Launch's collision chooser lists `[f]` in every menu. It is enabled only
   when this verb can fork the incumbent: a roster seat on a forkable harness
   with a stored conversation id and no stored conversation-selecting flag.
-  Otherwise it is greyed with the reason (not a TAP seat, not supported by this
-  harness, stored `<flag>` conflicts with a fork, no stored conversation to
-  fork), or
+  Otherwise it is greyed with the reason (not a TAP seat, harness cannot fork,
+  uses `<flag>`, no saved chat to fork; each at most 21 characters so the row
+  fits 50 columns), or
   shows `(unavailable: <reason>)` without colour, and pressing it re-shows the
   menu. Enabled, it asks for the name and runs `tap session fork <seat> <name>`,
   so this page's refusals still apply. The menu's source (row identity and

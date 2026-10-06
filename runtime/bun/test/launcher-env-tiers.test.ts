@@ -66,7 +66,8 @@ test("policy overrides a tier-1 cosmetic, which is parent-honouring by default",
 // suite-env-hermeticity's mutation boundary observes.
 test("with no env and no policy, the claude cosmetics carry the incumbent fallbacks", () => {
   const got = applyLaunchEnv({ argv: ["claude"], env: {} }, seat, machine("version=3\n"));
-  expect(got.env.CLAUDE_CODE_SCROLL_SPEED).toBe("6");
+  expect(got.env.CLAUDE_CODE_SCROLL_SPEED).toBe("4");
+  expect(got.env.CLAUDE_CODE_NO_FLICKER).toBe("1");
   expect(got.env.CLAUDE_CODE_TMUX_TRUECOLOR).toBe("1");
 });
 

@@ -29,13 +29,35 @@ TAP-owned options may appear between the harness (or positional preset) and the 
 
 **Retired tuning spellings.** `--teams` on `launch`, and `--model` and `--teams` on `resume` and
 `restart`, no longer parse. Agent teams is ordinary environment now: spell it in a preset, in
-`--env`, or in `[harness.claude.env]`. A model belongs to the seat, chosen once at launch and
-replayed by every later resume. The launcher's argparse rejects these spellings with exit 2. The
+`--env`, or in `[harness.claude.env]`. Model and effort are chosen at launch, then belong to the
+harness session; change them inside the harness (`/model`, `/effort`) or relaunch the seat with a
+`--` tail. The launcher's argparse rejects these spellings with exit 2. The
 launch passthrough splitter (`launcher/overrides.ts`) still claims `--teams` as a TAP flag, so it is
 refused rather than forwarded to claude's own CLI. The native launch port (`launcher/new.ts`)
 refuses them with the launcher's own argparse exit 2; `launcher/resume-all.ts` keeps its named
 `retired_flag` refusal for callers that reach it directly. Tuning typed on a launch that DELEGATES to resume refuses
 `launch_tuning_not_resumable` instead — a different class, because there the flag is still live, just not applicable to the path it took.
+
+**What a resume re-passes (tap-j5k1b).** A resume (`session resume`, `restart`, `resume --all`,
+`seat up`, the crew-held revive, and `session relaunch`) does not re-pass a tuning axis that the
+harness restores from its own session, so an in-session `/model` or `/effort` survives. The axis
+table is `NATIVE_RESUME_RESTORES` in `launcher/resume-tuning.ts`, set from live resume probes:
+claude restores model, codex (the `codex resume` TUI path) restores model and effort, and opencode
+restores model. For those axes the resume drops the stored launch value from every replayed source:
+the record's model, stored passthrough, `[harness.*]` params, and the stored `--` tail, in every
+spelling (`--flag value`, `--flag=value`, `-m`, Codex `-c`/`--config` assignments). It stops at a
+literal `--` and leaves every other flag in place. Claude does not restore effort; a resume passes
+the newest assistant turn's observed `effort` from the bound transcript (the roster's reader) and
+replays the recorded effort when nothing was observed. Cursor and agy restore neither axis and
+expose no observation, so their resume replays the stored launch model and effort: an in-session
+change there reverts on resume. Tokens typed on the current invocation (a relaunch's `--` tail)
+always win and are never dropped. One edge follows from observation: a relaunch that types an
+effort and dies before its first assistant turn resumes at the older observed effort. Stored rows
+keep their launch tuning; `launch_tuning` keeps the launched value for an axis a resume left to the
+harness. New launches and forks still apply presets and launch tuning in full. Environment is
+different: harnesses do not keep it, so every resume re-passes the seat's stored `harness_env` and
+`harness_unset_env` (the latest a launch or relaunch wrote) over machine policy and over any
+conflicting ambient value; a fork inherits its source's latest env.
 
 Presets are a durable-session launch input, not a second lifecycle system. Their source is `${XDG_CONFIG_HOME:-$HOME/.config}/tap/config.toml`, selected from an absolute `XDG_CONFIG_HOME` or an absolute `HOME`; there is no repo-local overlay, CLI path option, include, inheritance, or merge. The checked-in reference is `skills/tap/config/config.v3.toml`; the machine file is a copy (`cp` that reference over `config.toml` after backing up the previous file). The reference is gate-parsed by the real parser. `config.toml` is authoritative per SECTION: `[harness.*]` reads from it, and `[presets]` reads from it when defined and non-empty there, else falls back to `${XDG_CONFIG_HOME:-$HOME/.config}/tap/presets.toml` for one release with a deprecation notice. Fallback is never per file: an operator who seeds a `config.toml` holding only a harness table — or a vacant `[presets]` header they intend to fill later — must not thereby empty their preset catalog.
 

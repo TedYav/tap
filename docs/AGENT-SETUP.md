@@ -285,7 +285,8 @@ clone. Record the new ancestry line. A refusal stops setup; `STALE` or
 
 Ask which project to use. Follow [the first-team walkthrough](GETTING-STARTED.md):
 the human runs `tap init`, then `tap launch claude` and `tap launch codex`,
-and asks one agent to talk to the other. Launch opens each seat from a
+and asks one agent to talk to the other. One of the two can be this
+conversation, relaunched inside TAP as described below. Launch opens each seat from a
 foreground terminal; detach with **Ctrl-b**, then **d** between launches. Success is the other pane's
 actual answer shown in the asking pane; a roster entry, queued receipt or
 sentinel is not. The walkthrough owns enrollment. Use fresh, agreed seat names if conversations
@@ -306,7 +307,95 @@ delivery. Enabled previews derive from the first non-empty body line, bounded
 by `preview_chars` (default 120 UTF-8 bytes); `--preview` overrides that text.
 Previews never replace reading the payload.
 
-## 4. Report to the human
+### Relaunch yourself inside TAP
+
+The installation should end with the human working inside TAP, and this
+conversation can come along when it runs in Claude Code or Codex. This runbook
+documents the conversation id and resume steps for those two harnesses only;
+from any other harness, run the round trip above with two fresh seats. After
+`tap init`, offer to continue there; if the human declines, use two fresh seats.
+
+The harness's resume picker lists conversations from the directory the seat
+starts in. This works when you, the installing agent, run in the project
+directory. If you run elsewhere, say so and use two fresh seats instead.
+
+1. Before the human exits you, tell them your harness, your conversation's id
+   (`echo $CLAUDE_CODE_SESSION_ID` in Claude Code, `echo $CODEX_THREAD_ID` in
+   Codex) and a phrase from this conversation to find it in the picker. Write
+   the id down in your reply; the identity check below compares against it. If
+   the variable is empty, say so: the relaunch still works, but nothing can
+   later confirm which conversation TAP recorded.
+2. The human exits you with `/exit`, then, from the project directory, launches
+   a seat for your harness with a fresh name, for example
+   `tap launch claude installer` or `tap launch codex installer`.
+3. In that seat the human runs the harness's own `/resume` and picks this
+   conversation. Do not use a "most recent" shortcut such as `codex resume --last`:
+   the seat's new empty conversation is the newest one.
+4. Back in this conversation, run `tap in`, then `tap whoami`. The handle must
+   be the seat's name. Run `tap in` even when the SessionStart line already
+   named the seat; for Codex it is required, because Codex runs TAP's hook only
+   after the human has trusted it, and nobody has verified that its picker
+   resume fires it. If you cannot run it, the human types `!tap in`.
+
+`tap whoami` proves the handle, not the conversation. A seat that `tap launch`
+started can expect the new conversation it created (Claude Code seats always
+do), so after a resume `tap in` may print `Captured harness identity was not
+accepted` and a warning that the observed session id `did not match launcher
+expectation`. Messaging works, but
+a later `tap session resume` would not reopen this conversation. Only for that
+exact warning, show it to the human and ask before running:
+
+```bash
+tap in <seat> --accept-observed-identity
+```
+
+Report its result line to the human. Success reads `retired the launcher
+identity expectation ... accepting observed <id>`; the `<id>` must equal the id
+you recorded before exiting. Any other result is a failure: `changed nothing`, a warning that
+remains, a different id, or no id at all. Then stop and report it; do not
+retry with a guessed id. For any other quarantine warning, stop and report it
+without the flag.
+
+Then, in every case, verify the binding; this step is required whether or not
+a warning appeared. A missing warning does not prove TAP recorded this
+conversation: without a reported id, `tap in` keeps the seat's earlier record.
+Read the seat's recorded id from the project directory before telling the human
+that a later `tap session resume` reopens this conversation:
+
+```bash
+jq -r '.seats["<seat>"].harness_session_id // empty' .tap/team-registry.json
+```
+
+It must equal the id you recorded before exiting. If it is empty or different,
+or you had no id, report adoption as unverified: messaging works, but a later
+TAP resume may open another conversation. Do not apply the flag without its
+warning, and never supply a guessed id.
+
+Then the human launches the other harness as a fresh seat, and this
+conversation asks it a question. The fresh seat's actual reply, shown here, is
+the round trip. Two adopted conversations do not prove a fresh launch.
+
+## 4. Check the terminal from inside TAP
+
+Run these checks only from inside a TAP seat: this conversation after the
+relaunch, or one of the fresh seats. They read; any fix waits for a yes.
+
+`/tap:help` is the human's command; agents never invoke it. Run
+`tap help skill help`, which prints the path of the help skill's `SKILL.md`, and
+read `references/diagnose.md` beside it. Follow its tmux section and its
+interactive checks: truecolor, mouse wheel scrolling, Shift+Enter, and
+select-to-copy. Ask the human to try each interactive check and tell you what
+happened.
+
+The one setup change you offer is TAP's managed tmux defaults. Show
+`tap tmux-defaults status --json`; if they are not installed, show the human
+`tap tmux-defaults install --dry-run` and install only after a yes. Never edit
+the human's shell startup files, terminal preferences or own tmux.conf lines,
+and do not run `/terminal-setup` for them. When a check still fails, report it
+and point to [TAP and tmux](GETTING-STARTED.md#tap-and-tmux), which lists the
+Shift+Enter and scrollback options the human may apply themselves.
+
+## 5. Report to the human
 
 Report:
 
@@ -316,7 +405,10 @@ Report:
 - Active config path, permission choices, and the presets and aliases the human
   chose, if any. Name any inactive candidate config separately.
 - Whether `tap help`, project initialization and the observed
-  round trip passed.
+  round trip passed, and whether this conversation was relaunched inside TAP,
+  with its accepted conversation id when the identity step ran.
+- Each terminal check's result, any change the human accepted, and any check
+  still failing.
 - Any refusal or unfinished step, with its exact message.
 - The verified sender and recipient seat names, and the next command:
   `tap attach <verified-sender-seat>`, substituting the actual sender’s name.

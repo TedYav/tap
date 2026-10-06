@@ -1350,12 +1350,20 @@ if [ "$SETUP" = 1 ] || { [ "$SYNC" = 0 ] && [ "${TAP_INSTALL_SYNC_REEXEC:-0}" !=
       [Yy]*) bash "$REPO/bin/tap" keybinding install --tap "$BIN_DIR/tap" || echo "install: keybinding not installed; retry: tap keybinding install" >&2 ;;
       *) echo "install: skipped; later: tap keybinding install" ;;
     esac
+    # Same first-run-only contract: TAP-managed defaults file, one marked source line BEFORE the user's own lines so their settings win; removable with `tap tmux-defaults remove`.
+    printf 'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] '
+    read -r _td_answer || _td_answer=n
+    case "${_td_answer:-Y}" in
+      [Yy]*) bash "$REPO/bin/tap" tmux-defaults install || echo "install: tmux defaults not installed; retry: tap tmux-defaults install" >&2 ;;
+      *) echo "install: skipped; later: tap tmux-defaults install" ;;
+    esac
   fi
 else
   if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "install: interactive machine setup skipped (no terminal). next: tap setup --machine --answers <file> (see docs/EASY-MODE.md); use --dry-run to preview."
     echo "install: presets are optional; bare launch: tap session launch <harness> <name>"
     echo "install: optional tmux lookup key (prefix @ fuzzy-picks a teammate): tap keybinding install"
+    echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard): tap tmux-defaults install"
   else
     echo "install: next: tap setup --machine (configure this machine interactively)"
   fi

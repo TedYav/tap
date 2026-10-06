@@ -1,6 +1,6 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { aliasBody, PUBLIC_SKILLS } from "./skill-policy";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { aliasBody, CODEX_AGENTS_FILE, codexAgentsBody, PUBLIC_SKILLS } from "./skill-policy";
 
 /** The plugin carries discovery metadata; canonical instructions stay beside the CLI. */
 export function generateSkillPlugin(repo: string, check = true): string[] {
@@ -11,18 +11,27 @@ export function generateSkillPlugin(repo: string, check = true): string[] {
   }
   if (differences.length && !check) throw new Error(`${differences.join("; ")}; remove retired generated entries before regenerating`);
   for (const name of PUBLIC_SKILLS) {
-    const file = join(root, name, "SKILL.md");
-    const links = [root, join(root, name), file].filter(path => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink());
-    if (links.length) {
-      if (!check) throw new Error(`refusing generated symlink: ${links[0]}`);
-      differences.push(`generated symlink: ${links[0]}`); continue;
-    }
-    const bytes = aliasBody(name, name, readFileSync(join(repo, "skills", name, "SKILL.md"), "utf8"));
-    if (existsSync(file) && readFileSync(file, "utf8") === bytes) continue;
-    if (check) differences.push(`stale plugin skill: ${name}`);
-    else {
-      mkdirSync(join(root, name), { recursive: true });
-      writeFileSync(file, bytes);
+    const source = readFileSync(join(repo, "skills", name, "SKILL.md"), "utf8");
+    // Each generated file and its expected bytes; undefined means the file must be absent.
+    const files: [string, string | undefined][] = [
+      ["SKILL.md", aliasBody(name, name, source)],
+      [CODEX_AGENTS_FILE, codexAgentsBody(source)],
+    ];
+    for (const [relative, bytes] of files) {
+      const file = join(root, name, relative);
+      const links = [root, join(root, name), dirname(file), file].filter(path => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink());
+      if (links.length) {
+        if (!check) throw new Error(`refusing generated symlink: ${links[0]}`);
+        differences.push(`generated symlink: ${links[0]}`); continue;
+      }
+      const current = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+      if (current === bytes) continue;
+      if (check) differences.push(relative === "SKILL.md" ? `stale plugin skill: ${name}` : `stale plugin ${relative}: ${name}`);
+      else if (bytes === undefined) rmSync(file);
+      else {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, bytes);
+      }
     }
   }
   return differences;

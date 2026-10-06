@@ -155,6 +155,9 @@ function parseV023(normalized: string): StuckSentinelVerdict {
   let slot: string | null;
   [slot, i] = take(i, /^v[0-9]+\.[0-9]+$/);
   if (slot === null) return refuse("slot 1 is not a version token");
+  // A nudge doorbell (tap-xe42x, nudge-wire.ts) names no payload, so there is
+  // no id to re-key on; Enter-on-shape callers recognize it by its own parser.
+  if (tokens[i] === "nudge") return refuse("a nudge doorbell names no payload id");
   [slot, i] = take(i, /^(?:ask|note)$/);
   if (slot === null) return refuse("slot 2 is not ask|note");
 

@@ -90,6 +90,8 @@ it, and a later ordinary reply completes the thread.
 
 A v0.23 sentinel is `[[TAP v0.23 ask <id>]]` or
 `[[TAP v0.23 note <team>/<id>]]` (`skills/tap/protocol/delivery/sentinel-the-wire-poke-zero-authority-part-01.md`).
+The id-less `[[TAP v0.23 nudge]]` doorbell from `tap nudge` is neither: nothing to
+read or settle and no new task; continue your work and check `tap poll`.
 Read the body before acting with `tap read <id>`, including digest ids and
 `<team>/<id>`. The prefix names the sender's bus; keep it for both `read` and
 `reply`. A bare id resolves on the local bus first, so stripping the prefix can

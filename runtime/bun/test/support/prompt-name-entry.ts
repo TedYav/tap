@@ -17,10 +17,10 @@ import { exitKeepingTerminal, promptChoice, promptName } from "../../src/launche
 const [mode, question = "", prefix = "", suffix = ""] = process.argv.slice(2);
 if (mode === "choice" || mode === "choice-under-progress") {
   const ask = () => promptChoice("session", "'demo/opus' (cursor): live", [
-    ["r", "resume", "Reattach to the existing session"],
-    ["n", "new", "Start another session with a suffix"],
-    ["f", "fork", "not supported by this harness", true],
-    ["k", "kill", "Stop the session and start over"],
+    ["r", "resume", "Reattach to the running session"],
+    ["n", "new", "Start a sibling with a suffixed name"],
+    ["f", "fork", "Harness cannot fork", true],
+    ["k", "kill", "Stop it and start fresh"],
     ["q", "quit", "Leave everything unchanged"],
   ], "r");
   let key = "";

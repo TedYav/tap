@@ -21,7 +21,7 @@ const KEY = /^(?:[CM]-)?[A-Za-z0-9@!%&*+,./=?^_-]$|^F(?:[1-9]|1[0-2])$/;
 const UNSAFE_PATH = /['"\\$`#%\n\r]/;
 
 /** XDG says a relative XDG_CONFIG_HOME is invalid and ignored; a missing or relative HOME leaves nothing safe to write to. */
-function configRoots(env: NodeJS.ProcessEnv): { home: string; config: string } {
+export function configRoots(env: NodeJS.ProcessEnv): { home: string; config: string } {
   const home = env.HOME ?? "";
   if (!isAbsolute(home)) throw new TapError(1, "home_invalid", "set HOME to an absolute path and retry", "HOME is missing or not absolute, so no tmux config location can be chosen");
   return { home, config: env.XDG_CONFIG_HOME && isAbsolute(env.XDG_CONFIG_HOME) ? env.XDG_CONFIG_HOME : join(home, ".config") };
@@ -189,7 +189,7 @@ function exactTapOf(line: string): string | undefined {
 }
 
 /** Dotfiles are often symlinks into a repo: write through the link and keep the file's mode. */
-function writeFileAtomic(path: string, text: string): void {
+export function writeFileAtomic(path: string, text: string): void {
   let target = path, mode = 0o644;
   try { target = realpathSync(path); mode = statSync(target).mode & 0o777; } catch { /* new file */ }
   atomicWrite(target, text, mode);
@@ -199,7 +199,7 @@ function writeFileAtomic(path: string, text: string): void {
  * null means the file is absent. A file that exists but cannot be read (mode 000, a directory, a dangling
  * symlink) is neither empty nor absent: a writer must refuse, because replacing it would destroy it.
  */
-function readIf(path: string, strict = false): string | null {
+export function readIf(path: string, strict = false): string | null {
   try { return readFileSync(path, "utf8"); }
   catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

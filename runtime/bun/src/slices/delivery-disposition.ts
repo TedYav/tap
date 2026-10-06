@@ -9,14 +9,6 @@ export interface DeliveryFacts {
   urgent: boolean;
   noSpool: boolean;
   recipientBound: boolean;
-  /**
-   * The caller carries explicit recovery-interrupt authority (`tap nudge
-   * --interrupt`'s internal send option, tap-pkh9c): urgent delivery to an
-   * auto-permission seat may run the U4 interrupt instead of downgrading.
-   * Never settable from public send argv, and never rebuilt on a spool drain —
-   * a parked recovery note drains as an ordinary note.
-   */
-  recoveryInterrupt?: boolean;
 }
 export interface DeliveryDisposition {
   action: "inject" | "park";

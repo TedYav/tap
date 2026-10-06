@@ -101,7 +101,9 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
     if (options.workdir !== undefined && expectedResume !== null
       && (resolvedResumeIdentity(record, process.env) !== expectedResume
         || (record.harness !== "claude" && record.harness !== "codex" && !recordHasResumeArtifact(record, process.env)))) return refuseUnresumable();
-    const built = launchInvocation("resume", record, new Notices(diagnostic), { prompt: options.message, resume: expectedResume });
+    // The `--` tail typed on this relaunch is this invocation's own tuning: it wins over anything the resume would drop.
+    const built = launchInvocation("resume", record, new Notices(diagnostic), { prompt: options.message, resume: expectedResume,
+      typedTail: options.overrides?.argv?.length ?? 0 });
     if (options.workdir !== undefined && expectedResume !== null && record.harness === "codex"
       && !codexSessionExists(expectedResume, codexChildStoreEnv(process.env, built))) return refuseUnresumable();
     const nonce = randomUUID(), childEnv: Record<string, string> = { ...built.env, TAP_CLEAR_ID: nonce, TAP_LAUNCH_ROOT: scope.root };

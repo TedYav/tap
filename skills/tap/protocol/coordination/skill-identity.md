@@ -69,6 +69,20 @@ menu through their unchanged `user-invocable: false` metadata. Native fixture
 inspection proves their menu absence; model invocation has not been exercised
 by that fixture. No equivalent menu-only control is established for flat hosts.
 
+`help` is the one user-only skill: only the person starts it. Its source carries
+`disable-model-invocation: true`, which the plugin entrypoint and flat wrappers
+copy. From that same flag the generator writes the plugin's
+`agents/openai.yaml` with `policy.allow_implicit_invocation: false`, the Codex
+control; Codex ignores the frontmatter flag. Observed 2026-10-06: Claude Code
+2.1.291 and Codex 0.160.1 leave a skill so marked out of the model's skill
+listing, and OpenCode 1.18.34 still lists it. Hermes, Antigravity and
+Cursor-agent are unverified. Fallback wrappers kept after a failed native
+registration carry the frontmatter flag but no `agents/openai.yaml`, so Codex
+lists `tap-help` until registration succeeds. The description stays short
+because some hosts still show it to the model. User-only also blocks agent and
+sibling invocation, so a flow that needs the diagnosis checks reads
+`references/diagnose.md` beside the path `tap help skill help` prints.
+
 The policy table in `runtime/bun/src/skill-policy.ts` owns the public inventory.
 From `runtime/bun`, run `bun run skills:generate` after changing skill metadata;
 `bun run skills:check` checks the committed plugin entrypoints.

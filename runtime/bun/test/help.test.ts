@@ -386,13 +386,19 @@ describe("accepted rows come from accepting cases", () => {
     expect(init).toContain("\n    - on a fresh machine, ~/.tap/global-registry.json");
   });
 
-  test("nudge page explains --aggressiveness, its default and its stderr echo", () => {
+  test("nudge page documents the ladder, interrupt rows, wire forms and tombstones (tap-xe42x)", () => {
     const nudge = lookupHelp(["nudge"]).stdout.replace(/\s+/g, " ");
-    expect(nudge).toContain("--aggressiveness (first form only)");
-    expect(nudge).toContain("cautious and aggressive both act, with the same ceiling");
-    expect(nudge).not.toContain("cautious stops on ambiguous recovery");
-    expect(nudge).toContain("[recovery] aggressiveness in the machine config, else aggressive");
-    expect(nudge).toContain("tap nudge: aggressiveness=<mode> source=<override|config|default>");
+    expect(nudge).toContain("no rung ever sends C-c");
+    expect(nudge).toContain("opencode: Escape Escape");
+    expect(nudge).toContain("Enter at +5000 ms, then Enter +200 ms later");
+    expect(nudge).toContain("hermes: the bare doorbell's submission is the interrupt");
+    expect(nudge).toContain("hermes queues the doorbell behind /queue");
+    expect(nudge).toContain("[[TAP v0.23 nudge]]");
+    expect(nudge).toContain("--pane repairs a pane that no registered seat matches: rungs 1 and 2 only");
+    expect(nudge).toContain("tap nudge: aggressiveness=<mode> source=<config|default>");
+    for (const retired of ["--interrupt (now the default)", "--reason (use --message)", "--aggressiveness (use --dry-run)", "--from (nudges have no sender)"]) {
+      expect(nudge).toContain(retired);
+    }
   });
 
   test("the overview names the message-recovery verbs", () => {
@@ -832,7 +838,7 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
     expect(JSON.stringify(helpCatalogIndex(), null, 2) + "\n").toBe(frozen);
 
     const index = JSON.parse(frozen) as ReturnType<typeof helpCatalogIndex>;
-    expect(index.filter((row) => row.dedicated)).toHaveLength(89);
+    expect(index.filter((row) => row.dedicated)).toHaveLength(90);
     expect(index.filter((row) => row.tombstone)).toHaveLength(2);
     expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(46);
 

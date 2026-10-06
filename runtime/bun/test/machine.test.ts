@@ -699,7 +699,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output
@@ -747,7 +747,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output

@@ -101,8 +101,12 @@ for (const keepServer of [true, false]) test.each(["codex", "claude"] as const)(
   expect(tm(f.env, f.socketPath, "list-sessions", "-F", "#{session_name}:#{session_attached}").stdout.split("\n")).toContain("team/seat:0");
   expect(tm(f.env, f.defaultPath, "has-session", "-t", "=team/seat").status).not.toBe(0);
   const argv = readFileSync(join(f.root, "harness.argv"), "utf8").trimEnd().split("\n");
-  expect(argv.slice(0, passthrough.length)).toEqual(passthrough);
-  expect(argv).toContain(native); expect(argv).toContain("stored-model");
+  // tap-j5k1b: the row keeps its launch tuning, but a resume leaves what the harness restores natively
+  // (codex model+effort, claude model) to the harness; every other stored flag replays.
+  const replayed = harness === "codex" ? ["-c", 'service_tier="fast"'] : passthrough;
+  expect(argv.slice(0, replayed.length)).toEqual(replayed);
+  expect(argv).toContain(native); expect(argv).not.toContain("stored-model");
+  expect(argv.join(" ")).not.toContain("model_reasoning_effort");
   const resumeAt = argv.indexOf(harness === "codex" ? "resume" : "--resume");
   expect(resumeAt).toBeGreaterThanOrEqual(0);
   expect(argv.filter(arg => arg === native)).toHaveLength(1);
@@ -250,9 +254,15 @@ test("public CLI: session resume --dry-run on a live session with no matching ha
   const dry = f.run("session", "resume", "seat", "--dry-run", "--json");
   expect(dry.status).toBe(2);
   expect(dry.stderr).toBe("");
-  expect(JSON.parse(dry.stdout)).toMatchObject({ ok: false, error_class: "live_session_unmatched" });
-  // The runner's pane is a bare sleep, so the matching-pane probe finds no harness: the not-live arm of the same typed refusal.
-  expect(JSON.parse(dry.stdout).detail).toMatch(/is not live|active pane is/);
+  // No pane runs the seat's cursor harness while a codex pane holds the session, so the seat-aware
+  // classification is seat-gone (tap-9rrat), not a live reattach; resume then needs the exact recorded
+  // conversation, and the stored chat id has no cursor store.
+  expect(JSON.parse(dry.stdout)).toMatchObject({ ok: false, error_class: "no_exact_resume_identity" });
+  expect(JSON.parse(dry.stdout).detail).toMatch(/has no cursor store\.db/);
+  // The real run refuses identically, before any effect.
+  const real = f.run("session", "resume", "seat", "--json");
+  expect(real.status).toBe(2);
+  expect(JSON.parse(real.stdout)).toEqual(JSON.parse(dry.stdout));
   expect(readFileSync(f.registry, "utf8")).toBe(before);
   expect(sessions(f)).toContain("team/seat");
 }, 45_000);

@@ -73,7 +73,7 @@ else { appendFileSync(root+"/state/effects", args.join(" ")+"\\n"); if(args.incl
   const env = { ...process.env, HOME: root, XDG_CONFIG_HOME: join(root, "config"), TAP_HOME: join(root, "bus"),
     TAP_INDEX_HOME: join(root, "index"), TAP_SERVER_EPOCH: "srv:900:100", TAP_BOOT_ID: "boot:1",
     PATH: join(root, "bin") + ":" + process.env.PATH, FAKE_ROOT: root, TAP_TUI_SETTLE_SCALE: "0.01" };
-  return { root, run: (router?: string) => spawnSync(router ?? "bash", [...(router ? [] : [resolve(import.meta.dir, "../../../bin/tap")]), "nudge", "peer"], { cwd: root, env, encoding: "utf8", timeout: 25000 }),
+  return { root, run: (router?: string, ...extra: string[]) => spawnSync(router ?? "bash", [...(router ? [] : [resolve(import.meta.dir, "../../../bin/tap")]), "nudge", "peer", ...extra], { cwd: root, env, encoding: "utf8", timeout: 25000 }),
     effects: () => readFileSync(join(root, "state/effects"), "utf8") };
 }
 
@@ -104,11 +104,11 @@ test("an anchored opener that never closes is shaped but not a tail: refused, no
   expect(readFileSync(join(f.root, "state/frame"), "utf8")).toContain("note truncated");
 }, 20000);
 
-test("a human draft in the composer is reported as no stuck sentinel; nothing is pressed or cleared", () => {
+test("a human draft in the composer holds the nudge; nothing is pressed, typed or cleared", () => {
   const f = fixture("draft");
   const result = f.run();
-  expect(result.status).toBe(0);
-  expect(result.stdout).toContain("no stuck sentinel");
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("the composer holds a draft");
   expect(f.effects()).toBe("");
   expect(readFileSync(join(f.root, "state/frame"), "utf8")).toContain("[[Release notes]]");
 }, 20000);
@@ -205,7 +205,8 @@ test("the compiled router reaches nudge-start and presses Enter once through the
 
 test("the compiled router reaches repaint-probe and heals an OpenCode overprint without a keystroke", () => {
   const f = fixture("overprint", "opencode");
-  const result = f.run(compiledRouter());
+  // --pane keeps the ladder to rungs 1-2, so the heal is the only pane change.
+  const result = f.run(compiledRouter(), "--pane", "testteam/peer:0.0");
   expect(result.stderr).toContain("tap nudge: repainted OpenCode terminal overprint before composer classification");
   expect(result.stdout).toContain("band=overprint -> repaint -> band=readable");
   expect(result.status).toBe(0);

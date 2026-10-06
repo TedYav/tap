@@ -34,7 +34,7 @@ export class Exit extends Error { constructor(readonly code: number) { super(`ex
 
 export function refuseRetiredFlags(model: string | null, teams: boolean): void {
   if (model !== null) throw new LauncherError("retired_flag: --model", "retired_flag",
-    "resume replays the seat's stored record; set the model when the seat is LAUNCHED (--model, or a preset) and every later resume replays it",
+    "change the model inside the harness (/model) and resume: claude, codex and opencode keep it, cursor and agy replay the launch model. Or relaunch the seat: tap session relaunch <seat> -- --model <model>",
     "--model was removed from `tap session resume`");
   if (teams) throw new LauncherError("retired_flag: --teams", "retired_flag",
     "agent teams is environment now, and it belongs to the seat: put CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true in [harness.claude.env] to apply it to every claude seat, or relaunch this one with --env / a preset that carries it",

@@ -19,7 +19,7 @@ import { currentBootId, observeGeneration, staleSeatGeneration } from "./generat
 import { assertUniqueHarnessSessionIdentity, orderedDoc, seatEntries } from "./identity-owner";
 import { shlexQuote } from "./invocation";
 import { allocateName, namedSessionName, parseUnicodeDecimal, resumeCandidateNames, sanitizeComponent, sessionNameForHandle } from "./naming";
-import { classifySession, currentEpoch, entrySession, hasSession, registryResumeSelection } from "./observation";
+import { attachableState, classifySession, crewPanesIn, currentEpoch, entrySession, hasSession, registryResumeSelection, type SessionSeat } from "./observation";
 import { launchTmux } from "./process";
 import { callerHasTty, callerOwnsForegroundTty, callerTty, exitKeepingTerminal, promptChoice } from "./prompt";
 import { PANE_FACTS_FORMAT, paneFacts, paneHarness, parsePaneFacts, type PaneFacts } from "./readiness";
@@ -27,11 +27,12 @@ import { pathIsUnder, realOrSelf, recordKeySelection, rootForCwd } from "./recor
 import { timestamp } from "./repair";
 import { freshLaunchSessionId } from "./adapters";
 import { recordHasResumeArtifact, pyRepr } from "./resume-identity";
+import { fenceSurvivingCrew, reclaimRevivedCrew, survivingCrews, type SurvivingCrew } from "../crew-lifetime";
 import { teamRegistryRefusal } from "../register-authority";
 import { LauncherError } from "./types";
 import { cloneRecord, compact, entryGuard, err, out, Refusal, refuseIfResetFenced, refuseRetiredFlags, registryAuthority,
   registryState, render, SCRIPTS, withRecordDefaults, type RegistryState, type Row } from "./resume-prelude";
-import { launchHandle, LaunchInterrupted, launchTransaction, recordFromRow, withLaunchSignals, type LaunchRecord,
+import { exactRevivalIdentity, launchHandle, LaunchInterrupted, launchTransaction, recordFromRow, survivingSession, withLaunchSignals, type LaunchRecord,
   type TransactionKind } from "./transaction";
 import { verbArgv } from "../courier-argv";
 
@@ -260,9 +261,15 @@ async function failedResumeRecord(base: string, cwd: string, key: string): Promi
   return record ? withRecordDefaults(record) : null;
 }
 
-/** session_attachable: attach only where attaching is right; shells fall through to resume. */
-export const sessionAttachable = async (name: string): Promise<boolean> =>
-  await hasSession(name, process.env) && !["shell", "attached-shell"].includes(await classifySession(name, process.env));
+/** The seat a record's session is judged by: its harness, never a registered crew pane (tap-9rrat). */
+export function recordSeat(record: Pick<LaunchRecord, "name" | "harness" | "cwd">): SessionSeat {
+  return { harness: record.harness, crewPanes: crewPanesIn(registryEntries(rootForCwd(record.cwd)), record.name) };
+}
+
+/** session_attachable: attach only where attaching is right; shells and a gone seat fall through to resume. */
+export const sessionAttachable = async (name: string, seat?: SessionSeat): Promise<boolean> =>
+  await hasSession(name, process.env) && attachableState(await classifySession(name, process.env, undefined, seat));
+const recordAttachable = (record: LaunchRecord): Promise<boolean> => sessionAttachable(record.name, recordSeat(record));
 
 async function sessionPanes(name: string): Promise<PaneFacts[]> {
   let result;
@@ -277,12 +284,14 @@ async function sessionPanes(name: string): Promise<PaneFacts[]> {
 
 /** matching_session_pane: the active pane if it runs the harness, else the first that does. */
 async function matchingSessionPane(record: LaunchRecord): Promise<[PaneFacts | null, string | null]> {
+  // A registered crew of the seat's own harness is never the seat.
+  const crews = recordSeat(record).crewPanes!;
   const active = await paneFacts(`=${record.name}`, process.env);
   const activeHarness = active ? paneHarness(active, process.env) : null;
-  if (active && activeHarness === record.harness) return [active, activeHarness];
+  if (active && activeHarness === record.harness && !crews.has(active.pane_id)) return [active, activeHarness];
   for (const candidate of await sessionPanes(record.name)) {
     const harness = paneHarness(candidate, process.env);
-    if (harness === record.harness) return [candidate, harness];
+    if (harness === record.harness && !crews.has(candidate.pane_id)) return [candidate, harness];
   }
   return [active, activeHarness];
 }
@@ -510,8 +519,8 @@ export async function resumeOne(options: Options, cwd: string, deps: ResumeDeps)
   let record = findRecordByKey(records, cwd, targetName);
   if (record === null && !isHarness(key)) record = await failedResumeRecord(base, cwd, key);
   // A live seat reattaches, so a dry run answers the same question the real run does.
-  if (record && await sessionAttachable(record.name)) return reattach(record);
-  if (await sessionAttachable(targetName)) {
+  if (record && await recordAttachable(record)) return reattach(record);
+  if (!record && await sessionAttachable(targetName)) {
     const direct = record ?? findRecordBySession(records, cwd, targetName) ?? await liveResumeRecord(base, cwd, targetName);
     if (!direct) throw refuseUnbacked(targetName);
     return reattach(direct);
@@ -535,7 +544,7 @@ export async function resumeOne(options: Options, cwd: string, deps: ResumeDeps)
       if (record) break;
     }
   }
-  if (record && await sessionAttachable(record.name)) return reattach(record);
+  if (record && await recordAttachable(record)) return reattach(record);
   if (!record) return noRecord(key, harness, base, cwd, options, deps);
 
   // Resume replays the seat's stored record; the model was chosen once, at launch.
@@ -563,8 +572,49 @@ export async function resumeOne(options: Options, cwd: string, deps: ResumeDeps)
   const recovery = source.status === "suspended" && !seatIsRelaunchable(source) && seatIsRelaunchable(source, true)
     ? text(source.status_reason) : "";
   if (options.dryRun && recovery) err(`tap session: would resume ${launched.name} from suspended/${recovery}`);
+  // tap-9rrat: a seat whose harness exited while its crews hold the session revives beside them.
+  const seatGone = await hasSession(launched.name, process.env)
+    && await classifySession(launched.name, process.env, undefined, recordSeat(launched)) === "seat-gone";
+  let family: { team: string; registryPath: string } | null = null, crews: SurvivingCrew[] = [];
+  if (seatGone) {
+    // Crews are only reclaimed into the recorded conversation, never a picked or fresh one: the
+    // transaction's own exact gate runs here, before any effect, and again under its custody.
+    try { exactRevivalIdentity(launched, process.env); }
+    catch (error) {
+      throw new LauncherError(`resume refused — ${launched.name} holds live crews but has no resumable recorded ${launched.harness} conversation`,
+        "no_exact_resume_identity", `tmux attach -t ${shlexQuote(launched.name)}`,
+        `reviving into a session with crews needs the seat's recorded native id (${(error as Error).message}); nothing was changed and the crews keep running`);
+    }
+    // Pinned with the classification: the transaction revives into exactly this session generation.
+    launched.revive_session = await survivingSession(launched.name, process.env);
+    if (!launched.revive_session || await classifySession(launched.name, process.env, undefined, recordSeat(launched)) !== "seat-gone"
+        || await survivingSession(launched.name, process.env) !== launched.revive_session) {
+      throw new Refusal(`resume refused — session ${launched.name} changed while the resume checked it; nothing was changed; retry`);
+    }
+    launched.revive_vessel = "window";
+    if (options.dryRun) err(`tap session: would revive ${launched.harness} into surviving session ${launched.name} in a new window; its other windows stay`);
+    else {
+      const path = registryAuthority(rootForCwd(cwd)).path;
+      family = path ? { team: base, registryPath: path } : null;
+      try { crews = family ? survivingCrews(family, launchHandle(launched)) : []; }
+      catch (error) { warn(`could not read ${launchHandle(launched)}'s crews before reviving (${(error as Error).message})`, "they keep running; inspect with tap crew list"); }
+      // An old supervisor still running would reap its crew while the revived harness starts.
+      for (const crew of crews) {
+        if (crew.binding && !await fenceSurvivingCrew(launchHandle(launched), crew)) {
+          warn(`crew ${crew.crew}'s old supervisor was not fenced before the revival`, `if it stops the crew, relaunch it with tap crew add`);
+        }
+      }
+    }
+  }
   const outcome = await deps.run("resume", launched);
   if (options.dryRun || outcome.code !== 0) return outcome.code;
+  if (launched.revive_vessel === "window") {
+    receipt(`revived ${launched.name} in a new window beside its surviving windows (${reviveContext(launched.harness, launched.harness_session_id)}; expected seat ${launchHandle(launched)})`);
+    for (const crew of crews) {
+      try { await reclaimRevivedCrew(family!, launchHandle(launched), crew); receipt(`crew ${crew.crew} reclaimed by ${launchHandle(launched)}`); }
+      catch (error) { warn(`crew ${crew.crew} kept running but was not reclaimed (${(error as Error).message})`, `inspect with tap crew list; stop it with tap crew shutdown ${crew.crew}`); }
+    }
+  }
   if (outcome.adopted_shell) {
     receipt(`resumed ${launched.name} (adopted shell session, ${reviveContext(launched.harness, launched.harness_session_id)}; expected seat ${launchHandle(launched)})`);
   }

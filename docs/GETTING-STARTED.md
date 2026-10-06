@@ -213,6 +213,22 @@ have the agent resolve the mismatch before sending it work. The tmux session lab
 may still show the launcher’s original name after resume; `tap whoami` reports
 the current TAP handle.
 
+A matching name proves the handle, not the conversation. The seat can expect
+the new conversation it launched with (Claude Code seats always do), so `tap in`
+after a resume may print
+`Captured harness identity was not accepted` and a warning that the session id
+`did not match launcher expectation`. Messaging still works, but a later
+`tap session resume writer` would not reopen the conversation you resumed. To keep the one
+you resumed, and only for that warning, run `!tap in writer --accept-observed-identity`.
+Its `accepting observed <id>` line must name the conversation you picked; if it
+says `changed nothing`, names another id, or the warning stays, stop and ask the
+agent to report it. To know the id, have the agent print it before you leave
+the old conversation (`echo $CLAUDE_CODE_SESSION_ID` or `echo $CODEX_THREAD_ID`).
+No warning does not prove the binding either: the
+[installation runbook](AGENT-SETUP.md#relaunch-yourself-inside-tap) shows how to
+compare the seat's recorded id with yours. Without a matching id, treat a later
+`tap session resume writer` as unverified.
+
 ## Run without bypass mode
 
 Seats that TAP launches use each harness's bypass flag unless you choose
@@ -259,6 +275,55 @@ TAP never types into the prompt, urgent messages included: the
 [courier](../runtime/bun/src/courier.ts) holds delivery while the dialog is up.
 Attach, answer the prompt yourself, then detach with **Ctrl-b**, then **d**. The
 waiting messages then go through.
+
+## TAP and tmux
+
+TAP runs every seat inside tmux. First-run setup can install two optional tmux
+integrations (never on a plain sync; both removable, and neither edits your
+own lines):
+
+- The lookup key: `prefix @` opens the teammate picker — `tap keybinding install`.
+- Managed tmux defaults so tmux behaves like a bare terminal — `tap tmux-defaults install`.
+
+The defaults are one TAP-owned file, `~/.config/tap/tmux-defaults.conf`, plus
+one marked `source-file` line in your `~/.tmux.conf`, inserted before your own
+settings — so anything you set yourself always wins. What they do: true color
+(`tmux-256color` with RGB/Tc), mouse on, 10 lines of scrollback per wheel notch
+in both copy modes, middle click leaves copy mode, focus reporting on, 10,000
+lines of history, and a working clipboard: `pbcopy` on macOS, `wl-copy` or
+`xclip` on Linux, OSC 52 fallback over SSH — chosen at install time. TAP sets
+no escape-time and no extended-keys. `tap tmux-defaults status --json` reports
+what is installed and what the running server shows; `--dry-run` prints the
+exact lines first; `tap tmux-defaults remove` deletes the file and the marked
+line (options already loaded stay until tmux restarts).
+
+**Shift+Enter.** Inside tmux, some terminals' Shift+Enter submits instead of
+typing a newline. Any one of these fixes it:
+
+- Run Claude Code's `/terminal-setup`; it maps the key for your terminal.
+- Map Shift+Enter in your terminal app to send a plain newline.
+- Press **Ctrl+J** for a newline; it works everywhere.
+- Advanced: `set -g extended-keys always` plus
+  `set -as terminal-features 'xterm*:extkeys'` forwards composer keys such as
+  Shift+Enter into tmux — but every pane receives the encoded keys whether it
+  understands them or not, so older TUI programs can misbehave.
+
+**Scrollback.** Let tmux own scrollback inside tmux and give it the wheel: in
+iTerm2 leave mouse reporting on and set *Scrollback in Alternate Screen* to 0,
+so the wheel scrolls tmux instead of a second, competing buffer. tmux before
+3.5 waits 500 ms after Esc; recent tmux already uses 10 ms — if Esc feels slow
+on an old tmux, set `set -sg escape-time 10` yourself. (tmux-resurrect is a
+popular add-on for surviving restarts; TAP does not install it.)
+
+**Copy reaches only the tmux buffer.** If selecting text says "copied N chars
+to tmux buffer · paste with prefix + ]" and nothing lands on the system
+clipboard, a stale `SSH_CONNECTION` in the session environment is the usual
+cause: tmux copies it in the first time you attach over SSH, and Claude Code
+then skips its local clipboard path. The managed defaults prevent this; for a
+session that already has it, run
+`tmux set-environment -t <session> -r SSH_CONNECTION` and restart the seats —
+a process's environment is fixed at launch. In iTerm2, OSC 52 delivery also
+needs *Applications in terminal may access clipboard* enabled in the profile.
 
 ## If something stops you
 

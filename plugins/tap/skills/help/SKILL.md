@@ -1,8 +1,9 @@
 ---
 name: help
-description: "When a person wants TAP working for their own workflow, or asks how to start, get two of their harnesses talking first, then fit one capability at a time."
-argument-hint: '[what you build and what hurts]'
+description: "Get started with TAP, or diagnose something that seems off."
+argument-hint: '[get started | what looks weird]'
 allowed-tools: 'Bash, Read'
+disable-model-invocation: true
 ---
 
 Run `tap help skill help`, then read the returned SKILL.md and follow it for the original task and arguments. Resolve all relative references from that canonical file's directory, never from this wrapper.

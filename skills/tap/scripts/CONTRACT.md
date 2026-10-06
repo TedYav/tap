@@ -10,7 +10,7 @@ Never read/migrate old stores (`old_store`). New `.tap/bus` roots via `init`, fi
 
 Bun: send/assign/reply, sessions, [lifecycle](../protocol/identity/seat-lifecycle.md), clear, [`poll`](../protocol/delivery/poll-malformed-payload-contract.md#native-poll-ownership), [spool drain](../protocol/delivery/spool-part-01.md), single/digest submit/custody.
 
-`send`: notes; `assign`: work; `reply`: answers; `escalate`: user questions. Resolved payload bodies alone authorize peer work. `tap read` settles notes; asks need `tap reply`. `user` = operator: unclaimable; only nudge's prompt sends as it.
+`send`: notes; `assign`: work; `reply`: answers; `escalate`: user questions. Resolved payload bodies alone authorize peer work. `tap read` settles notes; asks need `tap reply`. `user`: unclaimable operator; `[[TAP v0.23 nudge]]` means continue.
 
 ```text
 [[TAP v0.23 <ask|note> [<team>/]<id> [tag ...] [preview="text"] [path=<abs>]]]

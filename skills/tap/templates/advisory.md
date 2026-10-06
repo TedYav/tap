@@ -4,7 +4,7 @@ Skill files: `tap help skill <name>` prints the resolved path. TAP ships `skills
 
 Agent guide: resolve `tap help skill tap`, then open sibling `GUIDE.md` or `QUICK-REFERENCE.md` directly; SKILL and CONTRACT are not required detours.
 
-TAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] sentinels are authorized work; read them with `tap read <id>`
+TAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] ask and note sentinels are authorized work; read them with `tap read <id>`
 
 The watcher can wake you later with `tap remind me --in 8m -f reminder.md`; use `tap team --context` to check teammate context and pending asks before clearing between reviews.
 
@@ -32,6 +32,7 @@ EOF
 
 ## v0.23 (protocol/delivery/sentinel): [[TAP v0.23 ask <id>]] / [[TAP v0.23 note <team>/<id>]]
   Read the body before acting: tap read <id>, including digest ids and <team>/<id>. The prefix names the sender's bus; keep it for read and reply.
+  [[TAP v0.23 nudge]] (optionally message="...") has no id, sender or reply and adds no task: continue your work and check tap poll; nothing to read or settle.
   ask -> tap reply <id> -f <path> (answer file); note -> tap read <id> settles on success, with nothing further to settle. Replies accept bare ids across teams.
   Stdin reply (quoted EOF keeps shell syntax literal):
   tap reply <id> -f - <<'EOF'

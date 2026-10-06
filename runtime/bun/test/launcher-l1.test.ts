@@ -637,11 +637,13 @@ config = ["service_tier=default", "model_reasoning_effort=low", "features.policy
   const record = recordFromRow("reviewer", row, { name: "fixture", worktree_root: f.root }, f.root)!;
   const notices = new Notices(() => {});
   const replay = [launchInvocation("resume", record, notices),
-    composeInvocation(buildInvocation("resume", record, notices, process.env, null, undefined, null), record, notices)];
+    composeInvocation(buildInvocation("resume", record, notices, process.env, null, undefined, null), record, notices, process.env, true, {})];
+  // tap-j5k1b: Codex restores model and effort from its own session, so a resume replays the rest of the recipe only.
+  const replayed = recipe.filter((_, i) => recipe[i] !== "model_reasoning_effort=high" && recipe[i + 1] !== "model_reasoning_effort=high");
   for (const { argv: replayArgv } of replay) {
-    expect(replayArgv.slice(1, 3 + recipe.length)).toEqual(["--config", "features.policy=false", ...recipe]);
+    expect(replayArgv.slice(1, 3 + replayed.length)).toEqual(["--config", "features.policy=false", ...replayed]);
     expect(replayArgv.slice(-explicit.length)).toEqual(explicit);
-    expect(replayArgv).toContain("gpt-6-astra");
+    expect(replayArgv).not.toContain("gpt-6-astra");
   }
 });
 

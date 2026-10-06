@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='installer-continuity-') as scratch:
     answers += [(h+': keep it simple, choose myself, or skip? [skip]', 'simple' if h=='codex' else '') for h in ('claude','codex','cursor','opencode','agy','hermes')]
     answers += [('Default effort for selected Claude/Codex starter models','high')]
     answers += [(h+': Permission mode [auto]', 'bypass' if h=='codex' else 'auto') for h in ('claude','codex')]
-    answers += [('Install the optional full skill kit for flat hosts? (Claude and Codex have the complete TAP plugin)','n'),('Notifier [keep existing/system default]','keep'),('Add shell aliases?','n'),('Install the TAP agent lookup keybinding','n')]
+    answers += [('Install the optional full skill kit for flat hosts? (Claude and Codex have the complete TAP plugin)','n'),('Notifier [keep existing/system default]','keep'),('Add shell aliases?','n'),('Install the TAP agent lookup keybinding','n'),('Install TAP tmux defaults','n')]
     answers += [('Install '+p+' for '+h+'?','n') for h in ('claude','codex') for p in ('ponytail','compound-engineering','superpowers')]
     output=terminal(['bash','install.sh','--setup'],answers)
     assert 'Detected executables: codex' in output, output
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='installer-continuity-') as scratch:
     assert (project/'.tap/bus').is_dir()
     assert '.tap/' in (project/'.gitignore').read_text()
     signpost=(project/'AGENTS.md').read_text()
-    assert '<!-- TAP:CHARTER v=4 -->' in signpost
+    assert '<!-- TAP:CHARTER v=5 -->' in signpost
     assert '/tap' in signpost and 'tap read <id>' in signpost
     assert run(['tap','presets'],project).stdout.strip()
     run(['tap','team'],project)

@@ -53,6 +53,7 @@ import { cmdDraft } from "./src/verbs/draft";
 import { cmdPeek } from "./src/verbs/peek";
 import { cmdPick } from "./src/verbs/pick";
 import { cmdKeybinding } from "./src/verbs/keybinding";
+import { cmdTmuxDefaults } from "./src/verbs/tmux-defaults";
 import { cmdConfig } from "./src/verbs/config";
 import { cmdWhoami } from "./src/verbs/whoami";
 import { cmdProvenance } from "./src/verbs/provenance";
@@ -245,6 +246,7 @@ const nativeHandlers = {
   peek: argv => cmdPeek(argv, tapScriptsDir()),
   pick: argv => cmdPick(argv),
   keybinding: cmdKeybinding,
+  "tmux-defaults": cmdTmuxDefaults,
   // R11 U-A: the whole public verb is native — positional, --next and the
   // -i picker arm here; the Bash body (tap-attach.sh) is deleted in this
   // commit, so a stale rollback row is ignored via the retired list.

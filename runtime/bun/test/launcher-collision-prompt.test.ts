@@ -217,26 +217,26 @@ test("chooser under the launch spinner: Ctrl-C dies by SIGINT with the terminal 
 
 test("chooser: an unavailable row is greyed, and its key says why before the menu returns", () => {
   const shown = onPty(["f", "q"], ["choice"], { TERM: "xterm-256color", PTY_PROMPT_MARKER: "(Esc quits): " });
-  expect(shown.output).toContain("\x1b[90m  [f] fork    not supported by this harness\x1b[39m");
-  expect(shown.output).toContain("tap session: fork is unavailable: not supported by this harness");
+  expect(shown.output).toContain("\x1b[90m  [f] fork    Harness cannot fork\x1b[39m");
+  expect(shown.output).toContain("tap session: fork is unavailable: Harness cannot fork");
   expect(shown.output.split("Choice [r] (Esc quits): ").length).toBe(3);
   expect(shown.output).toContain("CHOICE q");
 }, PTY_TIMEOUT);
 
 test("chooser: a narrow plain menu still marks the unavailable row", () => {
   const shown = onPty(["q"], ["choice"], { TERM: "dumb", COLUMNS: "30", PTY_PROMPT_MARKER: "(Esc quits): " });
-  expect(shown.output).toContain("  [f] fork (unavailable: not supported by this harness)\r\n");
+  expect(shown.output).toContain("  [f] fork (unavailable: Harness cannot fork)\r\n");
   expect(shown.output).toContain("  [n] new\r\n");
 }, PTY_TIMEOUT);
 
 test("chooser: a narrow colour menu greys the unavailable row and keeps its reason", () => {
   const shown = onPty(["q"], ["choice"], { TERM: "xterm-256color", COLUMNS: "30", PTY_PROMPT_MARKER: "(Esc quits): " });
-  expect(shown.output).toContain("\x1b[90m  [f] fork (unavailable: not supported by this harness)\x1b[39m\r\n");
+  expect(shown.output).toContain("\x1b[90m  [f] fork (unavailable: Harness cannot fork)\x1b[39m\r\n");
 }, PTY_TIMEOUT);
 
 test("chooser: without colour the unavailable row states its reason as text", () => {
   const shown = onPty(["f", "x", "q"], ["choice"], { TERM: "dumb", PTY_PROMPT_MARKER: "(Esc quits): " });
-  expect(shown.output).toContain("  [f] fork    (unavailable: not supported by this harness)");
+  expect(shown.output).toContain("  [f] fork    (unavailable: Harness cannot fork)");
   expect(shown.output).not.toContain("\x1b[");
   // The key list names only the keys that act.
   expect(shown.output).toContain("tap session: choose r, n, k, or q");

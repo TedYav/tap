@@ -1239,6 +1239,16 @@
   },
   {
     "topic": [
+      "tmux-defaults"
+    ],
+    "key": "tmux-defaults",
+    "exit": 0,
+    "page": "tmux-defaults",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
       "uninstall"
     ],
     "key": "uninstall",

@@ -661,7 +661,7 @@ test("the entry refuses retired flags first and malformed transport as usage", (
   const run = (args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [ENTRY, ...args], { encoding: "utf8", env: { ...process.env, ...env } });
   const model = run(["--all", "--model", "x"]);
   expect([model.status, model.stdout, model.stderr]).toEqual([2, "",
-    "tap session: --model was removed from `tap session resume`; next: resume replays the seat's stored record; set the model when the seat is LAUNCHED (--model, or a preset) and every later resume replays it\n"]);
+    "tap session: --model was removed from `tap session resume`; next: change the model inside the harness (/model) and resume: claude, codex and opencode keep it, cursor and agy replay the launch model. Or relaunch the seat: tap session relaunch <seat> -- --model <model>\n"]);
   const json = run(["--all", "--teams", "--json"]);
   expect(json.status).toBe(2);
   expect(JSON.parse(json.stdout)).toMatchObject({ ok: false, error_class: "retired_flag" });

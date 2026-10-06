@@ -5,12 +5,13 @@ import { resolveHarnessPolicy } from "./catalog";
 import { facadeSecureRead } from "../slices/preset-api";
 import { Notices } from "./catalog-notices";
 import { applyLaunchEnv } from "./plan";
-import { paramsToArgv, spliceTokensIfAbsent, spliceVerbatimParams } from "./argv-splice";
+import { paramsToArgv, spliceTokensIfAbsent } from "./argv-splice";
 import { enforcePermissions, permissionArgv, PERMISSION_HARNESSES, refuseAmbientCodexSockets } from "./permissions";
 import { claudeSessionTranscriptExists, resolveResumeTarget, resolvedResumeIdentity, emitResumeTargetReceipts } from "./resume-identity";
 import { assignments } from "./config-args";
 import { launchWorkdir } from "./workdir";
 import { modelArgv, launchTuning } from "./tuning";
+import { observedResumeEffort, restoredAxes, resumeReopensSession, setsAxis, stripTuningAxes, type TuningAxis } from "./resume-tuning";
 import { LauncherError, UNBOUND_RESUME_IDENTITY, type Invocation, type ResumeIdentity, type SessionRecord } from "./types";
 import { basename } from "node:path";
 import { shellQuote } from "../shell-quote";
@@ -86,7 +87,7 @@ export function buildInvocation(
   if (record.harness === "codex" && permissions === "auto") refuseAmbientCodexSockets(env, launchWorkdir(record));
   argv.push(...permissionArgv(record.harness, permissions, env));
   if (record.harness === "codex") argv.push("resume");
-  argv.push(...modelArgv(record.harness, record.model));
+  if (!resumeReopensSession(record.harness, nativeQuery) || !restoredAxes(record.harness).includes("model")) argv.push(...modelArgv(record.harness, record.model));
   if (record.harness === "claude") {
     if (record.name) argv.push("--name", record.name);
     argv.push("--resume");
@@ -118,31 +119,71 @@ export function applyInvocationEnv(
   return { ...value, unset_env: [...record.harness_unset_env ?? []] };
 }
 
+/**
+ * A resume's tuning inputs (tap-j5k1b). `typedTail` counts the trailing harness_tail tokens typed on THIS invocation
+ * (relaunch's `--` tail): they always win and are never stripped. `observedEffort` is Claude's last observed effort.
+ */
+export interface ResumeTuning { typedTail?: number; observedEffort?: string | null }
+
+/** Resume tuning applies when the resume reopens a native session (named, or a native picker); a fresh start keeps launch tuning. */
+export function resumeTuning(record: SessionRecord, target: ResumeIdentity | undefined, env: NodeJS.ProcessEnv, typedTail?: number): ResumeTuning | undefined {
+  const id = typeof target === "string" && target ? target : null;
+  if (!resumeReopensSession(record.harness, id)) return undefined;
+  return { typedTail, observedEffort: observedResumeEffort(record, id, env) };
+}
+
+/** What the full launch composition would record, with the same floor and Codex config-key rules as composeInvocation. */
+function recordedLaunchTuning(record: SessionRecord, params: string[], env: Record<string, string | undefined>) {
+  const codex = record.harness === "codex";
+  let argv = spliceTokensIfAbsent([record.harness, ...modelArgv(record.harness, record.model)], record.harness_passthrough ?? [], {
+    floor: record.passthrough_from_config ?? false, configKeys: codex,
+  });
+  argv = spliceTokensIfAbsent(argv, params, { configKeys: codex });
+  return launchTuning(record.harness, [...argv.slice(1), ...record.harness_tail ?? []], env);
+}
+
 export function composeInvocation(
   invocation: Invocation, record: SessionRecord, notices: Notices,
-  env: NodeJS.ProcessEnv = process.env, notify = true,
+  env: NodeJS.ProcessEnv = process.env, notify = true, resume?: ResumeTuning,
 ): Invocation {
   const configured = applyInvocationEnv(invocation, record, notices, env, notify);
-  let argv = spliceTokensIfAbsent(configured.argv, record.harness_passthrough ?? [], {
-    floor: record.passthrough_from_config ?? false, configKeys: record.harness === "codex",
+  // On resume, stored launch tuning for an axis the harness restores natively is dropped from every replayed source,
+  // so an in-session /model or /effort survives; tokens typed on this invocation are kept as typed.
+  const harness = record.harness, tail = record.harness_tail ?? [];
+  const typedCount = Math.min(resume?.typedTail ?? 0, tail.length);
+  const typed = tail.slice(tail.length - typedCount);
+  const strip: TuningAxis[] = resume ? [...restoredAxes(harness)] : [];
+  const observedEffort = resume?.observedEffort && !setsAxis(harness, typed, "effort") ? resume.observedEffort : null;
+  if (observedEffort) strip.push("effort");
+  const passthrough = stripTuningAxes(harness, record.harness_passthrough ?? [], strip);
+  const replayedTail = [...stripTuningAxes(harness, tail.slice(0, tail.length - typedCount), strip), ...typed];
+  let argv = spliceTokensIfAbsent(configured.argv, passthrough, {
+    floor: record.passthrough_from_config ?? false, configKeys: harness === "codex",
   });
-  const policy = resolveHarnessPolicy(record.harness, env, notices, facadeSecureRead);
-  record.permissions ??= PERMISSION_HARNESSES.includes(record.harness) ? policy.permissions : "bypass";
+  const policy = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
+  const params = stripTuningAxes(harness, paramsToArgv(policy.params), strip);
+  record.permissions ??= PERMISSION_HARNESSES.includes(harness) ? policy.permissions : "bypass";
   try {
-    for (const source of [record.harness_passthrough ?? [], paramsToArgv(policy.params), argv.slice(1), record.harness_tail ?? []]) {
-      enforcePermissions(record.harness, record.permissions, source, env);
+    for (const source of [passthrough, params, argv.slice(1), replayedTail]) {
+      enforcePermissions(harness, record.permissions, source, env);
     }
   } catch (error) {
     if (error instanceof LauncherError) throw new InvocationError(error.message);
     throw error;
   }
-  argv = spliceVerbatimParams(argv, policy.params, { configKeys: record.harness === "codex" });
-  argv.push(...record.harness_tail ?? []);
-  argv = withoutNoDaemonForRemote(record.harness, argv);
-  if (record.harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id);
+  argv = spliceTokensIfAbsent(argv, params, { configKeys: harness === "codex" });
+  if (observedEffort) argv.splice(1, 0, "--effort", observedEffort);
+  argv.push(...replayedTail);
+  argv = withoutNoDaemonForRemote(harness, argv);
+  if (harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id);
   const tuningEnv = { ...configured.env };
   for (const key of configured.unset_env ?? []) delete tuningEnv[key];
-  record.launch_tuning = launchTuning(record.harness, argv.slice(1), tuningEnv);
+  const launched = launchTuning(harness, argv.slice(1), tuningEnv);
+  // An axis a resume left to the harness keeps the value TAP last launched with, not null. A row from before
+  // launch_tuning existed derives it from the stored sources the resume did not pass.
+  const prior = strip.length ? record.launch_tuning ?? recordedLaunchTuning(record, paramsToArgv(policy.params), tuningEnv) : undefined;
+  for (const axis of strip) launched[axis] ??= prior?.[axis] ?? null;
+  record.launch_tuning = launched;
   return { argv, env: configured.env, unset_env: configured.unset_env };
 }
 
@@ -159,7 +200,7 @@ function withCodexResumeDirectory(invocation: Invocation, record: SessionRecord,
 
 export function launchInvocation(
   action: string, record: SessionRecord, notices: Notices,
-  options: { env?: NodeJS.ProcessEnv; prompt?: string | null; resume?: ResumeIdentity; nativeQuery?: string | null; notify?: boolean; receipts?: (line: string) => void } = {},
+  options: { env?: NodeJS.ProcessEnv; prompt?: string | null; resume?: ResumeIdentity; nativeQuery?: string | null; notify?: boolean; receipts?: (line: string) => void; typedTail?: number } = {},
 ): Invocation {
   const env = options.env ?? process.env;
   const receipts = options.receipts ?? stderrReceipts;
@@ -169,9 +210,10 @@ export function launchInvocation(
     resume = action === "resume" && ["claude", "codex", "opencode", "cursor", "agy", "hermes"].includes(record.harness)
       ? resolvedResumeIdentity(record, env, receipts) : null;
   }
-  const composed = composeInvocation(buildInvocation(action, record, notices, env, options.prompt,
-    resume, options.nativeQuery, receipts), record, notices, env, options.notify ?? true);
   const target = options.nativeQuery === undefined ? resume : options.nativeQuery;
+  const tuning = action === "resume" ? resumeTuning(record, target, env, options.typedTail) : undefined;
+  const composed = composeInvocation(buildInvocation(action, record, notices, env, options.prompt,
+    resume, options.nativeQuery, receipts), record, notices, env, options.notify ?? true, tuning);
   return action === "resume" && record.harness === "codex" && typeof target === "string" && target
     ? withCodexResumeDirectory(composed, record, target) : composed;
 }

@@ -2,10 +2,12 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { normalizeInputMatch } from "../terminal-text";
 import { composerHoldsExactly, sentinelInputTail, sentinelSubmitDecision, visibleSentinelId } from "../submit-frame";
 import { matchSentinelSuffix } from "../sentinel-tail";
 import { detectAgentState } from "../agent-state";
-import { parseStuckSentinel } from "../stuck-sentinel";
+import { parseStuckSentinel, queuePrefix } from "../stuck-sentinel";
+import { parseNudgeWire, renderNudgeWire } from "../nudge-wire";
 import { repaintPane, type RepaintResult } from "../pane/repaint";
 import { checkIdentityGuard, type IdentityGuardEvidence } from "./identity-guard";
 import { atomicWrite } from "../fsatomic";
@@ -82,7 +84,48 @@ function expectedNudgeId(run: RecoveryRun): string | null {
   return parsed.ok ? parsed.fields.id : null;
 }
 
+/** The run expects an id-less nudge doorbell (bare, or behind Hermes' queue prefix). */
+function isNudgeDoorbell(run: RecoveryRun): boolean {
+  const prefix = queuePrefix(run.target.harness);
+  const staged = run.nudgeExpected && prefix && run.nudgeExpected.startsWith(prefix) ? run.nudgeExpected.slice(prefix.length) : run.nudgeExpected;
+  return !!staged && parseNudgeWire(staged) !== null;
+}
+
+/**
+ * Nudge's Enter submits the whole composer, so a staged wire (ask, note or the
+ * id-less doorbell, every family) must be its only text: an Enter never sends a
+ * human draft along (tap-xe42x). Hermes may hold it behind its queue prefix. A
+ * recorded scrolled tail (tap-1ncs6) must equal the whole bounded composer, so
+ * text typed after it holds. A composer the reader cannot bound holds rather
+ * than submits; only Claude's own scrolled input reads count beyond that.
+ */
+function soleStagedSentinel(run: RecoveryRun, frame: string): boolean {
+  const expected = run.nudgeExpected;
+  if (!expected) return false;
+  const prefix = queuePrefix(run.target.harness);
+  const wire = prefix && expected.startsWith(prefix) ? expected.slice(prefix.length) : expected;
+  const harness = run.target.harness;
+  const scrub = (f: string) => /^codex(?:-|$)/.test(harness) ? f.replace(/[\u2800-\u28ff]/g, " ") : f;
+  if (!wire.startsWith("[[TAP")) {
+    if (composerHoldsExactly(scrub(frame), harness, expected)) return true;
+    const tail = harness.startsWith("claude") ? sentinelInputTail(frame, harness) : null;
+    return tail !== null && normalizeInputMatch(tail) === normalizeInputMatch(expected);
+  }
+  if (composerHoldsExactly(scrub(frame), harness, wire)) return true;
+  if (prefix && composerHoldsExactly(frame, harness, prefix + wire)) return true;
+  // Claude's composer may show only the wire's scrolled tail; it is still the sole text.
+  // Any other composer without a bounded reader (Cursor's borderless input) holds: a blank
+  // row is not proof that no draft follows.
+  const input = harness.startsWith("claude") ? sentinelInputTail(frame, harness) : null;
+  return input !== null && matchSentinelSuffix(input, wire) === "tail";
+}
+
 function postRepaintSentinelMatches(run: RecoveryRun, frame: string): boolean {
+  // A nudge doorbell has no id: the exact typed wire is what must still be staged.
+  if (!soleStagedSentinel(run, frame)) return false;
+  if (run.nudgeExpected && isNudgeDoorbell(run)) {
+    return sentinelSubmitDecision(frame, run.target.harness, run.nudgeExpected, true).action === "submit";
+  }
   const expected = expectedNudgeId(run);
   return expected !== null && visibleSentinelId(frame, run.target.harness, true) === expected;
 }
@@ -134,6 +177,10 @@ export function keysAnswerPrompt(harness: string, frame: string, keys: string[],
   if (keys.length === 2 && keys[0] === "-X" && keys[1] === "cancel") return null;
   // Escaped frames go in whole: Codex proves an empty composer by its dim placeholder.
   const state = detectAgentState(harness, frame).agentState;
+  // Typed text can answer or filter any prompt, so it needs a pane positively read as a composer.
+  if (keys[0] === "-l" && (state === "blocked" || state === "unknown")) {
+    return `the pane state is ${state}, so typed text could answer a prompt TAP cannot see; no keys sent`;
+  }
   if (state === "blocked" && !(keys.length === 1 && keys[0] === "Escape")) {
     return "an approval prompt or trust dialog is visible; only Escape may dismiss it; no keys sent";
   }
@@ -172,7 +219,14 @@ export function recoveryEffect(
     }
     const keys = args.slice(3);
     const allowed = new Set(["Escape", "Enter", "C-u", "BSpace", "Up", "Down", "Left", "Right", "Tab", "BTab", "Home", "End", ..."0123456789"]);
-    if (keys.length > 6 || (!(keys.length === 2 && keys[0] === "-X" && keys[1] === "cancel") && !keys.every(key => allowed.has(key)))) {
+    // The one literal-text license (tap-xe42x): `tap nudge` types its own doorbell,
+    // byte-exact as rendered, and nothing else ever rides `-l`.
+    // Hermes may type it behind its safe queue prefix (`tap nudge --no-interrupt`).
+    const prefix = queuePrefix(run.target.harness);
+    const typedText = keys.length === 2 && keys[0] === "-l" ? (prefix && keys[1]!.startsWith(prefix) ? keys[1]!.slice(prefix.length) : keys[1]!) : null;
+    const nudgeWire = typedText === null ? null : parseNudgeWire(typedText);
+    const typedNudge = nudgeWire !== null && action === "nudge type" && typedText === renderNudgeWire(nudgeWire.message);
+    if (keys.length > 6 || (!(keys.length === 2 && keys[0] === "-X" && keys[1] === "cancel") && !typedNudge && !keys.every(key => allowed.has(key)))) {
       throw new Error("unsupported recovery key sequence");
     }
     event.state = io.snapshot(run.target);
@@ -226,7 +280,8 @@ export function recoveryEffect(
       }
     } else if (nudgeEnter &&
         (!run.nudgeExpected || sentinelSubmitDecision(beforeFrame, run.target.harness, run.nudgeExpected, true).action !== "submit"
-          || !composerHoldsOnlyWire(beforeFrame, run.target.harness, run.nudgeExpected))) {
+          || !composerHoldsOnlyWire(beforeFrame, run.target.harness, run.nudgeExpected)
+          || !soleStagedSentinel(run, beforeFrame))) {
       throw new Error("expected staged sentinel changed before Enter; no keys sent");
     }
     const finalDenial = authorize(run.target);
@@ -340,7 +395,8 @@ export function escalateRecovery(id: string, summary: string, env = process.env)
   const question = summary.startsWith(targetName + ":") ? summary : `${targetName}: ${summary}`;
   writeFileSync(body, `${question}\nRecovery: ${id}\nEvidence: ${runDirectory(id, env)}\n`, { mode: 0o600 });
   const result = spawnSync(process.execPath, [join(tapScriptsDir(), "../../../runtime/bun/src/verbs/escalate.ts"), "--team", run.caller?.team || run.target.team,
-    "--from", run.caller?.actor || run.target.handle, "-f", body], { env: { ...env, BUN_BE_BUN: "1" }, encoding: "utf8", timeout: 10_000 });
+    // A recorded `user`/`unknown` nudge actor (no team) is evidence, not a seat that can escalate.
+    "--from", (run.caller?.team && run.caller.actor) || run.target.handle, "-f", body], { env: { ...env, BUN_BE_BUN: "1" }, encoding: "utf8", timeout: 10_000 });
   atomicWrite(join(runDirectory(id, env), "escalation-result.json"), JSON.stringify({ at: new Date().toISOString(),
     code: result.status, error: result.error?.message, stdout: result.stdout, stderr: result.stderr }));
   const code = result.status ?? 1;

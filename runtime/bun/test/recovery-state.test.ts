@@ -341,7 +341,9 @@ test("recorded nudge Enter sends for a Claude wire's scrolled tail and refuses i
 // Claude). Hermes's full-width bottom border and Cursor's borderless composer defeat the generic
 // readFrame, so an exact read there refused a composer holding ONLY the wire; those harnesses keep
 // containment. Frames are the real captures with the typed text or placeholder replaced by the wire.
-test("recorded nudge Enter still sends for a wire alone in a Hermes or borderless Cursor composer", () => {
+// tap-xe42x F1: Hermes's bounded composer proves the wire is its sole text; Cursor's borderless
+// input has no bounded reader, so nudge's Enter holds there rather than trust a blank row.
+test("recorded nudge Enter sends for a wire alone in Hermes and holds on a borderless Cursor composer", () => {
   const expected = "[[TAP v0.23 note sender-20260907T000000Z-abcdef123456]]";
   const fixtures = join(import.meta.dir, "../../../skills/tap/scripts/smoke/fixtures");
   const hermes = readFileSync(join(fixtures, "hermes-prompt/typed.ansi"), "utf8");
@@ -359,7 +361,14 @@ test("recorded nudge Enter still sends for a wire alone in a Hermes or borderles
   expect({
     hermes: enters("hermes", hermes.replace(typed, expected)),
     cursor: enters("cursor", cursor.replace(placeholder, `\x1b[2m→ \x1b[0m${expected}`)),
-  }).toEqual({ hermes: 1, cursor: 1 });
+  }).toEqual({ hermes: 1, cursor: 0 });
+  // tap-xe42x F1: nudge's Enter never sends a human draft along with an ordinary wire.
+  expect({
+    hermes: enters("hermes", hermes.replace(typed, `${expected} keep my draft`)),
+    cursor: enters("cursor", cursor.replace(placeholder, `\x1b[2m→ \x1b[0m${expected} keep my draft`)),
+    cursorBefore: enters("cursor", cursor.replace(placeholder, `\x1b[2m→ \x1b[0mdraft ${expected}`)),
+    cursorBlankThenDraft: enters("cursor", cursor.replace(placeholder, `\x1b[2m→ \x1b[0m${expected}\n\nkeep this human draft`)),
+  }).toEqual({ hermes: 0, cursor: 0, cursorBefore: 0, cursorBlankThenDraft: 0 });
 });
 
 // tap-tg9vz: AGY's prompt-pair composer read is bounded by its own rules, so it gets the exact gate.
@@ -385,4 +394,81 @@ test("recorded nudge Enter sends for a wire alone in an AGY composer and refuses
     humanBefore: enters(composer([`> remember to ${expected}`])),
     twoWires: enters(composer([`> ${expected}`, "  [[TAP v0.23 note other-20260907T000000Z-abcdef123456]]"])),
   }).toEqual({ humanBelow: 0, humanBefore: 0, twoWires: 0 });
+});
+// tap-xe42x: the one literal-text license. Only `nudge type` may type, only the
+// byte-exact rendered nudge doorbell, and Hermes only behind its own queue prefix.
+test("typed text is licensed only for nudge type carrying an exact nudge wire", () => {
+  const idle = (harness: string) => readFileSync(join(import.meta.dir, `fixtures/agent-state/${harness}/${harness === "codex" ? "idle.ansi" : "idle.txt"}`), "utf8");
+  const type = (f: ReturnType<typeof fixture>, action: string, text: string) => (f.io.capture = () => idle(f.target.harness),
+    recoveryEffect(f.run.id, action, "aggressive: tap nudge", ["send-keys", "-t", "%701", "-l", text], f.io, f.env, () => f.facts));
+  // An unclassifiable frame refuses typing outright: the text could answer a prompt TAP cannot see.
+  const blind = fixture();
+  expect(recoveryEffect(blind.run.id, "nudge type", "aggressive: tap nudge", ["send-keys", "-t", "%701", "-l", "[[TAP v0.23 nudge]]"], blind.io, blind.env, () => blind.facts).event.summary).toContain("typed text could answer a prompt");
+  expect(blind.effects).toHaveLength(0);
+  const ok = fixture();
+  const okResult = type(ok, "nudge type", '[[TAP v0.23 nudge message="a \\"b\\""]]');
+  expect(okResult.event.summary).toContain("attempted nudge type"); expect(okResult.code).toBe(0);
+  expect(ok.effects.at(-1)).toEqual(["send-keys", "-t", "%701", "-l", '[[TAP v0.23 nudge message="a \\"b\\""]]']);
+  for (const [action, text] of [
+    ["nudge type", "hello there"],
+    ["nudge type", "[[TAP v0.23 note peer-20261005T000000Z-abcd]]"],
+    ["nudge type", "[[TAP  v0.23 nudge]]"],
+    ["nudge type", "/queue [[TAP v0.23 nudge]]"],
+    ["dismiss dialog", "[[TAP v0.23 nudge]]"],
+  ] as const) {
+    const f = fixture();
+    expect(type(f, action, text).event.outcome).toBe("refused");
+    expect(f.effects).toHaveLength(0);
+  }
+  const hermes = fixture("hermes");
+  const hermesResult = type(hermes, "nudge type", "/queue [[TAP v0.23 nudge]]");
+  expect(hermesResult.event.summary).toContain("attempted nudge type"); expect(hermesResult.code).toBe(0);
+  const keys = fixture();
+  expect(recoveryEffect(keys.run.id, "nudge interrupt", "aggressive: tap nudge", ["send-keys", "-t", "%701", "C-c"], keys.io, keys.env, () => keys.facts).event.outcome).toBe("refused");
+  expect(keys.effects).toHaveLength(0);
+});
+
+// tap-xe42x: an id-less doorbell has no payload to corroborate, so the OpenCode
+// repaint check requires the input to hold the wire and nothing else.
+test("OpenCode Enter on an id-less nudge wire requires the wire alone in the input", () => {
+  const wire = "[[TAP v0.23 nudge]]";
+  const frame = (text: string) => `  ┃\n  ┃  ${text}\n  ┃\n  ╹${"▀".repeat(30)}\n footer`;
+  for (const [text, enters] of [[wire, 1], [`${wire} human draft`, 0], [`human draft ${wire}`, 0], [`${wire} ${wire}`, 0]] as const) {
+    const f = fixture("opencode");
+    const run = readRun(f.run.id, f.env); run.nudgeExpected = wire; writeRun(run, f.env);
+    const captures = [frame(text), frame(text), "after"];
+    f.io.capture = () => captures.shift() ?? "after";
+    recoveryEffect(run.id, "nudge Enter", "aggressive: tap nudge", ["send-keys", "-t", "%701", "Enter"], f.io,
+      { ...f.env, TAP_NUDGE_REPAINTED: "1" }, () => f.facts);
+    expect(f.effects.length).toBe(enters);
+  }
+});
+
+test("a non-OpenCode Enter on an id-less nudge wire also requires the wire alone", () => {
+  const wire = "[[TAP v0.23 nudge]]";
+  const idle = readFileSync(join(import.meta.dir, "fixtures/agent-state/claude/idle.txt"), "utf8");
+  for (const [text, enters] of [[wire, 1], [`${wire} keep my draft`, 0]] as const) {
+    const f = fixture("claude");
+    const run = readRun(f.run.id, f.env); run.nudgeExpected = wire; writeRun(run, f.env);
+    const frame = idle.replace(/❯ *$/m, `❯ ${text}`);
+    const captures = [frame, "after"];
+    f.io.capture = () => captures.shift() ?? "after";
+    recoveryEffect(run.id, "nudge Enter", "aggressive: tap nudge", ["send-keys", "-t", "%701", "Enter"], f.io, f.env, () => f.facts);
+    expect(f.effects.length).toBe(enters);
+  }
+});
+
+// tap-xe42x F1: a recorded scrolled tail must equal the whole bounded composer; human text typed
+// after it holds nudge's Enter. Codex's bounded composer stands in for every non-Claude family.
+test("a recorded scrolled tail gets nudge's Enter only while it is the composer's whole text", () => {
+  const tail = 'preview="sample"]]';
+  const enters = (shown: string): number => {
+    const f = fixture("codex");
+    const run = readRun(f.run.id, f.env); run.nudgeExpected = tail; writeRun(run, f.env);
+    f.io.capture = () => shown;
+    recoveryEffect(run.id, "nudge Enter", "aggressive: staged sentinel", ["send-keys", "-t", "%701", "Enter"], f.io, f.env, () => f.facts);
+    return f.effects.length;
+  };
+  const frame = (text: string) => `\u203a ${text}\n\n  gpt-6-astra high \u00b7 Context 90% left \u00b7 /tmp\n`;
+  expect({ alone: enters(frame(tail)), withDraft: enters(frame(`${tail} keep my draft`)) }).toEqual({ alone: 1, withDraft: 0 });
 });

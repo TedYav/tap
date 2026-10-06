@@ -42,7 +42,6 @@ import { stagedIdleWindowSeconds } from "../spool-publication";
 import { noticeExpiredAtSendDoor } from "../clear-fence";
 import { TapError, callingPane, observeCallingPane, refuseUnanchoredPane, resolveContext, resolveSelf, teamRootFromBus, type ResolvedContext } from "../context";
 import { COURIER_IDENTITY, HELP_HANDLE, USER_IDENTITY, WATCH_IDENTITY, utcStamp, validToken } from "../ids";
-import { legacyUserSeatRefusal } from "./nudge-sender";
 import { forwardingRoute } from "../forwarding";
 import { listHandleHistory } from "./register";
 import { writeCancelledReceipt } from "../cancelled-receipt";
@@ -91,20 +90,6 @@ interface SendOptions {
   // instead of the unknown_recipient refusal. Never set by the public send
   // door; the predicate is re-proved under the publication locks below.
   departedSender?: boolean;
-  // Recovery-interrupt authority (tap-pkh9c): lets THIS urgent send run the
-  // courier's U4 interrupt against an auto-permission seat instead of the
-  // auto_mode_no_interrupt downgrade. Set only by `tap nudge --interrupt`'s
-  // in-process calls; parseSendArgs has no argv form, so ordinary `tap send`
-  // cannot reach it, and a spool drain never rebuilds it (the fact lives only
-  // on the direct deliveryFacts, not the envelope's drainable urgency stamp
-  // alone).
-  recoveryInterrupt?: boolean;
-  // Operator authority (tap-gridx): lets `from` be the reserved USER_IDENTITY,
-  // the person at a terminal that is not a seat. Set only by `tap nudge` after
-  // no seat could be derived and the person at an interactive terminal said
-  // yes; no argv form exists, so `tap send --from user` stays refused.
-  // Settle-only mail only.
-  operatorSender?: boolean;
 }
 
 export function cmdSend(
@@ -273,7 +258,7 @@ function cmdSendOutcomeBody(
   stage.from = from;
   if (!validToken(from)) throw new TapError(1, "usage_error", "tap help send", `--from '${from}' is not a valid token`);
   refuseReservedIdentity(to, "to", ctx.bus.home);
-  if (!(from === USER_IDENTITY && opts?.operatorSender === true)) refuseReservedIdentity(from, "from", ctx.bus.home);
+  refuseReservedIdentity(from, "from", ctx.bus.home);
 
   // --- stage the body, then resolve kind and id from the staged source -------
   // Bash's order: the source is staged (not_found / cap / unreadable refuse
@@ -361,12 +346,6 @@ function cmdSendOutcomeBody(
   // Content and kind never grant preemption. Only the parser's explicit
   // --delivery interrupt / --urgent choice authorizes an interrupt.
   const urgent = args.urgent;
-  // Recovery-interrupt authority rides only the internal option and only on an
-  // urgent send: the courier honors the pair, everything else fails closed.
-  const recoveryInterrupt = opts?.recoveryInterrupt === true;
-  if (recoveryInterrupt && !urgent) {
-    throw new TapError(1, "usage_error", "tap help send", "recovery-interrupt authority requires an urgent send; nothing placed");
-  }
   const id = resolveId(args, staged, from);
   const charset = tokenRefusal(id, from, to, kind);
   if (charset) throw refusalError(charset);
@@ -427,20 +406,7 @@ function cmdSendOutcomeBody(
       // below must not answer it — bash's sender facts read a missing row as
       // non-dischargeable and the supervisor branch licenses settle-only mail
       // (tap-send.sh:512-553). The instance check is likewise row-scoped.
-      // The operator identity is not a seat either; only nudge's operator
-      // prompt, answered at a terminal with no seat, licenses it, and only for
-      // settle-only mail (tap-gridx).
-      const operatorLicensed = from === USER_IDENTITY && opts?.operatorSender === true && !args.expectReply;
-      if (from === USER_IDENTITY && opts?.operatorSender === true && args.expectReply) {
-        throw new TapError(1, "unregistered_sender", "send settle-only mail as the operator, or reply-capable mail from a seat",
-          `'${USER_IDENTITY}' is the reserved operator identity: it has no pane to answer from, so it may only send settle-only mail`);
-      }
-      // A seat registered as `user` before the reservation, on either team,
-      // would share the operator's mail, receipts and outstanding work.
-      if (operatorLicensed && (fromSeat || seatMap(recipientDoc)[USER_IDENTITY])) {
-        throw legacyUserSeatRefusal(fromSeat ? ctx.team : (remote ? target.team : ctx.team));
-      }
-      if (from !== WATCH_IDENTITY && !operatorLicensed && (!fromSeat || String(fromSeat.status ?? "active") !== "active")) {
+      if (from !== WATCH_IDENTITY && (!fromSeat || String(fromSeat.status ?? "active") !== "active")) {
         throw unregisteredSenderRefusal(from, seats, ctx.registryPath);
       }
       if (fromSeat && expectedSenderInstance && fromSeat.instance !== expectedSenderInstance) {
@@ -504,7 +470,7 @@ function cmdSendOutcomeBody(
           `tap send ${args.to} -f <path> --from ${watchIdentity} --kind notice`,
           `'${watchIdentity}' is the reserved watch-sidecar identity: it has no pane and cannot register, so it may only send settle-only mail — --kind probe, notice or progress with no reply obligation. A reply-expecting message is sent from a registered pane-backed seat`);
       }
-      if (!senderDischargeable && !supervisorLicensed && !operatorLicensed) throw unregisteredSenderRefusal(from, seats, ctx.registryPath);
+      if (!senderDischargeable && !supervisorLicensed) throw unregisteredSenderRefusal(from, seats, ctx.registryPath);
       // Resolve once: only the effective, deliverable stamp grants an
       // unattended sender a reply obligation (tap-send.sh:582-623).
       const replyToStamp = args.replyToSet
@@ -914,11 +880,7 @@ function cmdSendOutcomeBody(
       // pane's rc 3, and a pane that stayed in copy mode places first and
       // defers with the typed copy-mode reason.
       const permissions = manualRelay ? "bypass" : recordedPermissions(remote?.registryPath ?? ctx.registryPath, to);
-      // Recovery-interrupt keeps its urgent class on an auto seat (tap-pkh9c):
-      // the caller selected this seat for an interrupt, so the seat does not
-      // park under auto_mode_no_interrupt below. Ordinary urgent sends keep
-      // the downgrade exactly as the incumbent set it.
-      autoUrgent = !pollRecipient && urgent && permissions === "auto" && !recoveryInterrupt;
+      autoUrgent = !pollRecipient && urgent && permissions === "auto";
       if (!pollRecipient && !polite && permissions === "bypass") {
         const copyTarget = authorizedPaneId || pane;
         const inModeRead = (): "gone" | "in" | "out" => {
@@ -1497,12 +1459,12 @@ function cmdSendOutcomeBody(
   }, manualRelay ? {
     sender: from, scriptsDir, agentFamilies, busHome: ctx.bus.home, recipient: to, attemptAdmitted, registryPath: "",
     noPromptOk: authorizedHarness.startsWith("hermes"),
-    deliveryFacts: { urgent, noSpool, recipientBound: false, harness: authorizedHarness, recoveryInterrupt },
+    deliveryFacts: { urgent, noSpool, recipientBound: false, harness: authorizedHarness },
   } : {
     sender: from, scriptsDir, agentFamilies, busHome: ctx.bus.home, recipientBusHome: remote?.busHome, recipient: to, attemptAdmitted,
     registryPath: remote ? remote.registryPath : ctx.registryPath,
     noPromptOk: authorizedHarness.startsWith("hermes"),
-    deliveryFacts: { urgent, noSpool, recipientBound: true, harness: authorizedHarness, recoveryInterrupt },
+    deliveryFacts: { urgent, noSpool, recipientBound: true, harness: authorizedHarness },
   }, {
     ...DARK_EFFECTS,
     clobber: (target, command, bound, backup) => clobberBand(target, command, bound, DARK_EFFECTS, backup, ""),
@@ -1513,7 +1475,7 @@ function cmdSendOutcomeBody(
     process.stderr.write(`tap send: interrupt ${interrupt.tmux_confirmed ? "input sent" : "input acceptance unconfirmed"} for ${id}; cancellation outcome unknown; inspect with tap show ${id}\n`);
     recordAfterEffect("urgent_interrupt registry event", () => appendRegistryEventOrWarn("tap send", {
       log: registryEventsPath(ctx.bus.home), actor: from, action: "urgent_interrupt", handle: to, pane,
-      team: ctx.team, detail: ensureAscii(JSON.stringify({ id, ...interrupt, recovery: recoveryInterrupt || undefined })),
+      team: ctx.team, detail: ensureAscii(JSON.stringify({ id, ...interrupt })),
     }));
   }
 
@@ -1756,10 +1718,10 @@ function refuseReservedIdentity(handle: string, role: "to" | "from", busHome: st
     throw new TapError(
       1,
       "reserved_handle",
-      role === "to" ? "tap send <a-teammate> …" : "tap nudge --interrupt --to <peer>   (from your own terminal; it asks before sending as you)",
+      role === "to" ? "tap send <a-teammate> …" : "tap nudge <peer>   (a senderless doorbell; it records you as the actor)",
       role === "to"
         ? `'${USER_IDENTITY}' is the reserved operator identity and can never receive a send`
-        : `'${USER_IDENTITY}' is the reserved operator identity; only 'tap nudge', run from a person's own terminal, sends as it`,
+        : `'${USER_IDENTITY}' is the reserved operator identity: an audit actor in nudge recovery runs, never a sender`,
     );
   }
   if (handle === WATCH_IDENTITY) {

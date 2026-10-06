@@ -1,8 +1,9 @@
 // The launch collision ladder's observations and presentation (launcher.py's
 // make_new_record helpers): what the chooser says about the incumbent that holds
 // a requested name, the non-interactive refusals, and the resume-artifact probe
-// that decides which resume tier the [r] option may promise. Strings are the
-// incumbent's byte for byte; the launch differential oracle compares them.
+// that decides which resume tier the [r] option may promise. Refusal strings are
+// the incumbent's byte for byte; chooser glosses were shortened to fit a 50-column
+// row, and the launch differential oracle maps the recorded ones explicitly.
 // The probe itself lives in resume-identity.ts now; only the re-export for
 // new.ts stays here.
 import { spawnSync } from "node:child_process";
@@ -83,34 +84,36 @@ export type Choose = typeof promptChoice;
 /** describe_revive_tier: what [r] would actually do, by resume tier (tap-u3bl). */
 export function describeReviveTier(tier: string): string {
   return ({
-    exact: "resume the recorded conversation by its native id",
-    picker: "no live id — resume opens the harness native picker",
-    latest: "no live id — resume continues the latest conversation",
-    fresh: "no conversation to resume — start a fresh session under this name",
+    exact: "Resume the chat by its native ID",
+    picker: "No usable ID; open the native picker",
+    latest: "No usable ID; resume the latest chat",
+    fresh: "Nothing to resume; start fresh",
     // tap-we6b rework: the stored id failed the resume-artifact probe; [r]
     // refuses rather than silently start a different conversation.
-    stale: "the stored chat never persisted — resume refuses it; [k] kill starts fresh",
-  } as Record<string, string>)[tier] ?? "resume this seat";
+    stale: "Chat never persisted; resume refuses",
+  } as Record<string, string>)[tier] ?? "Resume this seat";
 }
 
-/** Why [f] cannot fork this incumbent, or null when a fork can start from its stored conversation. */
+/** Why [f] cannot fork this incumbent, or null when a fork can start from its stored conversation.
+ *  A reason fits 21 characters: a colourless row wraps it in "(unavailable: ...)". */
 export type ForkUnavailable = string | null;
 export const NOT_A_SEAT = "not a TAP seat";
 
-/** [f] is always listed so the menu keeps one shape; it is enabled only when a fork can succeed. */
+/** [f] is always listed so the menu keeps one shape; it is enabled only when a fork can succeed.
+ *  Reasons stay lowercase for the error sentences that end with them; the row capitalizes. */
 const forkOption = (unavailable: ForkUnavailable): ChoiceOption => unavailable === null
-  ? ["f", "fork", "Fork it - launch a new session with the same history."]
-  : ["f", "fork", unavailable, true];
+  ? ["f", "fork", "Fork a new session with this history"]
+  : ["f", "fork", unavailable.charAt(0).toUpperCase() + unavailable.slice(1), true];
 
 /** prompt_session_exists: a live or unobservable incumbent; [r] reattaches. */
 export function promptSessionExists(choose: Choose, name: string, harness: string, stateDesc: string | null, reviveTierWord: string | null,
   forkUnavailable: ForkUnavailable): string {
   const question = stateDesc ? `'${name}' (${harness}): ${stateDesc}` : `'${name}' already exists (${harness})`;
   return choose("session", question, [
-    ["r", "resume", reviveTierWord ? describeReviveTier(reviveTierWord) : "Reattach to the existing session"],
-    ["n", "new", "Start another session with a suffix"],
+    ["r", "resume", reviveTierWord ? describeReviveTier(reviveTierWord) : "Reattach to the running session"],
+    ["n", "new", "Start a sibling with a suffixed name"],
     forkOption(forkUnavailable),
-    ["k", "kill", "Stop the session and start over"],
+    ["k", "kill", "Stop it and start fresh"],
     ["q", "quit", "Leave everything unchanged"],
   ], "r");
 }
@@ -120,9 +123,9 @@ export function promptNewCollision(choose: Choose, name: string, harness: string
   forkUnavailable: ForkUnavailable): string {
   return choose("session", `'${name}' (${harness}): ${foundState}`, [
     ["r", "resume", describeReviveTier(reviveTierWord)],
-    ["n", "new", "Start a sibling seat under a suffixed name"],
+    ["n", "new", "Start a sibling with a suffixed name"],
     forkOption(forkUnavailable),
-    ["k", "kill", "Replace it — start a fresh session under this name"],
+    ["k", "kill", "Start fresh under this name"],
     ["q", "quit", "Leave everything unchanged"],
   ], "r");
 }
@@ -132,9 +135,9 @@ export function promptOffRosterTmuxCollision(choose: Choose, name: string, _harn
   const question = `a tmux session named ${name} already exists (${createdPhrase(createdLabel)}); it is not on the team roster`;
   err(`tap session: to reattach: tmux attach -t ${name}  (or: tap session resume <handle>)`);
   return choose("session", question, [
-    ["n", "new", "Start another session with a suffix"],
+    ["n", "new", "Start a sibling with a suffixed name"],
     forkOption(NOT_A_SEAT),
-    ["k", "kill", "Stop the session and start over under this name"],
+    ["k", "kill", "Stop it; start fresh under this name"],
     ["q", "quit", "Leave everything unchanged"],
   ], "n");
 }

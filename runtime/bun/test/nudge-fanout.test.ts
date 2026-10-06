@@ -20,16 +20,13 @@ const ROSTERS: Record<string, FanoutRow[]> = {
 };
 
 function effects(over: Partial<FanoutEffects> = {}) {
-  const sent: string[][] = [];
+  const sent: string[] = [];
   const out: string[] = [];
   const fx: FanoutEffects = {
     teams: () => [{ team: "a", registryLocation: "/a/registry.json" }, { team: "b", registryLocation: "/b/registry.json" }],
     roster: loc => ({ rows: ROSTERS[loc]! }),
-    send: (_seat, argv) => { sent.push(argv); return { rc: 0, disposition: "delivered" }; },
+    nudge: seat => { sent.push(`${seat.team}/${seat.handle}`); return 0; },
     confirm: () => { throw new Error("unexpected prompt"); },
-    refuseOperatorConflicts: () => {},
-    recheckSender: () => {},
-    confirmOperator: () => { throw new Error("unexpected operator prompt"); },
     interactive: () => false,
     out: text => { out.push(text); },
     err: () => {},
@@ -48,12 +45,15 @@ test("only --harness/--team select the fan-out; the single-peer form is untouche
   expect(isFanoutArgv(["--team", "*"])).toBe(true);
 });
 
-test("parse refuses a peer, an unknown harness, a missing --harness, and -m with -f", () => {
+test("parse refuses a peer, an unknown harness, a missing --harness, --to/--pane and a bad --message", () => {
   const refusal = (argv: string[]) => { try { parseFanoutArgs(argv); return ""; } catch (e) { return (e as TapError).detail; } };
   expect(refusal(["--harness", "codex", "peer"])).toContain("takes no peer");
   expect(refusal(["--harness", "gpt"])).toContain("unknown harness 'gpt'");
   expect(refusal(["--team", "*"])).toContain("--harness is required");
-  expect(refusal(["--harness", "codex", "-m", "x", "-f", "y"])).toContain("either -m or -f");
+  expect(refusal(["--harness", "codex", "--to", "x"])).toContain("selects its seats by family");
+  expect(refusal(["--harness", "codex", "--pane", "%1"])).toContain("--pane is not available");
+  expect(refusal(["--harness", "codex", "--message", "ask @luna"])).toContain("use tap send");
+  expect(refusal(["--harness", "codex", "-m", "x"])).toContain("unknown option '-m'");
   expect(refusal(["--harness", "codex", "--bogus"])).toContain("unknown option '--bogus'");
 });
 
@@ -98,54 +98,37 @@ test("a TTY decline sends nothing; --yes skips the prompt", () => {
   expect(declined.sent).toEqual([]);
   const yes = effects();
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--yes"]), self, yes.fx)).toBe(0);
-  expect(yes.sent.map(argv => argv[0])).toEqual(["a/cx1", "b/cx2"]);
+  expect(yes.sent).toEqual(["a/cx1", "b/cx2"]);
 });
 
-test("each seat gets one settle-only note from the caller with the default body, or -m verbatim", () => {
-  const { fx, sent } = effects();
-  runFanout(args(["--harness", "codex", "--team", "a"]), self, fx);
-  expect(sent).toHaveLength(1);
-  const [address, flag, body, ...rest] = sent[0]!;
-  expect([address, flag]).toEqual(["a/cx1", "-m"]);
-  expect(body).toContain("Automated nudge from me");
-  expect(rest).toEqual(["--from", "me", "--fyi"]);
-  const custom = effects();
-  runFanout(args(["--harness", "codex", "--team", "a", "-m", "limit reset `now`"]), self, custom.fx);
-  expect(custom.sent[0]!.slice(1, 3)).toEqual(["-m", "limit reset `now`"]);
-  const file = effects();
-  runFanout(args(["--harness", "codex", "--team", "a", "-f", "/tmp/body.md"]), self, file.fx);
-  expect(file.sent[0]!.slice(1, 3)).toEqual(["-f", "/tmp/body.md"]);
+test("the dry run names the wire each seat would get, and --no-interrupt", () => {
+  const { fx, out } = effects();
+  runFanout(args(["--harness", "codex", "--team", "a", "--dry-run", "--message", 'say "hi"', "--no-interrupt"]), self, fx);
+  expect(out.join("")).toContain('each seat: the nudge ladder, then [[TAP v0.23 nudge message="say \\"hi\\""]] (--no-interrupt)');
 });
 
-test("one refusing seat is reported and never stops the others; exit is nonzero", () => {
-  const { fx, out } = effects({
-    send: (_seat, argv) => {
-      if (argv[0] === "a/cx1") throw new TapError(1, "identity_mismatch", "tap doctor", "drifted");
-      return { rc: 0, disposition: "queued-spool" };
+test("one held seat is reported and never stops the others; exit is nonzero", () => {
+  const { fx, out, sent } = effects({
+    nudge: seat => {
+      if (seat.handle === "cx1") throw new TapError(1, "nudge_held", "tap peek a/cx1", "the composer holds a draft; nothing sent");
+      sent.push(`${seat.team}/${seat.handle}`); return 0;
     },
   });
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--yes"]), self, fx)).toBe(1);
-  const text = out.join("");
-  expect(text).toContain("a/cx1  failed (identity_mismatch: drifted)");
-  expect(text).toContain("b/cx2  queued-spool");
+  expect(out.join("")).toContain("a/cx1  held (nudge_held: the composer holds a draft; nothing sent)");
+  expect(sent).toEqual(["b/cx2"]);
 });
 
 test("an unreadable team is reported and fails the run without blocking other teams", () => {
   const { fx, sent } = effects({ roster: loc => loc.startsWith("/a") ? { error: "registry unreadable" } : { rows: ROSTERS[loc]! } });
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--yes"]), self, fx)).toBe(1);
-  expect(sent.map(argv => argv[0])).toEqual(["b/cx2"]);
+  expect(sent).toEqual(["b/cx2"]);
 });
 
-test("the pinned instance reaches send, and an unverified delivery exits 5 with a do-not-re-run line", () => {
-  const pins: string[] = [];
-  const { fx, out } = effects({
-    send: (seat, argv) => { pins.push(`${argv[0]}=${seat.instance}`); return argv[0] === "b/cx2" ? { rc: 5, disposition: "unverified" } : { rc: 0, disposition: "delivered" }; },
-  });
+test("a seat ending with a possible effect makes the run exit 5 with a do-not-re-nudge line", () => {
+  const { fx, out } = effects({ nudge: seat => seat.handle === "cx2" ? 5 : 0 });
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--yes"]), self, fx)).toBe(5);
-  expect(pins).toEqual(["a/cx1=cx1-i1", "b/cx2=cx2-i1"]);
-  const text = out.join("");
-  expect(text).toContain("b/cx2  UNVERIFIED (possible effect");
-  expect(text).toContain("1 unverified delivery(ies) may have landed; check tap outstanding me");
+  expect(out.join("")).toContain("1 seat(s) ended with a possible effect; inspect them (tap peek) before nudging again");
 });
 
 test("an unreadable team fails the dry run too, and an explicitly named one is not unknown_team", () => {
@@ -168,7 +151,7 @@ test("recheck refuses a replaced, re-harnessed, poll or inactive seat at send ti
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-test("public --dry-run validates the sender like the real run and touches no target", () => {
+test("public --harness --dry-run classifies the seat, ignores TAP_SELF, and touches no pane", () => {
   const root = mkdtempSync(join(tmpdir(), "tap-nudge-fanout-"));
   roots.push(root);
   for (const p of ["bus", "index", ".tap"]) mkdirSync(join(root, p), { recursive: true });
@@ -178,11 +161,25 @@ test("public --dry-run validates the sender like the real run and touches no tar
   writeFileSync(join(root, "index/global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
     testteam: { root, registry_location: join(root, "bus/registry.json") } } }));
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, XDG_CONFIG_HOME: join(root, "config"), TAP_HOME: join(root, "bus"),
-    TAP_INDEX_HOME: join(root, "index"), TAP_SELF: "ghost" };
+    TAP_INDEX_HOME: join(root, "index"), TAP_SELF: "peer" };
   delete env.TMUX; delete env.TMUX_PANE;
   const run = spawnSync("bash", [resolve(import.meta.dir, "../../../bin/tap"), "nudge", "--harness", "codex", "--dry-run"],
     { cwd: root, env, encoding: "utf8", timeout: 25000 });
-  expect(run.status).toBe(1);
-  expect(run.stderr).toContain("sender 'ghost' is not an active seat");
-  expect(run.stdout).not.toContain("target");
+  expect({ status: run.status, stderr: run.stderr }).toMatchObject({ status: 0 });
+  // TAP_SELF names the seat, but the actor comes from a bound pane only: the seat is
+  // classified on its own (here unobservable, no tmux), never skipped as "self".
+  expect(run.stdout).toContain("testteam/peer  skip: unknown (session_unobservable)");
+  expect(run.stdout).not.toContain("skip: self");
+  expect(run.stdout).toContain("dry run; nothing sent");
 }, 30000);
+
+test("the fan-out hands each seat's selected instance to its nudge, and a replaced seat refuses", async () => {
+  const { instanceDrift } = await import("../src/verbs/nudge");
+  const root = mkdtempSync(join(tmpdir(), "tap-nudge-pin-"));
+  roots.push(root);
+  const registry = join(root, "registry.json");
+  writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "a" }, seats: { cx1: { instance: "cx1-i2" } } }));
+  expect(() => instanceDrift(registry, "cx1", "")).not.toThrow();
+  expect(() => instanceDrift(registry, "cx1", "cx1-i2")).not.toThrow();
+  expect(() => instanceDrift(registry, "cx1", "cx1-i1")).toThrow("replaced after selection");
+});

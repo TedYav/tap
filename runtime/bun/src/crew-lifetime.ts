@@ -138,7 +138,7 @@ export function crewLifetimeHealth(pane: string): "supervised" | "unsupervised" 
 }
 
 /** A live pane row may be bound only to its unique non-crew session owner. */
-function ownerRows(ctx: ResolvedContext, owner: string, crew: string): { parent: Row; child: Row } {
+function ownerRows(ctx: FamilyContext, owner: string, crew: string): { parent: Row; child: Row } {
   const all = registryRows(ctx.registryPath);
   const parent = all[owner], child = all[crew];
   if (!parent || !child || isCrew(parent) || !isCrew(child)) refuse(`owner '${owner}' or crew '${crew}' is not a current family`);
@@ -220,15 +220,37 @@ export function crewLifetimeMatchesRows(binding: CrewLifetimeBinding, ownerHandl
 }
 
 /** Existing rows are reconciled while owner evidence is still available. */
-export async function reconcileCrewLifetime(ctx: ResolvedContext, owner: string, crew: string): Promise<CrewLifetimeBinding> {
-  const { parent, child } = ownerRows(ctx, owner, crew);
-  const parentPane = str(parent.pane_id), childPane = str(child.pane_id);
-  const parentFacts = paneFacts(parentPane), childFacts = paneFacts(childPane);
+type FamilyContext = Pick<ResolvedContext, "team" | "registryPath">;
+
+/** Both family panes as their rows record them, on one server generation; else a refusal. */
+function familyFacts(parent: Row, child: Row) {
+  const parentFacts = paneFacts(str(parent.pane_id)), childFacts = paneFacts(str(child.pane_id));
   if (!parentFacts || !childFacts || parentFacts.session !== str(parent.session) || childFacts.session !== str(child.session)
     || parentFacts.socket !== childFacts.socket || parentFacts.serverEpoch !== childFacts.serverEpoch
     || parentFacts.serverEpoch !== str(parent.server_epoch) || childFacts.serverEpoch !== str(child.server_epoch)
     || (str(parent.server_socket) && parentFacts.socket !== str(parent.server_socket))
     || (str(child.server_socket) && childFacts.socket !== str(child.server_socket))) refuse("family pane or server generation changed");
+  return { parentFacts: parentFacts!, childFacts: childFacts! };
+}
+
+/** An unarmed binding of this child to the parent's current harness generation. */
+function newBinding(ctx: FamilyContext, owner: string, crew: string, parent: Row, child: Row,
+  facts: ReturnType<typeof familyFacts>, parentProcess: ProcessIdentity): CrewLifetimeBinding {
+  const { parentFacts, childFacts } = facts;
+  const childProcess = identity(childFacts.pid, parentProcess.boot);
+  if (!childProcess) refuse(`crew '${crew}' process generation is unreadable`);
+  return {
+    version: 1, token: randomUUID(), team: ctx.team, owner, ownerInstance: str(parent.instance), ownerPane: str(parent.pane_id),
+    ownerSession: parentFacts.session, crew, crewInstance: str(child.instance), crewPane: str(child.pane_id), crewSession: childFacts.session,
+    serverSocket: childFacts.socket, serverEpoch: childFacts.serverEpoch, parent: parentProcess, parentFamily: str(parent.harness), child: childProcess!, childFamily: str(child.harness),
+    helper: { pid: "", start: "", boot: parentProcess.boot },
+  };
+}
+
+export async function reconcileCrewLifetime(ctx: ResolvedContext, owner: string, crew: string): Promise<CrewLifetimeBinding> {
+  const { parent, child } = ownerRows(ctx, owner, crew);
+  const childPane = str(child.pane_id);
+  const facts = familyFacts(parent, child);
   const parentProcess = parentIdentity(parent);
   const prior = readBinding(childPane);
   if (prior && prior.ownerInstance === str(parent.instance) && prior.crewInstance === str(child.instance)
@@ -249,15 +271,83 @@ export async function reconcileCrewLifetime(ctx: ResolvedContext, owner: string,
     && processGeneration(prior.child) === "same") {
     refuse(`crew '${crew}' is already supervised by another parent generation`);
   }
-  const childProcess = identity(childFacts.pid, parentProcess.boot);
-  if (!childProcess) refuse(`crew '${crew}' process generation is unreadable`);
-  const binding: CrewLifetimeBinding = {
-    version: 1, token: randomUUID(), team: ctx.team, owner, ownerInstance: str(parent.instance), ownerPane: parentPane,
-    ownerSession: parentFacts.session, crew, crewInstance: str(child.instance), crewPane: childPane, crewSession: childFacts.session,
-    serverSocket: childFacts.socket, serverEpoch: childFacts.serverEpoch, parent: parentProcess, parentFamily: str(parent.harness), child: childProcess, childFamily: str(child.harness),
-    helper: { pid: "", start: "", boot: parentProcess.boot },
-  };
-  return armCrewLifetime(binding);
+  return armCrewLifetime(newBinding(ctx, owner, crew, parent, child, facts, parentProcess));
+}
+
+/** Stop exactly this helper generation, even a stopped one, and confirm it is gone. */
+async function fenceHelper(helper: ProcessIdentity): Promise<boolean> {
+  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    if (processGeneration(helper) !== "same") break;
+    try {
+      process.kill(Number(helper.pid), signal);
+      // A stopped helper only acts on its pending TERM once continued.
+      if (signal === "SIGTERM") process.kill(Number(helper.pid), "SIGCONT");
+    } catch { /* already gone */ }
+    for (let i = 0; i < 20 && processGeneration(helper) === "same"; i++) await Bun.sleep(50);
+  }
+  return processGeneration(helper) === "gone";
+}
+
+/** A crew that outlived its parent seat, captured before the seat is revived (tap-9rrat). */
+export interface SurvivingCrew { crew: string; crewInstance: string; crewPane: string; ownerInstance: string;
+  /** The pane's process generation at the snapshot; a crew whose process is unreadable is not snapshotted. */
+  child: ProcessIdentity; binding: CrewLifetimeBinding | null }
+
+/** The registered crews in the owner's session, with their pane-local bindings, before any revival effect. */
+export function survivingCrews(ctx: FamilyContext, owner: string): SurvivingCrew[] {
+  const all = registryRows(ctx.registryPath);
+  const parent = all[owner];
+  if (!parent || isCrew(parent) || !str(parent.instance) || !str(parent.session)) return [];
+  const found: SurvivingCrew[] = [];
+  for (const [crew, row] of Object.entries(all)) {
+    if (!isCrew(row) || str(row.session) !== str(parent.session) || !str(row.instance) || !/^%\d+$/.test(str(row.pane_id))) continue;
+    const fact = paneFacts(str(row.pane_id));
+    const child = fact && fact.id === str(row.pane_id) ? identity(fact.pid, bootId()) : null;
+    if (child) found.push({ crew, crewInstance: str(row.instance), crewPane: str(row.pane_id), ownerInstance: str(parent.instance),
+      child, binding: readBinding(str(row.pane_id)) });
+  }
+  return found;
+}
+
+/**
+ * The one continuation past "a crew belongs to its original parent lifetime":
+ * after the SAME retained seat instance is revived, its surviving crew moves to
+ * the revived harness generation. Refuses unless the crew is unchanged since the
+ * snapshot, its original parent is provably gone, and its old helper is fenced;
+ * the new token then voids the old helper's guarded kill. A fresh replacement
+ * mints a new instance and so can never inherit crews this way.
+ */
+export async function reclaimRevivedCrew(ctx: FamilyContext, owner: string, surviving: SurvivingCrew): Promise<CrewLifetimeBinding> {
+  const { parent, child } = ownerRows(ctx, owner, surviving.crew);
+  if (str(parent.instance) !== surviving.ownerInstance) refuse(`seat '${owner}' is not the retained instance crew '${surviving.crew}' belonged to`);
+  if (str(child.instance) !== surviving.crewInstance || str(child.pane_id) !== surviving.crewPane) refuse(`crew '${surviving.crew}' changed during the revival`);
+  const facts = familyFacts(parent, child);
+  // The process the snapshot saw, unchanged: a replacement in the same pane is not inherited.
+  if (facts.childFacts.pid !== surviving.child.pid || processGeneration(surviving.child) !== "same") refuse(`crew '${surviving.crew}' process changed during the revival`);
+  const prior = readBinding(surviving.crewPane);
+  if ((prior?.token ?? null) !== (surviving.binding?.token ?? null)) refuse(`crew '${surviving.crew}' supervision changed during the revival`);
+  if (prior) {
+    if (prior.owner !== owner || prior.ownerInstance !== surviving.ownerInstance || prior.crewInstance !== surviving.crewInstance
+      || prior.parentFamily !== str(parent.harness) || prior.childFamily !== str(child.harness)) refuse(`crew '${surviving.crew}' belongs to a different family`);
+    if (facts.childFacts.pid !== prior.child.pid || processGeneration(prior.child) !== "same") refuse(`crew '${surviving.crew}' process changed during the revival`);
+    // The supervisor's own predicate: an exec into another family also ends the parent harness.
+    if (parentHarnessState(prior.parent, prior.parentFamily) !== "gone") refuse(`crew '${surviving.crew}' original parent generation is not provably gone`);
+    if (!await fenceHelper(prior.helper)) refuse(`crew '${surviving.crew}' old supervisor could not be fenced`);
+  }
+  return armCrewLifetime(newBinding(ctx, owner, surviving.crew, parent, child, facts, parentIdentity(parent)));
+}
+
+/**
+ * Before a revival starts, stop a surviving crew's old supervisor so it cannot reap the crew while the
+ * revived harness starts. Only a snapshotted binding that still owns the pane, whose parent harness is
+ * provably gone, is fenced; anything else is left alone and the later reclaim decides.
+ */
+export async function fenceSurvivingCrew(owner: string, surviving: SurvivingCrew): Promise<boolean> {
+  const prior = surviving.binding;
+  if (!prior || readBinding(surviving.crewPane)?.token !== prior.token || prior.owner !== owner
+    || prior.ownerInstance !== surviving.ownerInstance || prior.crewInstance !== surviving.crewInstance) return false;
+  if (parentHarnessState(prior.parent, prior.parentFamily) !== "gone") return false;
+  return fenceHelper(prior.helper);
 }
 
 /** Creation binds the caller's actual registered owner, never a session name guess. */

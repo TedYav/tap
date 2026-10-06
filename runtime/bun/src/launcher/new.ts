@@ -23,7 +23,7 @@ import { resolveLaunchPresetArgs } from "./resolve-target";
 import { allocatedIndex, attachTailInProcess, baseAlias, cmdSessionResume, findRecordByKey, occupiedSessionNames,
   receipt, registryEntry, unexpiredSeats } from "./resume";
 import { resolvedResumeIdentity, seatReviveTier } from "./resume-identity";
-import { classifySession, entryObservedDead, verifiedSession } from "./observation";
+import { attachableState, classifySession, crewPanesIn, entryObservedDead, verifiedSession } from "./observation";
 import { NOT_A_SEAT, type ForkUnavailable, describeSessionState, printOffRosterTmuxExists, printSessionExists, printStoppedSession, promptNewCollision, promptOffRosterTmuxCollision,
   promptSessionExists, recordHasResumeArtifact, relativeAge, sessionAttached, tmuxSessionCreatedLabel, type Choose } from "./collision";
 import { cloneRecord, err, Exit, refuseIfFlipAuthority, refuseIfResetFenced, registryAuthority, registryState, render, SCRIPTS,
@@ -234,10 +234,10 @@ type LadderInputs = {
  * before any stale-store refusal, so it keeps the reattach tier; only a stopped
  * cursor seat with a stored id and no store reaches the refusal ("stale"). The
  * attachable predicate matches resume's sessionAttachable: any present session
- * except a shell. [r] resumes the INCUMBENT, so the tier is the incumbent's. */
+ * except a shell or a gone seat. [r] resumes the INCUMBENT, so the tier is the incumbent's. */
 export function collisionReviveTier(incumbentHarness: string, storedId: string | null, recordResumable: boolean,
   present: boolean, classification: string): string {
-  const attachable = present && classification !== "shell" && classification !== "attached-shell";
+  const attachable = present && attachableState(classification);
   return seatReviveTier(incumbentHarness, storedId, recordResumable, attachable);
 }
 async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInputs): Promise<LadderOutcome> {
@@ -254,7 +254,9 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
   const nextHandle = slashHandle(nextName, base) || tag;
   const incumbentHarness = existingRecord?.harness ?? (typeof existingEntry?.harness === "string" && existingEntry.harness
     ? existingEntry.harness : args.harness);
-  const classification = inputs.live ? await classifySession(name, process.env) : "absent";
+  // A roster seat is live only while its own harness runs; crew windows hold a session, not a seat (tap-9rrat).
+  const classification = !inputs.live ? "absent" : await classifySession(name, process.env, undefined,
+    seated ? { harness: incumbentHarness, crewPanes: crewPanesIn(state.entries, name) } : undefined);
   let aliveElsewhere: string | null = null;
   if (existingEntry !== null) {
     const verified = await verifiedSession(existingEntry, process.env);
@@ -304,11 +306,11 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
     const row = state.entries.get(tag);
     if (!row) return NOT_A_SEAT;
     const harness = String(row.harness ?? "");
-    if (!FORKABLE_HARNESSES.includes(harness)) return "not supported by this harness";
+    if (!FORKABLE_HARNESSES.includes(harness)) return "harness cannot fork";
     const conflict = storedForkConflict(harness, row);
-    if (conflict) return `stored ${conflict} conflicts with a fork`;
+    if (conflict) return `uses ${conflict}`;
     const source = recordFromRow(tag, row, state.team as Record<string, unknown>, root);
-    return source && resolvedResumeIdentity(source, process.env) ? null : "no stored conversation to fork";
+    return source && resolvedResumeIdentity(source, process.env) ? null : "no saved chat to fork";
   };
   // Only a chooser's [n] asks for the name; --new and automatic suffixing keep the allocated one.
   let chosen = false;
@@ -329,6 +331,18 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
       printSessionExists(tag, launchTarget, `${tag} is live in ${aliveElsewhere}`, nextHandle, json);
       throw new Exit(2);
     }
+  } else if (classification === "seat-gone") {
+    // tap-9rrat: the seat's harness exited while crew windows hold its session.
+    // [r] revives it beside them in a new window; nothing is stopped.
+    const held = `${incumbentHarness} exited; other windows still hold the session`;
+    if (!interactive()) {
+      printSessionExists(tag, launchTarget, `${name}: ${held}; revive it with tap session resume ${tag}`, nextHandle, json);
+      throw new Exit(2);
+    }
+    choice = prompted(promptNewCollision(deps.choose, name, incumbentHarness, describeSessionState(held, rosterHandle, incumbentAge()),
+      existingRecord !== null ? reviveTierWord : "fresh", forkUnavailable()));
+    // Only the recordless seat reseats; a recorded one keeps [r] on resume.
+    if (choice === "r" && existingRecord === null) choice = "k";
   } else if (classification === "shell" && !presetDerived && (existingRecord === null || existingRecord.harness === args.harness)) {
     // A live shell holds the name: reseat fresh (create-intent, no history restore).
     if (jsonDeclined) {

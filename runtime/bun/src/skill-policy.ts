@@ -36,6 +36,12 @@ export function aliasBody(name: string, canonical: string, source: string): stri
   const metadata = match[1]!.replace(/^name: .+$/m, `name: ${name}`);
   return `---\n${metadata}\n---\n\nRun \`tap help skill ${canonical}\`, then read the returned SKILL.md and follow it for the original task and arguments. Resolve all relative references from that canonical file's directory, never from this wrapper.\n`;
 }
+/** Codex has no frontmatter switch for user-only skills; its per-skill agents manifest carries one. */
+export const CODEX_AGENTS_FILE = "agents/openai.yaml";
+export function codexAgentsBody(source: string): string | undefined {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+  return match && /^disable-model-invocation: true$/m.test(match[1]!) ? "policy:\n  allow_implicit_invocation: false\n" : undefined;
+}
 export function savedFullKit(config?: Record<string, any>): boolean | undefined {
   if (config === undefined) {
     try { config = readCatalog(join(configDirectory(process.env),"config.toml")).data; }

@@ -23,7 +23,8 @@ import { errorJson as rawErrorJson, humanLine } from "../native-error";
 import { ServerUnresponsive, tmuxReadOnly } from "../tmux";
 import { HARNESSES } from "./catalog";
 import { actingRegistryPath, NoMachineIndex, isDict, nonEmpty, pathIsUnder, payloadRecords, realOrSelf, rootForCwd, sessionHandle, SessionStateError as ListRefusal, type Row, type SessionRecord as ListRecord } from "./records";
-import { classifySession } from "./observation";
+import { attachableState, classifySession, type SessionSeat } from "./observation";
+import { recordSeat } from "./resume";
 import { recordHasResumeArtifact, seatReviveTier } from "./resume-identity";
 import { LauncherError } from "./types";
 import { lookupHelp } from "../help";
@@ -137,10 +138,10 @@ interface ListRow { record: ListRecord; live: boolean; revive: string; cwd: stri
 
 /** The list's tmux reads are bounded; the classifier's own are not, so a client that stalls after the
  * snapshot is the same unobservable namespace as one that stalled during it. */
-async function classifyBounded(name: string): Promise<string> {
+async function classifyBounded(name: string, seat: SessionSeat): Promise<string> {
   const deadline = AbortSignal.timeout(TMUX_CLASSIFY_DEADLINE_MS);
   try {
-    const verdict = await classifySession(name, process.env, deadline);
+    const verdict = await classifySession(name, process.env, deadline, seat);
     // A cancelled child reads as a nonzero tmux exit, which the classifier answers "unknown"; that is an
     // expired deadline, not an observation, so it must not reach the attachable predicate.
     deadline.throwIfAborted();
@@ -165,7 +166,8 @@ async function reviveFor(record: ListRecord, present: boolean): Promise<string> 
     harness_env: record.harnessEnv ?? {}, harness_unset_env: record.harnessUnsetEnv ?? [] };
   const resumable = recordHasResumeArtifact(probe, process.env);
   // Classify only when the verdict could change: an artifact-less row whose session is present.
-  const attachable = !resumable && present && !["shell", "attached-shell"].includes(await classifyBounded(record.name));
+  const attachable = !resumable && present && attachableState(await classifyBounded(record.name,
+    recordSeat({ name: record.name, harness: record.harness, cwd: record.cwd })));
   return seatReviveTier(record.harness, storedId, resumable, attachable);
 }
 

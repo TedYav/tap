@@ -15,6 +15,7 @@ import {
   setCursorResumeIdFirst,
   setCursorTrustAuthorizedWorktree,
 } from "../src/launcher/adapters";
+import { restoredAxes, resumeReopensSession } from "../src/launcher/resume-tuning";
 
 
 const DISCRIMINATING_CELL = "argv:cursor/new/hsid=ghost-id-0000/model=null/prompt=null";
@@ -41,13 +42,24 @@ for (const row of JSON.parse(readFileSync(resolve(import.meta.dir, "fixtures/lau
   if (row.harness === "codex" && row.argv) AUTHORIZED_DEVIATIONS.set(argvCellId(row), NO_DAEMON_REASON);
 }
 
-/** The deviation's expected bytes: the Python row minus its one bare `--resume`, or with Codex's `--no-daemon` inserted. */
+// A resume no longer re-passes the launch model where the harness restores it natively (tap-j5k1b).
+const RESUME_MODEL_REASON = "resume leaves the model to a harness that restores it natively (tap-j5k1b)";
+const resumeOmitsModel = (row: OracleRow): boolean =>
+  row.action === "resume" && !!row.model && !!row.argv && restoredAxes(row.harness).includes("model") && resumeReopensSession(row.harness, row.hsid);
+for (const row of JSON.parse(readFileSync(resolve(import.meta.dir, "fixtures/launcher-g1-adapters-oracle.json"), "utf8")).cases as OracleRow[]) {
+  if (!resumeOmitsModel(row)) continue;
+  const id = argvCellId(row);
+  AUTHORIZED_DEVIATIONS.set(id, AUTHORIZED_DEVIATIONS.has(id) ? `${AUTHORIZED_DEVIATIONS.get(id)}; ${RESUME_MODEL_REASON}` : RESUME_MODEL_REASON);
+}
+
+/** The deviation's expected bytes: the Python row with each named deviation applied. */
 function deviationArgv(row: OracleRow): string[] | undefined {
-  if (row.harness === "codex" && row.argv) return [row.argv[0]!, "--no-daemon", ...row.argv.slice(1)];
   if (!row.argv) return row.argv;
-  const at = row.argv.indexOf("--resume");
-  if (at < 0) return row.argv;
-  return [...row.argv.slice(0, at), ...row.argv.slice(at + 1)];
+  let argv = [...row.argv];
+  if (row.harness === "codex") argv = [argv[0]!, "--no-daemon", ...argv.slice(1)];
+  else if (row.harness === "cursor" && row.action === "resume" && row.hsid === null) argv = argv.filter(token => token !== "--resume");
+  if (resumeOmitsModel(row)) argv.splice(argv.indexOf("--model"), 2);
+  return argv;
 }
 
 type OracleRow = {
@@ -101,7 +113,7 @@ describe("G1 adapters argv differential", () => {
     expect(HERMES_BIN).toBe("hermes");
   });
 
-  test("96 python oracle rows: 76 byte-identical + 20 named deviations (4 tap-we6b, 16 tap-21bdj --no-daemon)", () => {
+  test("96 python oracle rows: 70 byte-identical + 26 named deviations (4 tap-we6b, 16 tap-21bdj --no-daemon, 10 tap-j5k1b resume model, 4 of them also --no-daemon)", () => {
     const oracle = loadOracle();
     expect(oracle.length).toBe(96);
     const mismatches: string[] = [];

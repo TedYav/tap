@@ -50,8 +50,8 @@ cat >"$FIXTURE/runtime/bun/check-env.ts" <<'TS'
 import { applyLaunchEnv } from "./src/launcher/plan";
 const result = applyLaunchEnv({ argv: ["claude"], env: {} },
   { name: "test", harness: "claude", cwd: "/fixture", base: "fixture" });
-if (result.env.CLAUDE_CODE_SCROLL_SPEED !== "6")
-  throw new Error(`native scroll fallback: ${result.env.CLAUDE_CODE_SCROLL_SPEED} != 6`);
+if (result.env.CLAUDE_CODE_SCROLL_SPEED !== "4")
+  throw new Error(`native scroll fallback: ${result.env.CLAUDE_CODE_SCROLL_SPEED} != 4`);
 if (result.env.CLAUDE_CODE_TMUX_TRUECOLOR !== "1") throw new Error("native truecolor fallback changed");
 console.log("native launch defaults: ok");
 TS
@@ -266,8 +266,8 @@ esac
 echo "suite-env-hermeticity: (2) explicit ambient overrides excluded; declared controls admitted + reported; test-child guard=1: ok"
 
 # --- (3) false-green control: the fallback assertion must see a bad default ---
-# Ambient scroll=6 would mask this mutation without the boundary. Under the
-# boundary, the existing assertion observes the native launch transaction's
+# Without the boundary, ambient scroll=6 would replace the mutated fallback and
+# the assertion would read 6, not 7. Under the boundary, the existing assertion observes the native launch transaction's
 # bad fallback (the default now lives in runtime/bun/src/launcher/plan.ts,
 # the native applyLaunchEnv owner).
 "$PY" - "$FIXTURE/runtime/bun/src/launcher/plan.ts" <<'PY'
@@ -276,7 +276,7 @@ import sys
 
 path = pathlib.Path(sys.argv[1])
 source = path.read_text()
-old = 'env.CLAUDE_CODE_SCROLL_SPEED ?? "6"'
+old = 'env.CLAUDE_CODE_SCROLL_SPEED ?? "4"'
 new = 'env.CLAUDE_CODE_SCROLL_SPEED ?? "7"'
 if source.count(old) != 1:
     raise SystemExit(f"expected exactly one fallback mutation site, found {source.count(old)}")
@@ -289,10 +289,10 @@ rc=$?
 set -e
 [ "$rc" -ne 0 ] || fail "(3) ambient scroll=6 masked the mutated fallback; inner suite false-greened"
 case "$out" in
-  *"native scroll fallback: 7 != 6"*) ;;
+  *"native scroll fallback: 7 != 4"*) ;;
   *) fail "(3) mutation did not red through the existing fallback assertion: $out" ;;
 esac
-echo "suite-env-hermeticity: (3) fallback 6->7 mutation reds the existing assertion despite ambient scroll=6: ok"
+echo "suite-env-hermeticity: (3) fallback 4->7 mutation reds the existing assertion despite ambient scroll=6: ok"
 
 # --- (4) TAP_SMOKE_BUN survives entry AND the per-smoke worker allowlist --------
 # clean_env admitted it, worker_env omitted it → opencode-bind SKIP green.

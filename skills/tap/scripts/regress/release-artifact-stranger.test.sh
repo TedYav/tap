@@ -126,6 +126,9 @@ for skill in $PLUGIN_SKILLS; do
 done
 HIDDEN_SKILLS="$(grep -l '^user-invocable: false$' "$CUR/plugins/tap/skills/"*/SKILL.md | sed 's|/SKILL.md$||; s|.*/||' | sort)"
 [ "$HIDDEN_SKILLS" = "$(printf '%s\n' assign outstanding reply send team)" ] || fail "plugin hidden-skill inventory differs: $HIDDEN_SKILLS"
+USER_ONLY_SKILLS="$(grep -l '^disable-model-invocation: true$' "$CUR/plugins/tap/skills/"*/SKILL.md | sed 's|/SKILL.md$||; s|.*/||' | sort)"
+[ "$USER_ONLY_SKILLS" = help ] || fail "plugin user-only skill inventory differs: $USER_ONLY_SKILLS"
+grep -qx '  allow_implicit_invocation: false' "$CUR/plugins/tap/skills/help/agents/openai.yaml" || fail "Codex user-only policy missing for help"
 PLUGIN_SKILL_COUNT="$(printf '%s\n' "$PLUGIN_SKILLS" | wc -l | tr -d ' ')"
 say "(1) bootstrap from --archive under /bin/bash $(/bin/bash -c 'echo $BASH_VERSION') installed $V1: ok"
 

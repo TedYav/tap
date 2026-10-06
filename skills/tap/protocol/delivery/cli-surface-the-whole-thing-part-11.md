@@ -68,9 +68,8 @@ non-empty line after removing carriage returns, matching its named-file behavior
 
 `tap send` exit codes (so callers/smokes branch deterministically): `0` durably accepted (`status=injected|queued`) · `3` pane-gone (→ human-relay; entry suspended when registry-sourced) · `5` submit-unverified · `1` terminal refusal/usage/other. Retryable no-input-prompt, pending-draft, stuck-copy-mode, and deliberate `--polite` parks return `0/queued` with `delivery=spool` through the shared spool engine; poll delivery returns `0/queued` with `delivery=poll`; verified pane submission returns `0/injected` with `delivery=pane`. Denylisted/unsupported panes return exit 1 with no artifacts. Exit 4 is not a `tap send` outcome in v0.7.
 
-<!-- The tap nudge --interrupt and --harness grammar lines moved to their owning page, nudge.md (tap-gridx). -->
+<!-- The tap nudge grammar lives on its owning page, nudge.md; --interrupt, --from, --reason, -m and -f retired in tap-xe42x. -->
 
 ```text
-tap nudge --interrupt <peer|team/peer> | --to <peer|team/peer> [--from <seat|team/seat>] [--reason <text>|-m <text>|-f <file>]   # caller-selected interrupt: see [nudge.md](./nudge.md)
-tap nudge --harness <family> [--team <team|*>] [--from <seat|team/seat>] [--interrupt] [--reason <text>|-m <text>|-f <file>] [--dry-run] [--yes]   # fleet wake: see [nudge.md](./nudge.md)
+tap nudge --harness <family> [--team <team|*>] [--message <text>] [--no-interrupt] [--dry-run] [--yes]   # fleet wake: each seat runs the ladder; see [nudge.md](./nudge.md)
 ```

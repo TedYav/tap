@@ -341,12 +341,25 @@ collide("a handle live in another session refuses", () => {
 // tap-ibmoe deliberately changes the menu, so the historical Python frame is
 // adjusted explicitly: [k] reads "kill", and an [f] fork row sits under [n],
 // here always unavailable (no fixture stores a conversation id) in the plain
-// form a terminal without TERM gets.
-const SEAT = "no stored conversation to fork", OFF = "not a TAP seat";
+// form a terminal without TERM gets. The glosses were later shortened to fit a
+// 50-column row; GLOSS maps each recorded one to its current text.
+const SEAT = "No saved chat to fork", OFF = "Not a TAP seat";
+const GLOSS: Record<string, string> = {
+  "no conversation to resume — start a fresh session under this name": "Nothing to resume; start fresh",
+  "no live id — resume opens the harness native picker": "No usable ID; open the native picker",
+  "Reattach to the existing session": "Reattach to the running session",
+  "Start another session with a suffix": "Start a sibling with a suffixed name",
+  "Start a sibling seat under a suffixed name": "Start a sibling with a suffixed name",
+  "Stop the session and start over": "Stop it and start fresh",
+  "Replace it — start a fresh session under this name": "Start fresh under this name",
+  "Stop the session and start over under this name": "Stop it; start fresh under this name",
+  "Leave everything unchanged": "Leave everything unchanged",
+};
 // The label column re-pads to the longest label left (the off-roster menu has no "resume").
 const menuOf = (frame: string, forkReason: string) => frame.replace(/(?:  \[\w\] \S+ +[^\r]*\r\n)+/, block => {
   const rows = [...block.matchAll(/  \[(\w)\] (\S+) +([^\r]*)\r\n/g)].flatMap(([, key, label, gloss]) => {
-    const row: [string, string, string] = [key!, label === "fresh" ? "kill" : label!, gloss!];
+    if (!(gloss! in GLOSS)) throw new Error(`no current gloss for recorded '${gloss}'`);
+    const row: [string, string, string] = [key!, label === "fresh" ? "kill" : label!, GLOSS[gloss!]!];
     return key === "n" ? [row, ["f", "fork", `(unavailable: ${forkReason})`] as [string, string, string]] : [row];
   });
   const width = Math.max(...rows.map(([, label]) => label.length));
@@ -381,7 +394,7 @@ function choose(title: string, setup: () => void, args: string[], expectText: Re
 choose("a live seated harness offers reattach", () => enroll({ harn: { harness: "claude", session: "fixture/harn", status: "active" } }),
   ["claude", "harn"], /'fixture\/harn' \(claude\): live, running detached · registered as harn/, SEAT);
 choose("a live seated harness with a record discloses its resume tier", () => enroll({ harn: seatedLive("harn") }),
-  ["claude", "harn"], /no live id — resume opens the harness native picker/, SEAT);
+  ["claude", "harn"], /No usable ID; open the native picker/, SEAT);
 choose("a handle live in another session", () => {
   const pane = tmux("display-message", "-p", "-t", "=fixture/other:", "#{pane_id}").stdout.trim();
   enroll({ roam: { harness: "claude", pane_id: pane, session: "fixture/other", status: "active" } });
@@ -403,11 +416,11 @@ test("chooser: the reseat [r] gloss discloses the resume tier", () => {
     return fallback;
   }) as Parameters<typeof promptNewCollision>[0];
   promptNewCollision(choose, "demo/glm", "opencode", "a stopped session record", "exact", null);
-  promptNewCollision(choose, "demo/kimi", "opencode", "an id-less stopped record", "fresh", "no stored conversation to fork");
+  promptNewCollision(choose, "demo/kimi", "opencode", "an id-less stopped record", "fresh", "no saved chat to fork");
   const resume = (n: number) => asked[n]!.options.find(([key]) => key === "r")?.[2];
   expect(asked.map(a => a.fallback)).toEqual(["r", "r"]);
-  expect(resume(0)).toBe("resume the recorded conversation by its native id");
-  expect(resume(1)).toBe("no conversation to resume — start a fresh session under this name");
+  expect(resume(0)).toBe("Resume the chat by its native ID");
+  expect(resume(1)).toBe("Nothing to resume; start fresh");
   expect(asked[0]!.question).not.toContain("temporarily disabled");
   expect(asked[1]!.question).not.toContain("/resume");
 });
@@ -498,7 +511,7 @@ test("scripted: [k] on a live seat carries stop-by-name authority and the replac
 test("scripted: [r] on an unattended shell reseats fresh under the name", () => {
   const out = scripted(["r"], ["claude", "shelly"]);
   expect(out.status).toBe(0);
-  expect(out.asked[0].options[0][2]).toBe("no conversation to resume — start a fresh session under this name");
+  expect(out.asked[0].options[0][2]).toBe("Nothing to resume; start fresh");
   expect(out.record).toMatchObject({ name: "fixture/shelly", kill_backup_required: true, replaces_session: "fixture/shelly" });
 });
 
@@ -598,20 +611,20 @@ test("scripted: --new keeps the allocated suffix without asking", () => {
 test("scripted: [f] is listed in every menu and enabled only when a fork can succeed", () => {
   const cases: [string, () => void, string[], (string | boolean)[]][] = [
     ["codex seat with a stored id", () => enroll({ harn: seatedLive("harn", "codex", { harness_session_id: "sid-1" }) }), ["claude", "harn"],
-      ["f", "fork", "Fork it - launch a new session with the same history."]],
-    ["claude seat with no stored id", seatedHarn, ["claude", "harn"], ["f", "fork", "no stored conversation to fork", true]],
+      ["f", "fork", "Fork a new session with this history"]],
+    ["claude seat with no stored id", seatedHarn, ["claude", "harn"], ["f", "fork", "No saved chat to fork", true]],
     // planFork refuses a stored conversation-selecting flag, so [f] says so up front.
     ["claude seat storing --resume", () => enroll({ harn: seatedLive("harn", "claude", { passthrough: ["--resume", "old-id"] }) }),
-      ["claude", "harn"], ["f", "fork", "stored --resume conflicts with a fork", true]],
+      ["claude", "harn"], ["f", "fork", "Uses --resume", true]],
     ["claude seat storing --resume=<controls>", () => enroll({ harn: seatedLive("harn", "claude", { passthrough: ["--resume=\u001b[2Jold"] }) }),
-      ["claude", "harn"], ["f", "fork", "stored --resume conflicts with a fork", true]],
+      ["claude", "harn"], ["f", "fork", "Uses --resume", true]],
     ["cursor seat", () => enroll({ harn: seatedLive("harn", "cursor", { harness_session_id: "sid-1" }) }), ["claude", "harn"],
-      ["f", "fork", "not supported by this harness", true]],
+      ["f", "fork", "Harness cannot fork", true]],
     ["agy seat", () => enroll({ harn: seatedLive("harn", "agy", { harness_session_id: "sid-1" }) }), ["claude", "harn"],
-      ["f", "fork", "not supported by this harness", true]],
-    ["off-roster tmux session", () => enroll(), ["claude", "harn"], ["f", "fork", "not a TAP seat", true]],
-    ["unattended shell", () => enroll(), ["claude", "shelly"], ["f", "fork", "not a TAP seat", true]],
-    ["gone row", () => enroll({ scout: gone("scout") }), ["claude", "scout"], ["f", "fork", "no stored conversation to fork", true]],
+      ["f", "fork", "Harness cannot fork", true]],
+    ["off-roster tmux session", () => enroll(), ["claude", "harn"], ["f", "fork", "Not a TAP seat", true]],
+    ["unattended shell", () => enroll(), ["claude", "shelly"], ["f", "fork", "Not a TAP seat", true]],
+    ["gone row", () => enroll({ scout: gone("scout") }), ["claude", "scout"], ["f", "fork", "No saved chat to fork", true]],
   ];
   for (const [title, setup, args, row] of cases) {
     setup();
@@ -664,7 +677,7 @@ test("scripted: [f] refuses when the offered conversation's fallback changes mid
   try {
     const out = scripted(["f", "="], ["claude", "harn"], { TAP_CLAUDE_HOME: claudeHome,
       SCRIPTED_ON_ASK_PATH: join(claudeHome, "projects/p/hs-1.jsonl"), SCRIPTED_ON_ASK_BYTES: "{}\n" });
-    expect(forkRow(out)).toEqual(["f", "fork", "Fork it - launch a new session with the same history."]);
+    expect(forkRow(out)).toEqual(["f", "fork", "Fork a new session with this history"]);
     expect([out.fork, out.record]).toEqual([null, null]);
     expect(out.stdout + out.stderr).toContain("was cleared, restarted or replaced while the fork was being chosen");
   } finally { enroll(); rmSync(claudeHome, { recursive: true, force: true }); }
@@ -676,7 +689,7 @@ test("scripted: [f] never starts anything when the fork is unavailable, quit, or
     const unavailable = scripted(["f"], ["claude", "harn"]);
     expect(unavailable.status).not.toBe(0);
     expect([unavailable.fork, unavailable.record]).toEqual([null, null]);
-    expect(unavailable.stderr).toContain("no stored conversation to fork");
+    expect(unavailable.stderr).toContain("no saved chat to fork");
   } finally { enroll(); }
   enroll({ harn: seatedLive("harn", "codex", { harness_session_id: "sid-1" }) });
   try {

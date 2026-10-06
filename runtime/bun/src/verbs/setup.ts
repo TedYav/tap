@@ -14,6 +14,12 @@ const object = (value: unknown): Record<string, unknown> => {
   return value;
 };
 
+/** sha256 of each earlier shipped signpost block, markers included: v3, then v4 (before tap-xe42x's nudge line). */
+const SHIPPED_CHARTERS = new Set([
+  "ecb6d98a18c29a086e8537ed2237033595f285d2699c8b8b896f1ffecd032d64",
+  "b387ef87615614d5b594f053a93bcfa5c313b8f3ded6c3dedebcd014d064df7a",
+]);
+
 function charter(root: string, scripts: string, check: boolean): number {
   const path = join(root, "AGENTS.md"), section = readFileSync(join(scripts, "../templates/repo-charter.md"));
   let last = section.length;
@@ -49,8 +55,8 @@ function charter(root: string, scripts: string, check: boolean): number {
   let rendered: Buffer;
   if (start >= 0) {
     const existing = current.subarray(start, stop + end.length);
-    // Only the byte-known shipped v3 card may migrate; customized cards are user work.
-    if (!existing.equals(canonical) && createHash("sha256").update(existing).digest("hex") !== "ecb6d98a18c29a086e8537ed2237033595f285d2699c8b8b896f1ffecd032d64") {
+    // Only byte-known shipped cards (v3, v4) may migrate; customized cards are user work.
+    if (!existing.equals(canonical) && !SHIPPED_CHARTERS.has(createHash("sha256").update(existing).digest("hex"))) {
       return fail(`tap setup --repo: preserved customized TAP block in ${path}; update it manually or restore a canonical block, then rerun`, 2);
     }
     rendered = Buffer.concat([current.subarray(0, start), canonical, current.subarray(stop + end.length)]);

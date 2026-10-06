@@ -26,6 +26,9 @@ A sentinel is a doorbell; its payload body is the task. Read it before acting:
   `tap read path=<file>`; a foreign answer can use `tap reply <payload-path> -f <file>`.
 - For a digest, `tap read <id> --all` reads every body. Follow each item's
   obligation; skip settlement for `settled: true`. Never settle the digest.
+- `[[TAP v0.23 nudge]]` (optionally `message="..."`) has no id, sender or
+  payload: nothing to read, settle or answer, and no new task. Continue your
+  existing work and check `tap poll`.
 - Payload frontmatter remains `reply: expected` / `reply: settle-only`.
   Reply to a note only to report a problem. Ask the sender about an unknown
   sentinel shape; reload this skill on version drift.
@@ -181,7 +184,8 @@ Use the [liveness reference](references/liveness-and-recipients.md) and
 For delivery recovery, shell/body edge cases or a live-bus migration, read
 [transport and migration](references/transport-and-migration.md) before acting.
 `.placed` and `.sent` describe sender/courier effects, not recipient processing.
-Nudge a stuck sentinel once; one nudge and one retry without progress call for
-escalation. Never reset or migrate the live bus during ordinary work. A planned
+`tap nudge <seat>` unsticks a seat once (a known blocker, a staged sentinel, or
+an interrupt plus the doorbell). Nudge once: after exit 5, or no progress, inspect
+with `tap peek` and escalate; re-nudge only after a refusal that sent nothing. Never reset or migrate the live bus during ordinary work. A planned
 migration drains every seat, sends one freeze notice, migrates, then resumes
 traffic with poll self-healing.

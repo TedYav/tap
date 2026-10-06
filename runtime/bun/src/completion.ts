@@ -47,6 +47,9 @@ const FLAGS: Record<string, string[]> = {
   "keybinding install": ["--key", "--tap", "--dry-run", "--json"],
   "keybinding remove": ["--dry-run", "--json"],
   "keybinding status": ["--json"],
+  "tmux-defaults install": ["--dry-run", "--json"],
+  "tmux-defaults remove": ["--dry-run", "--json"],
+  "tmux-defaults status": ["--json"],
 };
 const TEAM_VALUE = new Set(["--team"]);
 const LIST_VALUE = new Set(["--only", "--except"]);
@@ -119,7 +122,7 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   if (before[0]?.split("/").at(-1) === "tap") before.shift();
   else if (before[0] === "tap") before.shift();
   const verb = before[0] ?? "";
-  const sub = verb === "team" || verb === "session" || verb === "keybinding" ? before[1] ?? "" : "";
+  const sub = ["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? before[1] ?? "" : "";
   const command = sub ? `${verb} ${sub}` : verb;
   const previous = before.at(-1) ?? "";
   if (previous === "-f" && (verb === "send" || verb === "assign" || verb === "reply")) return [{ value: FILE_SENTINEL, description: "file position" }];
@@ -129,7 +132,7 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   if (!verb) for (const name of TOP) add(name, "command");
   else if (verb === "team" && !sub && !prefix.startsWith("-")) for (const name of TEAM) add(name, "team command");
   else if (verb === "session" && !sub && !prefix.startsWith("-")) for (const name of SESSION) add(name, "session command");
-  else if (verb === "keybinding" && before.length === 1 && !prefix.startsWith("-")) for (const name of KEYBINDING) add(name, "keybinding command");
+  else if ((verb === "keybinding" || verb === "tmux-defaults") && before.length === 1 && !prefix.startsWith("-")) for (const name of KEYBINDING) add(name, `${verb} command`);
   const optionalSelector = LIST_VALUE.has(previous) && prefix.startsWith("-");
   const flag = !optionalSelector && (previous === "--team" || previous === "--only" || previous === "--except" || ACTOR_VALUE.has(previous)) ? previous : "";
   if (flag && !(FLAGS[command] ?? []).includes(flag)) return result;
@@ -139,8 +142,8 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
     if (LIST_VALUE.has(before[i]!) && before[i + 1]?.startsWith("-")) continue;
     consumed.add(++i);
   }
-  const operands = before.slice(verb === "team" || verb === "session" || verb === "keybinding" ? 2 : 1)
-    .filter((word, index) => !word.startsWith("-") && !consumed.has(index + (verb === "team" || verb === "session" || verb === "keybinding" ? 2 : 1)));
+  const operands = before.slice(["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)
+    .filter((word, index) => !word.startsWith("-") && !consumed.has(index + (["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)));
   const targetPosition = operands.length === 0 && !before.includes("--next") && !before.includes("--interactive") && !before.includes("-i");
   const teamOperandCommand = verb === "team" && ["roster", "list", "attach", "detach", "down", "up", "shutdown", "out"].includes(sub);
   const omittedSelector = before.some((word, i) => LIST_VALUE.has(word) && (!before[i + 1] || before[i + 1]!.startsWith("-")));

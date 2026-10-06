@@ -7,6 +7,7 @@ import { spawnSync, spawn } from "node:child_process";
 import { acquirePaneLock } from "../src/panelock";
 
 const roots: string[] = [];
+const readRunFile = (debug: string, id: string) => JSON.parse(readFileSync(join(debug, id, readdirSync(join(debug, id)).find(n => /^(run|state)\.json$/.test(n))!), "utf8"));
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture(config?: string, stockBash = false) {
   const root = mkdtempSync(join(tmpdir(), "tap-nudge-policy-"));
@@ -35,8 +36,8 @@ if (cmd === "display-message") {
  console.log(fmt.includes("pane_pid") ? (existsSync(root+"/state/pane-pid") ? readFileSync(root+"/state/pane-pid", "utf8") : "301") : fmt.includes("pane_id") ? "%301" : fmt.includes("pane_in_mode") ? (existsSync(root+"/state/copy") ? "1" : "0") : fmt.includes("pane_dead") ? "0" : fmt.includes("session_windows") ? "1" : fmt.includes("pane_current_command") ? (existsSync(root+"/state/harness") ? readFileSync(root+"/state/harness", "utf8") : "codex") : "");
 } else if(cmd === "list-sessions") { if(existsSync(root+"/state/armed") && existsSync(root+"/state/tmux-blind")) process.exit(1); console.log("testteam/peer\\t900:100"); }
 else if(cmd === "list-panes" && args.at(-1) === "#{pane_id}") { if(existsSync(root+"/state/arm-on-inspect")) writeFileSync(root+"/state/armed", "1"); console.log("%301"); }
-else if(cmd === "list-panes") console.log("testteam/peer\\ttestteam/peer:0.0\\t" + ((existsSync(root+"/state/armed") && existsSync(root+"/state/pane-recycled")) ? "%302" : "%301") + "\\tcodex\\t301\\t900:100\\t0");
-else if(cmd === "capture-pane") { if(args.includes("-S") && existsSync(root+"/state/history")) process.stdout.write(readFileSync(root+"/state/history")); process.stdout.write(readFileSync(root+"/state/frame")); }
+else if(cmd === "list-panes") console.log("testteam/peer\\ttestteam/peer:0.0\\t" + ((existsSync(root+"/state/armed") && existsSync(root+"/state/pane-recycled")) ? "%302" : "%301") + "\\t" + (existsSync(root+"/state/list-harness") ? readFileSync(root+"/state/list-harness", "utf8").trim() : "codex") + "\\t301\\t900:100\\t0");
+else if(cmd === "capture-pane") { if(existsSync(root+"/state/replace-on-capture")) { rmSync(root+"/state/replace-on-capture"); const r=JSON.parse(readFileSync(root+"/bus/registry.json","utf8")); r.seats.peer.instance="peer-i2"; writeFileSync(root+"/bus/registry.json", JSON.stringify(r)); } if(args.includes("-S") && existsSync(root+"/state/history")) process.stdout.write(readFileSync(root+"/state/history")); process.stdout.write(readFileSync(root+"/state/frame")); }
 else { if(args.includes("cancel")) rmSync(root+"/state/copy", {force:true}); appendFileSync(root+"/state/effects", args.join(" ")+"\\n"); if(args.includes("Enter") && existsSync(root+"/state/fail-enter")) { process.stderr.write("synthetic tmux outcome unknown"); process.exit(125); } if(args.includes("Enter") && !existsSync(root+"/state/sticky")) writeFileSync(root+"/state/frame", existsSync(root+"/state/after-enter") ? readFileSync(root+"/state/after-enter", "utf8") : "› \\n"); }
 `, { mode: 0o700 });
   const env = { ...process.env, HOME: root, XDG_CONFIG_HOME: join(root, "config"), TAP_HOME: join(root, "bus"),
@@ -62,15 +63,83 @@ test("public nudge report-only config preserves a staged sentinel and copy mode"
   expect(readFileSync(join(f.root, "state/frame"), "utf8")).toBe(before);
 }, 20000);
 
-test("report-only override wins over aggressive config, even with obstructed composer", () => {
+test("--dry-run wins over aggressive config, even with obstructed composer", () => {
   const f = fixture('[recovery]\naggressiveness = "aggressive"\n');
   writeFileSync(join(f.root, "state/frame"), "Settings dialog\n");
-  const result = f.run("--aggressiveness", "report-only");
+  const result = f.run("--dry-run");
   expect(result.status).toBe(0);
-  expect(result.stderr).toContain("source=override");
+  expect(result.stdout).toContain("dry run plan");
   expect(result.stdout).toContain("Settings dialog");
   expect(f.effects()).toBe("");
 }, 20000);
+
+// tap-xe42x: Hermes' staged `/queue` wire gets the one Enter only, never retyping,
+// and its unverifiable no-prompt submit is not reported as a possible-effect failure.
+test("rung 2 on a Hermes /queue-staged wire presses one Enter and types nothing", () => {
+  const f = fixture();
+  const id = "aspen-ponytail-20261001T061307Z-823e7d31b544";
+  writeFileSync(join(f.root, "state/harness"), "hermes");
+  writeFileSync(join(f.root, "state/list-harness"), "hermes");
+  const registry = JSON.parse(readFileSync(join(f.root, "bus/registry.json"), "utf8"));
+  registry.seats.peer.harness = "hermes";
+  writeFileSync(join(f.root, "bus/registry.json"), JSON.stringify(registry));
+  writeFileSync(join(f.root, "state/frame"), readFileSync(join(import.meta.dir, "fixtures/hermes-queue-row/idle-staged.ansi")));
+  writeFileSync(join(f.root, `bus/payloads/${id}.md`), `---\nid: ${id}\nfrom: sender\nto: peer\nkind: note\nreply: settle-only\n---\nFixture.\n`);
+  rmSync(join(f.root, "state/copy"));
+  const result = f.run();
+  const effects = f.effects();
+  expect({ status: result.status, out: result.stdout, err: result.stderr }).toMatchObject({ status: 0 });
+  expect(effects.match(/Enter/g)).toHaveLength(1);
+  expect(effects).not.toContain(" -l ");
+}, 30000);
+
+// A staged doorbell binds the wire itself as the expected text, so a Codex
+// footer below it neither blocks the Enter nor rides along as composer text.
+test("rung 2 submits a staged nudge doorbell above a Codex footer with one Enter", () => {
+  const f = fixture(); rmSync(join(f.root, "state/copy"));
+  writeFileSync(join(f.root, "state/frame"), "› [[TAP v0.23 nudge]]\n\n  gpt-6-astra high · Context 90% left · /tmp\n");
+  const result = f.run();
+  expect({ status: result.status, err: result.stderr }).toMatchObject({ status: 0 });
+  expect(f.effects().match(/Enter/g)).toHaveLength(1);
+  expect(f.effects()).not.toContain(" -l ");
+}, 30000);
+
+// The actor is evidence, never a license (charter amendment 2026-10-05): with no seat
+// pane and no terminal the run records `unknown` and the ladder still presses its keys.
+// (The fake frame is unclassifiable, so the typed-text license then refuses: exit 5.)
+test("an unobservable caller is recorded as unknown and the ladder still acts", () => {
+  const f = fixture(); rmSync(join(f.root, "state/copy"));
+  writeFileSync(join(f.root, "state/frame"), "› \n");
+  const result = f.run();
+  expect(result.stdout + result.stderr).not.toContain("unobservable_caller");
+  expect(f.effects()).toContain("Escape");
+  const debug = join(f.root, "index/debug/recovery");
+  const id = readdirSync(debug).find(name => name.startsWith("recovery-"))!;
+  expect(readRunFile(debug, id).caller).toMatchObject({ actor: "unknown", team: "" });
+}, 30000);
+
+// tap-xe42x F5: the fan-out's selected instance binds the run's own RecoveryTarget. A seat
+// replaced after selection (here, on the first pane capture) refuses before any key, on the
+// ladder path and on the staged-only path through nudge-start.
+for (const [name, frame] of [["ladder", "› \n"], ["staged", "› [[TAP v0.23 note sender-20260907T000000Z-abcd]]\n"]] as const) {
+  test(`a seat replaced after fan-out selection refuses before any key: ${name}`, () => {
+    const f = fixture(); rmSync(join(f.root, "state/copy"));
+    const registry = JSON.parse(readFileSync(join(f.root, "bus/registry.json"), "utf8"));
+    registry.seats.peer.instance = "peer-i1";
+    writeFileSync(join(f.root, "bus/registry.json"), JSON.stringify(registry));
+    writeFileSync(join(f.root, "state/frame"), frame);
+    writeFileSync(join(f.root, "state/replace-on-capture"), "1");
+    mkdirSync(join(f.root, ".tap"), { recursive: true });
+    if (!readdirSync(join(f.root, ".tap")).includes("bus")) symlinkSync(join(f.root, "bus"), join(f.root, ".tap/bus"));
+    const src = resolve(import.meta.dir, "../src");
+    const code = `import { nudgePinnedSeat } from "${src}/verbs/nudge.ts"; import { AGENT_FAMILIES } from "${src}/verbs/team.ts"; import { tapScriptsDir } from "${src}/scripts-dir.ts";
+try { process.exitCode = nudgePinnedSeat(["peer"], tapScriptsDir(), AGENT_FAMILIES, "peer-i1"); } catch (e) { console.error(String((e as { detail?: string }).detail ?? e)); process.exitCode = 1; }`;
+    const result = spawnSync(process.execPath, ["-e", code], { cwd: f.root, env: f.env, encoding: "utf8", timeout: 25000 });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("replaced after selection");
+    expect(f.effects()).toBe("");
+  }, 30000);
+}
 
 test("invalid policy refuses without pane effects", () => {
   const f = fixture('[recovery]\naggressiveness = "invalid"\n');
@@ -102,6 +171,8 @@ for (const selected of [undefined, "cautious", "aggressive"]) {
     }
     const phases = readFileSync(join(f.root, "bus/receipts/sender-20260907T000000Z-abcd.submit-phases.jsonl"), "utf8");
     expect(phases).toContain(recovery);
+    // tap-xe42x: the rung-2 run records its actor too; no seat pane and no terminal here is an explicit unknown.
+    expect(readRunFile(debug, recovery).caller).toMatchObject({ actor: "unknown", team: "" });
 
   }, 20000);
 }
@@ -295,19 +366,16 @@ for (const harness of ["zsh", "unknown-harness"]) {
   }, 20000);
 }
 
-test("stock /bin/bash handles absent, explicit and empty recovery overrides", () => {
+test("stock /bin/bash handles configured report-only, --dry-run and the default", () => {
   // macOS /bin/bash is 3.2: nounset rejects a bare empty-array expansion at runtime.
   // Pin every public wrapper, not just the outer process, to the system shell.
   const configured = fixture('[recovery]\naggressiveness = "report-only"\n', true);
   const implicit = configured.run();
   expect(implicit.status).toBe(0);
   expect(implicit.stderr).toContain("aggressiveness=report-only source=config");
-  const explicit = configured.run("--aggressiveness", "report-only");
+  const explicit = configured.run("--dry-run");
   expect(explicit.status).toBe(0);
-  expect(explicit.stderr).toContain("source=override");
-  const empty = configured.run("--aggressiveness", "");
-  expect(empty.status).toBe(1);
-  expect(empty.stderr).toContain("recovery.aggressiveness");
+  expect(explicit.stdout).toContain("dry run plan");
   expect(configured.effects()).toBe("");
   const fallback = fixture(undefined, true).run();
   expect(fallback.status).toBe(0);
@@ -334,7 +402,7 @@ test("public report-only nudge and detective inspect while the target effect mut
   const f = fixture(); const lock = acquirePaneLock("%301", 1000, f.env)!;
   expect(lock).not.toBeNull();
   try {
-    const nudge = f.run("--aggressiveness", "report-only");
+    const nudge = f.run("--dry-run");
     if (nudge.status !== 0) throw new Error(nudge.stderr);
     expect(nudge.stdout).toContain("[[TAP");
     const detective = f.detective("peer", "--aggressiveness", "report-only", "--json");
@@ -380,14 +448,14 @@ test("a present legacy row defaults status/delivery; a missing row stays distinc
 }, 30000);
 
 test("a failed recovery start relays the child's diagnostics before returning", () => {
-  const f = fixture(); expect(f.run("--aggressiveness", "report-only").status).toBe(0);
+  const f = fixture(); expect(f.run("--dry-run").status).toBe(0);
   const id = readdirSync(join(f.root, "index/debug/recovery")).find(p => p.startsWith("recovery-"))!; const relayed = spawnSync("bash", [resolve(import.meta.dir, "../../../bin/tap"), "nudge", "peer"], { cwd: f.root, env: { ...f.env, TAP_RECOVERY_RUN: id }, encoding: "utf8", timeout: 30000 });
   expect(relayed.status).toBe(1); expect(relayed.stderr).toContain("parent recovery does not authorize nudge"); expect(f.effects()).toBe("");
 }, 30000);
 
 test("report-only prints the current viewport while retaining full history in its artifact", () => {
   const f = fixture(); writeFileSync(join(f.root, "state/history"), "Unrelated historical conversation\n");
-  const result = f.run("--aggressiveness", "report-only");
+  const result = f.run("--dry-run");
   expect(result.status).toBe(0); expect(result.stdout).not.toContain("Unrelated historical conversation");
   expect(result.stdout).toContain("[[TAP");
   const root = join(f.root, "index/debug/recovery"), id = readdirSync(root).find(p => p.startsWith("recovery-"))!;
@@ -474,12 +542,12 @@ test("identity drift before nudge's first Enter is a drift refusal with no key",
 // A wire that stays staged after Enter gets the bounded Enter ladder and ends
 // submit-unverified, never verified. OpenCode's one-Enter ceiling is pinned in
 // regress/nudge-submit-verify.test.sh, which carries the OpenCode composer.
-test("a still-staged wire after nudge's Enters is unverified within the ladder", () => {
+// tap-xe42x: rung 2 presses exactly one Enter for every family, never the courier's ladder of four.
+test("a still-staged wire after nudge's one Enter is unverified (exit 5) on a non-OpenCode family", () => {
   const f = fixture(); rmSync(join(f.root, "state/copy"));
   writeFileSync(join(f.root, "state/sticky"), "1");
   const result = f.run();
   expect(result.status).toBe(5);
   const enters = f.effects().split("\n").filter(line => line.endsWith(" Enter")).length;
-  expect(enters).toBeGreaterThan(1);
-  expect(enters).toBeLessThanOrEqual(4);
+  expect(enters).toBe(1);
 }, 30000);

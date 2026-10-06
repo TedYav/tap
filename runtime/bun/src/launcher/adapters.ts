@@ -9,6 +9,7 @@ import { bootId } from "../tmux";
 
 import { resolvedResumeIdentity } from "./resume-identity";
 import { modelArgv } from "./tuning";
+import { restoredAxes, resumeReopensSession } from "./resume-tuning";
 import {
   LauncherError,
   UNBOUND_RESUME_IDENTITY,
@@ -158,10 +159,14 @@ export function buildHarnessInvocation(
   const source = action === "fork" ? forkSource(record) : null;
   const resumed = boundResume(action, record, resumeIdentity, environ, receipts);
   const env: Record<string, string> = {};
+  // A native resume restores its own model where it can (resume-tuning.ts); re-passing the launch model would undo /model.
+  // An id-less resume that starts fresh (opencode) keeps the launch model; a native picker still restores the pick's.
+  const model = (): string[] => action === "resume" && resumeReopensSession(record.harness, resumed) && restoredAxes(record.harness).includes("model")
+    ? [] : modelArgv(record.harness, record.model);
 
   if (record.harness === "claude") {
     const argv = ["claude", ...permissionArgv("claude", permissions ?? resolveCatalog(undefined, "claude", environ, () => {}).permissions)];
-    argv.push(...modelArgv(record.harness, record.model));
+    argv.push(...model());
     if (record.name) argv.push("--name", record.name);
     if (action === "new") {
       if (record.harness_session_id) {
@@ -186,7 +191,7 @@ export function buildHarnessInvocation(
     Object.assign(env, hostBootEnv("codex", mode, environ));
     if (action === "resume") argv.push("resume");
     else if (source) argv.push("fork");
-    argv.push(...modelArgv(record.harness, record.model));
+    argv.push(...model());
     if (action === "resume" && resumed) argv.push(resumed);
     else if (source) argv.push(source);
     if (initialPrompt) argv.push(initialPrompt);
@@ -195,7 +200,7 @@ export function buildHarnessInvocation(
 
   if (record.harness === "opencode") {
     const argv = ["opencode"];
-    argv.push(...modelArgv(record.harness, record.model));
+    argv.push(...model());
     // Mirror Python build_harness_invocation (launcher.py restored exact
     // OpenCode resume in 4b075d370): emit --session whenever the stored id is
     // truthy, for both new and resume; id-less rows stay bare. Model argv
@@ -217,7 +222,7 @@ export function buildHarnessInvocation(
     if (cursorTrustAuthorizedWorktree && record.cwd) {
       argv.push("--trust");
     }
-    argv.push(...modelArgv(record.harness, record.model));
+    argv.push(...model());
     // tap-we6b rework: the resume action honors the RESOLVED identity, and a
     // null resolution emits NO --resume at all — the bare-`--resume` picker
     // emission is gone. A resume whose stored identity is stale is refused
@@ -237,7 +242,7 @@ export function buildHarnessInvocation(
 
   if (record.harness === "agy") {
     const argv = ["agy", ...permissionArgv("agy", permissions ?? resolveCatalog(undefined, "agy", environ, () => {}).permissions)];
-    argv.push(...modelArgv(record.harness, record.model));
+    argv.push(...model());
     if (action === "resume") {
       if (record.harness_session_id) {
         argv.push("--conversation", record.harness_session_id);
@@ -250,7 +255,7 @@ export function buildHarnessInvocation(
   }
 
   if (record.harness === "hermes") {
-    const argv = [HERMES_BIN, ...modelArgv(record.harness, record.model)];
+    const argv = [HERMES_BIN, ...model()];
     return { argv, env };
   }
 

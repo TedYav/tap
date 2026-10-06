@@ -200,7 +200,7 @@ li { margin-bottom:8px }
 <section class="section" id="skills-you-invoke"><h2>Skills you invoke</h2>
 <p>These are instructions you give an agent. The examples use native plugin names; ask your agent to load the named skill if its harness uses another spelling.</p>
 <div class="skill-grid">
-<article class="card" id="help"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/help/SKILL.md">tap:help</a></h3><p>Find documentation or help with a particular issue. For a new team, get two harnesses exchanging a real reply, then choose the next useful capability.</p></article>
+<article class="card" id="help"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/help/SKILL.md">tap:help</a></h3><p>Get started, or diagnose something that seems off. Getting started gets two harnesses exchanging a real reply, then chooses the next useful capability. Diagnosis starts from your symptom (mail not arriving, a stuck seat, copy or Shift+Enter not working, odd colors), runs checks that leave your setup alone, and changes nothing without your yes. Type it as <code>/tap:help</code>; bare <code>/help</code> is the harness&#39;s own help.</p></article>
 <article class="card" id="config-wizard"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/config-wizard/SKILL.md">tap:config-wizard</a></h3><p>Help you configure TAP, including advanced settings, presets, permissions and notifications.</p></article>
 <article class="card" id="lead"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/lead/SKILL.md">tap:lead</a></h3><p>Lead the team: choose a strategy, staff the work and ensure it gets an independent review.</p></article>
 <article class="card" id="self"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/self/SKILL.md">tap:self</a></h3><p>Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal, loop and clear support depends on the harness; the skill handles required handoffs.</p></article>
@@ -217,13 +217,13 @@ li { margin-bottom:8px }
 <article class="card" id="conduct"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/conduct/SKILL.md">tap:conduct</a></h3><p>Have an agent assist a leader with staffing, dispatch, review routing and escalation under the leader&#x27;s charter.</p></article>
 <article class="card" id="context"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/context/SKILL.md">tap:context</a></h3><p>Ask an agent to choose the least disruptive context recovery at a safe task boundary: leave alone, compact, clear and rebrief, or restart. It preserves assignments and writer custody.</p></article>
 </div>
-<p>Agents may select these skills themselves when their assignment calls for them. This split tells you which skills are useful to ask for, not who is allowed to load a file.</p>
+<p>Agents may select these skills themselves when their assignment calls for them, except <code>tap:help</code>, which is meant for you to start. Claude Code and Codex hide it from agents entirely, so its onboarding and diagnosis text loads only when you ask. Some other harnesses ignore that setting and still list its one-line description to agents. Agents use <code>tap help</code> and <code>tap:tap</code> instead. This split tells you which skills are useful to ask for, not who is allowed to load a file.</p>
 </section>
 <section class="section" id="run-a-shell-command-directly"><h2>Run a shell command directly</h2>
 <p>For a simple TAP command, use your harness's shell shortcut, such as <code>!tap in</code>, instead of the skill form (<code>/tap in</code> or <code>/tap:in</code>). It uses fewer tokens and is simpler. Use the skill when you want the agent to manage a lifecycle or make decisions.</p>
 </section>
 <section class="section" id="skills-an-agent-invokes"><h2>Skills an agent invokes</h2>
-<p>You normally describe the work and let the agent use these helpers. Some are deliberately absent from the user slash menu.</p>
+<p>You normally describe the work and let the agent use these helpers. <code>send</code>, <code>assign</code>, <code>reply</code>, <code>outstanding</code> and <code>team</code> are deliberately absent from the user slash menu; the rest also work when you type them.</p>
 <div class="skill-grid">
 <article class="card" id="tap"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/tap/SKILL.md">tap:tap</a></h3><p>Apply the shared messaging, liveness and tree-custody rules.</p></article>
 <article class="card" id="in"><h3><a href="https://github.com/TedYav/tap/blob/main/skills/in/SKILL.md">tap:in</a></h3><p>Register or reconnect the current pane when its binding changes or is uncertain.</p></article>
