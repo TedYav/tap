@@ -24,7 +24,7 @@ const selection = () => selectArtifactPaths(trackedAtHead(), skillLists(readFile
 // Check Markdown links and HTML links/assets readers encounter before and during setup.
 function missingReaderLinks(selected: Set<string>): string[] {
   const missing: string[] = [];
-  for (const page of ["README.md", "SECURITY.md", "docs/AGENT-SETUP.md", "docs/GETTING-STARTED.md", "docs/EASY-MODE.md",
+  for (const page of ["README.md", "SECURITY.md", "docs/AGENT-SETUP.md", "docs/setup.md", "docs/GETTING-STARTED.md", "docs/EASY-MODE.md",
     "docs/TAP-LEVELS.md", "docs/SKILLS.md", "docs/COMMUNITY-FEATURES.md", "docs/CHEATSHEET.md", "docs/RELEASE-ARTIFACTS.md",
     ...[...selected].filter(path => path.startsWith("docs/") && path.endsWith(".html"))]) {
     const links = page.endsWith(".html") ? /(?:href|src)="([^"]+)"/g : /\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
@@ -41,6 +41,8 @@ function missingReaderLinks(selected: Set<string>): string[] {
 test("the shipped reader entry pages have no missing local link targets", () => {
   const selected = new Set(selection());
   expect(missingReaderLinks(selected)).toEqual([]);
+  // The pre-clone agent guide ships and is read as an entry page; the landing page prompt points at it.
+  expect(selected.has("docs/setup.md")).toBe(true);
   selected.delete("docs/GETTING-STARTED.md");
   expect(missingReaderLinks(selected)).toContain("README.md -> docs/GETTING-STARTED.md");
   selected.delete("docs/assets/theme.js");

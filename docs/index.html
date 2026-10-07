@@ -188,6 +188,11 @@ a {
 <p class="intro">Get your first answer, then explore five levels of teamwork. Two strong agents are often all you need.</p>
 <nav class="nav" aria-label="Documentation"><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
 </header>
+<section class="section" aria-labelledby="agent-install"><h2 id="agent-install">Have your agent install it</h2>
+<p>Paste this into Claude Code, Codex or any agent that can run commands. Run it from outside a TAP clone.</p>
+<pre><code>Help me install TAP and get Claude Code and Codex talking: fetch https://tedyav.github.io/tap/setup.md and follow it. TAP is a pre-release preview. I will handle account sign-in and trust prompts. Preserve my existing config and shell files, ask before enabling permission bypass, and finish when one agent shows me the other's actual reply, naming any startup prompt that needs me.</code></pre>
+<p>Prefer to do it yourself? Follow the <a href="cheatsheet-install.html">install steps</a>.</p>
+</section>
 <section class="section" aria-labelledby="duct-tape"><h2 id="duct-tape">Duct tape for agents</h2>
 <p>TAP is duct tape, not fiber optic, <strong>but it works!</strong> Modern agents don't need much to coordinate and get work done: a way to reach one another, a clear task, and a few shared rules.</p>
 <p>TAP writes messages to local files and types a short notification into the receiving agent’s tmux pane. The agent reads the message and decides what to do. Delivery alone does not prove it processed the message.</p>

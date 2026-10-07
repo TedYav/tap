@@ -32,6 +32,7 @@ export const ARTIFACT_ALLOW = [
   "docs/COMMUNITY-FEATURES.md",
   "docs/EASY-MODE.md",
   "docs/AGENT-SETUP.md",
+  "docs/setup.md",
   "docs/RELEASE-ARTIFACTS.md",
   "docs/CHEATSHEET.md",
   "docs/attach-launch-reference.md",

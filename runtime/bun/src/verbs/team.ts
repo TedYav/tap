@@ -5,7 +5,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { TapError, callingPane, noMachineIndexError, observeCallingPane, requireActingRegistry, resolveContext, resolveSelf, type ResolvedContext } from "../context";
 import { renderRefusals } from "../error-line";
 import { helpArgv } from "../help";
-import { createOpenCodeContextReader } from "../opencode-context";
+import { createOpenCodeContextReader, opencodeSessionDirectories } from "../opencode-context";
+import { refreshWindowMap } from "../opencode-model-windows";
 import { readContextTokens, withClaudeWindow, formatContextTokens, type TokenSample } from "../context-tokens";
 import { claudeWindows } from "../context-window";
 import { contextUsedPercent, contextQueueFacts, pendingInboundAsks, type AddresseeGate } from "../context-census";
@@ -151,6 +152,8 @@ interface TeamOptions {
   team?: string;
   wide: boolean;
   stalled: boolean;
+  /** Refetch OpenCode model windows into the persisted map (the only roster path that runs `opencode`). */
+  refreshModels?: boolean;
   /** Seconds a seat must have been idle (from its dated turn end); set only with --stalled. */
   staleAfter?: number;
 }
@@ -207,7 +210,7 @@ function initialArgs(argv: string[]): string[] {
   const first = argv[0] ?? "";
   if (!first) return argv.length > 0 ? argv.slice(1) : argv;
   if (first.startsWith("--")) {
-    if (first && !["--json", "--all", "--names", "--active", "--offline", "--wide", "--stalled", "--stale-after"].includes(first)) {
+    if (first && !["--json", "--all", "--names", "--active", "--offline", "--wide", "--stalled", "--stale-after", "--refresh-models"].includes(first)) {
       throw new TapError(1, "unknown_option", "tap help team", `unknown option '${first}'`);
     }
     return argv;
@@ -239,6 +242,7 @@ function parseOptions(argv: string[], allowTeamPositional: boolean = false): Tea
     else if (arg === "--active") out.active = true;
     else if (arg === "--offline") out.offline = true;
     else if (arg === "--wide") out.wide = true;
+    else if (arg === "--refresh-models") out.refreshModels = true;
     else if (arg.startsWith("--")) {
       throw new TapError(1, "unknown_option", "tap help team", `unknown option '${arg}'`);
     } else if (allowTeamPositional && !out.team) {
@@ -254,6 +258,14 @@ function parseOptions(argv: string[], allowTeamPositional: boolean = false): Tea
       "usage_error",
       "tap team --names   (or: tap team --json)",
       "--names and --json are alternative output shapes — pick one",
+    );
+  }
+  if (out.names && out.refreshModels) {
+    throw new TapError(
+      1,
+      "usage_error",
+      "tap team --refresh-models   (or: tap team --names)",
+      "--refresh-models prints the roster; --names prints handles only — pick one",
     );
   }
   if (staleAfter !== undefined && !out.stalled) {
@@ -561,6 +573,43 @@ export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions 
       waitingOn: activity.waitingOn, turnStartedAt: activity.turnStartedAt, turnEndedAt: activity.turnEndedAt,
       turnEndedSource: activity.turnEndedSource, contextUsedPercent: percent, contextSampledAt: sampledAt };
   });
+}
+
+/** The refresh remedy for the roster on screen: an explicitly selected team must name itself, or the command resolves the caller's own team. */
+function refreshCommandFor(team?: string): string {
+  return team ? `tap team roster ${team} --refresh-models` : "tap team --refresh-models";
+}
+
+/**
+ * `--refresh-models`: fetch each distinct OpenCode session directory once and rewrite the persisted map. Partial
+ * failure is reported on stderr and the roster still prints; when every fetch fails the refresh itself has failed.
+ */
+function refreshOpenCodeModels(rows: ObservedRow[], command: string, json: boolean): TapError | null {
+  const seats = rows.filter(row => row.harness === "opencode" && row.status === "active" && !row.foreignNamespace)
+    .map(row => ({ sessionId: row.harnessSessionId ?? "", path: row.transcriptPath ?? "" }));
+  const directories = opencodeSessionDirectories(seats);
+  // Under --json stderr stays empty (CLI-ERR): the roster's window_tokens already says which models are unknown.
+  const say = (line: string): void => { if (!json) process.stderr.write(line); };
+  if (!directories.length) { say("tap team: no OpenCode seat with a session directory to refresh\n"); return null; }
+  const result = refreshWindowMap(directories);
+  if (!result.written) {
+    return new TapError(1, "model_refresh_failed", command,
+      `could not fetch OpenCode model info in ${result.directories} project ${result.directories === 1 ? "directory" : "directories"}; is opencode installed and working there?`);
+  }
+  say(`tap team: refreshed model info for ${result.directories - result.failed.length} of ${result.directories} project directories (${result.models} models)\n`);
+  for (const directory of result.failed) say(`tap team: could not fetch model info in ${directory}; is opencode installed?\n`);
+  return null;
+}
+
+/** An OpenCode seat whose input is known but whose model has no recorded window: the persisted map lacks it. */
+function modelWindowMissing(row: ObservedRow): boolean {
+  return row.harness === "opencode" && row.tokenSample?.input_tokens != null && row.tokenSample.window_tokens == null;
+}
+
+function contextCell(row: ObservedRow): string {
+  if (row.tokenSample?.input_tokens == null) return "—";
+  const count = formatContextTokens(row.tokenSample);
+  return modelWindowMissing(row) ? `${count} / ?` : count;
 }
 
 function withTokenSamples(rows: ObservedRow[], panePids = new Map<string,string>()): ObservedRow[] {
@@ -1073,7 +1122,7 @@ function socketLabel(path: string): string {
   return basename(path) === "default" ? path : basename(path);
 }
 
-function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows): void {
+function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows, refreshCommand = refreshCommandFor()): void {
   rows = [...rows.filter(row => !isDaemon(row)), ...rows.filter(isDaemon)];
   process.stdout.write(`tap ${process.env.TAP_TEAM_LIST_VERB || "team"}: ${team || "(unnamed)"}\n`);
   if (all) {
@@ -1095,7 +1144,7 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
     const records = displayItems.map(({ row, prefix }) => [
       prefix + row.handle, humanHarness(row), humanAgent(row, team) + (row.foreignNamespace ? ` (bound under ${socketLabel(row.serverSocket!)})` : ""),
       row.family || "-",
-      row.tokenSample?.input_tokens == null ? "—" : formatContextTokens(row.tokenSample),
+      contextCell(row),
       modelCell(row),
       row.preset || "n/a",
     ]);
@@ -1108,6 +1157,8 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
       process.stderr.write(`tap ${verb}: hid ${hidden.join(", ")} to fit ${terminal} columns; tap ${verb} --wide shows every column\n`);
     }
   }
+  const unknownWindow = rows.filter(modelWindowMissing).map(row => row.handle);
+  if (unknownWindow.length) process.stderr.write(`Warning: model info missing for ${unknownWindow.join(", ")}. Run ${refreshCommand} to fetch it.\n`);
   const unsupervised = rows.filter(row => row.crew && row.crewLifetime === "unsupervised").map(row => row.handle);
   if (unsupervised.length) process.stdout.write(`Warning: crew supervision missing for ${unsupervised.join(", ")}; run tap crew rearm <handle>.\n`);
 }
@@ -1697,6 +1748,14 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     if (row.crew && row.status === "active") row.crewLifetime = row.foreignNamespace ? "unknown" : crewLifetimeHealth(row.observedPaneId);
   }
   let rows = hierarchyRows.filter(row => rosterMatches(row, options));
+  if (options.refreshModels) {
+    const failure = refreshOpenCodeModels(rows, refreshCommandFor(options.team), options.json);
+    if (failure) {
+      if (options.json) jsonRefusal(failure);
+      else process.stderr.write(`tap team: ${failure.detail}; next: ${humanAction(failure.action)}\n`);
+      return failure.code;
+    }
+  }
   // --stalled reads every matched seat's state once, then keeps only the stalled ones.
   let view: StalledView | undefined;
   let statesRead = false;
@@ -1721,7 +1780,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   } else {
     const all = options.all || crewOnly;
     const sampledRows = all || statesRead ? rows : withTokenSamples(withAgentStates(rows, { team: renderedTeam }), observation.panePids);
-    if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows);
+    if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows, refreshCommandFor(options.team));
     if (view) process.stdout.write(stalledFooter(view, stalledSeatCount));
     if (!all) {
       const mismatchedBindings = sampledRows.filter((row) => row.status === "active" && row.delivery === "pane" &&

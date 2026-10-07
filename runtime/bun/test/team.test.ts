@@ -2870,13 +2870,13 @@ test("attach --next eligibility drops an otherwise-eligible poll row", () => {
 });
 
 
-test("OpenCode roster shows bound store input and project-resolved model window", () => {
+function openCodeRosterFixture(modelsWork = true, secondSeat = false) {
   const f = fixture(); delete f.env.TAP_SERVER_EPOCH;
   replaceTmux(f, String.raw`
 while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
 case "$1" in
- list-sessions) printf 'live-session\t1:1\t1\n' ;;
- list-panes) printf 'live-session\tlive-session:0.0\t%%7\topencode\t123\t1:1\t0\n' ;;
+ list-sessions) printf 'live-session\t1:1\t1\nother-session\t1:1\t1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\topencode\t123\t1:1\t0\nother-session\tother-session:0.0\t%%8\topencode\t124\t1:1\t0\n' ;;
  capture-pane) printf '%s\n' 'Build GLM' ;;
  display-message) printf '1:1\n' ;;
  *) exit 1 ;;
@@ -2886,9 +2886,18 @@ esac`);
   db.exec("CREATE TABLE session (id TEXT, directory TEXT, revert TEXT); CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT);");
   db.query("INSERT INTO session VALUES ('seat', ?, NULL)").run(f.worktree);
   db.query("INSERT INTO message VALUES ('message', 'seat', 1, ?)").run(JSON.stringify({role:"assistant",providerID:"zai",modelID:"glm",time:{completed:1},tokens:{input:131,cache:{read:101696,write:0}}}));
+  // A second seat in its own project directory, which the fake CLI cannot serve.
+  const second = join(f.dir, "second-project");
+  mkdirSync(second);
+  db.query("INSERT INTO session VALUES ('seat2', ?, NULL)").run(second);
+  db.query("INSERT INTO message VALUES ('message2', 'seat2', 1, ?)").run(JSON.stringify({role:"assistant",providerID:"zai",modelID:"glm",time:{completed:1},tokens:{input:131,cache:{read:101696,write:0}}}));
   db.close();
+  const log = join(f.dir,"opencode.log");
   writeFileSync(join(f.dir,"bin","opencode"), `#!/bin/sh
+printf '%s|%s\\n' "$(pwd -P)" "$*" >> '${log}'
+[ "$*" = "--version" ] && { echo 1.2.3; exit 0; }
 [ "$*" = "models --verbose --pure" ] || exit 1
+${modelsWork ? "" : "exit 1"}
 [ "$(pwd -P)" = '${realpathSync(f.worktree)}' ] || exit 1
 cat <<'MODELS'
 zai/glm
@@ -2897,11 +2906,75 @@ zai/glm
 }
 MODELS
 `, {mode:0o755});
-  seedPostFlip(f, {live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"opencode",harness_session_id:"seat"}});
-  const json = run(["team","--json"],f.worktree,f.env);
-  expect(json.status).toBe(0);
-  expect(JSON.parse(json.stdout).agents[0].context_tokens).toMatchObject({input_tokens:101827,window_tokens:420000,used_percent:24,source:"opencode_store"});
+  seedPostFlip(f, {
+    live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"opencode",harness_session_id:"seat"},
+    ...(secondSeat ? {other:{status:"active",delivery:"pane",pane:"other-session:0.0",pane_id:"%8",session:"other-session",server_epoch:"srv:1:1",harness:"opencode",harness_session_id:"seat2"}} : {}),
+  });
+  const calls = () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : [];
+  return { f, calls };
+}
+
+test("OpenCode roster reads the persisted window map and only --refresh-models runs opencode", () => {
+  const { f, calls } = openCodeRosterFixture();
+
+  // Unknown model: the count stays visible, the cap is "?", a footer names the seat and the command. No fetch.
+  const unknown = run(["team"],f.worktree,f.env);
+  expect(unknown.stdout).toContain("102k / ?");
+  expect(unknown.stderr).toContain("Warning: model info missing for live. Run tap team --refresh-models to fetch it.");
+  expect(unknown.stdout).not.toContain("model info missing");
+  expect(JSON.parse(run(["team","--json"],f.worktree,f.env).stdout).agents[0].context_tokens).toMatchObject({input_tokens:101827,window_tokens:null});
+  expect(calls()).toEqual([]);
+
+  // --refresh-models fetches once for the one session directory, then the roster shows the real denominator.
+  const refreshed = run(["team","--refresh-models"],f.worktree,f.env);
+  expect(refreshed.status, refreshed.stderr).toBe(0);
+  expect(refreshed.stderr).toContain("refreshed model info for 1 of 1 project directories");
+  expect(refreshed.stdout).toContain("102k / 420k");
+  expect(refreshed.stderr).not.toContain("model info missing");
+  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(1);
+
+  // Known model: consecutive observations never invoke opencode again.
+  const before = calls().length;
   expect(run(["team"],f.worktree,f.env).stdout).toContain("102k / 420k");
+  const json = run(["team","--json"],f.worktree,f.env);
+  expect(JSON.parse(json.stdout).agents[0].context_tokens).toMatchObject({input_tokens:101827,window_tokens:420000,used_percent:24,source:"opencode_store"});
+  expect(calls()).toHaveLength(before);
+});
+
+test("--refresh-models refuses --names, and an explicit team's footer names that team's roster command", () => {
+  const { f, calls } = openCodeRosterFixture();
+  const names = run(["team","--refresh-models","--names"],f.worktree,f.env);
+  expect(names.status).toBe(1);
+  expect(names.stderr).toContain("pick one");
+  expect(calls()).toEqual([]);
+
+  const other = run(["team","roster","roster"],f.dir,f.env);
+  expect(other.status, other.stderr).toBe(0);
+  expect(other.stderr).toContain("Run tap team roster roster --refresh-models to fetch it.");
+});
+
+test("--refresh-models fails when no directory can be fetched, with one JSON object and a quiet stderr under --json", () => {
+  const { f, calls } = openCodeRosterFixture(false);
+  const human = run(["team","--refresh-models"],f.worktree,f.env);
+  expect(human.status).toBe(1);
+  expect(human.stderr).toContain("tap team: could not fetch OpenCode model info in 1 project directory");
+  expect(human.stderr).toContain("next: tap team --refresh-models");
+  expect(human.stdout).toBe("");
+
+  const json = run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(json.status).toBe(1);
+  expect(json.stderr).toBe("");
+  expect(JSON.parse(json.stdout)).toMatchObject({ ok: false, error_class: "model_refresh_failed", action: "tap team --refresh-models" });
+
+  // An explicit team's failure names that team's command, in the human line and the JSON envelope.
+  const otherHuman = run(["team","roster","roster","--refresh-models"],f.dir,f.env);
+  expect(otherHuman.status).toBe(1);
+  expect(otherHuman.stderr).toContain("next: tap team roster roster --refresh-models");
+  const otherJson = run(["team","roster","roster","--refresh-models","--json"],f.dir,f.env);
+  expect(otherJson.stderr).toBe("");
+  expect(JSON.parse(otherJson.stdout)).toMatchObject({ ok: false, error_class: "model_refresh_failed", action: "tap team roster roster --refresh-models" });
+  expect(json.stdout.trim().split("\n")).toHaveLength(1);
+  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(4);
 });
 
 test("roster filters share selection across output shapes and exclude daemons", () => {
@@ -3221,4 +3294,39 @@ esac`);
     expect(page).toContain("--stale-after <secs>");
     expect(page).toContain("tap team --stalled --stale-after 900 --json");
   });
+});
+
+test("--refresh-models under --json keeps stderr empty on success, on a partial refresh and with nothing to refresh", () => {
+  const { f } = openCodeRosterFixture();
+  const refreshed = run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(refreshed.status, refreshed.stderr).toBe(0);
+  expect(refreshed.stderr).toBe("");
+  expect(JSON.parse(refreshed.stdout).agents[0].context_tokens).toMatchObject({ window_tokens: 420000 });
+
+  // Nothing to refresh: the seat's session is not in the OpenCode store.
+  const db = new Database(join(f.dir,"opencode.db"));
+  db.query("DELETE FROM session").run(); db.close();
+  const none = run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(none.status).toBe(0);
+  expect(none.stderr).toBe("");
+  expect(run(["team","--refresh-models"],f.worktree,f.env).stderr).toContain("no OpenCode seat with a session directory to refresh");
+});
+
+test("--refresh-models --json with one directory fetched and one failing: one object, empty stderr, partial windows", () => {
+  const { f, calls } = openCodeRosterFixture(true, true);
+  const result = run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.stdout.trim().split("\n")).toHaveLength(1);
+  const agents = JSON.parse(result.stdout).agents as { handle: string; context_tokens: { input_tokens: number | null; window_tokens: number | null } }[];
+  expect(agents.find(a => a.handle === "live")?.context_tokens).toMatchObject({ input_tokens: 101827, window_tokens: 420000 });
+  expect(agents.find(a => a.handle === "other")?.context_tokens).toMatchObject({ input_tokens: 101827, window_tokens: null });
+  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(2);
+
+  // The human form reports the partial result on stderr and still prints the roster.
+  const human = run(["team","--refresh-models"],f.worktree,f.env);
+  expect(human.status).toBe(0);
+  expect(human.stderr).toContain("refreshed model info for 1 of 2 project directories");
+  expect(human.stderr).toContain("could not fetch model info in");
+  expect(human.stdout).toContain("102k / 420k");
 });

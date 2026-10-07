@@ -29,6 +29,7 @@ import { NOT_A_SEAT, type ForkUnavailable, describeSessionState, printOffRosterT
 import { cloneRecord, err, Exit, refuseIfFlipAuthority, refuseIfResetFenced, registryAuthority, registryState, render, SCRIPTS,
   withRecordDefaults, type RegistryState } from "./resume-prelude";
 import { durableRecord, launchHandle, launchTransaction, recordFromRow, withLaunchSignals, type LaunchRecord } from "./transaction";
+import { captureModelWindow } from "../opencode-model-windows";
 import { handOffLaunchProgress, launchPhase, launchPhasesDone, progressMode, withLaunchProgress } from "./progress";
 import { resolveCliTuning, type ResolvedTuning } from "./tuning";
 import { freshLaunchSessionId, HERMES_BIN } from "./adapters";
@@ -568,17 +569,22 @@ async function cmdNew(args: NewArgs, cwd: string, notices: Notices, deps: Launch
   const state = registryState(cwd, true);
   if (previewTeam) state.team = { ...state.team, name: previewTeam };
   const record = { ...(await makeNewRecord(resolved, state, cwd, deps)), last_launched: timestamp(), ...(workdir === undefined ? {} : { launch_workdir: workdir }) };
-  return executeFreshLaunch(record, resolved, deps.run);
+  return executeFreshLaunch(record, resolved, deps);
 }
 
 type Runner = (record: LaunchRecord) => Promise<number>;
 
 /** execute_fresh_launch: the transaction, receipts, then the attach tail. */
-async function executeFreshLaunch(record: LaunchRecord, args: NewArgs, run: Runner): Promise<number> {
+async function executeFreshLaunch(record: LaunchRecord, args: NewArgs, deps: LaunchDeps): Promise<number> {
   const attach = args.attach || callerHasTty();
-  const rc = await run(record);
+  const rc = await deps.run(record);
   if (args.dry_run) return rc;
   if (rc !== 0) return rc;
+  if (record.harness === "opencode" && record.model?.includes("/")) {
+    // Best effort: a seat that launched is never failed by a missing or slow `opencode models`.
+    launchPhase("Reading model context window");
+    try { (deps.captureModelWindow ?? captureModelWindow)(record.model, record.launch_workdir ?? record.cwd); } catch { /* the roster shows an unknown window */ }
+  }
   launchPhasesDone();
   for (const line of record.ensure_receipts ?? []) receipt(line);
   if (!attach) { receipt(detachedReceipt(record.name, "no controlling terminal", `${record.base}/${launchHandle(record)}`)); return 0; }
@@ -596,6 +602,8 @@ export interface LaunchDeps {
   askName?: AskName;
   /** The [f] arm: `tap session fork` with this argv; cmdSessionFork by default. */
   fork?: (argv: string[], expectedSource: string) => Promise<number>;
+  /** Record an OpenCode seat's model window in the persisted map (tap-8me26); captureModelWindow by default. */
+  captureModelWindow?: (model: string, directory: string) => unknown;
 }
 
 export async function cmdSessionLaunch(argv: string[], scriptDir = SCRIPTS, overrides: Partial<LaunchDeps> = {}): Promise<number> {

@@ -131,3 +131,30 @@ test("custom-session launch receipt points to the actual registered seat", async
   expect(result.stdout).toContain("tap attach stranger/claude");
   expect(result.stdout).not.toContain("tap attach custom-session");
 });
+
+test("an OpenCode launch captures the selected model's window; other launches and failures leave the launch alone", async () => {
+  const fakes = [
+    { name: "tmux", body: "#!/bin/sh\nexit 0\n" },
+    { name: "claude", body: "#!/bin/sh\nexit 99\n" },
+    { name: "opencode", body: "#!/bin/sh\nexit 99\n" },
+  ];
+  const seen: [string, string][] = [];
+  const capture = (model: string, directory: string) => { seen.push([model, directory]); };
+  const launch = (args: string[], captureModelWindow: LaunchDeps["captureModelWindow"] = capture) =>
+    captureLaunch(stranger(fakes), args, { run: async () => 0, captureModelWindow });
+
+  const withModel = await launch(["opencode", "--model", "zai/glm"]);
+  expect(withModel.rc, withModel.stderr).toBe(0);
+  expect(seen).toHaveLength(1);
+  expect(seen[0]![0]).toBe("zai/glm");
+  expect(seen[0]![1]).toMatch(/\/stranger$/);
+
+  await launch(["opencode"]);
+  await launch(["opencode", "--model", "no-provider"]);
+  await launch(["claude", "--model", "zai/glm"]);
+  await launch(["opencode", "--model", "zai/glm", "--dry-run"]);
+  expect(seen).toHaveLength(1);
+
+  const broken = await launch(["opencode", "--model", "zai/glm"], () => { throw new Error("opencode models failed"); });
+  expect(broken.rc, broken.stderr).toBe(0);
+});

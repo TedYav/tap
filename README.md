@@ -26,10 +26,11 @@ Release archives bundle Bun. The [release artifact guide](docs/RELEASE-ARTIFACTS
 contains the build procedure and bootstrap one-liner for a future release;
 downloadable assets are not published yet.
 
-1. **Install once.** Ask any agent you run:
-   "Install TAP from https://github.com/TedYav/tap following
-   [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)." It is a pre-release preview.
-   If cloning fails with a permission error, ask the maintainer for access.
+1. **Install once.** Copy the "Have your agent install it" prompt from the
+   [landing page](https://tedyav.github.io/tap/#agent-install) into any agent you run; it
+   follows the guide at [tedyav.github.io/tap/setup.md](https://tedyav.github.io/tap/setup.md).
+   It is a pre-release preview. If cloning fails with a permission error, ask the maintainer
+   for access. To install by hand, follow [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
 
 2. **Initialize your project.** In a Git repository it creates `.tap/` and ignores it;
    elsewhere it asks first:

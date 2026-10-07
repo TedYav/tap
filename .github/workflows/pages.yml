@@ -2,7 +2,7 @@ name: pages
 run-name: publish cheat-sheet guide ${{ github.sha }}
 
 # Publishes ONLY the human cheat-sheet guide to GitHub Pages. The site is an
-# allowlist: index.html, the cheatsheet*.html sheets, the five level pages and theme assets,
+# allowlist: index.html, setup.md (the agent install guide), the cheatsheet*.html sheets, the five level pages and theme assets,
 # staged by explicit cp into a fresh _site/ with a generated .nojekyll. Nothing
 # else in the tree may reach the artifact. A Pages site is always public, so it
 # is hosted from this public repository only.
@@ -14,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "docs/index.html"
+      - "docs/setup.md"
       - "docs/cheatsheet*.html"
       - "docs/assets/theme.css"
       - "docs/assets/theme.js"
@@ -44,7 +45,7 @@ jobs:
         run: |
           rm -rf _site
           mkdir -p _site
-          cp docs/index.html _site/
+          cp docs/index.html docs/setup.md _site/
           cp docs/cheatsheet.html docs/cheatsheet-install.html _site/
           cp docs/cheatsheet-first-team.html docs/cheatsheet-harnesses.html _site/
           cp docs/cheatsheet-collaboration.html _site/

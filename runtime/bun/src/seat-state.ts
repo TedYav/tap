@@ -18,9 +18,9 @@
 // re-resolves them from ambient pins.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { detectAgentState } from "./agent-state";
 import { paneHarness } from "./pane-harness";
 import { escapedInputLine, inputRegion, inputStateFromRegion, paneAlertState, promptLineReText, regionIsSentinel, type PaneIo } from "./pane/reader";
@@ -176,10 +176,41 @@ function jsonlBelow(dir: string, out: string[]): void {
 }
 
 /**
+ * The normalized `payload.cwd` of a Codex rollout's first record (session_meta), or "" when the head is
+ * unreadable, truncated or carries none. Reads only the first line, bounded. This is a deliberate small
+ * twin of session-store's head reader: importing session-store here would pull it, and bun:sqlite, into
+ * the watch sidecar's and the goalie loop's import closures, which stamp every module they load.
+ */
+function rolloutHeadCwd(path: string, cap = 1 << 20): string {
+  let head = "";
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(65536);
+      for (;;) {
+        const n = readSync(fd, buf, 0, buf.length, null);
+        if (n <= 0) break;
+        head += buf.toString("utf8", 0, n);
+        if (head.includes("\n") || head.length >= cap) break;
+      }
+    } finally { closeSync(fd); }
+    const line = head.includes("\n") ? head.slice(0, head.indexOf("\n")) : head;
+    const meta: unknown = JSON.parse(line);
+    const payload = meta && typeof meta === "object" ? (meta as Record<string, unknown>).payload : undefined;
+    const cwd = payload && typeof payload === "object" ? (payload as Record<string, unknown>).cwd : undefined;
+    return typeof cwd === "string" ? normalize(cwd).replace(/\/+$/, "") : "";
+  } catch { return ""; }
+}
+
+/**
  * A transcript of this harness that names `worktree` was written within
- * `staleAfter` seconds of `now`. Codex reads every session under its home;
- * Claude reads the project directories whose name carries the munged worktree.
- * Other harnesses have no transcript reader and are stale.
+ * `staleAfter` seconds of `now`. Codex walks the sessions under its home but
+ * stats each rollout first: only a recent one has its first line (session_meta)
+ * read, and its `payload.cwd` must equal the worktree. A cost proportional to the
+ * whole Codex history here once stalled launch (tap-isha0). Claude reads the
+ * project directories whose name carries the munged worktree. Other harnesses
+ * have no transcript reader and are stale. This is a freshness test only: it never
+ * names a session, so identity selection stays in session-store.
  */
 export function transcriptFresh(harness: string, worktree: string, now: number, staleAfter: number, env: NodeJS.ProcessEnv): boolean {
   const home = env.HOME || homedir();
@@ -198,7 +229,20 @@ export function transcriptFresh(harness: string, worktree: string, now: number, 
       for (const f of files) if (!f.startsWith(".") && f.endsWith(".jsonl")) paths.push(join(projects, d, f));
     }
   }
+  const codexTarget = harness === "codex" ? normalize(worktree).replace(/\/+$/, "") : "";
   for (const path of paths) {
+    if (harness === "codex") {
+      let mtime: number;
+      try { mtime = Math.floor(statSync(path).mtimeMs / 1000); } catch { continue; }
+      if (!(mtime && now - mtime <= staleAfter)) continue;
+      if (codexTarget === "") continue;
+      // The registered root, or a launch directory beneath it (a seat may start at <root>/sub and still register
+      // <root>). Containment is checked at a path-separator boundary, never as a raw prefix, so a sibling
+      // such as <root>-other does not count.
+      const cwd = rolloutHeadCwd(path);
+      if (cwd === codexTarget || cwd.startsWith(`${codexTarget}/`)) return true;
+      continue;
+    }
     let text: string, mtime: number;
     try {
       text = new TextDecoder("utf-8").decode(readFileSync(path));

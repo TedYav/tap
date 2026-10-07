@@ -10,18 +10,8 @@ owns the configuration step below.
 TAP is a pre-release beta, not yet a public open-source release, and bugs are expected. Tell the
 human so before you start, and tell them to send bug reports and feature requests to ted@tedyav.com.
 
-If a human asked another agent to install TAP for them, that agent starts
-outside the TAP clone with this prompt:
-
-```text
-Help me install TAP and get Claude Code and Codex talking. Follow
-https://github.com/TedYav/tap/blob/main/docs/PUBLIC-AGENT-BOOTSTRAP.md:
-clone over HTTPS into a directory I will keep, then follow docs/AGENT-SETUP.md
-in that clone. TAP is a pre-release preview. If cloning fails with a permission error, stop and tell me to ask the maintainer for access.
-I will handle account sign-in. Preserve my existing config and shell files,
-and ask before enabling permission bypass. Finish when one agent shows me the
-other's actual reply. Name any startup prompt that needs me.
-```
+A human who wants another agent to start this install copies the prompt from the
+[landing page](https://tedyav.github.io/tap/#agent-install); this runbook is what that agent follows.
 
 ## Boundaries
 
@@ -421,6 +411,20 @@ skill repeats this walkthrough and changes any choice. Claude and Codex name it
 `tap:config-wizard`; flat hosts name it `tap-config-wizard`. In any agent session,
 run `tap help skill config-wizard` and follow the returned file, so the human
 never needs to edit the config file by hand.
+
+Finish with this short recap, in plain words, as the last thing you tell the human
+after the verified round trip:
+
+1. **Add a seat.** Show exactly one launch form from their actual setup: a selected
+   alias, such as `<alias> <name>`, or one installed bare harness command, such as
+   `tap launch <harness> <name>`. Never show both.
+2. **Put the team to work.** Ask agents on the same team to talk, review or split work.
+3. **Retire a teammate.** `tap out <name> --kill` removes the seat and stops its
+   session; plain `tap out <name>` leaves the session running. (For crew seats, either
+   form affects only the pane.) To replace a seat that keeps its name, launch it again
+   and choose kill (`k`) when prompted.
+4. **If something looks off,** start `/tap:help` (`tap-help` on flat-skill hosts) and
+   describe what you see.
 
 ## Human notification setup
 

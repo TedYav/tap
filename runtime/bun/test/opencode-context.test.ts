@@ -4,12 +4,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createOpenCodeContextReader, parseOpenCodeModels } from "../src/opencode-context";
+import type { WindowMap } from "../src/opencode-model-windows";
 import { removeScratchTree } from "./support/scratch";
 const root = mkdtempSync(join(tmpdir(), "opencode-context-"));
 afterAll(() => removeScratchTree(root));
 let number = 0;
 const model = {id:"glm",providerID:"provider",limit:{context:420000}};
-const catalog = () => new Map([["provider/glm", model]]);
+const mapOf = (windows: Record<string, number>, directory = root): WindowMap => ({version:"1.0.0",directories:{[directory]:{fetched_at:1,windows}}});
+const catalog = () => mapOf({"provider/glm":420000});
 function fixture() {
   const path = join(root, `${number++}.db`);
   const db = new Database(path);
@@ -45,14 +47,14 @@ test("compaction summary hides old input until a subsequent completed request", 
 });
 test("missing or failed model metadata keeps the measured input and never guesses a cap", () => {
   const f=fixture(); f.add(100);
-  for (const models of [() => new Map(), () => {throw Error("offline");}]) {
+  for (const models of [() => null, () => mapOf({}), () => mapOf({"provider/glm":420000},"/elsewhere"), () => {throw Error("unreadable");}]) {
     expect(createOpenCodeContextReader(models)("seat",f.path)).toMatchObject({input_tokens:101839,window_tokens:null,used_percent:null});
   }
   f.db.close();
 });
 test("invalid configured caps stay unknown", () => {
   const f=fixture(); f.add(100);
-  const invalid=() => new Map([["provider/glm",{...model,limit:{context:0}}]]);
+  const invalid=() => mapOf({"provider/glm":0});
   f.add(200); expect(createOpenCodeContextReader(invalid)("seat",f.path).window_tokens).toBeNull(); f.db.close();
 });
 test("invalid usage, wrong identity, revert and absent stores stay unknown", () => {
@@ -71,4 +73,12 @@ test("model CLI headings bind the parsed metadata to its provider and model", ()
   const text=`provider/glm\n${JSON.stringify(model,null,2)}\nwrong/model\n${JSON.stringify(model,null,2)}\n`;
   expect([...parseOpenCodeModels(text).keys()]).toEqual(["provider/glm"]);
   expect(parseOpenCodeModels("unexpected output").size).toBe(0);
+});
+test("the same model keeps a separate window per project directory", () => {
+  const a=join(root,"project-a"), b=join(root,"project-b");
+  const map:WindowMap={version:"1.0.0",directories:{[a]:{fetched_at:1,windows:{"provider/glm":200000}},[b]:{fetched_at:1,windows:{"provider/glm":900000}}}};
+  const f=fixture(); f.add(100); f.db.query("UPDATE session SET directory = ?").run(a);
+  expect(createOpenCodeContextReader(() => map)("seat",f.path).window_tokens).toBe(200000);
+  f.db.query("UPDATE session SET directory = ?").run(b);
+  expect(createOpenCodeContextReader(() => map)("seat",f.path).window_tokens).toBe(900000); f.db.close();
 });

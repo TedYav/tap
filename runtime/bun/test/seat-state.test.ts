@@ -3,13 +3,14 @@
 // same fixtures, through injected tmux/harness reads. The "ladder" block pins
 // the precedence order: each case sets two rungs against each other, so moving
 // or dropping either rung turns it red.
-import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { frameIo, type PaneIo } from "../src/pane/reader";
 import {
-  activeHarnessCount, cursorPromptReady, opencodePromptReady, seatState, wedgeHash, type SeatStateDeps,
+  activeHarnessCount, cursorPromptReady, opencodePromptReady, seatState, transcriptFresh, wedgeHash, type SeatStateDeps,
 } from "../src/seat-state";
 
 const ROOT = resolve(import.meta.dir, "../../..");
@@ -288,4 +289,84 @@ describe("real approval prompts are blocked-on-approval", () => {
 test("an OpenCode shell-mode frame is not blocked-on-approval", () => {
   const frame = read("runtime/bun/test/fixtures/opencode-capture/shell-mode-staged-160.ansi");
   expect(observe({ row: { harness: "opencode" }, frame })).not.toBe("blocked-on-approval");
+});
+
+// tap-isha0: the Codex freshness test must cost the recent rollouts, not the operator's whole history.
+describe("codex transcriptFresh reads only recent rollout heads", () => {
+  const NOW = 2_000_000_000;
+  const STALE_AFTER = 300;
+  const WORKTREE = "/work/fixture-tree";
+  function rollout(root: string, day: string, name: string, cwd: string, ageSeconds: number, padBytes = 0): string {
+    const dir = join(root, "sessions", "2026", "10", day);
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `rollout-${name}.jsonl`);
+    writeFileSync(path, `${JSON.stringify({ type: "session_meta", payload: { id: name, cwd } })}\n`);
+    if (padBytes) truncateSync(path, padBytes); // sparse: large on paper, free to create
+    utimesSync(path, NOW - ageSeconds, NOW - ageSeconds);
+    return path;
+  }
+  function freshWith(root: string): { fresh: boolean; opened: string[] } {
+    const opened: string[] = [];
+    const record = (path: unknown) => { if (typeof path === "string") opened.push(path); };
+    const spies: Array<{ mockRestore(): void }> = (["openSync", "readFileSync"] as const).map((fn) => {
+      const real = fs[fn] as (...args: unknown[]) => unknown;
+      return spyOn(fs, fn as "openSync").mockImplementation(((...args: unknown[]) => { record(args[0]); return real(...args); }) as never);
+    });
+    // Directory order is filesystem-defined (APFS listed the newest day first); pin it ascending so the
+    // old rollouts are always visited before the fresh one and an unbounded scan cannot hide behind an early return.
+    const realReaddir = fs.readdirSync as (...args: unknown[]) => unknown;
+    spies.push(spyOn(fs, "readdirSync").mockImplementation(((...args: unknown[]) => {
+      const names = realReaddir(...args);
+      return Array.isArray(names) && names.every((name) => typeof name === "string") ? [...names].sort() : names;
+    }) as never));
+    try {
+      return { fresh: transcriptFresh("codex", WORKTREE, NOW, STALE_AFTER, { TAP_CODEX_HOME: root }), opened };
+    } finally { for (const spy of spies) spy.mockRestore(); }
+  }
+  const home = () => { const dir = join(scratch, `codex${n++}`); mkdirSync(dir, { recursive: true }); return dir; };
+
+  test("many old large rollouts are stat-skipped; the one fresh matching rollout wins", () => {
+    const root = home();
+    const old = Array.from({ length: 40 }, (_, i) => rollout(root, "01", `old-${i}`, WORKTREE, 86_400 * 30, 16 << 20));
+    const fresh = rollout(root, "02", "fresh", WORKTREE, 10);
+    const { fresh: result, opened } = freshWith(root);
+    expect(result).toBe(true);
+    expect(opened).toContain(fresh); // positive control: the spy sees real opens
+    expect(opened.filter((path) => old.includes(path))).toEqual([]);
+  });
+  test("only old rollouts, even ones naming the worktree, are stale and are never opened", () => {
+    const root = home();
+    const old = Array.from({ length: 10 }, (_, i) => rollout(root, "01", `old-${i}`, WORKTREE, STALE_AFTER + 1, 4 << 20));
+    const { fresh, opened } = freshWith(root);
+    expect(fresh).toBe(false);
+    expect(opened.filter((path) => old.includes(path))).toEqual([]);
+  });
+  test("a fresh rollout for another cwd does not count, and only its head line is needed", () => {
+    const root = home();
+    rollout(root, "02", "other", "/work/some-other-tree", 10);
+    rollout(root, "02", "prefix", `${WORKTREE}-sibling`, 10);
+    expect(freshWith(root).fresh).toBe(false);
+  });
+  test("a fresh rollout whose first line is truncated or has no cwd is skipped, never fatal", () => {
+    const root = home();
+    const dir = join(root, "sessions", "2026", "10", "03");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "rollout-broken.jsonl"), '{"type":"session_meta","payload":{"cwd":"/work/fix');
+    writeFileSync(join(dir, "rollout-nocwd.jsonl"), `${JSON.stringify({ type: "session_meta", payload: { id: "x" } })}\n`);
+    for (const f of ["rollout-broken.jsonl", "rollout-nocwd.jsonl"]) utimesSync(join(dir, f), NOW - 5, NOW - 5);
+    expect(freshWith(root).fresh).toBe(false);
+  });
+  test("a fresh rollout started in a subdirectory of the registered worktree counts; a sibling still does not", () => {
+    const root = home();
+    rollout(root, "02", "sub", `${WORKTREE}/packages/app`, 10);
+    expect(transcriptFresh("codex", WORKTREE, NOW, STALE_AFTER, { TAP_CODEX_HOME: root })).toBe(true);
+    const sibling = home();
+    rollout(sibling, "02", "sibling", `${WORKTREE}-sibling/packages/app`, 10);
+    expect(transcriptFresh("codex", WORKTREE, NOW, STALE_AFTER, { TAP_CODEX_HOME: sibling })).toBe(false);
+  });
+  test("a trailing slash on the worktree still matches the recorded cwd", () => {
+    const root = home();
+    rollout(root, "02", "fresh", WORKTREE, 10);
+    expect(transcriptFresh("codex", `${WORKTREE}/`, NOW, STALE_AFTER, { TAP_CODEX_HOME: root })).toBe(true);
+  });
 });
