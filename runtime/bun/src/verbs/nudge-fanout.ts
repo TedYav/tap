@@ -139,7 +139,9 @@ export function runFanout(args: FanoutArgs, self: { team: string; handle: string
       throw new TapError(1, "confirmation_required", `re-run with --yes to nudge these ${targets.length} seat(s), or --dry-run to preview`,
         "a multi-seat nudge needs confirmation and stdin is not a terminal; nothing sent");
     }
-    if (!fx.confirm(`Nudge ${targets.length} seat(s)?`)) { fx.out("tap nudge: cancelled; nothing sent\n"); return 1; }
+    // A declined confirmation is the operator's answer, not a failure (CLI-EXIT-0); an
+    // unreadable team is still the cannot-check failure it was before the prompt.
+    if (!fx.confirm(`Nudge ${targets.length} seat(s)?`)) { fx.out("tap nudge: cancelled; nothing sent\n"); return unreadable ? 1 : 0; }
   }
   let failed = unreadable, possible = 0;
   for (const seat of targets) {

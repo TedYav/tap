@@ -173,7 +173,7 @@ for (const multi of [false, true]) for (const senderUp of [true, false]) test(
       const notices = readdirSync(join(s.bus, "payloads")).filter(name => name.endsWith(".md") && readFileSync(join(s.bus, "payloads", name), "utf8").includes("kind: delivery-failed"));
       expect(notices).toEqual([`${receipt.notice_id}.md`]);
       const outstanding = spawnSync("bash", [join(repo, "bin/tap"), "outstanding", "alice", "--json"], { env: waiterEnv(s.work, s.bus), encoding: "utf8" });
-      expect([0, 2]).toContain(outstanding.status!);
+      expect(outstanding.status, outstanding.stderr).toBe(0);
       const rows = JSON.parse(outstanding.stdout).outstanding as { id: string }[];
       expect(rows.filter(row => row.id === ident)).toHaveLength(1);
       if (senderUp) {

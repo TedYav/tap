@@ -40,7 +40,7 @@ describe("census compatibility bounds", () => {
     const poll = Bun.spawnSync([process.execPath, MAIN, "poll", "pollbot"], {
       cwd: fx.wt, env: { ...fx.env, TAP_SELF: "pollbot" }, stdout: "pipe", stderr: "pipe",
     });
-    expect(poll.exitCode).toBe(2);
+    expect(poll.exitCode).toBe(0);
     expect(poll.stdout.toString()).toContain("ua-20260831T010000Z-aabbccddeeff");
   });
 

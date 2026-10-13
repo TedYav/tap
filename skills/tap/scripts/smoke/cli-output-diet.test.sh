@@ -129,7 +129,7 @@ check(runtime+' send',['send','sonnet','--from','hermes','--ask','--delivery','n
 check(runtime+' read ask',['read',ident,'--by','sonnet'],f'tap read: ask {ident} from=hermes reply\nhello body\n')
 check(runtime+' progress',['reply',ident,'--by','sonnet','--progress','--delivery','now','-f',str(bodyfile)],f'tap reply: progress {ident} (open)\n')
 check(runtime+' reply',['reply',ident,'--by','sonnet','--delivery','now','-f',str(bodyfile)],f'tap reply: ok {ident}\n')
-check(runtime+' presettled read',['read',ident,'--by','sonnet'],f'tap read: ask {ident} from=hermes settled\nhello body\n')
+check(runtime+' presettled read',['read',ident,'--by','sonnet'],f'tap read: ask {ident} from=hermes already settled; nothing owed\nhello body\n')
 # Poll sender and receiver exercise durable queues without pane claims.
 reg=json.loads((bus/'registry.json').read_text())
 reg['seats']['poller']={'status':'active','delivery':'poll'}
@@ -142,11 +142,14 @@ spool=bus/'spool';spool.mkdir(exist_ok=True)
 oldpath=spool/(original+'.md')
 oldpath.write_text(f'---\nid: {original}\nfrom: hermes\nto: poller\nkind: discuss\nreply: expected\npath: {bus}/payloads/{original}.md\n---\nhello body\n')
 (spool/(original+'.meta.json')).write_text(json.dumps({'id':original,'attempts':0,'attempt_fence':1,'reason':'busy'}))
+# Same-id retry: a send still parked for its first delivery coalesces into a
+# one-line no-op under the same id. No successor id, no withdrawal, no retry row.
 result=check(runtime+' resend',['resend',original,'--by','hermes'],None)
-newid=json.loads((bus/'receipts'/(original+'.resent')).read_text())['resend_id']
-assert result.stdout==f'tap resend: queued {newid}\n'
-measurements[-1]['metadata']=measurements[-1]['total']-len(newid.encode())
-assert measurements[-1]['metadata']<=32
+assert result.stdout==f'tap resend: {original} already queued\n',result.stdout
+assert not (bus/'receipts'/(original+'.resent')).exists()
+assert oldpath.exists() and json.loads((spool/(original+'.meta.json')).read_text()).get('retry') is None
+measurements[-1]['metadata']=measurements[-1]['total']-len(original.encode())
+assert measurements[-1]['metadata']<=32,measurements[-1]
 # Isolated empty seat avoids confusing previous successful messages with emptiness.
 reg['seats']['empty']={'status':'active','delivery':'poll'}
 (bus/'registry.json').write_text(json.dumps(reg))
@@ -158,7 +161,7 @@ foreignpath.write_text(f'---\nid: {foreign}\nfrom: hermes\nfrom_team: beta\nto: 
 check(runtime+' foreign read',['read',foreign,'--by','sonnet'],f'tap read: ask {foreign} from=beta/hermes reply\nhello body\n')
 # Public done is a stateless tombstone: it names the replacement and cannot settle the ask.
 refusal=subprocess.run([str(root/'bin/tap'),'done',foreign,'--by','sonnet'],env=env,text=True,capture_output=True)
-assert refusal.returncode==2 and 'retired' in refusal.stderr and 'tap reply <id>' in refusal.stderr,(runtime,refusal)
+assert refusal.returncode==1 and 'retired' in refusal.stderr and 'tap reply <id>' in refusal.stderr,(runtime,refusal)
 assert not (bus/'receipts'/f'{foreign}.done').exists()
 items=[]
 for n in range(3):

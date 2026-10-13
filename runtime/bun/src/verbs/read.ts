@@ -332,13 +332,14 @@ function readVerb(argv: string[]): number {
           readTestBarrier("evidence",id);
           recordAuthorizedRead(busHome,id,authorized);
           completeHarnessQueued(busHome,id);
-        }
+        } else recordAuthorizedRead(busHome,id,authorized); // a prior pane .sent: this genuine read is still evidence
       }
       if(force) forceEvent(ctx,actor,gates.to,pane,`id=${id} identity=${identity} settled=${settled || "no"}`);
       const obligation=gates.reply === "expected" ? "ask" : "note", sender=gates.fromTeam ? `${gates.fromTeam}/${gates.from}` : gates.from;
       const full=process.env.TAP_VERBOSE === "1" || force;
       if(full) writeStdout(`${sender} · ${obligation} · ${idAgeSeconds(id,ageNowEpoch(),()=>{}) ?? "?"}s${force ? ` · forced (to=${gates.to})` : ""}${settled ? ` · already settled (via: ${settled})` : ""}\n\n`);
-      else writeStdout(`tap read: ${obligation} ${id} from=${sender} ${settled === "withdrawn" ? "withdrawn" : obligation === "ask" && !settled ? "reply" : "settled"}\n`);
+      // A repeat doorbell (TAP is best effort) lands here: say plainly that nothing is owed.
+      else writeStdout(`tap read: ${obligation} ${id} from=${sender} ${settled === "withdrawn" ? "withdrawn" : settled ? "already settled; nothing owed" : obligation === "ask" ? "reply" : "settled"}\n`);
       if(tombstone) writeStdout(`${tombstone}\n`);
       const disruption = interruptNotice(receiptHome, id);
       if(disruption) writeStdout(`tap read: WARNING: ${disruption}\n`);

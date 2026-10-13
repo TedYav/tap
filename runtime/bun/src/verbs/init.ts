@@ -8,6 +8,7 @@ import { acquireRegistryLock } from "../panelock";
 import { enrollmentAtFromDoc, loadGlobalRegistry } from "../index-home";
 import { ensureRepoCharter } from "../first-run";
 import { ignoreTap } from "../init-ignore";
+import { folderTrustTargets, trustFolder, type FolderTrustResult } from "../folder-trust";
 import {
   bootstrapPostflipEnroll, bornLiveBootstrap, enrollTeam, currentShapedStore, teamRegistryFileRefusal, legacyAgentsAxisStore, oldStoreAction, oldStoreEvidence, oldStoreRefusalText,
   derivedTeamNotice, newEnrollmentRefusal, probeGitRoot, seatedBusRegistry, teamNameForRoot, teamOverrideRefusal, teamRegistryPath, unenrolledSeatsRefusal, writeEmptyTeamRegistry,
@@ -219,9 +220,9 @@ function failure(json: boolean, error_class: string, action: string, detail: str
 }
 
 export function cmdInit(argv: string[]): number {
-  const known=["--json","--yes","--for-launch","--dry-run"];
+  const known=["--json","--yes","--for-launch","--dry-run","--no-trust-folders"];
   const opts: InitOptions={json:argv.includes("--json"),yes:argv.includes("--yes"),forLaunch:argv.includes("--for-launch"),dryRun:argv.includes("--dry-run"),team:""};
-  const usage="tap init [--json] [--yes] [--team <name>]";
+  const usage="tap init [--json] [--yes] [--no-trust-folders] [--team <name>]";
   const flags: string[]=[];
   for(let i=0;i<argv.length;i++){
     if(argv[i]!=="--team"){flags.push(argv[i]!);continue;}
@@ -247,14 +248,48 @@ export function cmdInit(argv: string[]): number {
     else if(!outcome.already)process.stderr.write(`tap session: initialized team '${outcome.team}' at ${outcome.root}\n`);
     return 0;
   }
+  // Only explicit `tap init` owns this offer. Shared/implicit bootstrap must
+  // never turn team enrollment into an unattended harness trust grant.
+  let folderTrust: FolderTrustResult[] = [];
+  if (!argv.includes("--no-trust-folders")) {
+    try {
+      const folder = realpathSync(cwd);
+      const { targets, failures } = folderTrustTargets(folder);
+      const harnesses = [...targets, ...failures].map(target => target.harness);
+      let accepted = opts.yes;
+      if (harnesses.length && !accepted && interactive(opts)) {
+        process.stderr.write(`Directory: ${folder}\nHarnesses: ${harnesses.join(", ")}\nUses each harness's normal folder trust, including project settings and hooks where applicable. Separate approval dialogs are not accepted.\nTrust current directory in installed harnesses Y/n `);
+        const byte = Buffer.alloc(1); let answer = ""; let newline = false;
+        while (readStdinByte(byte) > 0) { if (byte[0] === 10) { newline = true; break; } answer += byte.toString(); }
+        if (!newline || !/^(y|yes|n|no)?$/i.test(answer.trim())) {
+          throw new Error("no completed yes/no answer; no folder trust was changed");
+        }
+        accepted = !/^(n|no)$/i.test(answer.trim());
+      }
+      if (accepted) folderTrust = [...trustFolder(folder, targets), ...failures];
+      else if (harnesses.length && !opts.json) console.error("tap init: folder trust skipped. Some harnesses may require manual trust before use here.");
+      const failed = folderTrust.filter(result => result.status === "failed");
+      if (failed.length) {
+        if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: true, folder_trust: folderTrust, action: "fix the reported harness configuration, then rerun tap init --yes" }));
+        else console.error(`tap init: team initialized; ${failed.map(result => `${result.harness}: ${result.detail}`).join("; ")}; next: fix the reported configuration, then rerun tap init`);
+        return 1;
+      }
+    } catch (error) {
+      const detail = `team initialized; ${(error as Error).message}`;
+      if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: true, folder_trust: folderTrust, action: "rerun tap init to retry folder trust", detail }));
+      else failure(false, "folder_trust_failed", "rerun tap init to retry folder trust", detail);
+      return 1;
+    }
+  }
   if(!outcome.already){
     if(!outcome.inGit)console.error("tap init: not a git repository; skipped .gitignore setup.");
   }
   // JSON stdout stays one object, so the derived-name notice goes to stderr there.
   if(notice)(opts.json ? console.error : console.log)(notice);
-  if(opts.json)console.log(JSON.stringify({ok:true,team:{name:outcome.team,root:outcome.root},bus:outcome.bus,in_git:outcome.inGit,migrated:false,primary_counts:null,late:false,late_counts:null,already_initialized:outcome.already}));
+  if(opts.json)console.log(JSON.stringify({ok:true,team:{name:outcome.team,root:outcome.root},bus:outcome.bus,in_git:outcome.inGit,migrated:false,primary_counts:null,late:false,late_counts:null,already_initialized:outcome.already,folder_trust:folderTrust}));
   else if(outcome.already)console.log(`already initialized: team ${outcome.team}`);
   else console.log(`successfully initialized team: ${outcome.team}\nbus: ${outcome.bus}`);
+  if (!opts.json && folderTrust.length) console.log(`folder trusted: ${folderTrust.map(result => result.harness).join(", ")}`);
   return 0;
 }
 if(import.meta.main)process.exitCode=cmdInit(process.argv.slice(2));

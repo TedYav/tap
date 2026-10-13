@@ -63,7 +63,9 @@ test("tap keybinding status/install/remove ride the shipped door and touch only 
   const tmuxTmp = process.env.TMUX_TMPDIR;
   expect(tmuxTmp, "run through runtime/bun/test/run.sh").toBeTruthy();
   const env = { ...f.env, TAP_TMUX_SOCKET: `route-${process.pid}` };
-  expect(tap(env, "keybinding", "status", "--json").status).toBe(2);
+  const before = tap(env, "keybinding", "status", "--json");
+  expect(before.status, before.stderr).toBe(0);
+  expect(JSON.parse(before.stdout)).toMatchObject({ ok: true, installed: false });
   const fakeTap = join(f.base, "tap");
   writeFileSync(fakeTap, "#!/bin/sh\n", { mode: 0o755 });
   const install = tap(env, "keybinding", "install", "--tap", fakeTap);

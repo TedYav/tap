@@ -2,6 +2,31 @@
 
 Normative TAP v0.23 protocol pages. Open only the page needed for the current question.
 
+## Folder trust
+
+After successful enrollment, explicit `tap init` offers: `Trust current directory in installed harnesses Y/n`.
+It names the canonical current directory and supported installed harnesses first.
+A completed Enter or Yes grants native folder trust; No skips it. EOF or an invalid
+answer refuses the trust step while retaining enrollment. `--yes` grants consent;
+`--no-trust-folders` skips the step even with `--yes`. JSON and noninteractive calls
+without `--yes` grant no trust. Existing teams may repeat explicit init to trust a folder.
+Implicit onboarding, first launch and setup never grant folder trust.
+
+The adapters update only Codex project `trust_level`, Antigravity CLI
+`trustedWorkspaces`, Claude project `hasTrustDialogAccepted`, or Cursor's native
+workspace marker. They preserve other settings and refuse malformed stores.
+Each harness has its own outcome; partial failure returns nonzero and retains
+successful updates. Discovery failures are reported per harness too.
+Consent grants each harness's normal folder trust, including project hooks and
+permission rules where the harness bundles them with that grant (as Claude does).
+It never accepts a separate hook/tool approval dialog, changes permission mode,
+invokes a model, or approves an unknown prompt. Declining leaves trust unchanged
+and warns that some harnesses may require manual trust before use here.
+
+TAP serializes its own writers and refuses observed concurrent file edits. Native
+harness writers do not share that lock: a write between the final comparison and
+rename can still race. Atomic replacement prevents a partial file, not that race.
+
 ## Pane-identity guard (point-of-effect, v0.23)
 
 The submit-time identity guard is native: `runtime/bun/src/pane-identity.ts` composes the bound
@@ -65,6 +90,15 @@ duplicates as contested, naming the claimants. Remove the wrong row with
 repair retains the surviving row and instance.
 
 ## Launch evidence at SessionStart (tap-bogkt, tap-7b9od)
+
+Codex SessionStart first requires a nonempty string `transcript_path` in its
+payload. Otherwise it exits successfully with no output, before launch-evidence
+resolution, registration, tracing or context injection. Internal memory workers
+inherit the parent's pane and launch environment, so those signals cannot grant
+them a seat. This is a persistence proxy, not a worker-type discriminator: user
+`--ephemeral` sessions and non-local stores also skip automatic registration;
+explicit `tap in` remains available. The path need not exist on disk. Other
+harness adapters retain their existing behavior.
 
 A seat the launcher places binds at SessionStart to the team that launched it,
 whatever its working directory. The launcher plants two harness env keys:

@@ -671,8 +671,9 @@ echo "command-mode: the degrade message matches each harness's keep-list fate: o
 # Compaction on a Codex seat is handoff-gated SELF work: a detached worker owns
 # the Escape, the one /compact submit, transcript proof and the resume ping, and
 # it needs a handoff file only the seat itself can author. No peer surface may
-# submit a bare /compact there, so `tap compact <codex seat>`, the deprecated
-# alias, and --all members refuse with exit 1 naming the supported move.
+# submit a bare /compact there, so `tap compact <codex seat>` and the deprecated
+# alias refuse with exit 1 naming the supported move; --all skips the member and
+# says so (a skip is not a failure, CLI-EXIT-0).
 reset_state
 rc="$(run_rc "$WORK/codex-peer" "$TAP" compact beta -m "preserve the codex peer refusal")"
 [ "$rc" -eq 1 ] || { cat "$WORK/codex-peer.stderr" >&2; fail "compact on a codex peer must refuse with exit 1 (got $rc)"; }
@@ -694,12 +695,16 @@ echo "command-mode: codex peers refuse on tap compact and its deprecated alias: 
 
 reset_state
 rc="$(run_rc "$WORK/codex-all" "$TAP" compact --all)"
-[ "$rc" -eq 1 ] || fail "--all with a codex member must exit 1 (HARD beats DEGRADED, got $rc)"
+# The batch still exits 1: other members (a gone pane, an unlanded input) genuinely fail.
+# The codex member itself is a printed skip, not one of those failures.
+[ "$rc" -eq 1 ] || { cat "$WORK/codex-all.stderr" >&2; fail "--all with failing members must still exit 1 (got $rc)"; }
+! grep -q "'beta' is a Codex seat" "$WORK/codex-all.stderr" \
+  || fail "--all refused the codex member instead of skipping it"
 grep -q '^tap compact: compact alpha: ok$' "$WORK/codex-all.stdout" \
   || { cat "$WORK/codex-all.stdout" >&2; fail "--all did not keep processing healthy members (no alpha ok line)"; }
-grep -q "'beta' is a Codex seat" "$WORK/codex-all.stderr" \
-  || { cat "$WORK/codex-all.stderr" >&2; fail "--all did not name the refused codex member"; }
-echo "command-mode: --all reports the codex member's refusal and exits 1: ok"
+grep -q '^tap compact: compact beta: skipped (Codex seat; it self-compacts with tap self compact --handoff FILE -- FOCUS)$' "$WORK/codex-all.stdout" \
+  || { cat "$WORK/codex-all.stdout" >&2; fail "--all did not name the skipped codex member and its self-compact route"; }
+echo "command-mode: --all skips the codex member and names its route; other members decide the exit: ok"
 
 # Self route: a CODEX initiator is refused too — its own supported surface is
 # tap self compact --handoff, never this injector. The refusal keys on the LIVE

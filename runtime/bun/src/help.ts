@@ -97,7 +97,8 @@ const PAGES: Record<string, string> = {
     "                      outstanding sends). --full adds seat rows; --verbose adds",
     "                      missing teams and cannot-check detail; --stale-after sets",
     "                      the outstanding-send age in seconds (default 900).",
-    "                      Exit 0 quiet, 2 attention, 1 cannot check.",
+    "                      Exit 0 when it reports, attention rows included;",
+    "                      1 cannot check.",
     "  dashboard --fast    Read-only roster of teams with verified live pane seats,",
     "                      from one shared liveness snapshot; it skips context,",
     "                      payload and history scans and accepts only --json. Unknown",
@@ -229,10 +230,10 @@ const PAGES: Record<string, string> = {
     "  Which recovery?",
     "    still parked, or the addressee is gone   tap cancel <id> [--spooled]",
     "    delivered, and you have superseded it    tap withdraw <id> [--superseded-by <new-id>]",
-    "    proven never attempted                   tap resend <id>",
-    "  None of them re-delivers a message that may already have arrived.",
+    "    not confirmed, and still unread          tap resend <id>",
+    "  Only resend rings again, under the same id; a repeat is safe to read.",
     "",
-    "  Refusals: it refuses if the seat is active and the payload was delivered. A parked entry to a live seat refuses with error_class=spooled_needs_flag and names --spooled, which cancels the parked entry; --spooled itself refuses (not_spooled) on a delivered payload, so it can never bypass the active-seat refusal.",
+    "  Refusals: it refuses if the seat is active and the payload was delivered. A parked entry to a live seat refuses with error_class=spooled_needs_flag and names --spooled, which cancels the parked entry; --spooled itself refuses (not_spooled) on a delivered payload, so it can never bypass the active-seat refusal. Cancelling an id that is already cancelled is idempotent: it says so and exits 0.",
     "",
     "  Receipt: it archives the payload from either residency and removes the spool entry — removal, not the receipt, is what clears the parked-spool tint and prevents later drain delivery. It writes a .cancelled receipt (distinct from .done) with reason=seat_unresolvable, instance_retired, unconfirmed_withdrawn or spooled_withdrawn.",
     "",
@@ -348,14 +349,14 @@ CHOOSE
   tap refresh   start a fresh conversation, then recap the obligations the seat inherited; --fresh also retires the instance
 
 DESCRIPTION
-  Types /compact into each target's live harness. It takes several seats or --all, where tap clear takes one: compacting five seats is routine leader hygiene, while a restart storm is hard to recover. --all skips you and seats the registry does not mark as active pane seats; a seat marked active whose pane is gone fails the batch (exit 1).
+  Types /compact into each target's live harness. It takes several seats or --all, where tap clear takes one: compacting five seats is routine leader hygiene, while a restart storm is hard to recover. --all skips you, seats the registry does not mark as active pane seats, and Codex or non-agent seats (each skip is printed); a seat marked active whose pane is gone fails the batch (exit 1). With nothing to compact, --all says so and exits 0.
   -m adds a one-line focus that supplements the harness summarizer. Exclusive phrasing ('only X', 'ignore Y') is refused, because it deprioritizes every thread you did not name: list what to preserve instead. The focus is one line with no leading slash and no control bytes.
   A compaction consumes the turn that submitted it, so something is always queued behind it. A peer with a focus gets a settle-only payload (it survives the compaction, tap poll finds it, and the receipt says the focus arrived); a peer without one, or your own pane, gets a plain resume ping.
 
 BY HARNESS (peer seats)
   claude     the focus rides the /compact line
   opencode   bare /compact; the focus rides the resume payload
-  codex      refused: ask that seat to run tap self compact --handoff <file> -- <focus> itself
+  codex      refused when named (exit 1), skipped by --all: ask that seat to run tap self compact --handoff <file> -- <focus> itself
   others     degraded (exit 6); the message names a manual keep-list route
 
 YOURSELF
@@ -368,7 +369,7 @@ EXAMPLES
   tap compact <your-handle> -m "Preserve: open asks, branch name, next test to run"
 
 EXIT CODES
-  0  every seat compacted and its resume sent (yourself: armed, completion unverified)
+  0  every seat compacted and its resume sent (yourself: armed, completion unverified), or --all had nothing to compact
   6  degraded only: an unsupported harness, or the compact landed but its resume wake did not (that seat may stop; any inbound message restarts it: tap send <seat> --wake -f <resume-file>). A focus that did not arrive is printed so you can re-send it: tap send <seat> -f <focus-file> --fyi --wake.
   1  any hard failure. When the message says compaction or its follow-up is unverified, do not retry /compact: inspect the seat, the handoff and the receipt it names.
 
@@ -515,20 +516,25 @@ DESCRIPTION
     "  tap init — initialize this project as a TAP team",
     "",
     "USAGE",
-    "  tap init [--json] [--yes] [--team <name>]",
+    "  tap init [--json] [--yes] [--no-trust-folders] [--team <name>]",
     "",
     "DESCRIPTION",
-    "  Scope: this project only. Creates the project's .tap/ directory and team registry and enrolls the team in the machine index. Machine settings belong to tap setup --machine.",
+    "  Scope: this project. Creates .tap/ and its team registry and enrolls the team in the machine index. Optional folder trust records this current directory in installed harnesses' user configuration; other machine settings belong to tap setup --machine.",
     "",
-    "  Idempotent bootstrap: a team that is already initialized is reported and left untouched. Initializing a new team creates:",
+    "  Idempotent bootstrap: an existing team is left untouched; the folder-trust offer still applies. Initializing a new team creates:",
     "    - .tap/ in the project, and a .tap/ entry in the Git root .gitignore",
     "    - a current-format team registry, enrolled in the machine index (pane-less / TMUX-unset safe; distinct from tap in)",
     "    - on a fresh machine, ~/.tap/global-registry.json",
     "    - the AGENTS.md TAP signpost, which it may write (it prompts when AGENTS.md is absent, you pass neither --yes nor --json, and stdin/stderr are terminals; otherwise it writes the managed signpost without a prompt; tap setup --repo refreshes it later)",
-    "  Outside a git repository it asks before initializing that directory; --yes answers that question and the signpost question, so terminal and scripted callers alike run without prompts.",
+    "  Outside a git repository it asks before initializing that directory; --yes answers that question, the signpost question and the folder-trust question, so terminal and scripted callers alike run without prompts.",
+    "  In a terminal: Trust current directory in installed harnesses Y/n. Enter accepts each installed harness's normal folder trust (Codex, Antigravity, Claude, Cursor), including project settings, hooks and permission rules where the harness ties them to folder trust. TAP never answers separate approval dialogs or changes the harness permission mode.",
+    "  No leaves trust unchanged and warns that some harnesses may require manual trust before use here. No harness or model is launched.",
+    "  --no-trust-folders skips the offer, including with --yes. Without a terminal or in --json mode, folder trust requires --yes. Internal launch/bootstrap paths never grant it.",
+    "  OpenCode has no verified folder-trust action; Hermes skills trust is separate and is not invoked.",
+    "  Folder-trust failures exit 1 after team initialization and identify each failed harness; successful updates remain applied. Fix the reported configuration and rerun init. Repeated updates are idempotent.",
     "  The team is named after the folder; a folder name outside the team-name rule (letters, digits, '.', '_' or '-', starting with a letter or digit) derives a lowercase hyphenated slug (\"My Project\" becomes my-project) and prints it. --team <name> names a new team explicitly (letters, digits, '_' or '-'; no '.').",
     "  A current team registry already at the root keeps its declared name; a different --team refuses. An old TAP store (teams.json, an old bus registry, a launcher manifest) or a legacy tmp/tap bus refuses without writing. After tap team shutdown (registry deleted) or deliberate-reset residue, recreates the blank acting file.",
-    "  --json emits {team, bus, in_git, already_initialized, migrated:false, primary_counts:null, late:false, late_counts:null}.",
+    "  --json emits {team, bus, in_git, already_initialized, migrated:false, primary_counts:null, late:false, late_counts:null, folder_trust:[{harness,status}]}. Folder-trust failures include initialized:true and per-harness detail; no successful team initialization is rolled back.",
     "",
     "EXAMPLES",
     "  tap init                      name the team after this folder",
@@ -581,7 +587,7 @@ DESCRIPTION
     "  --harness nudges every live seat of one family (claude, codex, opencode, cursor, hermes or",
     "    agy) on --team (default: yours; '*' for all), skipping you and seats that are offline,",
     "    suspended, gone or poll-only. More than one target, or '*', asks y/N at a terminal or",
-    "    needs --yes.",
+    "    needs --yes; a declined answer sends nothing and exits 0.",
     "",
     "  Retired, refused with nothing sent: --interrupt (now the default), --reason (use",
     "    --message), --aggressiveness (use --dry-run), --from (nudges have no sender), -m and -f",
@@ -619,7 +625,7 @@ DESCRIPTION
     "  tap outstanding [<me>] [--json] [--stale <secs>] [--team <name>]",
     "",
     "DESCRIPTION",
-    "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal. Exit 0 none / 2 some. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
+    "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal: any row means you still owe supervision. Exit 0 whether or not sends are open (open sends are state, not an error; branch on `--json` `outstanding` and `spool_conditions` (parked sends can collapse into a backlog condition); nothing is owed only when both are empty); non-zero only for a usage error or a bus that cannot be read. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
   ),
   "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets · models              saved launches and model guidance\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
   "peek": "NAME\n  tap peek — read a teammate's pane without touching it\n\nUSAGE\n  tap peek <handle> [--pane <tmux-target>] [--json]\n\nDESCRIPTION\n  Supervision read. Prints the seat's input_state and a transcript tail with the\n  ACTIVE INPUT REGION STRIPPED, so a draft your teammate has not submitted is never\n  quoted back at them. It sends nothing, submits nothing, and wakes nobody.\n\n  <handle> names a seat on your team. `help` can never be a registered handle, so\n  the bare `tap peek help` is unambiguous and prints this page.\n\nOPTIONS\n  --pane   read an explicit tmux target instead of the handle's registered pane\n  --json   emit {handle, pane, harness, input_state, transcript}\n\nEXIT CODES\n  0  read\n  1  usage error, or the handle is not registered\n  3  the seat's pane is gone — re-register it against a live target\n\nSEE ALSO\n  tap team (who exists) · tap health (liveness) · tap nudge (recover a stuck sentinel)\n",
@@ -631,7 +637,7 @@ DESCRIPTION
     "  tap poll [<me>] [--json] [--quiet] [--team <name>]",
     "",
     "DESCRIPTION",
-    "  List unprocessed payloads addressed to <me> (each with its reply obligation + next-step hint). Exit 0 none / 2 pending; --quiet exits 0 either way (daemon-wrapper friendly). --team anchors the bus for pane-less callers.",
+    "  List unprocessed payloads addressed to <me> (each with its reply obligation + next-step hint). Exit 0 whether or not mail is pending (branch on --json `pending`); non-zero only for a usage error or an inbox that cannot be read. --quiet omits the 'empty' line. --team anchors the bus for pane-less callers.",
   ),
   "presets": lines(
     "NAME",
@@ -809,33 +815,38 @@ SEE ALSO
   ),
   "resend": lines(
     "NAME",
-    "  tap resend — re-deliver a send that provably never reached a pane",
+    "  tap resend — ring an unconfirmed send again, under the same id",
     "",
     "USAGE",
     "  tap resend <id> [--by <sender>] [--team <name>] [--json]",
     "",
     "DESCRIPTION",
-    "  Re-deliver a send that provably never reached a pane, with a fresh id and resend_of provenance.",
+    "  TAP delivery is at-least-once, best effort: a doorbell may ring twice. After a send",
+    "  exits 5, or sits unread in tap outstanding, resend rings the SAME message again. It",
+    "  keeps the id, the body and the one obligation; nothing is withdrawn and no new id is",
+    "  minted. The recipient's tap read of a repeat says nothing is owed.",
     "",
     "  Which recovery?",
     "    still parked, or the addressee is gone   tap cancel <id> [--spooled]",
     "    delivered, and you have superseded it    tap withdraw <id> [--superseded-by <new-id>]",
-    "    proven never attempted                   tap resend <id>",
-    "  None of them re-delivers a message that may already have arrived.",
+    "    not confirmed, and still unread          tap resend <id>",
+    "  Only resend rings again, under the same id; a repeat is safe to read.",
     "",
-    "  Reuses the original body bytes and withdraws its old spool copy. Requires affirmative no-attempt evidence; any recorded attempt, active courier claim, or ambiguous legacy evidence refuses, and so does an interrupt-class original. One resend per original; inspect .resent after interruption rather than repeating. The JSON label delivery_semantics: at-least-once is kept for compatibility; it never permits a retry after a possible delivery.",
+    "  The retry queues behind the recipient's readiness like any parked send and rings",
+    "  once, as ordinary delivery: an urgent or escalation original never interrupts",
+    "  again. The sentinel carries a retry tag. Each run is one recorded attempt",
+    "  (receipts/<id>.retries.jsonl); tap debug stats counts them.",
     "",
-    "FAILED SUCCESSOR",
-    "  The original is withdrawn before the successor runs, so a failed successor leaves it consumed. The failure is one error: it names the cause (the successor's own stderr is folded in), says the original is withdrawn and the prepared successor kept as evidence, and recommends INSPECTION only (tap show <successor-id>, qualified with the bus actually selected, e.g. TAP_HOME='<bus>' tap show <id> after a pinned TAP_HOME). It never recommends a send or retry, because the successor may or may not have taken effect.",
-    "  Default: one stderr line, tap resend: <cause>; <recovery>; next: <inspection>.",
-    "  --json: one object on stdout and nothing on stderr: {\"ok\":false,\"error_class\":...,\"action\":<inspection>,\"detail\":<cause and recovery>,\"resend_of\":<original>,\"recovery\":{\"original\":<id>,\"receipt\":\"receipts/<id>.resent\",\"prepared\":\"archive/<new-id>.resend.md\",\"successor\":<new-id>,\"next\":<inspection>}}. Fields the successor's own receipt carried ride beside them.",
-    "  error_class: resend_successor_failed (the successor exited nonzero) or resend_receipt_invalid (its stdout parsed as JSON but not as an object: a scalar, array or null). A successor that exits 0 and prints non-JSON bytes is passed through untouched, as before.",
+    "  Nothing to ring: a message the recipient already read, settled, or that was",
+    "  cancelled is a recorded no-op. A read ask that is still unanswered needs a",
+    "  follow-up message, not a retry. A retry already queued, or a send still waiting",
+    "  for its first delivery, coalesces.",
     "",
     "EXIT CODES",
-    "  0   successor sent (queued or delivered)",
-    "  1   refused before the original was consumed (usage_error, not_sender, delivery_attempted, already_resent, ...), or a failed successor that exited 1 (a signalled or crashed child counts as 1)",
-    "  5   the successor exited 5: it may have taken effect; inspect before anything else",
-    "  The successor's own nonzero status is kept as resend's exit status. A guard refusal (before anything is consumed) prints {\"status\":\"refused\",\"error_class\":...,\"detail\":...} on stdout.",
+    "  0   queued, or nothing to ring (already read, settled, cancelled, or already queued)",
+    "  1   refused: usage_error, not_found, not_sender, invalid_payload,",
+    "      recipient_unbound (no pane to ring; it reads with tap poll), obligation_busy,",
+    "      or the retry could not be queued",
   ),
   "reset": lines(
     "NAME",
@@ -1144,7 +1155,7 @@ OPERATIONS AND THEIR OPTIONS
   pause   -m is the required reason (--reason). It gates only silence probes. --for defaults to 4h; longer than 7d is visibly capped at 7d.
   resume  Clears the pause and starts a fresh silence window.
   off     Armer-owned. It authenticates the calling pane as the actor: --by and TAP_SELF are ignored. --force is the loud escape for another seat. Already disarmed exits 0.
-  status  Prints the lease, or "disarmed", and the dispatcher's liveness. Exit 0 when disarmed or the dispatcher is alive; exit 1 when it cannot be checked (unknown, unsafe to check); exit 2 (attention) when it is dead: no watcher recorded, the pid is not running the watcher, or a stale heartbeat. A dead or unknown dispatcher prints a next: line with the repair. Takes no options; any extra argument is ignored.
+  status  Prints the lease, or "disarmed", and the dispatcher's liveness. Exit 0 when it reports: disarmed, alive, or dead (no watcher recorded, the pid is not running the watcher, or a stale heartbeat); exit 1 when it cannot be checked (unknown, unsafe to check). A dead or unknown dispatcher prints a next: line with the repair; tap health is the check that exits 2 for a dead dispatcher. Takes no options; any extra argument is ignored.
   ack     Clears the sticky NOTIFY; with none, says so and exits 0.
 
 EXAMPLES
@@ -1322,8 +1333,11 @@ USAGE
   tap pick --list [--json]
 
 DESCRIPTION
-  Opens a fuzzy picker over every live seat on every enrolled team. The result is
-  the full team/handle. With --pane it types the name followed by a space into
+  Opens a fuzzy picker over every live seat on every enrolled team. Matching
+  ignores case. The result is the full team/handle. With --pane, the team whose seat occupies that pane is
+  listed first, and when the same handle matches equally on several teams, that
+  team's seat ranks first.
+  With --pane it types the name followed by a space into
   that tmux pane, with no Enter, so you can keep writing; Esc types nothing.
   The tmux popup bound by tap keybinding runs this. A machine without
   TAP's pinned fzf gets a plain type-to-filter list instead. Read-only apart from the
@@ -1378,9 +1392,8 @@ EXAMPLES
   tap keybinding remove
 
 EXIT CODES
-  0  done, or already in the requested state
+  0  done, already in the requested state, or status printed (installed or not)
   1  refusal (key already bound, tmux missing or older than 3.2, bad input)
-  2  status: not installed
 
 SEE ALSO
   tap help pick
@@ -1422,9 +1435,8 @@ EXAMPLES
   tap tmux-defaults remove
 
 EXIT CODES
-  0  done, already in the requested state, or --json status printed
+  0  done, already in the requested state, or status printed (installed or not)
   1  refusal (TAP's file was edited, unreadable config, tmux missing or older than 3.2)
-  2  status: not installed (stdout is still ok:true JSON; parse it regardless of exit code)
 
 SEE ALSO
   tap help keybinding
@@ -1499,8 +1511,8 @@ PAGES["withdraw"] = lines(
   "  Which recovery?",
   "    still parked, or the addressee is gone   tap cancel <id> [--spooled]",
   "    delivered, and you have superseded it    tap withdraw <id> [--superseded-by <new-id>]",
-  "    proven never attempted                   tap resend <id>",
-  "  None of them re-delivers a message that may already have arrived.",
+  "    not confirmed, and still unread          tap resend <id>",
+  "  Only resend rings again, under the same id; a repeat is safe to read.",
   "",
   "  The sender's obligation stops aging in tap outstanding and the recipient gets a tombstone instead of a dead head: tap read answers in one line and owes nothing, and tap reply refuses, naming --superseded-by when you gave one.",
   "",
@@ -2605,7 +2617,8 @@ PAGES["team purge"] = lines(
   "  --dry-run  Print the file count and size that would be deleted; deletes nothing",
   "             and needs no consent.",
   "  --yes      Delete without asking. Without --yes, a terminal is asked to confirm;",
-  "             a declined answer exits 1 (`aborted`) with the archive intact, and",
+  "             a declined answer says so and exits 0 with the archive intact; no",
+  "             answer (EOF) refuses (`aborted`, exit 1), and",
   "             a non-interactive caller refuses (`confirmation_required`).",
   "",
   "SEE ALSO",

@@ -480,7 +480,7 @@ test(
 
     const outX = runAdapter(
       codexHook,
-      JSON.stringify({ hook_event_name: "SessionStart", source: hookSource, cwd: REPO4 }),
+      JSON.stringify({ hook_event_name: "SessionStart", source: hookSource, cwd: REPO4, transcript_path: join(WORK, "codex-rollout.jsonl") }),
       adapterEnv(seenX, psX),
     );
     let context = "";

@@ -102,8 +102,9 @@ const R9_DOOR_REARM = /tap watch off --by \S+   # or re-run/g;
 
 // R10. `status` on an armed lease also reports whether the dispatcher the lease names is
 // running (tap-zpmvx): a `dispatcher:` line right after the header, plus a `next:` line
-// when it is dead or unknown, and a dead dispatcher exits 2 (attention). No oracle lease
-// records a watcher, so those rows read "dead (no watcher recorded)" and exit 2; a lease
+// when it is dead or unknown. A dead dispatcher is a reported state and exits 0 (CLI-EXIT-0;
+// `tap health` owns the non-zero check). No oracle lease records a watcher, so those
+// rows read "dead (no watcher recorded)" and exit 0; a lease
 // that cannot be parsed reads "unknown" and exits 1 (unsafe to check, CLI-EXIT-1).
 const R10_DEAD = ["  dispatcher: dead (no watcher recorded)", "  next: re-run the `tap watch on` that armed this (or any `tap remind me`) to respawn the sidecar"];
 const R10_UNKNOWN = ["  dispatcher: unknown (the lease cannot be read)", "  next: tap health"];
@@ -182,7 +183,7 @@ export function expected(c: OracleCase): { rc: number; stdout: string; stderr: s
   }
   const statusOut = r10Status(c, stdout);
   if (statusOut !== undefined) { stdout = statusOut; ratified.push("R10"); }
-  return { rc: ratified.includes("R10") ? (c.case in R10_UNKNOWN_CASES ? 1 : 2) : c.rc, stdout, stderr: text, post, ratified };
+  return { rc: ratified.includes("R10") ? (c.case in R10_UNKNOWN_CASES ? 1 : 0) : c.rc, stdout, stderr: text, post, ratified };
 }
 
 // --- the replay harness -----------------------------------------------------------------

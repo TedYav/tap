@@ -277,7 +277,7 @@ describe("pane-anchored selection from an unenrolled linked worktree (tap-7s1r)"
       reply: "expected",
     }, "pending outbound");
     const r = spawn(f.wt, f.env, "outstanding", "glm", "--json");
-    expect(r.status).toBe(2);
+    expect(r.status).toBe(0);
     expect(r.stdout).toContain(id);
     expect(`${r.stdout}${r.stderr}`).not.toContain("unanchored");
   });
@@ -328,13 +328,74 @@ describe("pane-anchored selection from an unenrolled linked worktree (tap-7s1r)"
     expect(ctx.selection?.source).toBe("env");
   });
 
-  test("an enrolled linked worktree keeps cwd ownership (never pane source)", () => {
-    const f = fixture();
-    enroll(f.index, f.wt, "wt-team", { seats: {} });
-    const ctx = resolveContext(f.wt, f.env);
-    expect(ctx.team).toBe("wt-team");
-    expect(ctx.selection?.source).toBe("cwd");
-    expect(ctx.selection?.authority).toBe("enrolled");
+  // Pane precedence (tap-djlri): the cwd walk picks a DEFAULT team; a pane some team has
+  // registered belongs to that team wherever its cwd is. The incident shape is a seat launched
+  // with --workdir into a linked worktree that is itself another team's enrolled root.
+  describe("an enrolled linked worktree that is another team's root", () => {
+    test("yields to the pane's team when its own registry holds no row for the pane", () => {
+      const f = fixture();
+      enroll(f.index, f.wt, "wt-team", { seats: {} });
+      const ctx = resolveContext(f.wt, f.env);
+      expect(ctx.team).toBe("tap");
+      expect(ctx.selection?.source).toBe("pane");
+      expect(ctx.selection?.authority).toBe("enrolled");
+      expect(existsSync(f.trace)).toBe(true);
+      // The self-resolving verbs then find the seat: this is the `tap self compact` incident.
+      const who = spawn(f.wt, f.env, "whoami", "--json");
+      expect(who.status).toBe(0);
+      expect(JSON.parse(who.stdout)).toMatchObject({ team: "tap", handle: "glm" });
+    });
+
+    test("a stale TMUX_PANE the cwd team holds grants nothing: the observed pane decides", () => {
+      const f = fixture();
+      // The cwd team holds the pane the ENVIRONMENT names (%9); the parent team holds the pane
+      // tmux actually reports for this process (%7). Only the observation is process-owned.
+      enroll(f.index, f.wt, "wt-team", { seats: { glm: glmSeat({ pane_id: "%9" }) } });
+      const ctx = resolveContext(f.wt, { ...f.env, TMUX_PANE: "%9" });
+      expect(ctx.team).toBe("tap");
+      expect(ctx.selection?.source).toBe("pane");
+      expect(existsSync(f.trace)).toBe(true);
+    });
+
+    test("keeps cwd ownership when it alone holds the observed pane", () => {
+      const f = fixture({ glm: { pane_id: "%9" } });
+      enroll(f.index, f.wt, "wt-team", { seats: { glm: glmSeat() } });
+      const ctx = resolveContext(f.wt, f.env);
+      expect(ctx.team).toBe("wt-team");
+      expect(ctx.selection?.source).toBe("cwd");
+      expect(existsSync(f.trace)).toBe(true);
+    });
+
+    test("keeps cwd ownership when the pane is claimed by both teams (contested is a miss)", () => {
+      const f = fixture();
+      enroll(f.index, f.wt, "wt-team", { seats: { glm: glmSeat() } });
+      const ctx = resolveContext(f.wt, f.env);
+      expect(ctx.team).toBe("wt-team");
+      expect(ctx.selection?.source).toBe("cwd");
+    });
+
+    test("keeps cwd ownership for an unregistered pane, outside tmux, with --team, or opted out", () => {
+      const f = fixture({ glm: { pane_id: "%9" } });
+      enroll(f.index, f.wt, "wt-team", { seats: {} });
+      expect(resolveContext(f.wt, f.env).team).toBe("wt-team");
+      const outside = { ...f.env };
+      delete outside.TMUX;
+      expect(resolveContext(f.wt, outside).selection?.source).toBe("cwd");
+      const g = fixture();
+      enroll(g.index, g.wt, "wt-team", { seats: {} });
+      expect(resolveContext(g.wt, g.env, { explicitTeam: "wt-team" }).selection?.source).toBe("explicit-team");
+      expect(resolveContext(g.wt, g.env, { paneFallback: false }).team).toBe("wt-team");
+    });
+
+    test("a foreign-repo root never yields to the pane team", () => {
+      const f = fixture();
+      const foreign = join(f.dir, "foreign");
+      repoWithWorktree(foreign);
+      enroll(f.index, foreign, "foreign-team", { seats: {} });
+      const ctx = resolveContext(foreign, f.env);
+      expect(ctx.team).toBe("foreign-team");
+      expect(ctx.selection?.source).toBe("cwd");
+    });
   });
 
   test("a foreign-repo cwd never selects the pane team", () => {
@@ -655,7 +716,8 @@ describe("nested parent enrollment cannot capture a child checkout", () => {
       for (const mode of ["codex", "cursor", "claude"]) {
         const hook = spawnSync(process.execPath, [resolve(import.meta.dir, "../src/session-start.ts"), mode], {
           cwd, env: { ...f.env, TAP_HOME: parent.bus, CLAUDE_PROJECT_DIR: undefined, PWD: cwd },
-          input: JSON.stringify({ cwd, workspace_roots: [cwd] }) + "\n", encoding: "utf8", timeout: 30_000,
+          // Codex binds only a persisted session (one with a transcript); the path need not exist.
+          input: JSON.stringify({ cwd, workspace_roots: [cwd], ...(mode === "codex" ? { transcript_path: `${cwd}/codex-transcript.jsonl` } : {}) }) + "\n", encoding: "utf8", timeout: 30_000,
         });
         expect(hook.status).toBe(0);
         if (i < 2) expect(hook.stdout).toContain("on team tap");
@@ -703,7 +765,7 @@ describe("nested parent enrollment cannot capture a child checkout", () => {
     for (const mode of ["codex", "cursor", "claude"]) {
       const hook = spawnSync(process.execPath, [resolve(import.meta.dir, "../src/session-start.ts"), mode], {
         cwd: f.repo, env: { ...f.env, CLAUDE_PROJECT_DIR: undefined, PWD: f.repo },
-        input: JSON.stringify({ cwd: f.repo, workspace_roots: [f.repo] }) + "\n", encoding: "utf8", timeout: 30_000,
+        input: JSON.stringify({ cwd: f.repo, workspace_roots: [f.repo], ...(mode === "codex" ? { transcript_path: `${f.repo}/codex-transcript.jsonl` } : {}) }) + "\n", encoding: "utf8", timeout: 30_000,
       });
       expect(hook.status).toBe(0);
       expect(hook.stdout).toContain("but its team registry is in an old format (old_store):");

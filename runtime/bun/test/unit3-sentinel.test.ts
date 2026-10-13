@@ -67,6 +67,12 @@ describe("sentinel grammar (the wire poke — zero authority)", () => {
     expect(renderSentinel({ ...base, interrupt: true })).toBe(`[[TAP v${SENTINEL_VERSION} ask ${base.id}]]`);
   });
 
+  test("a same-id retry carries the bare retry tag after any interrupt tag", () => {
+    expect(renderSentinel({ ...base, retry: true })).toBe(`[[TAP v${SENTINEL_VERSION} ask ${base.id} retry]]`);
+    expect(renderSentinel({ ...base, kind: "escalate", retry: true })).toBe(`[[TAP v${SENTINEL_VERSION} ask ${base.id} escalate retry]]`);
+    expect(renderSentinel(base)).not.toContain("retry");
+  });
+
   test("path= is dropped for an ordinary same-team send", () => {
     // The tap-0z9l retirement, ruled 2026-09-04: the full id in slot 3 is what
     // replaces the pointer. See CONTRACT §Sentinel.

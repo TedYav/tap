@@ -11,6 +11,7 @@ import { digestOutcome } from "./slices/digest-outcome";
 import { type ClaimToken, claimAcquire, claimRelease, metaField, metaPath, payloadPath as spoolPayloadPath } from "./spool-sidecar";
 import { queuedDraftClobberDue } from "./injection-behavior";
 import { graceAttempted, type DeadlineContext } from "./spool-deadline";
+import { rowRetry } from "./retry";
 
 /**
  * `$TAP_AUTOSETTLE_POLICY` — `tap_spool_entry_is_presettled`'s one comparison, and the
@@ -240,6 +241,8 @@ function revalidate(state: InjectState, answer: InjectAnswer): InjectStep {
       state.cursor++; continue;
     }
     if (graceAttempted(ctx, id)) { state.cursor++; continue; }
+    // A stale plan cannot carry a retry row into a digest (it rings solo only).
+    if (rowRetry(p.spoolDir, id)) { state.cursor++; continue; }
     if (metaField(p.spoolDir, id, "escalated_at") !== "") { state.cursor++; continue; }
     // `tap_is_done`: a `.done` OR a `.cancelled` receipt.
     if (isRegularFile(donePath(p, id)) || isRegularFile(cancelPath(p, id))) { state.cursor++; continue; }

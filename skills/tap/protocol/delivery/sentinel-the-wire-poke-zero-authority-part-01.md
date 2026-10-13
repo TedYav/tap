@@ -60,9 +60,9 @@ is outside the base64 alphabet, so every reader decodes it to no preview, and th
 digest index copies it like any hint. The sender's override stands: no preview is
 shown, and the body's first line is not derived in its place. A send with no
 `--preview` carries no field and derives as before; `reply` forwards the flag only
-when the caller gave it. `tap resend` carries the original's stored field into the
-successor exactly (an accepted hint stays that hint, `-` stays `-`, an absent field
-stays absent), decoding it without the toggle so a disabled preview cannot erase it. A rejected hint still yields no `preview=`, so an
+when the caller gave it. `tap resend` re-rings the same canonical, so its stored field rides
+unchanged (an accepted hint stays that hint, `-` stays `-`, an absent field
+stays absent). A rejected hint still yields no `preview=`, so an
 inline-eligible note body may ride the wire as `: body`, the same as with the
 toggle off. The shell-body
 guard checks `--preview` for shell-evaluated backticks and `$()`; use single
@@ -71,7 +71,7 @@ lossless `: body` form and suppress that form when present. They grant no read,
 reply or settlement authority: **read the payload before acting**. Existing
 v0.22/v0.23 sentinels without a preview remain readable.
 
-**Tags are bare words from a closed set:** `urgent`, `critical`, `escalate`, `digest`, `agent-interrupt`. `agent-interrupt` follows `urgent` only on the direct send that may press the recipient's interrupt key (tap-1i81h): Claude renders the cancelled tool call as "interrupted by user", so the next line names an agent as the source. Spool redelivery never interrupts and never carries it. `escalate` describes content and grants no interrupt authority. An explicitly interrupting escalation carries both `escalate urgent`; an ordinary escalation carries only `escalate`. Both forms use the existing closed-set tag parser. Old `escalate`-only wires remain readable and never license pane effects. `critical` is reserved parse-side and has no producer. Every other `kind` leaves the wire and stays in the envelope; delivery mode never rides the wire, because the recipient already received the message however it landed.
+**Tags are bare words from a closed set:** `urgent`, `critical`, `escalate`, `digest`, `agent-interrupt`, `retry`. `agent-interrupt` follows `urgent` only on the direct send that may press the recipient's interrupt key (tap-1i81h): Claude renders the cancelled tool call as "interrupted by user", so the next line names an agent as the source. Spool redelivery never interrupts and never carries it. `escalate` describes content and grants no interrupt authority. An explicitly interrupting escalation carries both `escalate urgent`; an ordinary escalation carries only `escalate`. Both forms use the existing closed-set tag parser. Old `escalate`-only wires remain readable and never license pane effects. `retry` marks the sender's explicit [same-ID retry](./reliability.md#explicit-same-id-retry): this doorbell may have rung before. It grants no authority, does not claim the duplicate is proven, and comes last, after any `agent-interrupt`; a retry rings as ordinary delivery, so in practice the two never co-occur and an urgent original re-rings without `urgent`. Attempt number, actor and timing stay in the durable records, not on the wire. `critical` is reserved parse-side and has no producer. Every other `kind` leaves the wire and stays in the envelope; delivery mode never rides the wire, because the recipient already received the message however it landed.
 
 **A `<team>/` prefix on the id slot is a BUS LOCATOR, not a label naming who spoke.** The canonical payload lives on the SENDER's bus: split the first `/` to locate that bus and use the remainder as the file id. Verified delivery separately advances the recipient’s bound delivery clock. Ids on disk are never qualified.
 

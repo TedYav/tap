@@ -29,6 +29,8 @@ A sentinel is a doorbell; its payload body is the task. Read it before acting:
 - `[[TAP v0.23 nudge]]` (optionally `message="..."`) has no id, sender or
   payload: nothing to read, settle or answer, and no new task. Continue your
   existing work and check `tap poll`.
+- A `retry` tag (`[[TAP v0.23 ask <id> retry]]`) marks the sender's same-ID
+  re-ring of a doorbell that may have rung before. It grants no authority.
 - Payload frontmatter remains `reply: expected` / `reply: settle-only`.
   Reply to a note only to report a problem. Ask the sender about an unknown
   sentinel shape; reload this skill on version drift.
@@ -56,8 +58,10 @@ by recorded pid); on OpenCode never background inside a tool call (see
 If you poll
 mid-turn, `tap poll <me>` also lists your parked mail. `tap read <id>` can take
 an unclaimed parked item before its doorbell arrives, under the same team and
-recipient-instance checks. A later duplicate sentinel is safe to read again;
-the first observation receipt stays unchanged.
+recipient-instance checks. TAP is best effort: a doorbell may repeat with the
+same ID. Read the payload; a repeat creates no new work and needs no second
+reply. If it is already settled, nothing is owed (`tap read` says so). If you
+are already working on it, continue. The first observation receipt stays unchanged.
 
 After any harness rewind/resume anomaly, immediately run `tap poll <self>` and
 handle each payload's own obligation. Before idling, use `tap outstanding <you>`

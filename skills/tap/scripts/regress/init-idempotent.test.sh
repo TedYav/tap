@@ -221,7 +221,7 @@ rc=0; out="$(cd "$NONGIT" && env -u TAP_HOME "$TAP" init </dev/null 2>&1)" || rc
 grep -q "next: run tap init --yes in " <<<"$out" \
   || { echo "init-idempotent: (4) refusal must name tap init --yes" >&2; echo "$out" >&2; exit 1; }
 [ ! -e "$NONGIT/.tap" ] || { echo "init-idempotent: (4) refused non-git init wrote .tap" >&2; exit 1; }
-out="$(cd "$NONGIT" && env -u TAP_HOME "$TAP" init --yes 2>&1)" || {
+out="$(cd "$NONGIT" && env -u TAP_HOME "$TAP" init --yes --no-trust-folders 2>&1)" || {
   echo "init-idempotent: (4) non-git init --yes failed" >&2; echo "$out" >&2; exit 1; }
 grep -q "is not a git repository; initializing TAP here anyway" <<<"$out" \
   || { echo "init-idempotent: (4) missing non-git warning" >&2; echo "$out" >&2; exit 1; }

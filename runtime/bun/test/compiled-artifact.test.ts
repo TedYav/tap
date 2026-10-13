@@ -41,7 +41,7 @@ test("the no-Bun PATH really has no bun, and the same check finds the runner's b
 
 test("tap init with no Bun on PATH starts its child through the artifact shim and creates the bus", () => {
   const project = dir("tap-artifact-init-");
-  const result = tap(["init", "--yes", "--json"], project);
+  const result = tap(["init", "--yes", "--no-trust-folders", "--json"], project);
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
   expect(result.stdout).toContain('"ok":true');
   expect(existsSync(join(project, ".tap/bus"))).toBe(true);

@@ -82,6 +82,8 @@ export interface PublishInput {
   lastDelivered: string;
   cueStyle: string;
   cueRedAt: string;
+  /** A same-id retry row (`tap resend`): its uuid and display ordinal ride the meta. */
+  retry?: { uuid: string; ordinal: number };
   env?: NodeJS.ProcessEnv;
   /** Wall clock, injectable for tests only; production never reads TAP_SPOOL_NOW here. */
   now?: Date;
@@ -682,6 +684,10 @@ export function mintMeta(input: PublishInput, old: Record<string, Json>, metaExi
     next_probe_epoch: new PyFloat(nowEpoch + probeDelay(env)),
     cue_style: input.cueStyle || null,
     cue_red_at,
+    // A retry row's identity survives every re-publication (repark, staged-idle):
+    // its license, phases and outcome correlate on this uuid, never a recount.
+    ...(input.retry ? { retry: input.retry.uuid, retry_ordinal: input.retry.ordinal }
+      : typeof old.retry === "string" ? { retry: old.retry, retry_ordinal: old.retry_ordinal ?? 0 } : {}),
   };
   if (truthy(meta.to_team)) {
     const registryTeam = typeof meta.target_registry === "string" ? registryTeamName(meta.target_registry) : "";

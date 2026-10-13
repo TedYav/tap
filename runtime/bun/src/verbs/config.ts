@@ -326,7 +326,7 @@ function replaceLineValue(line: string, literal: string): string | null {
 
 /** Insertion spelling that mirrors the quoting the file already uses. */
 function keyLineFor(segments: readonly string[], literal: string, quoted: boolean): string {
-  const spelling = quoted ? segments.map(part => JSON.stringify(part)).join(".") : segments.join(".");
+  const spelling = segments.map(part => quoted || !/^[A-Za-z0-9_-]+$/.test(part) ? JSON.stringify(part) : part).join(".");
   return `${spelling} = ${literal}`;
 }
 
@@ -393,9 +393,7 @@ export function editTomlKey(text: string, segments: string[], literal: string): 
   }
   const last = lastHeader(code);
   const quoted = last >= 0 ? headerIsQuoted(code[last]!) : topQuoted;
-  const table = quoted
-    ? `[${segments.slice(0, -1).map(part => JSON.stringify(part)).join(".")}]`
-    : `[${segments.slice(0, -1).join(".")}]`;
+  const table = `[${segments.slice(0, -1).map(part => quoted || !/^[A-Za-z0-9_-]+$/.test(part) ? JSON.stringify(part) : part).join(".")}]`;
   let out = text ? (text.endsWith("\n") ? text : `${text}\n`) : "";
   if (out && !out.endsWith("\n\n")) out += "\n";
   return `${out}${table}\n${keyLineFor([segments[segments.length - 1]!], literal, quoted)}\n`;

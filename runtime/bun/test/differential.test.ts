@@ -680,9 +680,11 @@ describe("poll BYTE fidelity — found by pre-reading the oracle's newest arm, n
       assertRealExit(ref.status ?? -1, "reference poll");
       assertRealExit(mine.status ?? -1, "candidate poll");
 
-      // The fixture's own premise: an empty inbox exits 0 and a populated one
-      // exits 2. Without this the arm passes when the payload was never seen.
-      expect(ref.status).toBe(populated ? 2 : 0);
+      // The fixture's own premise: both an empty and a populated inbox exit 0
+      // (pending mail is state, not an error), so the output proves which one
+      // this is. Without this the arm passes when the payload was never seen.
+      expect(ref.status).toBe(0);
+      expect(ref.stdout.includes("tap poll: empty")).toBe(!populated);
 
       expect(mine.stdout).toBe(ref.stdout);
       expect(mine.stderr).toBe(ref.stderr);

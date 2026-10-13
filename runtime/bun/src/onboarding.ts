@@ -149,7 +149,7 @@ function realpath(p: string): string {
 
 /** The auto path never touches the caller's stdin or stdout: one stderr receipt,
  * init output on stderr, and init failure returns its code with no retry. */
-export async function autoInitialize(root: string, argv = initArgv(SCRIPTS, [])): Promise<number> {
+export async function autoInitialize(root: string, argv = initArgv(SCRIPTS, ["--no-trust-folders"])): Promise<number> {
   process.stderr.write(`TAP: set up a team for ${root} automatically (onboarding.init = auto).\n`);
   return await new Promise<number>((done, fail) => {
     const child = spawn(argv[0]!, argv.slice(1), { stdio: ["ignore", 2, "inherit"] });
@@ -197,7 +197,7 @@ export async function onboarding(argv: string[], initialize: () => number | Prom
 
 if (import.meta.main) {
   process.exitCode = await onboarding(process.argv.slice(2), async () => {
-    const child = Bun.spawn(initArgv(SCRIPTS, []), { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+    const child = Bun.spawn(initArgv(SCRIPTS, ["--no-trust-folders"]), { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
     return await child.exited;
   }) ?? 0;
 }

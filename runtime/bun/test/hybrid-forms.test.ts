@@ -116,7 +116,7 @@ for (const scenario of ["empty", "pending", "unattributed", "invalid-reply", "qu
       .toEqual({ code: ref.status, stdout: ref.stdout, stderr: ref.stderr });
     expect(readFileSync(join(fx.dir, "trace"), "utf8")).toBe("native poll\nnative poll\n");
     expect(JSON.parse(actual.stdout).pending.length).toBe(["empty", "malformed"].includes(scenario) ? 0 : 1);
-    expect(actual.status).toBe(["empty", "malformed", "quiet"].includes(scenario) ? 0 : 2);
+    expect(actual.status).toBe(0);
   });
 }
 
@@ -253,7 +253,8 @@ test("human poll --team preserves pending-inbox bytes outside its team", () => {
   const actual = run(fx, true, argv, fx.elsewhere);
   expect({ code: actual.status, stdout: actual.stdout, stderr: actual.stderr })
     .toEqual({ code: ref.status, stdout: ref.stdout, stderr: ref.stderr });
-  expect(actual.status).toBe(2);
+  expect(actual.status).toBe(0);
+  expect(actual.stdout).toContain(id);
   expect(readFileSync(join(fx.dir, "trace"), "utf8")).toBe("native poll\nnative poll\n");
 });
 

@@ -285,7 +285,7 @@ export function cmdSpool(argv: string[], scriptsDir = ""): number {
     // before directory bootstrap, obligation, eligibility, or mutation.
     cancelScratchBarrier("cancel-pre-reset-custody", id);
     const lock = acquireObligationLock(id);
-    if (!lock) throw new TapError(4, "lock_park", "retry shortly", `another holder owns the obligation lock for '${id}'`);
+    if (!lock) throw new TapError(1, "lock_park", "retry shortly", `another holder owns the obligation lock for '${id}'`);
     try {
       const resetLock = acquireResetMutationLock(ctx.bus.home, "tap spool cancel", undefined, "shared");
       try {

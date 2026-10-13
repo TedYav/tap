@@ -44,7 +44,7 @@ export async function sessionSeatStates(record: LaunchRecord, state: RegistrySta
 /** Best-effort pending-mail hint; it has no delivery or settlement effects. */
 function inboxDigest(record: LaunchRecord): void {
   try {
-    const root = rootForCwd(record.cwd), ctx = resolveContext(root, process.env, { readOnly: true });
+    const root = rootForCwd(record.cwd), ctx = resolveContext(root, process.env, { readOnly: true, paneFallback: false });
     const enrolled = enrolledTeamNameForRoot(root), team = enrolled.status === "ok" ? enrolled.name : "";
     const handle = launchHandle(record), ids: string[] = [];
     for (const file of readdirSync(join(ctx.bus.home, "payloads")).sort()) {
@@ -124,7 +124,8 @@ export async function cmdSessionRestart(options: RestartOptions, scriptDir = SCR
       code = await restartSession(options, cwd, {
         live: name => hasSession(name, process.env),
         state: (handle, dir) => {
-          try { const ctx = resolveContext(dir, process.env, { readOnly: true });
+          // cwd-bound like the record selection above: the busy check must read the same team (tap-djlri).
+          try { const ctx = resolveContext(dir, process.env, { readOnly: true, paneFallback: false });
             return seatState(handle, { registry: ctx.registryPath, home: ctx.bus.home, env: { ...process.env, TAP_SEAT_STATE_READONLY: "1" } });
           } catch { return "unknown"; }
         },

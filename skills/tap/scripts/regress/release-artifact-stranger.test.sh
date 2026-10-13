@@ -156,7 +156,7 @@ allow="$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | stra
 case "$allow" in *'"deny"'*) fail "the guard denied a plain ls: $allow" ;; esac
 codex_hook="$(sed -n 's/.*command = "\(.*tap-codex-session-start.sh\)".*/\1/p' "$SHOME/.codex/config.toml" | head -n 1)"
 [ -n "$codex_hook" ] || codex_hook="$CUR/hooks/tap-codex-session-start.sh"
-codex="$(printf '{"cwd":"%s"}\n' "$PROJ" | (cd "$PROJ" && stranger "$codex_hook") 2>&1)" || fail "Codex SessionStart: $codex"
+codex="$(printf '{"cwd":"%s","transcript_path":"%s/codex-rollout.jsonl"}\n' "$PROJ" "$WORK" | (cd "$PROJ" && stranger "$codex_hook") 2>&1)" || fail "Codex SessionStart: $codex"
 case "$codex" in *hookSpecificOutput*) ;; *) fail "the Codex SessionStart hook printed no context: $codex" ;; esac
 resolved="$(stranger "$SHOME/.config/opencode/plugins/tap-resolve-session-root" exact "$PROJ" 2>&1)" || fail "OpenCode resolve shim: $resolved"
 [ "$resolved" = "$PROJ" ] || fail "the OpenCode resolve shim printed '$resolved'"

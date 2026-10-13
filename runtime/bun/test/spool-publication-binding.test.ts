@@ -112,7 +112,7 @@ test("an incomplete drain snapshot cannot condemn a binding completed mid-drain"
   expect(f.metaField("publication-race", "reason"), "complete fresh binding was marked from an incomplete snapshot").toBe("window");
   // The completed park is sender-visible immediately after this first drain.
   const out = f.outstanding("alice");
-  expect(out.status, out.stderr).toBe(2);
+  expect(out.status, out.stderr).toBe(0);
   expect(out.stdout).toMatch(/publication-race.*spooled.*window/);
   // A next tick must deliver through the original binding, not leave an orphan.
   f.drainFixture();
@@ -134,7 +134,7 @@ test("a complete metadata file truly lacking identity fails closed and stays sen
   expect(f.metaField("legacy-missing-binding", "reason"), "true missing binding no longer marked").toBe("legacy_meta_no_binding");
   expect(existsSync(join(f.bus, "receipts/legacy-missing-binding.sent")), "true missing binding reached a pane").toBe(false);
   const out = f.outstanding("alice");
-  expect(out.status, out.stderr).toBe(2);
+  expect(out.status, out.stderr).toBe(0);
   expect(out.stdout).toMatch(/legacy-missing-binding.*spooled.*legacy_meta_no_binding/);
 }, 30_000);
 

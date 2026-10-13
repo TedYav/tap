@@ -440,7 +440,7 @@ describe("U4: the interrupt class delivers natively", () => {
     expect(v.keys).toEqual([]);
   }, 120_000);
 
-  test("an interrupt that landed but could not submit is parked, never retried", () => {
+  test("an interrupt that landed but could not submit is parked; resend re-rings it as an ordinary retry and never interrupts again", () => {
     const fx = fixture({ noPrompt: true });
     const v = run(fx, ["send", "rb", "-m", "hi", "--urgent"]);
     expect(v.route).toBe(routeOf("send"));
@@ -453,8 +453,16 @@ describe("U4: the interrupt class delivers natively", () => {
     expect(v.spool[0]!.reason).toBe("no-input-prompt");
     const id = readdirSync(join(fx.bus, "receipts")).find(f => f.endsWith(".attempted"))!.slice(0, -".attempted".length);
     expect(interruptNotice(fx.bus, id)).toContain("Interrupt input sent");
+    // The parked original's attempt is spent: the courier never rings it again. An explicit
+    // resend retires that park (keeping its attempt and interrupt evidence) and queues one
+    // ordinary same-id retry instead of coalescing into a row that cannot run.
     const resent = run(fx, ["resend", id]);
-    expect(resent.code).toBe(1);
+    expect(resent.code).toBe(0);
+    expect(resent.receipt).toMatchObject({ status: "queued", ordinal: 1 }); // the fixture masks ids
+    expect(resent.spool).toHaveLength(1);
+    expect(resent.spool[0]!).toMatchObject({ reason: "retry", policy: "standard" });
+    expect(attemptedCount(fx)).toBe(1);
+    expect(interruptNotice(fx.bus, id)).toContain("Interrupt input sent");
     expect(resent.keys.filter(l => l.trim().endsWith("Escape"))).toHaveLength(1);
   }, 120_000);
 

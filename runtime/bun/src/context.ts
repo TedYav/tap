@@ -157,7 +157,33 @@ export function resolveContext(
       throw converted;
     }
   }
+  // Pane precedence (tap-djlri): a seat is resolved by its pane, never by its cwd. The cwd walk
+  // only picks the DEFAULT team, for a pane no team has registered. When the cwd-selected
+  // enrolled team is not the one that holds the calling pane (a seat launched with --workdir
+  // into another team's enrolled root), the pane's team is the caller's. The same anchor as
+  // above decides, on process-owned evidence (the observed pane, never an inherited TMUX_PANE
+  // value): canonical session hint, unique current claim over the whole machine, one git common
+  // directory. An anchor on the cwd team itself, or any ordinary miss, keeps the cwd selection,
+  // so today's refusals (`unregistered`, `pane_enrolled_elsewhere`) are unchanged for a pane no
+  // team can prove. Explicit --team, a pinned root, TAP_HOME and `paneFallback:false` keep
+  // their precedence (the launcher opts out: its record selection is cwd-bound), and nothing is
+  // observed outside tmux.
+  if (caller.source === "cwd" && caller.authority === "enrolled"
+    && opts?.paneFallback !== false
+    && opts?.explicitTeam === undefined && opts?.pinnedRoot === undefined
+    && env.TMUX) {
+    const anchored = paneAnchorOrUndefined(cwd, env, opts?.readOnly);
+    // The anchor is the revalidated selection: it replaces the walk's whenever any part of the
+    // selection identity differs (team, root, registry path or its realpath, bus), which covers
+    // an index rewrite between the two reads. Only an identical selection keeps the walk's.
+    if (anchored && !sameSelection(anchored, caller)) caller = anchored;
+  }
   return buildContext(caller, env);
+}
+
+function sameSelection(a: Selection, b: Selection): boolean {
+  return a.team === b.team && a.rootReal === b.rootReal && a.registryLocation === b.registryLocation
+    && a.registryLocationReal === b.registryLocationReal && a.busHome === b.busHome;
 }
 
 /** Assemble the resolved context from a selection. */
@@ -912,6 +938,8 @@ export function callerPaneObservation(chain: CallerPaneChain): IdentityPaneObser
 export function observeSelfPane(
   paneTarget: string | IdentityPaneObservation,
   env: NodeJS.ProcessEnv = process.env,
+  /** Exit for generation_unverifiable: whoami keeps 2; self-resolving verbs pass their refusal code. */
+  generationCode = 2,
 ): Extract<IdentityPaneObservation, { status: "ok" }> {
   const target = typeof paneTarget === "string" ? paneTarget : paneTarget.paneId;
   const obs = typeof paneTarget === "string" ? observeIdentityPane(paneTarget, env) : paneTarget;
@@ -919,7 +947,7 @@ export function observeSelfPane(
     throw new TapError(1, "pane_gone", "tap whoami --pane <tmux-target>", `pane '${target}' does not exist`);
   }
   if (obs.status === "unverifiable") {
-    throw new TapError(2, "generation_unverifiable", "wait for tmux to answer, then retry — do NOT re-register",
+    throw new TapError(generationCode, "generation_unverifiable", "wait for tmux to answer, then retry — do NOT re-register",
       `pane ${obs.paneId || target} is registered, but the tmux server generation is not observable right now, so its registration cannot be verified`);
   }
   return obs;
@@ -1028,13 +1056,17 @@ export function refuseUnanchoredPane(
     `pane ${displayPane} ${resolution.evidence}`);
 }
 
+/**
+ * `refusalCode` is the caller's exit for every refusal here: unanchored, unregistered and
+ * generation_unverifiable. Verbs pass 1 (refusal); whoami and its peers pass their documented 2.
+ */
 export function resolveSelf(
   ctx: Context,
   paneTarget: string | IdentityPaneObservation,
-  unanchoredCode: number,
+  refusalCode: number,
   env: NodeJS.ProcessEnv = process.env,
 ): Self {
-  const obs = observeSelfPane(paneTarget, env);
+  const obs = observeSelfPane(paneTarget, env, refusalCode);
   const target = typeof paneTarget === "string" ? paneTarget : paneTarget.paneId;
   // THE REMEDY MUST BE A COMMAND THIS BINARY ACCEPTS.
   //
@@ -1048,15 +1080,15 @@ export function resolveSelf(
   // rather than in requireActingRegistry: without a pane id there is nothing to
   // look the enrollment up BY.
   if (!isFile(ctx.registryPath)) {
-    refuseUnanchoredPane(obs.paneId, ctx.root, unanchoredCode,
+    refuseUnanchoredPane(obs.paneId, ctx.root, refusalCode,
       { session: obs.session, serverEpoch: obs.serverEpoch }, env, target);
   }
-  requireActingRegistry(ctx, unanchoredCode);
+  requireActingRegistry(ctx, refusalCode);
   const found = resolveHandleByPane(
     ctx.registryPath, obs.paneId, target, obs.serverEpoch, obs.selectedHandle, obs.selectedInstance,
   );
   if (!found) {
-    throw new TapError(2, "unregistered", "tap register", `pane ${target} is not registered`);
+    throw new TapError(refusalCode, "unregistered", "tap register", `pane ${target} is not registered`);
   }
   return { ...found, team: ctx.team };
 }

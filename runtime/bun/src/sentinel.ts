@@ -17,6 +17,8 @@ export interface SentinelFields {
   urgency?: string;
   /** The direct send that may press the interrupt key; spool redelivery never does. */
   interrupt?: boolean;
+  /** A sender's explicit same-id retry (`tap resend`): this doorbell may have rung before. */
+  retry?: boolean;
   path: string;
   /** Cross-team callers must supply affirmative index evidence to omit path=. */
   senderIndex?: "reachable" | "unreachable" | "refuse";
@@ -91,6 +93,8 @@ export function renderSentinel(f: SentinelFields): string {
   // `urgency` survives into plain spool redelivery; this tag rides only the
   // send that may interrupt.
   if (f.interrupt && f.urgency === "urgent") out += " agent-interrupt";
+  // A retry re-rings the same id; it grants no authority and never interrupts.
+  if (f.retry) out += " retry";
 
   // path=, the one surviving key, kept only where the id alone does NOT resolve:
   // the unindexed manual relay (`--cross-worktree --pane <bare-handle>`

@@ -220,7 +220,7 @@ const nativeHandlers = {
   // authority and settle primitives reply uses.
   done: argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
-    throw new TapError(2, "done_retired", "tap reply <id> --by <you> -f <file>   # a note settles on: tap read <id>",
+    throw new TapError(1, "done_retired", "tap reply <id> --by <you> -f <file>   # a note settles on: tap read <id>",
       "tap done is retired and settles nothing", undefined, "none");
   },
   whoami: cmdWhoami,
@@ -602,7 +602,7 @@ if (import.meta.main) {
       process.exitCode = launchArgs;
     } else {
       const fallback = routerFallback(tapScriptsDir());
-      const onboardingStatus = await onboarding(argv, () => fallback(["init"]));
+      const onboardingStatus = await onboarding(argv, () => fallback(["init", "--no-trust-folders"]));
       process.env.TAP_ONBOARDING_CHECKED = "1";
       if (onboardingStatus === null) warnOverdueInbound(argv);
       const status = onboardingStatus ?? await route(

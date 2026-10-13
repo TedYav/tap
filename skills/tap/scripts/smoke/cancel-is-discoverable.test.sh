@@ -67,7 +67,7 @@ set -e
 # Fixture validity: if the send were not listed, the naming arm below would be
 # vacuous — it would pass on an empty report that mentions nothing at all.
 grep -q "$OLD" <<<"$out" || fail "fixture: the aged send must be listed; got: $out"
-[ "$rc" -eq 2 ] || fail "fixture: outstanding with entries exits 2, got $rc"
+[ "$rc" -eq 0 ] || fail "fixture: outstanding with entries exits 0 (open sends are state, not an error), got $rc"
 echo "  ok   fixture: the aged send is listed"
 
 grep -q "tap cancel" <<<"$out" \

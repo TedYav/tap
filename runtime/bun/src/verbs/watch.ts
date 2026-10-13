@@ -452,9 +452,10 @@ function cmdStatus(ctx: Context, env: NodeJS.ProcessEnv): number {
     lines.push("  next: the lease's heartbeat or arm time is unreadable or in the future (a clock or lease fault tap health does not check); check the system clock, then rearm with `tap watch off` (the armer, or --force) followed by `tap watch on`");
   } else if (live.state === "unknown") lines.push("  next: tap health");
   process.stdout.write(lines.join("\n") + "\n");
-  // A dead dispatcher is attention (CLI-EXIT-2). Unknown could not be checked: CLI-STANDARDS assigns
+  // A dead dispatcher is reported state with its `next:` line, so it exits 0 (CLI-EXIT-0); `tap health`
+  // is the check verb that exits non-zero for it. Unknown could not be checked: CLI-STANDARDS assigns
   // unsafe-to-check states to exit 1, so it exits 1 with its `next:` line and never reads as dead.
-  return live.state === "dead" ? 2 : live.state === "unknown" ? 1 : 0;
+  return live.state === "unknown" ? 1 : 0;
 }
 
 // --- ack ------------------------------------------------------------------------

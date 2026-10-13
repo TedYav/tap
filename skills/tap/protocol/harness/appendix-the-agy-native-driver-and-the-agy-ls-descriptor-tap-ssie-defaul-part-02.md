@@ -129,32 +129,8 @@ Receipt timestamps use an explicit calendar grammar: `YYYY-MM-DD`, `T` or space,
 
 ### Explicit sender resend (tap-7r3fn.22)
 
-`tap resend <id> [--by <sender>] [--team <name>] [--json]` requests one explicit
-successor send under a fresh id after affirmative no-attempt proof. Its frontmatter records `resend_of`;
-the body bytes are unchanged, including line endings and a missing final newline.
-Ordinary send resolves current recipient identity and preserves the reply obligation.
-
-The existing JSON `delivery_semantics: at-least-once` and `.resent` delivery token
-remain compatibility labels, not an at-least-once guarantee. They do not permit
-retry after a possible effect or promise observation. The successor uses the
-[ordinary reliability contract](../delivery/reliability.md).
-
-The original is consumed (withdrawn, `receipts/<id>.resent`, successor prepared at
-`archive/<newId>.resend.md`) before the successor send runs. A failed successor (nonzero exit, or
-exit 0 with a JSON scalar, array or null receipt) is ONE error, status kept: one stderr line folding in the
-child's stderr, the original, its receipt, the kept prepared file, one inspection
-step, never a send: exit 5 may have taken effect, a signalled child proves
-nothing absent, the envelope is no body. The step is `tap show <newId>`, anchored: `TAP_HOME='<bus>' tap show <newId>` under a pin,
-`<team>/<newId>` under `--team`. `--json`: stderr empty; one `ok:false` envelope (`error_class` `resend_successor_failed` or
-`resend_receipt_invalid`, `action`, `detail`) plus `recovery` (`original`, `receipt`, `prepared`,
-`successor`, `next`).
-
-Eligibility requires valid current registry authority, matching sender identity, a non-interrupt class, and affirmative no-attempt evidence:
-new legacy-spool metadata carries `attempt_fence: 1` and integer `attempts: 0`.
-The foreground driver, single redelivery and each digest member write a durable
-`receipts/<id>.attempted` before attempting a pane effect; failure to write prevents
-the attempt. Cleanup retains metadata under `archive/<id>.meta.json`, allowing
-cancelled-spooled and terminal-unrouted messages to retain their evidence.
-Any attempt log/marker, sent/read/done receipt, native intent, active claim,
-missing/malformed proof or unfenced historical zero count refuses. An old
-NOT DELIVERED notice alone is not evidence sufficient to bypass this guard.
+Retired 2026-10-12: `tap resend <id>` no longer mints a fresh-id successor
+(`resend_of`, `.resent`) and no longer requires no-attempt proof. It re-rings the
+same message under the same id; its contract is the
+[explicit same-ID retry](../delivery/reliability.md#explicit-same-id-retry), and
+`tap help resend` owns its grammar. Historical successor receipts stay readable.

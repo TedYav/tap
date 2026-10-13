@@ -20,6 +20,9 @@ import type { Run } from "../src/tmux";
 import { pendingInputText, type PaneIo } from "../src/pane/reader";
 
 let home = "";
+// The runner seeds TAP_INDEX_HOME for every file in the batch; restore it, never unset it, or later
+// files lose the machine index (tap-jo3bz: three unrelated tests failed only when co-run after this one).
+const savedIndexHome = process.env.TAP_INDEX_HOME;
 
 beforeAll(() => {
   home = mkdtempSync(join(tmpdir(), "overprint-heal-"));
@@ -27,7 +30,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  delete process.env.TAP_INDEX_HOME;
+  if (savedIndexHome === undefined) delete process.env.TAP_INDEX_HOME;
+  else process.env.TAP_INDEX_HOME = savedIndexHome;
   if (home) rmSync(home, { recursive: true, force: true });
 });
 

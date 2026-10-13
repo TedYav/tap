@@ -23,6 +23,7 @@ fi
 # Names that are not on disk (patterns, `5000`) stay as given.
 _value_opts=" -t --test-name-pattern --timeout --rerun-each --retry --seed --coverage-reporter --coverage-dir --reporter --reporter-outfile --max-concurrency --path-ignore-patterns --parallel-delay --shard --timings -r --preload --grep "
 _args=()
+_entries=()  # positional arguments that are files: the pin tripwire's file boundaries
 _skip=0
 for _arg in "$@"; do
   if [ "$_skip" = 1 ]; then
@@ -30,7 +31,10 @@ for _arg in "$@"; do
   elif [[ "$_arg" == -* ]]; then
     [[ "$_value_opts" == *" $_arg "* ]] && _skip=1
   elif [ -d "$_arg" ]; then _arg="$(cd "$_arg" && pwd -P)"
-  elif [ -e "$_arg" ]; then _arg="$(cd "$(dirname "$_arg")" && pwd -P)/$(basename "$_arg")"; fi
+  elif [ -e "$_arg" ]; then
+    _arg="$(cd "$(dirname "$_arg")" && pwd -P)/$(basename "$_arg")"
+    [ -f "$_arg" ] && _entries+=("$_arg")
+  fi
   _args+=("$_arg")
 done
 set -- "${_args[@]}"
@@ -104,18 +108,67 @@ test_rc=0
 # caller's own --preload loader still applies. It is registered after the caller's
 # arguments so every other preload (a caller's or a bunfig's, which also resolve with no
 # importer) is resolved before it exists and never reaches the receipt.
+# The same hook is the pin-leak tripwire (tap-jo3bz): every file in one `bun test` process shares
+# process.env, so a test that unsets or rewrites a runner pin without restoring it starves every
+# later file (an unset TAP_INDEX_HOME read as "this machine has no enrolled team" three files
+# later). Bun loads and runs entries one at a time, so at each entry's resolve the previous entry's
+# afterAll has run; a pin that differs from the runner's value then names the file that leaked it.
+# The positional test files this run was given (the parser above already skipped option values
+# such as `--preload x.ts`), by real path: the preload treats these as file boundaries whatever
+# their names, alongside every test-shaped file Bun discovers through a directory or filter.
+"$_PYTHON" -B -c 'import os, sys
+for a in sys.argv[1:]: print(os.path.realpath(a))' ${_entries[@]+"${_entries[@]}"} > "$WORK/entries.txt"
 cat > "$WORK/ran-files-preload.ts" <<'PRELOAD'
 import { plugin } from "bun";
-import { appendFileSync } from "node:fs";
+import { afterAll } from "bun:test";
+import { appendFileSync, readFileSync } from "node:fs";
+// Observer paths are captured once: a test that rewrote them could not redirect the receipt.
+const RAN_LOG = process.env.TAP_RUNNER_RAN_LOG!, LEAK_LOG = process.env.TAP_RUNNER_LEAK_LOG!;
+const lines = (path: string): string[] => readFileSync(path, "utf8").split("\n").filter(Boolean);
+const ENTRIES = new Set(lines(process.env.TAP_RUNNER_ENTRIES!));
+// The baseline is what run.sh set, read from its own file, not from process.env: a caller's
+// --preload runs before this one and could already have moved a pin. A null value is a
+// variable the runner unset, which must stay absent.
+const pinned: ReadonlyMap<string, string | undefined> = new Map(Object.entries(
+  JSON.parse(readFileSync(process.env.TAP_RUNNER_PINS!, "utf8")) as Record<string, string | null>)
+  .map(([k, v]) => [k, v ?? undefined]));
+// Each distinct leaked value is reported once; a later file that restores the baseline is not a
+// leaker, and the baseline itself never moves.
+const reported = new Map<string, string | undefined>();
+// Only a test FILE is a boundary where the previous file's afterAll has run. A dynamic import
+// (`x.ts?swap`, a fixture-written module) also resolves with no importer, mid-file, possibly
+// inside a deliberate temporary pin; it joins the receipt but never the comparison. A boundary
+// is an explicit entry (any name) or a test-shaped file, which is what Bun discovers through a
+// directory or a text filter: a name containing `.test.`, `_test.`, `.spec.`, `_spec.`, `_test_`
+// or `_spec_` with a script extension (Bun's own discovery shapes).
+const TEST_SHAPE = /(?:^|\/)[^/]*[._](?:test|spec)(?:[._][^/]*)?\.[cm]?[jt]sx?$/;
+const isEntry = (path: string): boolean => ENTRIES.has(path) || TEST_SHAPE.test(path);
+let previous = "";
+const compare = (seenAt: string): void => {
+  for (const [key, want] of pinned) {
+    const have = process.env[key];
+    if (have === want) { reported.delete(key); continue; }
+    if (reported.has(key) && reported.get(key) === have) continue;
+    appendFileSync(LEAK_LOG,
+      `${key}\t${previous || "(before the first entry)"}\t${seenAt}\t${have === undefined ? "(unset)" : have}\n`);
+    reported.set(key, have);
+  }
+};
 plugin({
   name: "ran-files",
   setup(build) {
     build.onResolve({ filter: /^\// }, (args) => {
-      if (!args.importer) appendFileSync(process.env.TAP_RUNNER_RAN_LOG!, args.path + "\n");
+      if (args.importer) return undefined;
+      appendFileSync(RAN_LOG, args.path + "\n");
+      if (!isEntry(args.path)) return undefined;
+      compare(args.path);
+      previous = args.path;
       return undefined;
     });
   },
 });
+// A preload afterAll runs after the last file's own afterAll, so that file is compared too.
+afterAll(() => compare("(end of run)"));
 PRELOAD
 # Session identity is fixture input, never the harness that launched the runner.
 # Derived from register.ts directSessionIdentity + transcript/source reads and
@@ -127,28 +180,49 @@ PRELOAD
 # `${CLAUDE_CONFIG_DIR:-~/.claude}` must land in the runner's scratch HOME,
 # never the operator's real Claude config (tap-lcuft). FORCE_COLOR would colorize Bun's
 # `(pass)`/`(fail)` rows, which ci-gate-verdict.py and smoke-all parse as plain text (tap-ied3q).
-env -u TMUX -u TMUX_PANE -u TAP_SELF \
-  -u CLAUDE_CODE_SESSION_ID -u CODEX_THREAD_ID -u OPENCODE_SESSION_ID \
-  -u CURSOR_CONVERSATION_ID -u ANTIGRAVITY_CONVERSATION_ID \
-  -u TAP_HARNESS_SESSION_ID -u TAP_TRANSCRIPT_PATH -u TAP_SESSION_SOURCE \
-  -u TAP_LAUNCH_ROOT -u TAP_LAUNCH_ID -u TAP_CLEAR_ID \
-  -u CLAUDE_CONFIG_DIR \
-  -u FORCE_COLOR \
-  HOME="$WORK/home" \
-  PATH="$WORK/bin:$PATH" \
-  TMUX_TMPDIR="$WORK/tmux" \
-  TMPDIR="$WORK/tmp" \
-  TAP_HOME="$WORK/bus" \
-  TAP_LOCK_DIR="$WORK/locks" \
-  TAP_INDEX_HOME="$WORK/index" \
-  TAP_SESSION_MANIFEST="$WORK/sessions.json" \
-  OPENCODE_DB_PATH="$WORK/opencode.db" \
-  TAP_VERSION_SEEN_PATH="$WORK/version-seen.json" \
-  TAP_SETUP_OPEN_GUIDE=0 \
-  EPISODIC_MEMORY_SUMMARIZER_GUARD=1 \
-  TAP_NOTIFY_USER_BIN="/nonexistent/tap-smoke-must-stub-notify-user" \
-  TAP_TMUX_SOCKET="tapbun-test-$$" \
+# The runner pins, in one place: the same lists are what Bun runs under and what the tripwire
+# compares against, written to disk here so a caller's own --preload (which Bun loads before
+# the runner's) cannot move the baseline by mutating process.env first. `_unset` names the
+# variables that must stay ABSENT: a test that sets one (TAP_TMUX_SOCKET_PATH outranks the
+# pinned TAP_TMUX_SOCKET in tmux.ts) and never deletes it leaks just as surely.
+_unset=(TMUX TMUX_PANE TAP_SELF
+  CLAUDE_CODE_SESSION_ID CODEX_THREAD_ID OPENCODE_SESSION_ID
+  CURSOR_CONVERSATION_ID ANTIGRAVITY_CONVERSATION_ID
+  TAP_HARNESS_SESSION_ID TAP_TRANSCRIPT_PATH TAP_SESSION_SOURCE
+  TAP_LAUNCH_ROOT TAP_LAUNCH_ID TAP_CLEAR_ID
+  CLAUDE_CONFIG_DIR
+  FORCE_COLOR
+  TAP_TMUX_SOCKET_PATH TAP_REGISTRY TAP_SERVER_EPOCH)
+_unset_args=()
+for _name in "${_unset[@]}"; do _unset_args+=(-u "$_name"); done
+_pins=(
+  HOME="$WORK/home"
+  PATH="$WORK/bin:$PATH"
+  TMUX_TMPDIR="$WORK/tmux"
+  TMPDIR="$WORK/tmp"
+  TAP_HOME="$WORK/bus"
+  TAP_LOCK_DIR="$WORK/locks"
+  TAP_INDEX_HOME="$WORK/index"
+  TAP_SESSION_MANIFEST="$WORK/sessions.json"
+  OPENCODE_DB_PATH="$WORK/opencode.db"
+  TAP_VERSION_SEEN_PATH="$WORK/version-seen.json"
+  TAP_SETUP_OPEN_GUIDE=0
+  EPISODIC_MEMORY_SUMMARIZER_GUARD=1
+  TAP_NOTIFY_USER_BIN="/nonexistent/tap-smoke-must-stub-notify-user"
+  TAP_TMUX_SOCKET="tapbun-test-$$"
+)
+"$_PYTHON" -B -c 'import json, sys
+pins = {}
+for a in sys.argv[1:]:
+    k, sep, v = a.partition("=")
+    pins[k] = v if sep else None
+print(json.dumps(pins))' "${_pins[@]}" "${_unset[@]}" > "$WORK/pins.json"
+env "${_unset_args[@]}" \
+  "${_pins[@]}" \
   TAP_RUNNER_RAN_LOG="$WORK/ran-files.log" \
+  TAP_RUNNER_LEAK_LOG="$WORK/pin-leaks.log" \
+  TAP_RUNNER_ENTRIES="$WORK/entries.txt" \
+  TAP_RUNNER_PINS="$WORK/pins.json" \
   "$_BUN" test --timeout "$TEST_TIMEOUT_MS" "$@" --preload "$WORK/ran-files-preload.ts" || test_rc=$?
 
 # Name the test files Bun opened, from the resolve hook above (console output is unchanged).
@@ -174,12 +248,21 @@ print("run.sh: ran %d file%s: %s" % (len(seen), "" if len(seen) == 1 else "s", "
 PY
 )" || ran_rc=$?
 report_ran() {
+  # A leaked pin fails the run even when every test passed: the next file in a larger batch
+  # would have inherited it, and that failure would carry the wrong file's name (tap-jo3bz).
+  # Diagnostics come first so the ran-files receipt stays the last line.
+  if [ -s "$WORK/pin-leaks.log" ]; then
+    while IFS=$'\t' read -r key culprit seen_at value; do
+      echo "run.sh: pinned env leaked: $key is $value after $culprit (seen at $seen_at); restore the inherited value, or delete it when the runner left it unset" >&2
+    done < "$WORK/pin-leaks.log"
+    [ "$test_rc" -ne 0 ] || test_rc=1
+  fi
   if [ "$ran_rc" -eq 0 ]; then
     echo "$ran_line"
-    return
+  else
+    echo "run.sh: no test files ran" >&2
+    [ "$test_rc" -ne 0 ] || test_rc=1
   fi
-  echo "run.sh: no test files ran" >&2
-  [ "$test_rc" -ne 0 ] || test_rc=1
 }
 
 tripwire_rc=0

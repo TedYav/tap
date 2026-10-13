@@ -167,7 +167,7 @@ grep -Eq '"team"[[:space:]]*:[[:space:]]*"tap"' "$WORK/team.out" \
 # ── outstanding is not unanchored from the linked worktree ──────────────────
 rc=0
 wt outstanding glm --json >"$WORK/outstanding.out" 2>&1 || rc=$?
-[ "$rc" -eq 2 ] || fail "outstanding returned rc=$rc (want 2): $(cat "$WORK/outstanding.out")"
+[ "$rc" -eq 0 ] || fail "outstanding returned rc=$rc (want 0; the listed row is checked next): $(cat "$WORK/outstanding.out")"
 grep -Fq "$OUTBOUND" "$WORK/outstanding.out" \
   || fail "outstanding did not reach the pane team's bus: $(cat "$WORK/outstanding.out")"
 grep -Fq "unanchored" "$WORK/outstanding.out" \

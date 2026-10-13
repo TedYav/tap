@@ -216,8 +216,8 @@ test("renderParkReceipt: the queued shapes, byte for byte, with the queue explan
   expect(renderParkReceipt(baseReport(), opts(home))).toBe(`tap send: queued x\n${explanation}\n`);
   expect(renderParkReceipt(baseReport(), opts(home, { verb: "assign" }))).toBe(`tap assign: queued x\n${explanation}\n`);
   expect(renderParkReceipt(baseReport(), opts(home, { verbose: true, displayState: "hold" }))).toBe(
-    `tap send: accepted, queued x for peer; reply expected. Delivery not confirmed. Inspect with tap show x; tap resend x requires proof that no attempt occurred. [hold]\n${explanation}\n`);
-  expect(renderParkReceipt(baseReport(), opts(home, { verbose: true }))).toContain("occurred. []\n");
+    `tap send: accepted, queued x for peer; reply expected. Delivery not confirmed. Inspect with tap show x; if it is still unread, tap resend x rings it again under the same id. [hold]\n${explanation}\n`);
+  expect(renderParkReceipt(baseReport(), opts(home, { verbose: true }))).toContain("same id. []\n");
   expect(JSON.parse(renderParkReceipt(baseReport(), opts(home, { json: true })))).toEqual({
     status: "queued", delivery: "spool", action: "deliver_when_clear_or_deadline", id: "x", from: "alice", to: "peer", pane: "sess:0.0",
     kind: "discuss", turn: "unconfirmed", path: "/bus/spool/x.md", meta: "/bus/spool/x.meta.json", reason: "busy", policy: "standard",

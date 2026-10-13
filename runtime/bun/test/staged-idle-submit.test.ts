@@ -3,7 +3,7 @@
 // (Enter-only by construction), and the drain seams that can pick the parked
 // row up. Frames are synthetic with neutral filler; no real capture.
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { submitVerifyLocked, type PaneEffects, type SubmitAuthority } from "../src/courier";
@@ -19,6 +19,8 @@ import { drainOnce, type DrainContext, type DrainEffects, type SpoolBinding } fr
 import { DEFAULT_AGENT_FAMILIES } from "../src/observe";
 import { acquirePathLock } from "../src/panelock";
 import { installSpoolPane } from "./support/spool-pane";
+import { attemptCount, retryMarkerPath } from "../src/retry";
+import { noEffectProof } from "../src/spool-effect-proof";
 
 const roots: string[] = [];
 afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -33,6 +35,8 @@ function scratch(): string {
 }
 
 const ID = "peer-seat-20260928T120000Z-aabbccddeeff";
+const RETRY = "00000000-0000-4000-8000-000000000001";
+const ADMITTED = "2026-10-13T10:00:00.500Z";
 const wire = (id: string) => `[[TAP v0.23 note ${id}]]`;
 
 /** Land an attempt that ended unverified: the staged-idle evidence core. */
@@ -49,6 +53,78 @@ function stageHold(home: string, id = ID, envelopeTo = "peer"): void {
   writeFileSync(join(home, "payloads", `${id}.md`), `---\nid: ${id}\nfrom: sender\nto: ${envelopeTo}\nkind: note\n---\nneutral body\n`);
   landUnverifiedAttempt(home, id);
 }
+
+function stageRetryHold(home: string): void {
+  stageHold(home);
+  writeFileSync(join(home, "spool", `${ID}.meta.json`), JSON.stringify({ id: ID, reason: "staged-idle", deadline_epoch: 4102444800, retry: RETRY }));
+  writeFileSync(retryMarkerPath(home, ID, RETRY), JSON.stringify({ id: ID, retry: RETRY, effect: "possible", admitted_at: ADMITTED }));
+  for (const phase of ["injected-text-confirmed", "verify-result"] as const)
+    recordPhase(home, { id: ID, attempt: RETRY, phase, recipient: "peer", enter_count: 1, result: "unverified" });
+}
+
+test("retry idle evidence ignores only transport receipts proven older than admission", () => {
+  const cases: [string, Record<string, unknown>, string, boolean][] = [
+    ["sent", {}, "2026-10-13T09:59:59Z", true],
+    ["sent", {}, ADMITTED, false],
+    ["idle-submit", {}, "2026-10-13T09:59:59Z", true],
+    ["idle-submit", {}, ADMITTED, false],
+    ["harness-queued", { at: "2026-10-13T09:59:59Z" }, ADMITTED, true],
+    ["harness-queued", { at: "2026-10-13T10:00:00Z" }, ADMITTED, false],
+    ["harness-queued", { at: "invalid" }, "2026-10-13T09:59:59Z", false],
+    ["harness-queued", { at: "1" }, "2026-10-13T09:59:59Z", false],
+    ["harness-queued", { at: "2026-10-13T09:59:59Z", status: "unknown" }, ADMITTED, false],
+    ["read", { by: "operator", forced: "true" }, ADMITTED, true],
+    ["read", { by: "peer", reason: "instance_retired" }, ADMITTED, true],
+    ["read", { by: "peer" }, ADMITTED, false],
+    ["authorized-read", { by: "peer" }, ADMITTED, false],
+    ["done", {}, "2026-10-13T09:59:59Z", false],
+    ["cancelled", {}, "2026-10-13T09:59:59Z", false],
+    [`retry-${RETRY}.idle-submit`, {}, "2026-10-13T09:59:59Z", false],
+  ];
+  for (const [suffix, fields, mtime, eligible] of cases) {
+    const home = scratch(); stageRetryHold(home);
+    const path = join(home, "receipts", `${ID}.${suffix}`);
+    writeFileSync(path, JSON.stringify({ id: ID, status: "queued", delivery: "harness-queue", ...fields }));
+    utimesSync(path, new Date(mtime), new Date(mtime));
+    expect(stagedIdleSubmitEligible(home, ID), suffix + JSON.stringify(fields)).toBe(eligible);
+  }
+});
+
+test("retry idle evidence needs a valid admission and this retry's unverified injection", () => {
+  for (const marker of [null, {}, { id: "other", retry: RETRY, effect: "possible", admitted_at: ADMITTED },
+    { id: ID, retry: RETRY, effect: "possible", admitted_at: "invalid" },
+    { id: ID, retry: RETRY, effect: "possible", admitted_at: "1" }]) {
+    const home = scratch(); stageRetryHold(home);
+    if (marker === null) rmSync(retryMarkerPath(home, ID, RETRY));
+    else writeFileSync(retryMarkerPath(home, ID, RETRY), JSON.stringify(marker));
+    expect(stagedIdleSubmitEligible(home, ID)).toBe(false);
+  }
+  const home = scratch(); stageRetryHold(home);
+  landUnverifiedAttempt(home, ID); // a different attempt cannot lend this retry authority
+  expect(stagedIdleSubmitEligible(home, ID)).toBe(false);
+});
+
+test("uncertain observation receipts cannot authorize a retry's automatic Enter", () => {
+  for (const suffix of ["read", "authorized-read"]) for (const bytes of ["broken", "{}", JSON.stringify({ id: ID }),
+    JSON.stringify({ id: "other", by: "peer", forced: "true" }), JSON.stringify({ id: ID, forced: "true" })]) {
+    const home = scratch(); stageRetryHold(home);
+    writeFileSync(join(home, "receipts", `${ID}.${suffix}`), bytes);
+    expect(stagedIdleSubmitEligible(home, ID), suffix + bytes).toBe(false);
+    expect(arm(home, { authority: { attemptUuid: RETRY } }).enters).toBe(0);
+  }
+  for (const suffix of ["read", "authorized-read"]) {
+    const home = scratch(); stageRetryHold(home);
+    symlinkSync(join(home, "missing"), join(home, "receipts", `${ID}.${suffix}`));
+    expect(stagedIdleSubmitEligible(home, ID)).toBe(false);
+  }
+});
+
+test("retry idle license is possible-effect evidence but never an extra ring", () => {
+  const home = scratch();
+  writeFileSync(join(home, "receipts", `${ID}.retry-${RETRY}.idle-submit`), "{}");
+  expect(noEffectProof(home, join(home, "spool"), ID, { attempts: 0, attempt_fence: 1 })).not.toBe("");
+  expect(attemptCount(home, ID)).toBe(0);
+});
 
 /** Pin TAP_INDEX_HOME to a scratch index resolving each team to its root. */
 function pinTeamIndex(root: string, teams: Record<string, string>): () => void {
@@ -290,6 +366,22 @@ test("a second observation after the one idle Enter never fires again", () => {
   expect(first.result.status).toBe("injected");
   const second = arm(home);
   expect(second.result.status).toBe("unverified");
+  expect(second.enters).toBe(0);
+  expect(second.injections).toBe(0);
+});
+
+test("a retry's idle arm mints its own license and never fires a second Enter", () => {
+  const home = scratch(); stageRetryHold(home);
+  const plain = join(home, "receipts", `${ID}.idle-submit`);
+  writeFileSync(plain, "original idle license");
+  const old = new Date("2026-10-13T09:59:59Z"); utimesSync(plain, old, old);
+  const first = arm(home, { authority: { attemptUuid: RETRY } });
+  expect(first.result.status).toBe("injected");
+  expect(first.enters).toBe(1);
+  expect(first.injections).toBe(0);
+  expect(JSON.parse(readFileSync(join(home, "receipts", `${ID}.retry-${RETRY}.idle-submit`), "utf8"))).toMatchObject({ id: ID, retry: RETRY, effect: "possible" });
+  expect(readFileSync(plain, "utf8")).toBe("original idle license");
+  const second = arm(home, { authority: { attemptUuid: RETRY } });
   expect(second.enters).toBe(0);
   expect(second.injections).toBe(0);
 });

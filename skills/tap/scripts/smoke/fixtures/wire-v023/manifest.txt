@@ -105,6 +105,7 @@ runtime/bun/test/reply-departed-sender.test.ts	A	the departed-sender reply pins 
 runtime/bun/test/reply-foreign-addressing.test.ts	A	the foreign-payload differential asserts the injected wire bytes on both doors (`[[TAP v0.23 note alpha/<out-id>]]` — the answer to a foreign inbound names the replier's team as bus locator) — D4d member 3a-bis-4
 runtime/bun/test/reply-foreign-route.test.ts	A	the foreign-return-route differential asserts the injected wire bytes on both doors (`[[TAP v0.23 <note|ask> alpha/<out-id>]]` — the reply outbound names the SENDER team as bus locator, no `path=` for an enrolled team) — D4 member 3a-bis-1
 runtime/bun/test/reply-obligations-fences.test.ts	C	reply contract labels and diagnostics mention at-rest reply=expected/settle-only; no sentinel-byte assertion
+runtime/bun/test/retry-drain.test.ts	A	same-ID retry and idle-submit drains assert v0.23 retry wires and one injection
 runtime/bun/test/self-rebrief.test.ts	A	firstInputMatches (self-rebrief.ts) anchors `^\[\[TAP v0\.23 note <id>\]\]$` as the recovery-accepted/delivery-miss discriminator; "recovery-first proof accepts quoted preview but refuses mixed first input" (:207-213) asserts pass/fail directly on that exact wire shape, so a grammar bump flips accepted to delivery-miss
 runtime/bun/test/send-census-fences-routing.test.ts	C	asserts the reply=settle-only contract diagnostic on stderr, not wire bytes
 runtime/bun/test/send-delivery-interrupt.test.ts	B	current v0.23 staged markers exercise occupied-input preservation; assertions cover delivery effects and status

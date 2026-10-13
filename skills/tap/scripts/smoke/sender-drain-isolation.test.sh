@@ -203,7 +203,7 @@ set +e
 TMUX_PANE=%401 FAKE_PANE_ID=%401 "$TAPSH" poll peer >"$WORK/peer-poll.out" 2>&1
 poll_rc=$?
 set -e
-[ "$poll_rc" -eq 2 ] && grep -q 'peer-queued' "$WORK/peer-poll.out" || { cat "$WORK/peer-poll.out" >&2; fail 'recipient poll did not expose parked mail'; }
+[ "$poll_rc" -eq 0 ] && grep -q 'peer-queued' "$WORK/peer-poll.out" || { cat "$WORK/peer-poll.out" >&2; fail "recipient poll did not expose parked mail (rc=$poll_rc)"; }
 TMUX_PANE=%401 FAKE_PANE_ID=%401 "$TAPSH" read peer-queued --by peer >"$WORK/peer-read.out" 2>&1 || { cat "$WORK/peer-read.out" >&2; fail 'recipient read did not recover parked mail'; }
 [ -f "$BUS/payloads/peer-queued.md" ] && [ ! -f "$BUS/spool/peer-queued.md" ] || fail 'recipient read did not transfer parked custody'
 echo 'sender-drain-isolation: send/reply/register leave mail untouched; recipient poll/read recovers it'

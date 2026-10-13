@@ -165,14 +165,17 @@ export function noticeBody(mode: NoticeMode, id: string, target: string, canon: 
     out += "The courier made NO attempt: this entry left automatic delivery without\n";
     out += "ever being tried (the Detail line says why), and would otherwise have sat\n";
     out += "indefinitely. Nothing here says the recipient is unreachable —\n";
-    out += `they may be perfectly fine. Run tap resend ${id}; it refuses unless no attempt is provable.\n`;
+    out += `they may be perfectly fine. Run tap resend ${id} to ring it again under the same id.\n`;
   } else if (mode === "unconfirmed" || mode === "unconfirmed-digest") {
     out += "This is not a queued send still on its way — the courier stopped trying,\n";
-    out += "and it cannot observe whether the wake landed. Check with them before\n";
-    out += "re-sending: a re-send may be a duplicate rather than a repair.\n";
+    out += "and it cannot observe whether the wake landed. If it is still unread,\n";
+    // A digest doorbell has no canonical payload of its own: its members are resent by their own ids.
+    out += mode === "unconfirmed-digest"
+      ? "tap resend <member-id> rings a member again under its own id; a repeat is harmless.\n"
+      : `tap resend ${id} rings it again under the same id; a repeat is harmless.\n`;
   } else {
     out += "This is not a queued send still on its way — the courier stopped trying.\n";
-    out += `Run tap resend ${id} only when its no-attempt guard permits; otherwise inspect the delivery evidence. It will not arrive on its own.\n`;
+    out += `If it is still unread, tap resend ${id} rings it again under the same id. It will not arrive on its own.\n`;
   }
   return out;
 }

@@ -4,7 +4,10 @@
 // across every enrolled team and give back its full `team/handle`. With
 // `--pane` the name and a trailing space are TYPED into that pane (tmux
 // send-keys -l) so a human writing prose can keep typing; it never presses
-// Enter. Esc types nothing.
+// Enter. Esc types nothing. With `--pane` the picker lists the current team
+// (the team whose seat occupies that pane) first, and fzf breaks score ties by
+// that order: the same handle on two teams resolves to the current team.
+// `--list` keeps index order.
 //
 // Exit: 0 selected | cancelled | listed; 1 refusal; 130 interrupted.
 
@@ -32,6 +35,18 @@ export function lookupModel(teams: PickerTeam[]): LookupModel {
     }
   }
   return { seats, skipped };
+}
+
+/**
+ * The team the human is typing in: the one whose live seat occupies the origin pane. A pane no
+ * seat occupies, or one that two teams claim, gets "" and keeps index order. There is no cwd
+ * lookup on purpose: resolving a checkout runs git without a deadline, and an ordering hint
+ * must never keep the popup from opening.
+ */
+export function currentTeam(teams: PickerTeam[], pane: string): string {
+  if (!pane) return "";
+  const owners = teams.filter(team => team.seats.some(seat => seat.identity?.observedPaneId === pane));
+  return owners.length === 1 ? owners[0]!.name : "";
 }
 
 /**
@@ -98,7 +113,8 @@ export function typeIntoPane(pane: string, target: string, env = process.env): v
   }
 }
 
-export async function cmdPick(argv: string[], choose: Choose = choosePreferred, model = (): LookupModel => lookupModel(pickerModel().teams)): Promise<number> {
+export async function cmdPick(argv: string[], choose: Choose = choosePreferred, teams = (): PickerTeam[] => pickerModel().teams,
+  current: (teams: PickerTeam[], pane: string) => string = currentTeam): Promise<number> {
   let pane = "", list = false, json = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -114,7 +130,7 @@ export async function cmdPick(argv: string[], choose: Choose = choosePreferred, 
   if (list && pane) throw new TapError(1, "usage_error", "tap help pick", "--list prints the seats; it cannot also type into a pane");
   if (json && !list) throw new TapError(1, "usage_error", "tap help pick", "--json applies to --list; the picker itself is human output");
 
-  const found = model();
+  const roster = teams(), found = lookupModel(roster);
   if (list) {
     if (json || process.env.TAP_JSON === "1") process.stdout.write(`${ensureAscii(JSON.stringify({ seats: found.seats, skipped: found.skipped }))}\n`);
     else for (const seat of found.seats) process.stdout.write(`${displayText(seat.target)}\t${displayText(seat.harness)}\t${seat.state}\n`);
@@ -126,9 +142,12 @@ export async function cmdPick(argv: string[], choose: Choose = choosePreferred, 
       `no live seat could be confirmed; could not read: ${found.skipped.map(t => `${displayText(t.team)} (${displayText(t.state)}: ${displayText(t.detail)})`).join(", ")}`);
     throw new TapError(1, "no_candidates", "tap session launch <preset|harness> <handle>", "no live seat on any enrolled team to pick");
   }
-  const result = await choose(found.seats.map(seat => ({ id: seat.target, value: seat.target,
+  const home = current(roster, pane);
+  const seats = [...found.seats.filter(seat => seat.team === home), ...found.seats.filter(seat => seat.team !== home)];
+  const header = pane ? "Type to search · Enter types the name · Esc cancels" : "Type to search · Enter select · Esc cancel";
+  const result = await choose(seats.map(seat => ({ id: seat.target, value: seat.target,
     label: `${displayText(seat.target)}  ${displayText(seat.harness)}${seat.crew ? " (crew)" : ""}` })),
-    { verb: "pick", prompt: "Teammate > ", header: pane ? "Type to search · Enter types the name · Esc cancels" : "Type to search · Enter select · Esc cancel" });
+    { verb: "pick", prompt: "Teammate > ", tiebreak: "index", header: home ? `${displayText(home)} first · ${header}` : header });
   if (result.kind === "interrupted") return 130;
   if (result.kind === "cancelled") return 0;
   const target = result.values[0]!;

@@ -146,7 +146,7 @@ set +e
 (cd "$WORK/unrelated" && env -u TAP_HOME "$TAP" admin dashboard --json >/dev/null)
 admin_rc=$?
 set -e
-[ "$admin_rc" -eq 0 ] || [ "$admin_rc" -eq 2 ] || { echo "admin-name-authority: dashboard failed unexpectedly (rc=$admin_rc)" >&2; exit 1; }
+[ "$admin_rc" -eq 0 ] || { echo "admin-name-authority: dashboard failed unexpectedly (rc=$admin_rc)" >&2; exit 1; }
 cmp -s "$WORK/local-registry.before" "$LOCAL_BUS/registry.json" || {
   echo "admin-name-authority: dashboard reconciled the caller-local registry" >&2; exit 1; }
 
@@ -168,7 +168,8 @@ assert not any(a["team"] == "Authority" and a["handle"] == "shell" for a in d["a
 assert [(a["team"], a["handle"]) for a in d["attention"]] == [("Authority", "gone"), ("Authority", "gone_id_only")], d
 assert next(t for t in d["teams"] if t["name"] == "Authority")["classification"] == "active", d
 ' "$dashboard"
-[ "$dashboard_rc" -eq 2 ] || { echo "admin-name-authority: dashboard should report only the proven-gone row (rc=$dashboard_rc)" >&2; exit 1; }
+# Attention rows are reported state: the dashboard exits 0 (CLI-EXIT-0); the JSON above carries them.
+[ "$dashboard_rc" -eq 0 ] || { echo "admin-name-authority: dashboard reports attention rows with exit 0 (rc=$dashboard_rc)" >&2; exit 1; }
 echo "admin-name-authority: dashboard consumes harness-aware classifier: ok"
 
 refresh="$(cd "$WORK/unrelated" && "$TAP" admin refresh --json)"

@@ -249,6 +249,15 @@ export type SubmitAuthority = {
   attemptAdmitted?: boolean;
   /** Every payload whose possible first effect this invocation owns. */
   attemptIds?: readonly string[];
+  /**
+   * A same-id retry's own one-shot license (retry.ts `beginRetryAttempt`), minted
+   * INSTEAD of `<id>.attempted`, which already exists and is never cleared or
+   * reused. `attemptMarker` is its path for the prior-attempt check;
+   * `attemptUuid` carries the retry's uuid into the submit-phase rows.
+   */
+  attemptLicense?: (beforeCreate?: () => boolean) => "created" | "existing" | "refused";
+  attemptMarker?: string;
+  attemptUuid?: string;
   /** A drain may back up human drafts; ordinary callers preserve them. */
   preserveDraft?: boolean;
   /** Only unreadable composer geometry is eligible, never positive safety holds. */
@@ -763,9 +772,11 @@ export function recoverSurveyLocked(pane: string, bound: BoundRecipient | undefi
     ...fx,
     admitAttempt: () => {
       if (admittedHere) return true;
-      if (authority.attemptIds?.length === 0) return false;
+      if (!authority.attemptLicense && authority.attemptIds?.length === 0) return false;
       try {
-        if (beginDeliveryAttempts(authority.busHome!, authority.attemptIds ?? [id]) !== "created") return false;
+        const admitted = authority.attemptLicense ? authority.attemptLicense()
+          : beginDeliveryAttempts(authority.busHome!, authority.attemptIds ?? [id]);
+        if (admitted !== "created") return false;
         admittedHere = true;
         return true;
       } catch (error) {
@@ -778,7 +789,7 @@ export function recoverSurveyLocked(pane: string, bound: BoundRecipient | undefi
     if (!bound?.handle || !bound.instance || !bound.serverEpoch || !authority?.registryPath) return "complete registered target identity required; no keys sent";
     if (id && authority.busHome && !admittedHere) {
       try {
-        lstatSync(join(authority.busHome, "receipts", `${id}.attempted`));
+        lstatSync(authority.attemptMarker ?? join(authority.busHome, "receipts", `${id}.attempted`));
         return "prior possible attempt; no recovery or sentinel replay";
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "attempt evidence unreadable; no recovery or sentinel replay";
@@ -874,7 +885,7 @@ export function submitVerifyLocked(
   fx: PaneEffects = REAL_EFFECTS,
   authority?: SubmitAuthority,
 ): SubmitResult {
-  const attempt = randomUUID();
+  const attempt = authority?.attemptUuid ?? randomUUID();
   let enterCount = 0, ordinal = 0;
   let phasesRecorded = !!authority?.busHome;
   let interruptFact: InterruptFact | undefined;
@@ -990,6 +1001,9 @@ export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expec
   const compactControl = authority?.typedPrefix === "/compact ";
   const enterAttempts = authority?.singleEnter || compactControl ? 1 : 4;
   let scrolledStaged = false;
+  // The composer cleared, or a seat that was idle started working: the wire left the input band.
+  const left = (frame: SubmitFrame) =>
+    frame.state === "empty" || (frame.state === "unobservable" && frame.mode === "working" && initialMode !== "working");
   for (let attempt = 0; attempt < enterAttempts; attempt++) {
     const beforeEnter = authorize(pane, bound, fx, authority);
     if (beforeEnter.status !== "ok") return drift(beforeEnter);
@@ -1018,6 +1032,10 @@ export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expec
       // Enter under every authority, the queue-prefix bypass included; Enter
       // would answer it with its highlighted choice.
       if (frame.held === "approval") return { status: "unverified", detail: `${APPROVAL_PROMPT_REASON}; Enter withheld after sentinel injection` };
+      // An earlier Enter can take effect after its own post-Enter read still saw
+      // the wire staged; this attempt's frame then shows it gone. That is
+      // acceptance, not drift (tap-csrls: delivered sends exited 5 on "empty").
+      if (enters > 0 && left(frame)) { cleared = true; break; }
       // The queue-prefix landing was the gate (lib.sh:11507); its glyph-less
       // band never classifies staged, so no_prompt_ok proceeds to Enter.
       if (frame.state !== "staged" && !authority?.noPromptOk) {
@@ -1110,7 +1128,7 @@ export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expec
         // is the harness's own business, never an unverified submit.
         queued = true; cleared = true; break;
       }
-      if (frame.state === "empty" || (frame.state === "unobservable" && frame.mode === "working" && initialMode !== "working")) { cleared = true; break; }
+      if (left(frame)) { cleared = true; break; }
       if (frame.state !== "staged" || attempt === enterAttempts - 1) {
         return { status: "unverified", detail: `${frame.state}, ${frame.mode}, width ${frame.width}` };
       }
@@ -1241,13 +1259,14 @@ function submitVerifyLockedBody(
   let attemptAdmitted = survey.attemptAdmitted;
   let interruptDetails: InterruptDetails | undefined;
   const admitEffect = (beforeCreate?: () => boolean): Extract<SubmitResult, { status: "attempt_evidence_unwritable" }> | null => {
-    if ((!authority?.deliveryFacts && !authority?.attemptIds) || attemptAdmitted) {
+    if ((!authority?.deliveryFacts && !authority?.attemptIds && !authority?.attemptLicense) || attemptAdmitted) {
       beforeCreate?.();
       return null;
     }
-    if (authority.attemptIds?.length === 0) return { status: "attempt_evidence_unwritable", detail: "delivery attempt ids are empty" };
+    if (!authority.attemptLicense && authority.attemptIds?.length === 0) return { status: "attempt_evidence_unwritable", detail: "delivery attempt ids are empty" };
     try {
-      const admitted = beginDeliveryAttempts(authority.busHome ?? "", authority.attemptIds ?? [id], beforeCreate ?? (() => true));
+      const admitted = authority.attemptLicense ? authority.attemptLicense(beforeCreate ?? (() => true))
+        : beginDeliveryAttempts(authority.busHome ?? "", authority.attemptIds ?? [id], beforeCreate ?? (() => true));
       if (admitted === "existing") return { status: "attempt_evidence_unwritable", detail: "delivery attempt already recorded for a member" };
       if (admitted === "refused") return null; // The caller retains its typed guard refusal.
       attemptAdmitted = true;
@@ -1560,7 +1579,7 @@ function submitVerifyLockedBody(
         const foreign = beginIdleSubmit(evidence.bus, stuckId, { stagedId: stuckFull, pane, agentState: second.state });
         if (foreign !== "created") return refuse("this staged observation was already licensed on its own bus; no keys sent");
       }
-      const minted = beginIdleSubmit(authority.busHome!, id, { stagedId: stuckFull, pane, agentState: second.state });
+      const minted = beginIdleSubmit(authority.busHome!, id, { stagedId: stuckFull, pane, agentState: second.state, retry: authority.attemptUuid });
       if (minted !== "created") return refuse("an idle-time Enter was already licensed for this staged observation; no keys sent");
       const recheck = sample();
       if (recheck === null || recheck.id !== stuckFull || recheck.state !== "idle"

@@ -165,7 +165,8 @@ export async function cmdCompact(argv: string[], scripts: string, alias = false,
       for (const [handle, row] of Object.entries(rows()).sort(([a], [b]) => pyStrCompare(a, b))) {
         if (row && typeof row === "object" && !Array.isArray(row) && (row.status === undefined ? "active" : row.status) === "active" && row.delivery !== "poll" && row.pane && typeof row.pane_id === "string" && row.pane_id && row.pane_id !== initiatorPane && handle !== initiator) targets.push(handle);
       }
-      if (!targets.length) throw new TapError(1, "not_found", "tap register", "--all found no active peer pane seats", "tap command");
+      // Nothing to compact is a result, not a failure (CLI-EXIT-0).
+      if (!targets.length) { process.stdout.write(`${label}: compact --all: no active peer pane seats; nothing to compact\n`); return 0; }
     }
     function prepare(target: string): Audit {
       const id = mintId(initiator);
@@ -239,8 +240,18 @@ export async function cmdCompact(argv: string[], scripts: string, alias = false,
       if (!session && pane.includes(":")) session = pane.split(":", 1)[0]!;
       if (paneId === initiatorPane) return self(target);
       const family = await harness(pane);
-      if (classifyHarness(family, DEFAULT_AGENT_FAMILIES) !== "agent") { err(`tap command: '${target}' uses unsupported harness '${family}'`); return 1; }
-      if (family === "codex") { err(`tap compact: '${target}' is a Codex seat; ask it to checkpoint and self-trigger (tap self compact --handoff FILE -- FOCUS)`); return 1; }
+      // --all skips seats it OBSERVED it cannot compact; naming one is still a refusal.
+      // Only a positively known non-agent (a shell, pager or editor) is a skip. An empty
+      // or ambiguous read (a shallow `node` fallback) may hide an agent, so it fails (CLI-EXIT-0).
+      const kind = classifyHarness(family, DEFAULT_AGENT_FAMILIES);
+      if (kind !== "agent") {
+        if (all && kind === "denylist") { process.stdout.write(`${label}: compact ${target}: skipped (harness '${family}' is not an agent)\n`); return 0; }
+        err(`tap command: '${target}' uses unsupported harness '${family}'`); return 1;
+      }
+      if (family === "codex") {
+        if (all) { process.stdout.write(`${label}: compact ${target}: skipped (Codex seat; it self-compacts with tap self compact --handoff FILE -- FOCUS)\n`); return 0; }
+        err(`tap compact: '${target}' is a Codex seat; ask it to checkpoint and self-trigger (tap self compact --handoff FILE -- FOCUS)`); return 1;
+      }
       const mode = focusMode(family);
       if (mode === "unsupported") {
         attention("command", "degraded", family === "hermes"

@@ -504,7 +504,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
   // family models that pair; without it an idle or working composer read
   // `changed` and a submitted wire could never verify (tap-rhajr).
   if (actual && command.startsWith("hermes") && dimPromptInput(actual, frame.split("\n")[start] ?? "", promptGlyph(command), command)) actual = "";
-  const bare = /^\[\[TAP v0\.23 (ask|note) [A-Za-z0-9_./-]+(?: (?:urgent|escalate|digest))?(?: agent-interrupt)?\]\]$/.test(expected);
+  const bare = /^\[\[TAP v0\.23 (ask|note) [A-Za-z0-9_./-]+(?: (?:urgent|escalate|digest))?(?: agent-interrupt)?(?: retry)?\]\]$/.test(expected);
   const matches = actual === expected || (bare && normalizeInputMatch(actual) === normalizeInputMatch(expected))
     || (command.startsWith("claude") && claudeWrappedControlMatches(frame, expected));
   // Opt-in only (tap-vho8h): the typed-prefix /compact arm may accept the

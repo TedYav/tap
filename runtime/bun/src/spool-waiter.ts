@@ -14,7 +14,7 @@ export const WAITER_SOURCES: readonly string[] = [
   "observe-gather.ts", "observe.ts", "opencode-composer.ts", "opencode-store.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts",
   "pane/draft.ts", "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "proc-row.ts", "pyint.ts",
   "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
-  "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "scripts-dir.ts", "selector.ts",
+  "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "retry.ts", "scripts-dir.ts", "selector.ts",
   "sentinel-preview.ts", "sentinel.ts", "slices/control-payload.ts", "slices/delivery-disposition.ts",
   "slices/digest-outcome.ts", "slices/redelivery-eligibility.ts", "slices/result-pairs.ts",
   "slices/waiter-scope.ts", "spawn.ts", "spool-backlog.ts", "spool-deadline.ts", "spool-digest-inject.ts",

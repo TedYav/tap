@@ -26,6 +26,7 @@ import { updateInputProtection, readInputProtection, protectionUntil, observeUnt
 import { emitWaitCue } from "./wait-cues";
 import { envelopeField } from "./envelope";
 import { observedBand } from "./spool-readiness";
+import { currentAttemptMarker } from "./retry";
 
 type Meta = Record<string, unknown>;
 function readMeta(path: string): Meta | null {
@@ -129,7 +130,7 @@ export async function runWaiter(input: {
       return 1;
     }
     const possibleAttempt = (): boolean => {
-      try { lstatSync(join(home, "receipts", `${id}.attempted`)); return true; }
+      try { lstatSync(currentAttemptMarker(home, spool, id)); return true; }
       catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
     };
     const held = (): boolean => {

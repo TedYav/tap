@@ -197,7 +197,7 @@ test("settlement wins before delivery: no wake and an explicit disposition", asy
     expect(readFileSync(join(BARRIER, "drain.reached"), "utf8").trim()).toBe("ready");
     expect(existsSync(join(SPOOL, `${id}.claim`)), "readiness barrier unexpectedly holds a queue claim").toBe(false);
     const poll = tap(["poll", "peer"]);
-    expect(poll.status, poll.stderr).toBe(2);
+    expect(poll.status, poll.stderr).toBe(0);
     expect(poll.stdout).toContain(id);
     const read = tap(["read", id, "--by", "peer"]);
     expect(read.status, read.stderr).toBe(0);

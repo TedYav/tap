@@ -48,6 +48,51 @@ Revisit the design after any completed night below 99.9% recipient-observed,
 any unaccounted missing pollable message, or any refusal-induced silent stall.
 Preserve the evidence and investigate.
 
+## Retry measures
+
+An explicit same-ID retry ([reliability](./reliability.md#explicit-same-id-retry))
+writes one record stream per message, `receipts/<id>.retries.jsonl`. One retry
+UUID names the request, its license `<id>.retry-<uuid>.attempted`, its
+`submit-phases.jsonl` attempt and its outcome. Join by bus and canonical ID in the
+original `.placed` cohort. `tap debug stats` reads these records without debug
+capture and carries no payload bodies or frames.
+The separate `<id>.retry-<uuid>.idle-submit` licenses only a completion Enter;
+it is possible-effect evidence, never another ring. Both idle-submit forms
+archive with their canonical ID.
+
+| Measure | Definition |
+|---|---|
+| Extra ring | Each admitted retry license: a new possible-effect doorbell for an already-attempted ID |
+| Known-redundant | Extra rings whose observation evidence predates the retry effect; a lower bound, shown with numerator, denominator and unknowns |
+| Suppressed | Requests or retry rows retired because the message was already observed, settled or cancelled; no pane effect |
+| First observation after retry | Recipient-observed evidence first appearing after a retry effect; not proof the retry rescued it |
+
+The report also shows initial unverified submissions (a direct send's or the
+spool drain's first ring; a lower bound from the bounded event tail), retry
+outcomes, still-unobserved age buckets and recipient-observed coverage. It reads
+`archive/<month>/receipts/` beside active receipts, so a cohort survives
+`tap bus archive`. Missing history is unavailable, not zero: a bus without an
+event log and a torn or unreadable retry history are listed as such. An outcome
+missing after a crash is unknown, not completed: a retry UUID without an outcome
+is pending or queued while a spool row carries it, else unknown when its license
+was spent, consumed when a read or cancel took the row first, and interrupted
+otherwise. A placement dated after the report time is skipped and counted. Refusals before placement and withdrawn
+sends come from the refusal log by UTC date, beside the denominator and never in
+it; an absent log is unavailable, and a night older than the oldest surviving
+rotated line is marked possibly incomplete.
+
+Retries never inflate placements, denominators or nines: each message still
+counts once. A retry writes `.sent` only when none exists, so submission coverage
+stays per message, not per ring. An `.unconfirmed` written by a retry does not
+reclassify the initial submission; the retry's own outcome lives in its record.
+
+**Tuning trigger.** Investigate when extra rings exceed 1% over a rolling cohort
+of 1,000 distinct original pane messages. A loop concentrated on one ID, or any
+repeat interruption, is investigated at once. An admission that ignored
+observation evidence it already held is a correctness finding even once; an
+ordinary receipt race is not. The 1% is a provisional heuristic; revisit it after
+a baseline.
+
 ## Initial evidence and report
 
 The September 24 census joined 26,920 placed IDs and 25,321 sent IDs across 58

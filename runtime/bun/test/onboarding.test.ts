@@ -13,7 +13,7 @@ afterEach(() => { for (const p of scratch.splice(0)) removeScratchTree(p); });
 function fixture(git = true) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "tap-onboarding."))); scratch.push(base);
   const cwd = join(base, "repo"); mkdirSync(cwd);
-  const env = { ...process.env, TAP_HOME: "", TAP_ONBOARDING_CHECKED: "", TAP_INDEX_HOME: join(base, "index"), HOME: join(base, "home"), PWD: cwd, XDG_CONFIG_HOME: join(base, "home", ".config") };
+  const env = { ...process.env, TAP_HOME: "", TAP_ONBOARDING_CHECKED: "", TAP_INDEX_HOME: join(base, "index"), HOME: join(base, "home"), PWD: cwd, XDG_CONFIG_HOME: join(base, "home", ".config"), CODEX_HOME: join(base, "home", ".codex"), CLAUDE_CONFIG_DIR: join(base, "home", ".claude"), CURSOR_DATA_DIR: join(base, "home", ".cursor") };
   mkdirSync(env.HOME); mkdirSync(env.TAP_INDEX_HOME);
   if (git) expect(spawnSync("git", ["init", "-q", cwd], { env }).status).toBe(0);
   const tap = join(base, "tap"); symlinkSync(join(root, "bin/tap"), tap);
@@ -110,6 +110,8 @@ test("real TTY in a pane defaults Yes; explicit yes initializes once and preserv
     const f = fixture(); const r = interactive(f, answer);
     expect(r.prompted).toBe(true);
     expect(r.cleanBeforePrompt).toBe(true);
+    expect(r.output).not.toContain("Trust current directory");
+    expect(existsSync(join(f.env.CODEX_HOME, "config.toml"))).toBe(false);
     expect(existsSync(join(f.cwd, ".tap", "bus"))).toBe(answer !== "n\n");
     if (answer !== "n\n") { expect(r.code, r.output).toBe(0); expect(r.output.split("initialized team")).toHaveLength(2); }
     else expect(r.code).not.toBe(0);
@@ -141,6 +143,8 @@ test("auto answers nothing at a real terminal and initializes once", () => {
   expect(r.code, r.output).toBe(0);
   expect(existsSync(join(f.cwd, ".tap", "bus"))).toBe(true);
   expect(r.output).toContain("automatically (onboarding.init = auto)");
+  expect(r.output).not.toContain("Trust current directory");
+  expect(existsSync(join(f.env.CODEX_HOME, "config.toml"))).toBe(false);
 }, 120000);
 
 test("auto keeps the piped body intact for stdin sends", () => {
@@ -762,7 +766,7 @@ test("first-launch init prompts once, respects No, and leaves existing teams ine
   expect(declined.output).toContain("run tap setup --repo");
   expect(existsSync(join(f.cwd, "AGENTS.md"))).toBe(false);
   expect(existsSync(join(f.cwd, ".tap/team-registry.json"))).toBe(true);
-  const repeated = interactive(f, "", ["init"], false);
+  const repeated = interactive(f, "", ["init", "--no-trust-folders"], false);
   expect(repeated.code, repeated.output).toBe(0);
   expect(repeated.output).not.toContain("create one with the TAP signpost?");
   expect(existsSync(join(f.cwd, "AGENTS.md"))).toBe(false);
@@ -782,7 +786,7 @@ test("public launch offers normal init and installs instructions before launcher
 test("setup-owned initialization skips the shared instruction prompt and write", () => {
   const f = fixture();
   (f.env as NodeJS.ProcessEnv).TAP_SETUP_REPO_PENDING = "1";
-  const result = interactive(f, "", ["init"], false);
+  const result = interactive(f, "", ["init", "--no-trust-folders"], false);
   expect(result.code, result.output).toBe(0);
   expect(result.output).not.toContain("create one with the TAP signpost?");
   expect(existsSync(join(f.cwd, "AGENTS.md"))).toBe(false);

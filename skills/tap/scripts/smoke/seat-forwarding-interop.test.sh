@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory() as tmp:
     attempted = bus/'receipts'/(parked+'.attempted'); attempted.write_text('{"effect":"possible"}\n')
     attempted_bytes = attempted.read_bytes()
     polled = run('poll','next','--json',actor='next')
-    assert polled.returncode == 2 and parked in polled.stdout,(polled.stdout,polled.stderr)
+    assert polled.returncode == 0 and parked in polled.stdout,(polled.stdout,polled.stderr)
     good(run('read',parked,actor='next'))
     assert (bus/'payloads'/(parked+'.md')).read_bytes() == original and not path.exists()
     observed = json.loads((bus/'receipts'/(parked+'.read')).read_text())

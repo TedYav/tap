@@ -121,7 +121,7 @@ test("reinstall never overwrites a defaults file the user edited", () => {
   expect(readFileSync(userConf(), "utf8")).toContain(SRC());
 });
 
-test("--dry-run changes nothing and prints the exact lines; status is 2 until installed and JSON-clean", () => {
+test("--dry-run changes nothing and prints the exact lines; status exits 0 reporting installed:false until installed and JSON-clean", () => {
   writeFileSync(userConf(), "set -g mouse off\n");
   const dry = run("install", "--dry-run");
   expect(dry.code).toBe(0); expect(dry.out).toContain("would install");
@@ -132,7 +132,7 @@ test("--dry-run changes nothing and prints the exact lines; status is 2 until in
   expect(existsSync(defaultsPath())).toBe(false);
   expect(readFileSync(userConf(), "utf8")).toBe("set -g mouse off\n");
   const before = run("status", "--json");
-  expect(before.code).toBe(2);
+  expect(before.code).toBe(0);
   const parsed = JSON.parse(before.out);
   expect(parsed).toMatchObject({ ok: true, schema: 1, installed: false, defaults_present: false, source_line_present: false });
   expect(run("install").code).toBe(0);

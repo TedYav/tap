@@ -173,31 +173,31 @@ echo "wrong-cwd-read-refusal: cwd-derived send refuses before creating a phantom
 # from the same cwd and expose the records that the phantom empty would hide.
 rc=0
 (cd "$WRONG" && env -u TAP_HOME "$TAP" poll sol --team fixture) >"$WORK/team-poll.out" 2>&1 || rc=$?
-if [ "$rc" -ne 2 ] || ! grep -Fq "$INBOUND" "$WORK/team-poll.out"; then
+if [ "$rc" -ne 0 ] || ! grep -Fq "$INBOUND" "$WORK/team-poll.out"; then
   fail "poll --team did not reach the real pending inbound (rc=$rc): $(cat "$WORK/team-poll.out")"
 fi
 rc=0
 (cd "$WRONG" && env -u TAP_HOME "$TAP" outstanding sol --team fixture) >"$WORK/team-outstanding.out" 2>&1 || rc=$?
-if [ "$rc" -ne 2 ] || ! grep -Fq "$OUTBOUND" "$WORK/team-outstanding.out"; then
+if [ "$rc" -ne 0 ] || ! grep -Fq "$OUTBOUND" "$WORK/team-outstanding.out"; then
   fail "outstanding --team did not reach the real pending outbound (rc=$rc): $(cat "$WORK/team-outstanding.out")"
 fi
 echo "wrong-cwd-read-refusal: explicit --team reaches the real bus: ok"
 
 
 # An explicit TAP_HOME also asserts the bus. Scratch harnesses intentionally use
-# registry-less homes, so both readers must preserve their 0/2 grounded contract.
+# registry-less homes, so both readers must stay grounded: exit 0 and list the row.
 SCRATCH="$WORK/scratch-bus"
 mkdir -p "$SCRATCH/payloads" "$SCRATCH/receipts"
 cp "$BUS/payloads/$INBOUND.md" "$SCRATCH/payloads/$INBOUND.md"
 cp "$BUS/payloads/$OUTBOUND.md" "$SCRATCH/payloads/$OUTBOUND.md"
 rc=0
 TAP_HOME="$SCRATCH" "$TAP" poll sol >"$WORK/env-poll.out" 2>&1 || rc=$?
-if [ "$rc" -ne 2 ] || ! grep -Fq "$INBOUND" "$WORK/env-poll.out"; then
+if [ "$rc" -ne 0 ] || ! grep -Fq "$INBOUND" "$WORK/env-poll.out"; then
   fail "explicit TAP_HOME poll regressed (rc=$rc): $(cat "$WORK/env-poll.out")"
 fi
 rc=0
 TAP_HOME="$SCRATCH" "$TAP" outstanding sol >"$WORK/env-outstanding.out" 2>&1 || rc=$?
-if [ "$rc" -ne 2 ] || ! grep -Fq "$OUTBOUND" "$WORK/env-outstanding.out"; then
+if [ "$rc" -ne 0 ] || ! grep -Fq "$OUTBOUND" "$WORK/env-outstanding.out"; then
   fail "explicit TAP_HOME outstanding regressed (rc=$rc): $(cat "$WORK/env-outstanding.out")"
 fi
 echo "wrong-cwd-read-refusal: explicit registry-less TAP_HOME remains supported: ok"

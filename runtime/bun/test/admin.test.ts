@@ -299,7 +299,7 @@ test("seat-state attention branches fire from real tap_seat_state classification
   f.seedWedgeHash(f.bus(stuck.teamRoot), "wedged", "plodding along\n");
   f.saveSnapshot();
   const r = f.run(["--json"]);
-  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(2);
+  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(0); // attention rows are reported state (CLI-EXIT-0)
   const rows = JSON.parse(r.stdout).attention;
   const byTeam = Object.fromEntries(rows.map((a: any) => [a.team, a]));
   expect(byTeam.alertlimit.state).toBe("rate-limited-error");
@@ -321,7 +321,7 @@ test("a seat on a real approval prompt is attention, listed before other attenti
   f.frame("zzz-asks/probe:0.0", readFileSync(join(import.meta.dir, "fixtures/agent-state/cursor/blocked-real.txt"), "utf8"));
   f.saveSnapshot();
   const r = f.run(["--json"]);
-  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(2);
+  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(0); // attention rows are reported state (CLI-EXIT-0)
   const rows = JSON.parse(r.stdout).attention;
   expect(rows.map((a: any) => [a.team, a.state])).toEqual([["zzz-asks", "blocked-on-approval"], ["aaa-stuck", "wedged"]]);
   expect(rows[0].why).toBe("blocked on an approval prompt; needs you: tap attach zzz-asks/probe");
@@ -461,13 +461,14 @@ test("non-string index roots refuse registry_invalid with the replayed row-join 
   expect(JSON.parse(empty.stdout).missing).toEqual([{ team: "emptyroot", reason: "root_gone" }]);
 }, 30000);
 
-test("attention-only roster exits 2; a clean roster exits 0", () => {
+test("an attention-only roster reports its rows and exits 0, like a clean one (CLI-EXIT-0)", () => {
   const f = fixture();
   const t = f.team("staleonly", { alive: f.active("staleonly/alive", 1) });
   f.payload(f.bus(t.teamRoot), "s9.md", { from: "alive" }, 5000);
   f.saveSnapshot();
   const r = f.run(["--json"]);
-  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(2);
+  expect(r.status, `${r.stderr}\n${r.stdout}`).toBe(0);
+  expect(JSON.parse(r.stdout).attention.length).toBeGreaterThan(0);
   expect(JSON.parse(r.stdout).cannot_check).toEqual([]);
   const clean = fixture();
   clean.team("calm", { alive: clean.active("calm/alive", 1) });

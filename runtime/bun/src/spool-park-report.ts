@@ -457,7 +457,7 @@ export function renderParkReceipt(report: ParkReport, o: ReceiptOptions): string
       spool_backlog: report.backlog?.count ?? "0", spool_backlog_condition: report.backlog?.condition ? "true" : "false",
       queue_explanation: explanation, ...(o.notice ? { detail: o.notice } : {}) })}\n`;
   }
-  return `${receipt("queued", `accepted, queued ${o.id} for ${o.to}; reply ${o.replyExpect}. Delivery not confirmed. Inspect with tap show ${o.id}; tap resend ${o.id} requires proof that no attempt occurred. [${o.displayState ?? ""}]`)}${explanation}\n`;
+  return `${receipt("queued", `accepted, queued ${o.id} for ${o.to}; reply ${o.replyExpect}. Delivery not confirmed. Inspect with tap show ${o.id}; if it is still unread, tap resend ${o.id} rings it again under the same id. [${o.displayState ?? ""}]`)}${explanation}\n`;
 }
 
 // --- CLI (the Bash adapter's door) ---------------------------------------------------------

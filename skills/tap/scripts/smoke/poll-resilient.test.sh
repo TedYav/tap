@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # poll-resilient.test.sh — proves malformed payloads do not starve valid siblings
-# and that tap poll exits 2 when valid pending items exist despite malformed
-# canonicals.
+# and that tap poll exits 0 and lists valid pending items despite malformed
+# canonicals (pending mail is state, not an error).
 #
 # Covers CONTRACT.md §Poll malformed-payload contract:
 #   (a) one malformed payload addressed to codex does NOT hide a valid sibling
-#   (b) tap poll exits 2 when valid messages were listed despite a malformed sibling
+#   (b) tap poll exits 0 when valid messages were listed despite a malformed sibling
 #   (c) warnings go to stderr; valid items go to stdout; each valid item has a
 #       'next step: tap done <id> --by <me>' or `tap reply` hint
 set -euo pipefail
@@ -74,13 +74,14 @@ epoch: 7
 terminal payload
 EOF
 
-# (b) tap poll exits 2 when valid pending siblings exist despite malformed payloads
+# (b) tap poll exits 0 (pending mail is state, not an error) despite malformed
+#     payloads; (a) below proves the valid sibling is listed
 set +e
 "$TAP" poll codex >"$STDOUT_F" 2>"$STDERR_F"
 rc="$?"
 set -e
-[ "$rc" -eq 2 ] || {
-  echo "poll-resilient: expected exit 2 when valid pending items exist, got $rc" >&2
+[ "$rc" -eq 0 ] || {
+  echo "poll-resilient: expected exit 0 when valid pending items exist beside malformed ones, got $rc" >&2
   echo "--- stdout ---" >&2; cat "$STDOUT_F" >&2
   echo "--- stderr ---" >&2; cat "$STDERR_F" >&2
   exit 1

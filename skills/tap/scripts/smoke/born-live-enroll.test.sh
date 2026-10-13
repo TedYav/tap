@@ -577,7 +577,7 @@ NONGIT_LOCAL_IDX="$WORK/nongit-idx-local"; mkdir -p "$NONGIT_LOCAL_IDX"
   || bad "nongit init without consent wrote $NONGIT_LOCAL/.tap"
 (
   cd "$NONGIT_LOCAL"
-  TAP_INDEX_HOME="$NONGIT_LOCAL_IDX" tap_smoke_quiet "$TAP" init --yes
+  TAP_INDEX_HOME="$NONGIT_LOCAL_IDX" tap_smoke_quiet "$TAP" init --yes --no-trust-folders
 ) >/dev/null 2>&1 || true
 [ -d "$NONGIT_LOCAL/.tap/bus" ] && [ -f "$NONGIT_LOCAL/.tap/team-registry.json" ] \
   && ok "nongit init --yes: the folder gets its own bus and current team registry" \

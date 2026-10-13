@@ -1042,7 +1042,8 @@ function cmdAdminDashboard(args: string[], scriptsDir: string, engine?: ObserveE
       process.stdout.write(`tap admin dashboard: ${missing.length} missing team(s) detected - run tap admin refresh to purge them\n`);
     }
   }
-  return cannotCheck.length || oldStore.length ? 1 : attention.length ? 2 : 0;
+  // Attention rows are reported state, not failure (CLI-EXIT-0); tap health is the check verb.
+  return cannotCheck.length || oldStore.length ? 1 : 0;
 }
 
 function registeredAge(registeredAt: string, now: number): string {

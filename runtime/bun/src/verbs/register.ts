@@ -448,7 +448,7 @@ export function registerOffline(
   let registryPath = realOrSelf(registryPathIn);
   for (let attempt = 1; attempt <= 2; attempt++) {
   const lock = acquireRegistrationRegistryLock(registryPath, timeout.ms);
-  if (lock === null) fail(75, "registry_lock_busy", "tap register", `registry lock for '${registryPath}' is busy or timed out — retry once the write completes`);
+  if (lock === null) fail(1, "registry_lock_busy", "tap register", `registry lock for '${registryPath}' is busy or timed out — retry once the write completes`);
   try {
     const auth = validateLockedRegistryAuthority(registryPath, worktree, indexHome, { requireLive });
     if (!auth.ok) {
@@ -486,7 +486,7 @@ export function registerOffline(
     // pane re-registers.
     if (fieldStr(ent as JsonMap, "status") === "suspended" && fieldStr(ent as JsonMap, "status_reason") === "incapable") {
       process.stderr.write(`tap register: '${name}' is suspended (incapable); an offline registration would overwrite the mark — re-register from that seat's own pane\n`);
-      fail(3, "usage_error", `tap in ${name} --list-history --json`, `'${name}' is suspended (incapable); re-register from that seat's own pane`);
+      fail(1, "usage_error", `tap in ${name} --list-history --json`, `'${name}' is suspended (incapable); re-register from that seat's own pane`);
     }
     (ent as JsonMap).set("status", "suspended");
     (ent as JsonMap).set("status_reason", "user_removed");
@@ -521,7 +521,7 @@ export function registerPoll(
   if (!fence) fenceTestBarrier("holding-mutation-lock", env);
   try {
     const lock = acquireRegistrationRegistryLock(registryPath, timeout.ms);
-    if (lock === null) fail(75, "registry_lock_busy", "tap register", "registry lock busy — retry once the write completes");
+    if (lock === null) fail(1, "registry_lock_busy", "tap register", "registry lock busy — retry once the write completes");
     try {
       const auth = validateLockedRegistryAuthority(registryPath, worktree, indexHome, { requireLive });
       if (!auth.ok) {
@@ -556,7 +556,7 @@ export function registerPoll(
       // would write active/"" past it, so refuse before any write.
       if (wasSuspended && fieldStr(existing as JsonMap, "status_reason") === "incapable") {
         process.stderr.write(`tap register: '${name}' is suspended (incapable); the mark was made on pane ${fieldStr(existing as JsonMap, "pane") || "(none)"} (${fieldStr(existing as JsonMap, "pane_id") || "(none)"}) and cannot be cleared by a poll registration — re-register from that seat's own pane\n`);
-        fail(3, "usage_error", `tap in ${name} --list-history --json`, `'${name}' is suspended (incapable); re-register from that seat's own pane`);
+        fail(1, "usage_error", `tap in ${name} --list-history --json`, `'${name}' is suspended (incapable); re-register from that seat's own pane`);
       }
       const live = flipMarkerState(indexHome) === "live";
       if (live) {
@@ -857,13 +857,13 @@ function cmdRegisterRun(argv: string[]): number {
     // unreachable: the parser consumed every positional; kept for parity
   }
   if (form.restoreId !== "" && !form.name) {
-    fail(3, "usage_error", "tap help register", "--restore names the handle being restored — pass <name>");
+    fail(1, "usage_error", "tap help register", "--restore names the handle being restored — pass <name>");
   }
   if (form.digestWindow !== "" && delivery === "poll") {
     fail(1, "usage_error", "tap help register", "--digest-window requires an active pane registration (no --delivery poll)");
   }
   if (form.restoreId !== "" && form.fresh) {
-    fail(3, "usage_error", `tap in ${form.name || "<name>"} --list-history --json`, "--restore and --fresh are mutually exclusive — one registration is either a tombstone restore or a fresh instance, never both");
+    fail(1, "usage_error", `tap in ${form.name || "<name>"} --list-history --json`, "--restore and --fresh are mutually exclusive — one registration is either a tombstone restore or a fresh instance, never both");
   }
   if (form.crew && delivery !== "pane") {
     fail(1, "usage_error", "tap help register", "--crew requires a pane member and is incompatible with --delivery poll");
@@ -1324,7 +1324,7 @@ function cmdRegisterRun(argv: string[]): number {
     // wins it and fences the write mid-registration (fence-barrier (2)).
     const ensured = ensureTeamBlock(acting, worktree, branch, indexHome, lockTimeout.ms, rebind, bl.status === "live");
     if (!ensured.ok) {
-      if (ensured.code === 75) fail(75, "registry_lock_busy", "tap register", `${ensured.detail || "registry lock busy"} — retry once the write completes`);
+      if (ensured.code === 75) fail(1, "registry_lock_busy", "tap register", `${ensured.detail || "registry lock busy"} — retry once the write completes`);
       if (ensured.code === 17) fail(1, "flip_in_progress", "tap register", ensured.detail || "registry authority moved during flip — retry");
       if (ensured.code === 4) fail(1, "invalid_flip", "tap doctor", ensured.detail || "registry flip marker invalid — refusing membership mutation");
       if (ensured.code === 2) fail(2, "error", "set TAP_REGISTER_LOCK_TIMEOUT to a finite positive number", ensured.detail || "invalid TAP_REGISTER_LOCK_TIMEOUT");
@@ -1555,7 +1555,7 @@ function paneTransaction(ctx: TxnCtx): number {
     pane_id: observed?.paneId ?? "", handle: name,
   });
   if (lock === null) {
-    fail(75, "registry_lock_busy", "tap register", `another TAP mutation holds '${acting}.lock' — retry once the write completes`);
+    fail(1, "registry_lock_busy", "tap register", `another TAP mutation holds '${acting}.lock' — retry once the write completes`);
   }
   // One observation covers epoch and pane identity. The lock-entry call keeps
   // the combined identity_unverified refusal; the pre-write call reports an
@@ -1769,12 +1769,12 @@ function paneTransaction(ctx: TxnCtx): number {
   let instanceId = fieldStr(entry, "instance");
   if (flipLive(indexHome)) {
     if (priorExistingChosen && (form.fresh || form.restoreId)) {
-      fail(3, "usage_error", `tap in ${chosen} --list-history --json`, `refusing --${form.fresh ? "fresh" : "restore"} for current seat '${chosen}' (tap out first, or rebind without those flags)`);
+      fail(1, "usage_error", `tap in ${chosen} --list-history --json`, `refusing --${form.fresh ? "fresh" : "restore"} for current seat '${chosen}' (tap out first, or rebind without those flags)`);
     }
     if (form.restoreId) {
       const rows = listHandleHistory(bus.busHome, chosen);
       if (!rows.some(r => r.get("instance") === form.restoreId)) {
-        fail(3, "usage_error", `tap in ${chosen} --list-history --json`, `--restore '${form.restoreId}' is not a tombstone for '${chosen}'`);
+        fail(1, "usage_error", `tap in ${chosen} --list-history --json`, `--restore '${form.restoreId}' is not a tombstone for '${chosen}'`);
       }
       instanceId = form.restoreId;
     } else if (form.fresh || !priorExistingChosen) {
@@ -1909,7 +1909,7 @@ function paneTransaction(ctx: TxnCtx): number {
   if (entry !== null && fieldStr(entry, "status") === "suspended" && fieldStr(entry, "status_reason") === "incapable"
     && (fieldStr(entry, "pane") !== form.pane || fieldStr(entry, "pane_id") !== observed!.paneId)) {
     process.stderr.write(`tap register: '${chosen}' is suspended (incapable); the mark was made on pane ${fieldStr(entry, "pane") || "(none)"} (${fieldStr(entry, "pane_id") || "(none)"}) and cannot be cleared from pane ${form.pane} (${observed!.paneId}) — re-register from that seat's own pane\n`);
-    fail(3, "usage_error", `tap in ${chosen} --list-history --json`, `'${chosen}' is suspended (incapable); re-register from that seat's own pane`);
+    fail(1, "usage_error", `tap in ${chosen} --list-history --json`, `'${chosen}' is suspended (incapable); re-register from that seat's own pane`);
   }
 
   // THE BINDING IS DECIDED ONCE (tap-68lp): an existing value survives; only

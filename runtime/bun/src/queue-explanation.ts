@@ -60,7 +60,7 @@ export function unverifiedSend(home: string, id: string, from: string, to: strin
     error_class: "submit_unverified", action: `tap outstanding ${from}`, id, path, to,
     ...(refusal ?? {}),
     ...(injection ? { phase: "injected-enter-unconfirmed", queue_explanation: injection } : {}) }) + "\n", stderr: "" };
-  return { stdout: "", stderr: `tap send: ${id} is on the bus for ${to}. Delivery not confirmed.${refusal ? ` ${refusal.cause}: ${refusal.detail}.` : ""} Inspect with tap show ${id}; tap resend ${id} requires proof that no attempt occurred.${injection ? " " + injection : ""}\n` };
+  return { stdout: "", stderr: `tap send: ${id} is on the bus for ${to}. Delivery not confirmed.${refusal ? ` ${refusal.cause}: ${refusal.detail}.` : ""} Inspect with tap show ${id}; if it is still unread, tap resend ${id} rings it again under the same id.${injection ? " " + injection : ""}\n` };
 }
 if (import.meta.main) {
   const [home, id, mode, from = "", to = "", path = "", json = "0"] = Bun.argv.slice(2);

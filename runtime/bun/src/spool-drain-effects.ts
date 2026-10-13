@@ -27,7 +27,8 @@ import { recordedPermissions } from "./delivery-permissions";
 import { envelopeField } from "./envelope";
 import { atomicWrite, receiptBytes } from "./fsatomic";
 import { reparkLicensed } from "./delivery-custody";
-import { recordHarnessQueued } from "./harness-queue";
+import { recipientState, recordHarnessQueued } from "./harness-queue";
+import { appendRetryRecord, attemptCount, beginRetryAttempt, retryClosed, retryMarkerPath, returnBodyHome, rowRetry, spentRetryRow, type RetryAdmission } from "./retry";
 import { recordLockPark } from "./lock-attribution";
 import { DEFAULT_AGENT_FAMILIES } from "./observe";
 import { loadRegistry, seatMap } from "./registry";
@@ -42,15 +43,16 @@ import { cancelCopyMode } from "./tmux";
 import { endPaneCueAfter, flashPane, paneEffectClearVerified, serverEpochNow, spawnDeliverer } from "./spool-park-report";
 import { emitWaitCue } from "./wait-cues";
 
-/** A rate refusal without attempt evidence is retryable, for singles and digests. */
-function spoolSubmitCode(result: SubmitResult, receiptsDir: string, ids: readonly string[]): number {
+/** A rate refusal without attempt evidence is retryable, for singles and digests.
+ *  `markers` overrides the per-id `<id>.attempted` paths (a retry row's own license). */
+function spoolSubmitCode(result: SubmitResult, receiptsDir: string, ids: readonly string[], markers?: readonly string[]): number {
   if (result.status === "injected") return 0;
   if (result.status === "harness_queued") return 7;
   if (result.status === "unverified") return 5;
   if (result.status !== "rate_limited") return 1;
   if (!ids.length) return 124;
-  for (const id of ids) {
-    try { lstatSync(join(receiptsDir, `${id}.attempted`)); return 124; }
+  for (const path of markers ?? ids.map(id => join(receiptsDir, `${id}.attempted`))) {
+    try { lstatSync(path); return 124; }
     catch (error) {
       // Dangling markers and unreadable evidence remain possible-effect custody.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") return 124;
@@ -180,6 +182,36 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
     const token = reownAfterRepark(ctx.spoolDir, id, ctx.env?.TAP_SPOOL_REOWN_LEASE_SECONDS || "20", Date.now() / 1000, ctx.env);
     if (token) spawnDeliverer({ scriptsDir: ctx.scriptsDir, home: ctx.home, spoolDir: ctx.spoolDir, id, reownToken: token, env: ctx.env });
   };
+  // A retiring retry row whose body could not be proven home keeps its row and says so.
+  const retireHeld = (stage: string): 1 => {
+    event("retry_retire_held", `id=${id} stage=${stage}`);
+    process.stderr.write(`tap: retry row '${id}' kept at ${stage}: its body could not be moved back to payloads/; nothing was deleted\n`);
+    return 1;
+  };
+  // A same-id retry row (`tap resend`). Observation is rechecked HERE, under the
+  // obligation lock the caller holds: a read can land after the park and before
+  // this drain, and such a row retires without any pane effect.
+  const retry = rowRetry(ctx.spoolDir, id);
+  if (retry) {
+    const seen = recipientState(ctx.home, id);
+    if (seen.state !== "unobserved") {
+      // Custody transfer back to payloads: the row goes only once a regular canonical holds
+      // the body. removeEntry deletes the spool body, so a failed move keeps the row.
+      let home = false;
+      if (!custody("retry-suppressed", () => {
+        home = returnBodyHome(spoolPayload, canon);
+        if (home) removeEntry(ctx.spoolDir, id, ctx.env, RESET_HELD_LOCK_WAIT_MS);
+      })) return 1;
+      if (!home) return retireHeld("retry-suppressed");
+      try {
+        appendRetryRecord(ctx.home, { id, retry: retry.retry, ordinal: retry.ordinal, event: "suppressed",
+          prior: { state: seen.state, ...(seen.via ? { via: seen.via } : {}), ...(seen.at ? { at: seen.at } : {}), attempts: attemptCount(ctx.home, id) },
+          detail: "recipient state changed after the request; no pane effect" });
+      } catch (error) { process.stderr.write(`tap: retry record for '${id}' unavailable: ${error}\n`); }
+      event("retry_suppressed", `id=${id} retry=${retry.retry} state=${seen.state}`);
+      return 0;
+    }
+  }
   let row;
   try { row = seatMap(loadRegistry(b.targetRegistry))[b.target]; } catch { return 1; }
   if (!row) return 1;
@@ -197,11 +229,60 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
     const meta = JSON.parse(readFileSync(join(ctx.spoolDir, `${id}.meta.json`), "utf8")) as { reason?: unknown };
     idleStagedReason = meta?.reason === "staged-idle";
   } catch { /* unreadable metadata: the ordinary authority refuses safely */ }
+  // A retry row whose own license is spent (a kill or a refusal after admission) can
+  // never ring again. It retires with an `unknown` outcome — the attempt may have rung —
+  // and the canonical goes back to payloads, so a later explicit resend mints a fresh
+  // retry instead of coalescing into this dead row forever. A staged-idle hold
+  // (spentRetryRow excludes it) and a pending reprobe legitimately run on a spent license.
+  if (retry && !pendingReprobe(ctx.home, id) && spentRetryRow(ctx.home, ctx.spoolDir, id)) {
+    let home = false;
+    if (!custody("retry-spent", () => {
+      home = returnBodyHome(spoolPayload, canon);
+      if (home) removeEntry(ctx.spoolDir, id, ctx.env, RESET_HELD_LOCK_WAIT_MS);
+    })) return 1;
+    if (!home) return retireHeld("retry-spent");
+    if (!retryClosed(ctx.home, id, retry.retry)) try {
+      appendRetryRecord(ctx.home, { id, retry: retry.retry, ordinal: retry.ordinal, event: "outcome", outcome: "unknown",
+        detail: "license spent with no recorded outcome; the attempt may have rung" });
+    } catch (error) { process.stderr.write(`tap: retry outcome for '${id}' unavailable: ${error}\n`); }
+    event("retry_retired_unknown", `id=${id}`);
+    return 0;
+  }
+  // A retry rings only the seat the message was sent to: a different instance under the same
+  // handle (re-registered since the resend) is a different seat, so the row retires with no effect.
+  if (retry) {
+    let sentTo = "";
+    try { sentTo = envelopeField(readFileSync(spoolPayload, "utf8"), "recipient_instance") ?? ""; } catch { /* no envelope stamp to compare */ }
+    if (sentTo && bound.instance && sentTo !== bound.instance) {
+      let home = false;
+      if (!custody("retry-recipient-changed", () => {
+        home = returnBodyHome(spoolPayload, canon);
+        if (home) removeEntry(ctx.spoolDir, id, ctx.env, RESET_HELD_LOCK_WAIT_MS);
+      })) return 1;
+      if (!home) return retireHeld("retry-recipient-changed");
+      try {
+        appendRetryRecord(ctx.home, { id, retry: retry.retry, ordinal: retry.ordinal, event: "suppressed",
+          prior: { state: "unobserved", attempts: attemptCount(ctx.home, id) },
+          detail: `recipient instance changed from ${sentTo} to ${bound.instance}; no pane effect` });
+      } catch (error) { process.stderr.write(`tap: retry record for '${id}' unavailable: ${error}\n`); }
+      event("retry_suppressed", `id=${id} retry=${retry.retry} state=recipient_changed`);
+      return 0;
+    }
+  }
+  // The admission evidence a retry license records (L10), read just before the first effect.
+  const admission = (): RetryAdmission => {
+    const seen = recipientState(ctx.home, id);
+    return { target: b.target, pane: b.pane, pane_id: b.paneId ?? "", instance: bound.instance ?? "",
+      prior_state: seen.state, ...(seen.via ? { prior_via: seen.via } : {}), ...(seen.at ? { prior_at: seen.at } : {}) };
+  };
   const authority: SubmitAuthority = { scriptsDir: ctx.scriptsDir, agentFamilies: new Set(DEFAULT_AGENT_FAMILIES),
     busHome: ctx.home, recipientBusHome: recipientBus, recipient: b.target, registryPath: b.targetRegistry,
     attemptIds: [id], preserveDraft: false, draftGraceSatisfied: true, forceNoPrompt: force, reprobeOnly: pendingReprobe(ctx.home, id),
     env: ctx.env,
     ...(idleStagedReason ? { idleStaged: true, singleEnter: true } : {}),
+    // A retry row admits its first effect through its own license, never the original `.attempted`.
+    ...(retry ? { attemptLicense: (beforeCreate?: () => boolean) => beginRetryAttempt(ctx.home, id, retry.retry, beforeCreate, admission),
+      attemptMarker: retryMarkerPath(ctx.home, id, retry.retry), attemptUuid: retry.retry } : {}),
     eventContext: { actor: "courier", log: ctx.eventLog, team: ctx.team, verb: ctx.verbLabel } };
   let lockBusy = false;
   let terminal: { rc: 5 | 124; detail: string; disposed: boolean } | undefined;
@@ -218,7 +299,7 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
       if (!paneLock) return refused;
       try {
         if (activeInputForPane(b.paneId, ctx.env) || recoveryHold(b.paneId, ctx.env) || authorizePaneEffect(b.pane, bound, fx, authority).status !== "ok") return refused;
-        if (beginDeliveryAttempt(ctx.home, id) !== "created") return refused;
+        if ((retry ? beginRetryAttempt(ctx.home, id, retry.retry, undefined, admission) : beginDeliveryAttempt(ctx.home, id)) !== "created") return refused;
         authority.attemptAdmitted = true;
         if (cancelCopyMode(b.paneId, ctx.env) !== "ok") return refused;
         fx.settle(0.05);
@@ -250,10 +331,11 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
       const fromTeam = from.includes("/") ? from.split("/", 1)[0]! : "";
       const toTeam = to.includes("/") ? to.split("/", 1)[0]! : "";
       authority.sender = from;
-      authority.deliveryFacts = { urgent: field("urgency") === "urgent", noSpool: false, recipientBound: true, harness: bound.harness };
+      // A retry rings as ordinary delivery: it inherits no urgency and never interrupts.
+      authority.deliveryFacts = { urgent: !retry && field("urgency") === "urgent", noSpool: false, recipientBound: true, harness: bound.harness };
       wire = renderSentinel({ id, from, to, kind: field("kind"),
         senderIndex: fromTeam && toTeam && fromTeam !== toTeam ? senderIndexEvidence(fromTeam, ctx.env?.TAP_INDEX_HOME) : undefined,
-        reply: field("reply") || "expected", urgency: field("urgency"), path: canon });
+        reply: field("reply") || "expected", urgency: retry ? "" : field("urgency"), path: canon, ...(retry ? { retry: true } : {}) });
     } catch { repark(); return refused; }
     if (!registryMatchesTeam(b.targetRegistry, b.toTeam)) { repark(true); return refused; }
     if (boundPaneIdentityState(b.targetRegistry, b.target, b.pane, b.paneId, ctx.env) !== "match") { repark(); return refused; }
@@ -268,7 +350,9 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
       if (activeInputForPane(b.paneId, ctx.env) || recoveryHold(b.paneId, ctx.env)) submitted = { status: "recovery_held", detail: "recovery owns pane" };
       else submitted = submitVerifyLocked(b.pane, id, wire, bound, draftEffects(fx), authority);
     } finally { paneLock.release(); }
-    const rc = spoolSubmitCode(submitted, ctx.receiptsDir, [id]);
+    const rc = spoolSubmitCode(submitted, ctx.receiptsDir, [id], retry ? [retryMarkerPath(ctx.home, id, retry.retry)] : undefined);
+    // A retry's unverified pass logs its own action, so readers never count it as the original's.
+    const unverifiedEvent = retry ? "retry_submit_unverified" : "redelivery_submit_unverified";
     // tap-9lqa7: an unverified submit with the pane alive and the wire
     // possibly still staged holds as staged-idle for one bounded idle window
     // instead of dropping custody — the next drain's idleStaged authority may
@@ -279,28 +363,29 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
     const unverifiedCause = "cause" in submitted ? submitted.cause : undefined;
     const stagedIdle = rc === 5 && !authority.deliveryFacts?.urgent
       && unverifiedCause !== "pane_dead" && unverifiedCause !== "staged_absent"
-      && stagedIdleEvidence(ctx.home, id);
+      && stagedIdleEvidence(ctx.home, id, retry?.retry);
     const stagedIdleOutcome = { value: "expired" as "held" | "expired" | "busy" };
-    // A staged-idle hold that is held, busy, or never decided (refused custody) is
+    // An established staged-idle hold that is held, busy, or undecided is
     // licensed custody recovery may still re-adopt: not terminal. A retained entry
     // (removal refused) is terminal only when the same repark license recovery and
     // the orphan sweep read refuses it — mark plus .attempted. Without attempt
     // evidence (a pre-effect rc 5, e.g. a failed draft backup) recovery re-parks it.
     // `disposed` records whether the spool entry is gone.
-    let disposed = false, custodyRan = false;
+    let disposed = false, custodyRan = false, recoverableHold = false;
     if (rc === 0 || rc === 7 || rc === 5 || rc === 124) {
       // A kill mid-attempt (124) is a real unverified outcome — log it before
       // custody so a kill during the disposition cannot lose the event. An
       // rc-5 pass is logged after custody instead: a staged-idle hold is a
       // scheduled follow-up, not an unverified outcome, and logging it every
       // drain tick for the whole window would bury the log (gate review nit).
-      if (rc === 124) event("redelivery_submit_unverified", `id=${id}`);
+      if (rc === 124) event(unverifiedEvent, `id=${id}`);
       custody("post-submit", () => {
         custodyRan = true;
         if (rc === 0) {
           let raw = "";
           try { raw = readFileSync(canon, "utf8"); } catch { /* Receipt fields were historically best-effort. */ }
-          try { atomicWrite(join(ctx.receiptsDir, `${id}.sent`), receiptBytes({ id, from: envelopeField(raw, "from") || "unknown",
+          // A retry keeps the original transport receipt; its own outcome is in `.retries.jsonl`.
+          if (!(retry && existsSync(join(ctx.receiptsDir, `${id}.sent`)))) try { atomicWrite(join(ctx.receiptsDir, `${id}.sent`), receiptBytes({ id, from: envelopeField(raw, "from") || "unknown",
             to: b.target, pane: b.pane, kind: envelopeField(raw, "kind") || "unknown", turn: "unconfirmed", delivery: "pane" })); }
           catch { process.stderr.write(`tap: WARNING — redelivery of ${id} verified but its .sent receipt could not be written\n`); }
           deliveryClockStamp(b.targetRegistry, b.target, ctx.env?.TAP_SPOOL_NOW, RESET_HELD_LOCK_WAIT_MS);
@@ -337,7 +422,7 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
           try { removeEntry(ctx.spoolDir, id, ctx.env, RESET_HELD_LOCK_WAIT_MS); disposed = true; } catch (error) { process.stderr.write(`tap: ${error}\n`); }
         }
       });
-      if (rc === 5 && stagedIdleOutcome.value !== "held") event("redelivery_submit_unverified", `id=${id}`);
+      if (rc === 5 && stagedIdleOutcome.value !== "held") event(unverifiedEvent, `id=${id}`);
       if (rc === 5 || rc === 124) {
         if (stagedIdleOutcome.value === "held") {
           process.stderr.write(`tap: redelivery id '${id}' submit-unverified; held as staged-idle — the courier presses Enter once the pane is safely idle with the staged wire\n`);
@@ -346,10 +431,21 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
         } else if (rc === 5 || rc === 124) {
           process.stderr.write(`tap: redelivery id '${id}' is canonical but submit-unverified; automatic retry stopped to avoid duplicate injection\n`);
         }
-        const recoverableHold = stagedIdle && (!custodyRan || stagedIdleOutcome.value !== "expired");
+        // A fresh hold needs durable metadata before its outcome can remain pending.
+        recoverableHold = stagedIdle && (idleStagedReason || stagedIdleOutcome.value === "held")
+          && (!custodyRan || stagedIdleOutcome.value !== "expired");
         if (!recoverableHold && (disposed || !reparkLicensed(ctx.home, id, ctx.env))) terminal = { rc: rc as 5 | 124, detail: "detail" in submitted ? submitted.detail : "", disposed };
       }
     } else { repark(); lockBusy = submitted.status === "lock_busy"; }
+    // A retry's admission is its license marker; its outcome is recorded once the
+    // attempt resolves. A refused pass or an established recoverable hold is still pending.
+    if (retry && rc !== 1 && !recoverableHold) {
+      const outcome = rc === 0 ? "submission-confirmed" : rc === 7 ? "harness-queued" : "unverified";
+      try {
+        appendRetryRecord(ctx.home, { id, retry: retry.retry, ordinal: retry.ordinal, event: "outcome", outcome,
+          ...("detail" in submitted && submitted.detail ? { detail: submitted.detail } : {}) });
+      } catch (error) { process.stderr.write(`tap: retry outcome for '${id}' unavailable: ${error}\n`); }
+    }
     // A held staged-idle entry keeps its custody and its waiter: report the
     // pass as not-unverified (0) so the caller neither pings the sender nor
     // escalates a hold whose window is still running.

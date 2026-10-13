@@ -5,7 +5,7 @@
 // marked `source-file` line, so remove deletes that line and nothing else. An
 // existing binding on the key is shown and never replaced.
 //
-// Exit: 0 done | installed | already so; 1 refusal; 2 status: not installed.
+// Exit: 0 done | installed | already so | status reported (installed or not); 1 refusal.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync, accessSync, constants, rmSync } from "node:fs";
@@ -369,7 +369,7 @@ export function cmdKeybinding(argv: string[]): number {
       `user conf: ${st.user_conf} (${st.source_line_present ? "source line present" : "no source line"})`,
       `live: ${st.live}`].join("\n");
     emit(json, { ...st }, human);
-    return st.installed ? 0 : 2;
+    return 0;
   }
   if (sub === "remove") {
     const r = removeKeybinding(dry, env);

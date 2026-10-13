@@ -60,7 +60,7 @@ test("canonical receipts, obligations, instance filtering and stale preserve byt
   writeFileSync(join(f.bus,"receipts",`${ask}.read`),'{"by":"other","forced":true}\n');
   writeFileSync(join(f.bus,"receipts",`${ask}.resent`),'{"by":"sender"}\n');
   for (const verbose of [false,true]) {
-    const r = f.recorded([],verbose); expect(r.code).toBe(2); expect(r.out).toContain("requires proof that no attempt occurred"); expect(r.out).toContain("(forced), unanswered");
+    const r = f.recorded([],verbose); expect(r.code).toBe(0); expect(r.out).toContain("rings it again under the same id"); expect(r.out).toContain("(forced), unanswered");
   }
   const r = f.recorded(["--json"]); expect(JSON.parse(r.out).outstanding).toHaveLength(2);
   f.recorded(["--stale","999999999"]);
@@ -116,9 +116,9 @@ test("spool delivery uncertainty, digest state and display snapshot", () => {
   writeFileSync(join(f.bus,"spool",`${two}.meta.json`),JSON.stringify({reason:"auto-settle",policy:"autosettle"}));
   for (const verbose of [false,true]) {
     const r = f.recorded([],verbose);
-    // Mutation anchor: dropping no-attempt proof from native rendering changes
+    // Mutation anchor: dropping the same-id resend hint from native rendering changes
     // the actual result and fails this predicate plus the Bash byte comparison.
-    expect(r.out).toContain(`tap resend ${one} requires proof that no attempt occurred. [unknown]`);
+    expect(r.out).toContain(`if it is still unread, tap resend ${one} rings it again under the same id. [unknown]`);
     expect(r.out).toContain("spooled for digest");
   }
   f.recorded(["--json"]);
@@ -153,6 +153,23 @@ test("unverified conditions match the event id as a whole field, not a substring
   // disposeGrace's composite detail (`id=<id> notice_id=<n>`, folded to `_notice_id=`) is the redelivery event.
   writeFileSync(log, line("redelivery_submit_unverified", `id=${id} notice_id=courier-20260930T000000Z-bbbbbbbbbbbb`));
   expect(f.recorded([]).out).toContain(`automatic redelivery stopped for ${id}`);
+  expect(conditions()!.map(c => c.kind)).toEqual(["redelivery_stopped"]);
+  // A same-id retry that went unverified stops the same ladder under its own action.
+  writeFileSync(log, line("retry_submit_unverified", `id=${id}`));
+  expect(conditions()!.map(c => c.kind)).toEqual(["redelivery_stopped"]);
+  writeFileSync(log, line("retry_submit_unverified", `id=${id}zz`));
+  expect(conditions()).toBeUndefined();
+  // A later retry whose recorded outcome confirmed submission supersedes the earlier unverified retry.
+  writeFileSync(log, line("retry_submit_unverified", `id=${id}`));
+  const row = (n: number, event: string, outcome?: string) => JSON.stringify({ v: 1, id, retry: `00000000-0000-4000-8000-00000000000${n}`, ordinal: n, event,
+    ...(outcome ? { outcome } : {}), at: "2026-10-12T10:00:00.000Z" });
+  const history = (...rows: string[]) => writeFileSync(join(f.bus, "receipts", `${id}.retries.jsonl`), rows.join("\n") + "\n");
+  history(row(1, "request"), row(1, "outcome", "unverified"), row(2, "request"), row(2, "outcome", "submission-confirmed"));
+  expect(conditions()).toBeUndefined();
+  history(row(1, "request"), row(1, "outcome", "submission-confirmed"), row(2, "request"), row(2, "outcome", "unverified"));
+  expect(conditions()!.map(c => c.kind)).toEqual(["redelivery_stopped"]);
+  // A later retry whose outcome was never written does not inherit an earlier retry's success.
+  history(row(1, "request"), row(1, "outcome", "submission-confirmed"), row(2, "request"));
   expect(conditions()!.map(c => c.kind)).toEqual(["redelivery_stopped"]);
 });
 
@@ -251,7 +268,7 @@ test("legacy custom timestamp ids and an unterminated header stay visible", () =
   const path = join(f.bus,"payloads",`${id}.md`);
   writeFileSync(path, readFileSync(path,"utf8").replace("---\nbody\n", ""));
   const result = f.recorded(["--stale", "500"]);
-  expect(result.code).toBe(2);
+  expect(result.code).toBe(0);
   expect(result.out).toContain(`${id}  peer  ask  600s`);
 });
 
@@ -279,7 +296,7 @@ test("native backlog uses validated shared thresholds without a Bash diagnostic 
   for (const [count, probes, condition] of [["2", "3", true], ["3", "3", false], ["2", "4", false], ["0", "3", false], ["junk", "3", false], ["2", "1.5", false], ["", "3", false]] as const) {
     Object.assign(f.env, { TAP_SPOOL_BACKLOG_COUNT: count, TAP_SPOOL_BACKLOG_PENDING_PROBES: probes });
     const result = f.run(["--json"]);
-    expect(result.code).toBe(2);
+    expect(result.code).toBe(0);
     const body = JSON.parse(result.out);
     expect(!!body.spool_conditions?.length).toBe(condition);
     expect(body.outstanding.length).toBe(condition ? 0 : 2);
@@ -299,7 +316,7 @@ test("read fallback reply notes make an unsettled ask visible without settling i
   const done = {id:answer,status:"done",via:"read",by:"sender"};
   writeFileSync(receipt, JSON.stringify(done));
   const result = f.recorded([]);
-  expect(result.code).toBe(2);
+  expect(result.code).toBe(0);
   expect(result.out).toContain(`answered by ${answer} (unsettled)`);
   expect(result.out).not.toContain("unanswered");
   expect(JSON.parse(f.recorded(["--json"]).out).outstanding[0].answered_by).toEqual([answer]);
@@ -355,7 +372,7 @@ test("--team anchors the scan from an unrelated cwd with TAP_HOME unset", () => 
   mkdirSync(unrelated);
   const { TAP_HOME: _drop, ...env } = f.env;
   const r = spawnSync(process.execPath, [entry, "--team", "tap"], { env, encoding: "utf8", cwd: unrelated });
-  expect(r.status).toBe(2);
+  expect(r.status).toBe(0);
   expect(r.stdout).toContain(`${id}  peer  ask  600s`);
 });
 
@@ -369,7 +386,7 @@ test("explicit TAP_HOME wins over --team", () => {
   doc.teams.alt = { root: f2.base, registry_location: join(f2.bus, "registry.json"), state: "registered" };
   writeFileSync(index, JSON.stringify(doc));
   const r = f1.run(["--team", "alt", "--json"]);
-  expect(r.code).toBe(2);
+  expect(r.code).toBe(0);
   expect(JSON.parse(r.out).outstanding).toHaveLength(1);
   expect(r.out).toContain(id1);
 });

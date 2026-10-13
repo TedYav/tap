@@ -379,7 +379,7 @@ rm -f "$FAKE_TMUX_STATE/input"
 set +e; TAP_AUTOSETTLE_HOLD_SECONDS=0 FAKE_TMUX_STUCK_SUBMIT=1 "$TAP" send claude -m "direct pending" --from codex --id direct-5 --ask >"$TAP_HOME/direct5.out" 2>"$TAP_HOME/direct5.err"; rc=$?; set -e
 [ "$rc" -eq 5 ] || { echo "reply: (3c) direct pending send should exit 5, got $rc" >&2; cat "$TAP_HOME/direct5.out" "$TAP_HOME/direct5.err" >&2; exit 1; }
 [ ! -s "$TAP_HOME/direct5.out" ] || { echo "reply: (3c) default send must not print a pending k=v line" >&2; cat "$TAP_HOME/direct5.out" >&2; exit 1; }
-grep -Fq 'Delivery not confirmed. Inspect with tap show direct-5; tap resend direct-5 requires proof that no attempt occurred.' "$TAP_HOME/direct5.err" || { echo "reply: (3c) pending diagnostic must name the actual-id retry" >&2; cat "$TAP_HOME/direct5.err" >&2; exit 1; }
+grep -Fq 'Delivery not confirmed. Inspect with tap show direct-5; if it is still unread, tap resend direct-5 rings it again under the same id.' "$TAP_HOME/direct5.err" || { echo "reply: (3c) pending diagnostic must name the actual-id retry" >&2; cat "$TAP_HOME/direct5.err" >&2; exit 1; }
 grep -Fq "tap send: direct-5 is on the bus for claude. Delivery not confirmed." "$TAP_HOME/direct5.err" \
   || { echo "reply: (3c) pending diagnostic must name the durable payload state" >&2; cat "$TAP_HOME/direct5.err" >&2; exit 1; }
 rm -f "$FAKE_TMUX_STATE/input"
@@ -430,7 +430,7 @@ set +e
   >"$TAP_HOME/forged.out" 2>"$TAP_HOME/forged.err"
 rc=$?
 set -e
-[ "$rc" -eq 2 ] || { echo "reply: (4bb) public forged spool correlation should fail 2 (retired alias), got $rc" >&2; exit 1; }
+[ "$rc" -eq 1 ] || { echo "reply: (4bb) public forged spool correlation should fail 1 (retired alias), got $rc" >&2; exit 1; }
 [ ! -f "$TAP_HOME/receipts/in-fake-spool.done" ] || { echo "reply: (4bb) forged spool correlation settled inbound" >&2; exit 1; }
 grep -q 'tap done is retired' "$TAP_HOME/forged.err" \
   || { echo "reply: (4bb) forged flag did not land in the retirement alias" >&2; cat "$TAP_HOME/forged.err" >&2; exit 1; }

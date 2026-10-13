@@ -126,7 +126,7 @@ send 600 peer -m "direct quiet note" --id direct --from alice --no-spool >"$WORK
 [ ! -f "$BUS/receipts/direct.done" ] || fail "direct note falsely courier-settled without a digest"
 grep -F '[[TAP v0.23 note direct]]' "$WORK/tmux/send-keys.log" >/dev/null || fail "direct settle-only sentinel is not a note"
 rc=0; bash "$TAPSH" outstanding alice > "$WORK/outstanding-direct" 2>&1 || rc=$?
-[ "$rc" = 2 ] || fail "direct note lost its recipient settlement obligation"
+[ "$rc" = 0 ] || fail "outstanding exited $rc reading the direct note's settlement obligation"
 grep -F 'recipient-settled note; tap read by the recipient settles it' "$WORK/outstanding-direct" >/dev/null || fail "direct note missing its settlement hint"
 bash "$TAPSH" read direct --by peer > "$WORK/read-direct" 2>&1 || { cat "$WORK/read-direct" >&2; fail "recipient could not read direct note"; }
 [ -f "$BUS/receipts/direct.done" ] || fail "recipient read did not settle direct note"
@@ -154,7 +154,7 @@ cmp -s "$BUS/spool/batch-sibling.md" "$WORK/sibling-before.md" || fail "ready se
 cmp -s "$BUS/spool/batch-sibling.meta.json" "$WORK/sibling-before.meta.json" || fail "ready send changed parked custody"
 [ ! -f "$BUS/receipts/batch-sibling.sent" ] && [ ! -f "$BUS/receipts/batch-sibling.done" ] || fail "ready send delivered or settled the older sibling"
 rc=0; bash "$TAPSH" outstanding alice >"$WORK/arrival-outstanding" 2>&1 || rc=$?
-[ "$rc" = 2 ] || fail "ready arrival lost its reply obligation"
+[ "$rc" = 0 ] || fail "outstanding exited $rc reading the ready arrival's reply obligation"
 grep -F 'ready-arrival' "$WORK/arrival-outstanding" >/dev/null || fail "ready arrival not outstanding"
 grep -F 'batch-sibling' "$WORK/arrival-outstanding" >/dev/null || fail "older parked sibling not outstanding"
 
@@ -170,17 +170,17 @@ reset
 touch "$WORK/tmux/no_band"
 TAP_VERBOSE=1 send 0 peer -m "ordinary no band" --id normal-no-band --from alice --ask >"$WORK/out" 2>&1 || fail "ordinary no-band send was not accepted"
 [ -f "$BUS/spool/normal-no-band.meta.json" ] || fail "ordinary no-band control did not park"
-grep -F 'Delivery not confirmed. Inspect with tap show normal-no-band; tap resend normal-no-band requires proof that no attempt occurred.' "$WORK/out" >/dev/null || fail "queued send lacks ratified sender status"
+grep -F 'Delivery not confirmed. Inspect with tap show normal-no-band; if it is still unread, tap resend normal-no-band rings it again under the same id.' "$WORK/out" >/dev/null || fail "queued send lacks ratified sender status"
 rc=0; bash "$TAPSH" outstanding alice > "$WORK/outstanding" 2>&1 || rc=$?
-[ "$rc" = 2 ] || fail "parked send not outstanding"
-grep -F 'Delivery not confirmed. Inspect with tap show normal-no-band; tap resend normal-no-band requires proof that no attempt occurred.' "$WORK/outstanding" >/dev/null || fail "outstanding lacks actual-id sender recovery"
+[ "$rc" = 0 ] || fail "outstanding exited $rc reading the parked send"
+grep -F 'Delivery not confirmed. Inspect with tap show normal-no-band; if it is still unread, tap resend normal-no-band rings it again under the same id.' "$WORK/outstanding" >/dev/null || fail "outstanding lacks actual-id sender recovery"
 grep -F '[hold]' "$WORK/out" >/dev/null || fail "send did not name the no-band hold"
 grep -F '[hold]' "$WORK/outstanding" >/dev/null || fail "outstanding did not name the no-band hold"
 # Auto-settlement is orthogonal to readiness: a note can be held before its digest.
 TAP_VERBOSE=1 send 600 peer -m "held digest note" --id held-note --from alice >"$WORK/held-note-out" 2>&1 || fail "held note was refused"
 grep -F '[hold]' "$WORK/held-note-out" >/dev/null || fail "send confused a held note with a batch"
 rc=0; bash "$TAPSH" outstanding alice >"$WORK/held-note-outstanding" 2>&1 || rc=$?
-grep -F 'tap resend held-note requires proof that no attempt occurred. [hold]' "$WORK/held-note-outstanding" >/dev/null || fail "outstanding confused settlement policy with readiness"
+grep -F 'if it is still unread, tap resend held-note rings it again under the same id. [hold]' "$WORK/held-note-outstanding" >/dev/null || fail "outstanding confused settlement policy with readiness"
 
 if grep -F 'will not arrive' "$WORK/outstanding" "$WORK/out"; then fail "held send claimed permanent non-delivery"; fi
 direct_rc=0
@@ -300,10 +300,12 @@ if grep -Eq 'Escape|C-u|-X cancel' "$WORK/tmux/send-keys.log"; then fail "ambigu
 
 grep -F 'injected; Enter unconfirmed (possible effect). If the sentinel is still staged, run tap nudge peer.' "$WORK/out" >/dev/null || fail "possible-effect sender status missing"
 rc=0; bash "$TAPSH" outstanding alice > "$WORK/outstanding" 2>&1 || rc=$?
-[ "$rc" = 2 ] || fail "possible-effect send not outstanding"
+[ "$rc" = 0 ] || fail "outstanding exited $rc reading the possible-effect send"
+grep -F 'possible-effect' "$WORK/outstanding" >/dev/null || fail "possible-effect send not outstanding"
 grep -F 'injected; Enter unconfirmed (possible effect). If the sentinel is still staged, run tap nudge peer.' "$WORK/outstanding" >/dev/null || fail "canonical sender hint missing"
 rc=0; bash "$TAPSH" poll peer > "$WORK/poll" 2>&1 || rc=$?
-[ "$rc" = 2 ] || fail "possible-effect canonical unavailable to recipient"
+[ "$rc" = 0 ] || fail "poll exited $rc reading the possible-effect canonical"
+grep -F 'possible-effect' "$WORK/poll" >/dev/null || fail "possible-effect canonical unavailable to recipient"
 grep -F 'unconfirmed to your pane — reading it here counts' "$WORK/poll" >/dev/null || fail "recipient hint missing"
 if grep -F 'tap resend' "$WORK/poll"; then fail "recipient told to execute sender verb"; fi
 

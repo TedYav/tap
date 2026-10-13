@@ -145,7 +145,7 @@ test("a readiness-gate park whose recipient is gone: marked, sender woken, termi
   expect(notice).toContain("from: courier\nto: alice\nkind: delivery-failed\n");
   expect(notice).toContain("reply: settle-only\n");
   expect(notice).toContain(`DELIVERY FAILED: m3 to peer was not delivered before its deadline.\n\nThe payload is intact:\n  ${join(home, "payloads", "m3.md")}\n\nDetail: reason=pending-input ready=gone\n\n`);
-  expect(notice).toContain("Run tap resend m3 only when its no-attempt guard permits");
+  expect(notice).toContain("If it is still unread, tap resend m3 rings it again under the same id. It will not arrive on its own.\n");
   expect(events()).toContain("spool_terminal_delivery_failed");
   expect(events()).toContain("detail=id=m3_reason=deadline_reached");
   // The archived sidecar records the mark the transaction wrote.
@@ -389,7 +389,7 @@ test("a routable entry is left to the ordinary path; an excluded one is marked, 
   const notice = readFileSync(join(home, "payloads", `${submits[0]!.id}.md`), "utf8");
   expect(notice).toContain("NOT DELIVERED: u1 to peer was never attempted.\n\n");
   expect(notice).toContain("Detail: excluded from every delivery path by reason='legacy_meta_no_binding'; no delivery was ever attempted\n\n");
-  expect(notice).toContain("Run tap resend u1; it refuses unless no attempt is provable.\n");
+  expect(notice).toContain("they may be perfectly fine. Run tap resend u1 to ring it again under the same id.\n");
 });
 
 test("an unrouted operator note is cancelled too, so `tap outstanding user` clears", async () => {
@@ -824,9 +824,12 @@ test("noticeBody (notice.ts, the one prose source) reproduces the incumbent's by
   expect(noticeBody("failed", "x", "peer", canon, "", "n")).toBe(
     "DELIVERY FAILED: x to peer was not delivered before its deadline.\n\nThe payload is intact:\n  /bus/payloads/x.md\n\n" +
     "Detail: deadline reached while the recipient pane stayed busy\n\nThis is not a queued send still on its way — the courier stopped trying.\n" +
-    "Run tap resend x only when its no-attempt guard permits; otherwise inspect the delivery evidence. It will not arrive on its own.\n");
+    "If it is still unread, tap resend x rings it again under the same id. It will not arrive on its own.\n");
   expect(noticeBody("unconfirmed-digest", "x", "peer", canon, "d", "dg-alice-delivery-unconfirmed")).toContain(
     "DELIVERY UNCONFIRMED: digest members to peer have unconfirmed delivery.\nDigest notice: dg-alice-delivery-unconfirmed\n\n");
+  // A digest doorbell has no payload of its own: the hint names member ids, never the digest id.
+  expect(noticeBody("unconfirmed-digest", "dg-x", "peer", canon, "d", "n")).toContain("tap resend <member-id> rings a member again under its own id");
+  expect(noticeBody("unconfirmed-digest", "dg-x", "peer", canon, "d", "n")).not.toContain("tap resend dg-x");
   expect(noticeBody("unrouted", "x", "peer", canon, "d", "n")).toContain("NOT DELIVERED: x to peer was never attempted.\n\n");
   expect(noticeBody("lock-park", "x", "peer", canon, "d", "n")).toBe(
     "DELIVERY QUEUED: x to peer is waiting for the pane submit lock.\n\nDetail: d\n\n" +

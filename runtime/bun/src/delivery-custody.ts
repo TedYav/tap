@@ -3,15 +3,17 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDict, parseJsonPreserving, pyReadUtf8, pyTruthy } from "./spool-publication";
 import { isFile } from "./watch-lease";
+import { recipientState } from "./harness-queue";
+import { RETRY_UUID, retryClosed, retryIdleSubmitPath, retryMarkerPath } from "./retry";
 
 export function hasDeliveryReceipt(home: string, id: string): boolean {
   // Even unreadable terminal evidence keeps withdrawal from bypassing delivery.
   return ["sent", "read", "done", "cancelled", "harness-queued"].some(suffix => existsSync(join(home, "receipts", `${id}.${suffix}`)));
 }
 
-function hasAttemptEvidence(home: string, id: string): boolean {
+function hasAttemptEvidence(home: string, id: string, marker = join(home, "receipts", `${id}.attempted`)): boolean {
   // The marker's mere presence is the evidence; unreadable is uncertainty, so refuse.
-  try { lstatSync(join(home, "receipts", `${id}.attempted`)); return true; }
+  try { lstatSync(marker); return true; }
   catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
 }
 
@@ -37,8 +39,18 @@ export function reparkLicensed(home: string, id: string, env: NodeJS.ProcessEnv 
   try {
     const meta = parseJsonPreserving(pyReadUtf8(join(home, "spool", `${id}.meta.json`)));
     if (!isDict(meta) || !pyTruthy((meta as Record<string, unknown>).repark_pending)) return false;
-    if (hasDeliveryReceipt(home, id)) return false;
-    if (!hasAttemptEvidence(home, id)) return true;
+    // A same-id retry row is scoped to ITS attempt: the original's .sent, forced
+    // .read, .harness-queued and .attempted are history, not this attempt's effect.
+    // Terminal state or an authoritative observation still refuses.
+    const retry = (meta as Record<string, unknown>).retry;
+    if (typeof retry === "string" && RETRY_UUID.test(retry)) {
+      if (recipientState(home, id).state !== "unobserved") return false;
+      if (hasAttemptEvidence(home, id, retryIdleSubmitPath(home, id, retry)) || retryClosed(home, id, retry)) return false;
+      if (!hasAttemptEvidence(home, id, retryMarkerPath(home, id, retry))) return true;
+    } else {
+      if (hasDeliveryReceipt(home, id)) return false;
+      if (!hasAttemptEvidence(home, id)) return true;
+    }
     if ((meta as Record<string, unknown>).reason !== "staged-idle") return false;
     const raw = (meta as Record<string, unknown>).deadline_epoch;
     const deadline = typeof raw === "number" ? (Number.isSafeInteger(raw) ? raw : null)

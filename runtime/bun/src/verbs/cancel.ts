@@ -54,6 +54,18 @@ function classifySeat(registryPath: string, handle: string): string {
   return status === "active" && row.status_reason === "launching" ? "launching" : status;
 }
 
+// The canceller a regular `.cancelled` receipt for `id` records, or "" unless the path is a
+// readable cancellation receipt naming this id (status "cancelled") and a `by` token.
+function cancelledBy(path: string, id: string): string {
+  if (!isFile(path)) return "";
+  try {
+    const rec = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) return "";
+    const { id: recId, status, by } = rec as Record<string, unknown>;
+    return recId === id && status === "cancelled" && typeof by === "string" ? by : "";
+  } catch { return ""; }
+}
+
 // Termination signals that must not orphan the spool claim. The Bash version's EXIT trap covered them;
 // a JavaScript `finally` does not run when the default disposition kills the process.
 const CLAIM_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
@@ -115,7 +127,15 @@ export async function cmdCancel(argv: string[], scriptsDir: string): Promise<num
     // archived, so the residency not_found would otherwise fire instead.
     // Every EXISTING path is terminal (a squatter on the receipt name included).
     if (existsSync(ctx.bus.donePath(id))) throw new TapError(1, "already_settled", "tap outstanding", `'${id}' is already settled (.done exists)`);
-    if (existsSync(ctx.bus.cancelPath(id))) throw new TapError(1, "already_cancelled", "tap outstanding", `'${id}' is already cancelled (.cancelled exists)`);
+    // Cancelling a cancelled id is idempotent: the sender's goal already holds (CLI-EXIT-0).
+    // That evidence is a regular, well-formed receipt for this id recording THIS actor as its
+    // canceller (the payload is archived, so the receipt is the sender proof left); any other
+    // existing path, a malformed receipt, or another actor's receipt still refuses before any effect.
+    if (existsSync(ctx.bus.cancelPath(id))) {
+      if (cancelledBy(ctx.bus.cancelPath(id), id) !== actor) throw new TapError(1, "already_cancelled", "tap outstanding", `'${id}' is already cancelled (.cancelled exists)`);
+      process.stdout.write(json ? jsonObj({ status: "already_cancelled", id }) + "\n" : `tap cancel: ${id} is already cancelled; nothing to do\n`);
+      return 0;
+    }
 
     // Payload-first, spool-second: a spooled dead obligation is the exact
     // motivating case — the send parked and the target later vanished.

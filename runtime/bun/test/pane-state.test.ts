@@ -1105,6 +1105,34 @@ describe("submitVerify typed land/clear", () => {
     expect({ injections, enters }).toEqual({ injections: 1, enters: 0 });
   });
 
+  // tap-csrls: the Enter landed after its own post-Enter read; the next attempt's pre-Enter read
+  // found the composer empty and the delivered send exited 5 ("empty, idle, width 197").
+  for (const [name, late, status, enters] of [
+    ["an Enter that lands late is acceptance on the next read", "empty", "injected", 1],
+    ["a seat that starts working after a late Enter is acceptance", "unobservable-working", "injected", 1],
+    ["a changed composer after an Enter stays unverified", "changed", "unverified", 1],
+    ["an empty composer before any Enter is not acceptance", "empty-first", "unverified", 0],
+  ] as const) test(`staged submit: ${name}`, () => {
+    const home = join(root, `late-enter-${late}`);
+    mkdirSync(join(home, "receipts"), { recursive: true });
+    // Keyed on Enters, not call count: the landing check reads frames too. Before any Enter the wire is
+    // staged; the first read after the first Enter still shows it staged; every later read shows `late`.
+    // empty-first lands staged (the landing check's one read), then reads empty before any Enter.
+    let pressed = 0, readsAfterEnter = 0, reads = 0;
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP v0.23 ask ${SENTINEL_ID}]]`, bound, landFx({
+      submitFrame: () => {
+        if (late === "empty-first") return { state: ++reads === 1 ? "staged" : "empty", mode: "idle", width: "80" };
+        if (pressed === 0 || ++readsAfterEnter === 1) return { state: "staged", mode: "idle", width: "80" };
+        return late === "unobservable-working" ? { state: "unobservable", mode: "working", width: "80" }
+          : { state: late, mode: "idle", width: "80" };
+      },
+      pressEnter: () => { pressed++; return true; },
+    }), { busHome: home, recipient: "peer", registryPath: "", scriptsDir: "", agentFamilies: new Set(["claude"]),
+      deliveryFacts: { urgent: false, noSpool: false, recipientBound: true, harness: "claude" } });
+    // +1: landFx's band reads ready, so the completion step adds its one flush Enter in every case.
+    expect({ status: r.status, pressed }).toEqual({ status, pressed: enters + 1 });
+  });
+
   test("a prior courier attempt cannot authorize another ordinary injection", () => {
     const home = join(root, "prior-courier-attempt");
     mkdirSync(join(home, "receipts"), { recursive: true });

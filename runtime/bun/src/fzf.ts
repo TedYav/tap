@@ -4,7 +4,8 @@ import { managedFzf, FzfToolError } from "./fzf-tool";
 import { callerOwnsForegroundTty } from "./launcher/prompt";
 
 export interface PickerChoice<T> { id: string; label: string; value: T }
-export interface PickOptions { verb: string; query?: string; multi?: boolean; prompt?: string; header?: string }
+/** `tiebreak: "index"`: equal scores keep input order, so a caller's ordering decides ties (fzf's default prefers the shorter row). */
+export interface PickOptions { verb: string; query?: string; multi?: boolean; prompt?: string; header?: string; tiebreak?: "index" }
 export type PickResult<T> = { kind: "selected"; values: T[] } | { kind: "cancelled" } | { kind: "interrupted" };
 export interface FzfOutput { code: number | null; signal?: NodeJS.Signals | null; output: string }
 export interface FzfEffects {
@@ -57,11 +58,14 @@ export async function pick<T>(choices: PickerChoice<T>[], options: PickOptions, 
     if (!row.id || /[\x00-\x20\x7f-\x9f]/.test(row.id) || values.has(row.id)) fail("picker_invalid_candidates", "picker has an invalid or duplicate target identifier");
     values.set(row.id, row.value);
   }
+  // --ignore-case: fzf's default smart-case turns case-sensitive on any capital, so "Sol" would miss
+  // every lowercase handle.
   const args = ["--read0", "--print0", "--sync", "--delimiter=\t", "--with-nth=2..", "--accept-nth=1",
-    "--expect=esc", "--layout=reverse", "--border", "--no-select-1", "--no-exit-0",
+    "--expect=esc", "--layout=reverse", "--border", "--no-select-1", "--no-exit-0", "--ignore-case",
     options.multi ? "--multi" : "--no-multi", `--query=${options.query || ""}`,
     `--prompt=${displayText(options.prompt || "Select > ")}`, `--header=${displayText(options.header || "Type to search · Enter select · Esc cancel")}`];
   if (options.multi) args.push("--bind=space:toggle+down");
+  if (options.tiebreak) args.push(`--tiebreak=${options.tiebreak}`);
   if (env.NO_COLOR !== undefined) args.push("--color=bw");
   const input = choices.map(row => `${row.id}\t${displayText(row.label)}\0`).join("");
   let result: FzfOutput;

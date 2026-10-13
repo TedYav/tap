@@ -211,7 +211,7 @@ echo "turn-unconfirmed: (t-human) pane send receipt is the short injected line: 
 # --- (t-out) the supervision surface -------------------------------------------
 _rc=0
 "$TAP" outstanding claude >"$TAP_HOME/o.out" 2>"$TAP_HOME/o.err" || _rc="$?"
-[ "$_rc" = "2" ] || { echo "turn-unconfirmed: (t-out) expected outstanding rc 2, got $_rc" >&2; cat "$TAP_HOME/o.out" "$TAP_HOME/o.err" >&2; exit 1; }
+[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-out) expected outstanding rc 0, got $_rc" >&2; cat "$TAP_HOME/o.out" "$TAP_HOME/o.err" >&2; exit 1; }
 grep -Fq 'submitted to pane; recipient seat-side processing unverified' "$TAP_HOME/o.out" || {
   echo "turn-unconfirmed: (t-out) tap outstanding omitted the F4 3.2 legend" >&2
   cat "$TAP_HOME/o.out" >&2; exit 1
@@ -287,17 +287,17 @@ cp "$payload" "$RQ_HOME/valid.md"
 rq_id="$(TAP_HOME="$RQ_HOME" FAKE_TMUX_STATE="$RQ_HOME/fake-tmux" \
   "$TAP" send codex "$RQ_HOME/valid.md" --from claude --ask --pane fake-pane --json 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-[ -n "$rq_id" ] || { echo "turn-unconfirmed: (t-reply-presettled-queued) setup send produced no id" >&2; rm -rf "$RQ_HOME"; exit 1; }
+[ -n "$rq_id" ] || { echo "turn-unconfirmed: (t-reply-presettled-queued) setup send produced no id" >&2; rm -rf "${RQ_HOME:?}"; exit 1; }
 printf '{"id":"%s","via":"courier-auto"}\n' "$rq_id" > "$RQ_HOME/receipts/$rq_id.done"
 _rc=0
 TAP_HOME="$RQ_HOME" FAKE_TMUX_STATE="$RQ_HOME/fake-tmux" FAKE_TMUX_MIDTURN=1 TAP_VERBOSE=1 TAP_SELF=codex \
   "$TAP" reply "$rq_id" -m "ack" >"$RQ_HOME/rq.out" 2>"$RQ_HOME/rq.err" || _rc="$?"
-[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-reply-presettled-queued) expected exit 0, got $_rc" >&2; cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "$RQ_HOME"; exit 1; }
+[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-reply-presettled-queued) expected exit 0, got $_rc" >&2; cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "${RQ_HOME:?}"; exit 1; }
 # Refuse to pass vacuously, TWICE OVER: the arm is worthless unless it reached BOTH the
 # presettled branch and a queued disposition. Assert each before asserting the absence.
 grep -Fq 'already settled by the courier' "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" || {
   echo "turn-unconfirmed: (t-reply-presettled-queued) never reached the PRESETTLED branch — would pass vacuously" >&2
-  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "$RQ_HOME"; exit 1; }
+  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "${RQ_HOME:?}"; exit 1; }
 # The disposition is asserted from the SPOOL, not from the prose: the presettled
 # branch's sentence legitimately never contains the word "queued", so grepping for it
 # was a guard that could not pass — a check that cannot succeed is the same failure as
@@ -306,12 +306,12 @@ grep -Fq 'already settled by the courier' "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" ||
 # evidence the arm actually wants: the courier parked it and touched no pane.
 [ -n "$(find "$RQ_HOME/spool" -maxdepth 1 -name '*.md' 2>/dev/null | head -1)" ] || {
   echo "turn-unconfirmed: (t-reply-presettled-queued) outbound was not spooled — a pane branch would pass this trivially" >&2
-  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "$RQ_HOME"; exit 1; }
+  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "${RQ_HOME:?}"; exit 1; }
 if grep -Fq 'submitted to pane' "$RQ_HOME/rq.out" "$RQ_HOME/rq.err"; then
   echo "turn-unconfirmed: (t-reply-presettled-queued) a presettled QUEUED reply claimed a pane was touched" >&2
-  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "$RQ_HOME"; exit 1
+  cat "$RQ_HOME/rq.out" "$RQ_HOME/rq.err" >&2; rm -rf "${RQ_HOME:?}"; exit 1
 fi
-rm -rf "$RQ_HOME"
+rm -rf "${RQ_HOME:?}"
 echo "turn-unconfirmed: (t-reply-presettled-queued) a presettled queued reply never claims a pane: ok"
 
 # --- (t-poll) the poll path must not inherit the pane sentence -------------------
@@ -345,28 +345,29 @@ EOF
 _rc=0
 TAP_HOME="$POLL_HOME" "$TAP" send pollbot "$poll_payload" --from claude --json \
   >"$POLL_HOME/pj.out" 2>"$POLL_HOME/pj.err" || _rc="$?"
-[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-poll) poll send expected exit 0, got $_rc" >&2; cat "$POLL_HOME/pj.out" "$POLL_HOME/pj.err" >&2; rm -rf "$POLL_HOME"; exit 1; }
+[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-poll) poll send expected exit 0, got $_rc" >&2; cat "$POLL_HOME/pj.out" "$POLL_HOME/pj.err" >&2; rm -rf "${POLL_HOME:?}"; exit 1; }
 python3 -c 'import json,sys
 d=json.load(sys.stdin)
 assert d["delivery"]=="poll", d
 assert d.get("turn")=="unconfirmed", ("F4 3.1 stamps the poll shape too", d)
-' <"$POLL_HOME/pj.out" || { echo "turn-unconfirmed: (t-poll) poll --json turn stamp FAILED" >&2; cat "$POLL_HOME/pj.out" >&2; rm -rf "$POLL_HOME"; exit 1; }
+' <"$POLL_HOME/pj.out" || { echo "turn-unconfirmed: (t-poll) poll --json turn stamp FAILED" >&2; cat "$POLL_HOME/pj.out" >&2; rm -rf "${POLL_HOME:?}"; exit 1; }
 echo "turn-unconfirmed: (t-poll) poll --json carries turn=unconfirmed: ok"
 
 if grep -Fq 'submitted to pane' "$POLL_HOME/pj.out" "$POLL_HOME/pj.err"; then
   echo "turn-unconfirmed: (t-poll) the poll SEND receipt claimed a pane was touched" >&2
-  cat "$POLL_HOME/pj.out" "$POLL_HOME/pj.err" >&2; rm -rf "$POLL_HOME"; exit 1
+  cat "$POLL_HOME/pj.out" "$POLL_HOME/pj.err" >&2; rm -rf "${POLL_HOME:?}"; exit 1
 fi
 
 _rc=0
 TAP_HOME="$POLL_HOME" "$TAP" outstanding claude >"$POLL_HOME/po.out" 2>/dev/null || _rc="$?"
-[ "$_rc" = "2" ] || { echo "turn-unconfirmed: (t-poll) expected outstanding rc 2, got $_rc" >&2; cat "$POLL_HOME/po.out" >&2; rm -rf "$POLL_HOME"; exit 1; }
-grep -q . "$POLL_HOME/po.out" || { echo "turn-unconfirmed: (t-poll) outstanding printed nothing; the arm would pass vacuously" >&2; rm -rf "$POLL_HOME"; exit 1; }
+[ "$_rc" = "0" ] || { echo "turn-unconfirmed: (t-poll) expected outstanding rc 0, got $_rc" >&2; cat "$POLL_HOME/po.out" >&2; rm -rf "${POLL_HOME:?}"; exit 1; }
+# Exit 0 also covers an empty listing, so the pollbot row is what keeps this arm from passing vacuously.
+grep -q 'pollbot' "$POLL_HOME/po.out" || { echo "turn-unconfirmed: (t-poll) outstanding did not list the send to pollbot; the arm would pass vacuously" >&2; cat "$POLL_HOME/po.out" >&2; rm -rf "${POLL_HOME:?}"; exit 1; }
 if grep -Fq 'submitted to pane' "$POLL_HOME/po.out"; then
   echo "turn-unconfirmed: (t-poll) a POLL-ONLY outstanding listing claimed a pane was touched" >&2
-  cat "$POLL_HOME/po.out" >&2; rm -rf "$POLL_HOME"; exit 1
+  cat "$POLL_HOME/po.out" >&2; rm -rf "${POLL_HOME:?}"; exit 1
 fi
-rm -rf "$POLL_HOME"
+rm -rf "${POLL_HOME:?}"
 echo "turn-unconfirmed: (t-poll) poll-only listing never claims a pane was touched: ok"
 
 # --- (t-spool) the THIRD exit-0 disposition ---------------------------------------

@@ -81,5 +81,6 @@ full-kit setting adds the rest. Skills guide agent behavior; TAP transports
 messages rather than enforcing a fixed workflow.
 
 Your team can write its own role skills, such as a coach, monitor or context
-genie. See [the five levels of TAP](TAP-LEVELS.md) for roles and growing teams,
+genie. [Writing skills that use TAP](../skills/tap/guide/writing-tap-skills.md)
+covers the TAP parts and what a skill does where TAP can't run. See [the five levels of TAP](TAP-LEVELS.md) for roles and growing teams,
 or browse this reference as a [web guide](https://tedyav.github.io/tap/cheatsheet-skills.html).

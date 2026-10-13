@@ -247,11 +247,13 @@ echo "cross-worktree: (cw-2) --payload basename mismatch guard: ok"
   --pane xwt-fake:0.0 --id cw-smoke-2 --cross-worktree >/dev/null 2>&1 || {
   echo "cross-worktree: (cw-3) second send failed" >&2; exit 1
 }
-# outstanding should exit 2 (have pending)
+# outstanding exits 0 whether or not sends are open; the listing proves cw-smoke-2 is open
 _out=""
-if TAP_HOME="$SENDER_BUS" "$TAP" outstanding claude >"$SENDER_BUS/out.tmp" 2>&1; then
-  echo "cross-worktree: (cw-3) outstanding should exit 2 with pending item" >&2; exit 1
-fi
+_rc=0
+TAP_HOME="$SENDER_BUS" "$TAP" outstanding claude >"$SENDER_BUS/out.tmp" 2>&1 || _rc=$?
+[ "$_rc" -eq 0 ] || {
+  echo "cross-worktree: (cw-3) outstanding should exit 0 and list the pending item, got $_rc" >&2; cat "$SENDER_BUS/out.tmp" >&2; exit 1
+}
 _out="$(cat "$SENDER_BUS/out.tmp")"
 case "$_out" in
   *"cw-smoke-2"*) ;;
@@ -266,10 +268,15 @@ esac
 TAP_HOME="$RECIPIENT_BUS" "$TAP" read "path=$SENDER_BUS/payloads/cw-smoke-2.md" --by codex || {
   echo "cross-worktree: (cw-3) settle cw-smoke-2 failed" >&2; exit 1
 }
-# Now outstanding must be clean (exit 0)
-TAP_HOME="$SENDER_BUS" "$TAP" outstanding claude || {
-  echo "cross-worktree: (cw-3) outstanding not clean after all settled" >&2; exit 1
+# Now outstanding must be clean: exit 0, the empty-state line, and no cw-smoke-2 row
+_out="$(TAP_HOME="$SENDER_BUS" "$TAP" outstanding claude 2>&1)" || {
+  echo "cross-worktree: (cw-3) outstanding failed after all settled: $_out" >&2; exit 1
 }
+case "$_out" in
+  *"cw-smoke-2"*) echo "cross-worktree: (cw-3) settled cw-smoke-2 still listed in outstanding: $_out" >&2; exit 1 ;;
+  *"no outstanding"*) ;;
+  *) echo "cross-worktree: (cw-3) outstanding not clean after all settled: $_out" >&2; exit 1 ;;
+esac
 echo "cross-worktree: (cw-3) tap outstanding drains after settlement: ok"
 
 # --- (cw-4) tap doctor warns on external-path payload -------------------------

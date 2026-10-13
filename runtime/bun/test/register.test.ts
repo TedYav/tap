@@ -621,17 +621,17 @@ test("tap-36gl8/tap-mhuok: poll and offline registration refuse an incapable mar
     const seed = noncanonicalSeed(f, marked);
     const bytes = () => readFileSync(f.registry, "utf8");
     const refused = f.door(["scout", "--delivery", "poll", "--json"]);
-    expect(refused.code, refused.out + refused.err).toBe(3);
+    expect(refused.code, refused.out + refused.err).toBe(1);
     expect(JSON.parse(refused.out).error_class).toBe("usage_error");
     expect(refused.err).toContain("re-register from that seat's own pane");
     expect(bytes()).toBe(seed);
     // the offline door must not rewrite the mark into user_removed, which a
     // following poll registration would then clear
     const offline = f.door(["scout", "--offline"]);
-    expect(offline.code, offline.out + offline.err).toBe(3);
+    expect(offline.code, offline.out + offline.err).toBe(1);
     expect(offline.err).toContain("re-register from that seat's own pane");
     expect(bytes()).toBe(seed);
-    expect(f.door(["scout", "--delivery", "poll"]).code).toBe(3);
+    expect(f.door(["scout", "--delivery", "poll"]).code).toBe(1);
     expect(bytes()).toBe(seed);
     // control: a different suspended reason is still an ordinary poll
     // registration, and a registration that changes something writes the
@@ -652,7 +652,7 @@ test("tap-mhuok: the pane gate's incapable refusal from another pane leaves the 
     for (const team of [undefined, { worktree_root: f.repo }]) {
       const seed = noncanonicalSeed(f, { status_reason: "incapable", status: "suspended", pane_id: "%9", pane: "elsewhere:0.0", instance: "scout|one", delivery: "pane" }, team);
       const refused = f.door(["scout", "--pane", f.addr]);
-      expect(refused.code, refused.out + refused.err).toBe(3);
+      expect(refused.code, refused.out + refused.err).toBe(1);
       expect(refused.err).toContain("cannot be cleared from pane");
       expect(readFileSync(f.registry, "utf8")).toBe(seed);
     }
@@ -667,7 +667,7 @@ test("tap-mhuok: refusals leave a registry whose team block lacks a name untouch
     const bytes = () => readFileSync(f.registry, "utf8");
     for (const args of [["--delivery", "poll", "--json"], ["--offline", "--json"], ["--pane", f.addr]]) {
       const refused = f.door(["scout", ...args]);
-      expect(refused.code, refused.out + refused.err).toBe(3);
+      expect(refused.code, refused.out + refused.err).toBe(1);
       expect(bytes()).toBe(seed);
     }
     // an unrelated usage refusal that follows the team block in the dispatcher
@@ -745,7 +745,7 @@ test("mode/include validation and defaults; --restore and --fresh are mutually e
     expect(badInclude.code).toBe(1);
     expect(badInclude.err).toContain("--include must be 'always' or 'on_request'");
     const both = f.door(["s4", "--restore", "inst-1", "--fresh"]);
-    expect(both.code).toBe(3);
+    expect(both.code).toBe(1);
     expect(both.err).toContain("mutually exclusive");
   } finally { removeScratchTree(f.root); }
 }, 60000);
@@ -1274,7 +1274,7 @@ test("offline and poll registry contention is retryable, not registry corruption
     ]) {
       let failure: unknown;
       try { run(); } catch (error) { failure = error; }
-      expect(failure).toMatchObject({ code: 75, errorClass: "registry_lock_busy" });
+      expect(failure).toMatchObject({ code: 1, errorClass: "registry_lock_busy" });
       expect(String(failure)).toContain("retry once the write completes");
     }
     expect(f.seats().scout).toBeUndefined();
@@ -1333,7 +1333,7 @@ test("the default registry wait refuses and releases reset custody instead of wa
     writeFileSync(stage("pre-mutation", "release"), "");
     const code = await child.exited;
     const error = await new Response(child.stderr).text();
-    expect(code, error).toBe(75);
+    expect(code, error).toBe(1);
     expect(error).toContain("retry once the write completes");
     expect(f.seats().scout).toBeUndefined();
     const reset = acquirePathLock(join(f.bus, "reset.fence.json.lock"), 1000, f.env());

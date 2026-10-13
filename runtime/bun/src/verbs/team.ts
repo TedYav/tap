@@ -1707,7 +1707,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     } else {
       process.stderr.write(`tap team: registry unreadable (${registry.error || "unknown error"}) — run: tap doctor\n`);
     }
-    return 42;
+    return 1;
   }
 
   if (!options.team && !options.json && !options.names && !crewOnly) repoSetupHeadsUp(ctx.root);

@@ -79,9 +79,9 @@ supersedes are cancelled. The second is the obligation whose CONTENT was
 delivered OUT OF BAND — the courier stopped at its grace deadline against an
 unreadable pane and the sender said the thing another way (a PR comment, a
 different channel), so the answer is no longer owed but the obligation has no
-way to close. Today that second shape has no verb at all: `tap resend` correctly
-refuses after a possible attempt, `tap nudge` would re-enter pane delivery on the
-same pane that could not take it, and the obligation ages — showing up in other
+way to close. Without withdrawal that second shape has no verb: `tap resend` would
+ring the same message again when the answer is no longer owed, `tap nudge` would
+re-enter pane delivery on the same pane that could not take it, and the obligation ages — showing up in other
 lanes' post-wave operator-state windows while it does. Both shapes are the same
 act: **the sender declares the obligation retired, with a reason the recipient
 can see, without any pane delivery.** That is what withdrawal is, and why it

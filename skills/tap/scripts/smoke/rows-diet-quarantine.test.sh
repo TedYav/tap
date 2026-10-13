@@ -36,7 +36,7 @@ plant "$IN_ASK" peer worker expected 'an inbound ask'
 plant "$IN_NOTE" peer worker settle-only 'an inbound note'
 
 set +e; pout="$("$TAP" poll worker 2>/dev/null)"; prc=$?; set -e
-[ "$prc" = 2 ] || fail "(1) pending poll rc=$prc"
+[ "$prc" = 0 ] || fail "(1) pending poll rc=$prc (want 0; the rows below prove it is listed)"
 case "$pout" in *"$BUS/payloads/"*) fail "(1) poll still prints paths" ;; esac
 printf '%s\n' "$pout" | grep -qE "$IN_ASK  peer  ask  [0-9]+s" || fail "(1) missing ask row"
 printf '%s\n' "$pout" | grep -qE "$IN_NOTE  peer  note  [0-9]+s" || fail "(1) missing note row"

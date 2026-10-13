@@ -49,10 +49,10 @@ symptom. Run the TAP baseline when nothing matches or the first route comes up c
 ## tmux
 
 - `tmux -V` — the version. tmux older than 3.2 lacks extended keys and some terminal features.
-- **TAP's tmux defaults.** Run `tap tmux-defaults status --json`. Exit 2 means TAP's defaults are
-  not installed; offer them through the installer's defaults step, and use the plain probes below.
-  Exit 0 lists `options` (what TAP sets on this platform) and `live.values` (what the running
-  server shows). A live value that differs is not an error: their own tmux.conf may override it,
+- **TAP's tmux defaults.** Run `tap tmux-defaults status --json`. `"installed": false` means TAP's
+  defaults are not installed; offer them through the installer's defaults step, and use the plain
+  probes below. Otherwise it lists `options` (what TAP sets on this platform) and `live.values`
+  (what the running server shows). A live value that differs is not an error: their own tmux.conf may override it,
   or the server has not restarted since the install. Say that, in those words. A `live.server`
   other than `up` means the running values could not be read, which says nothing about the
   defaults. Any other exit, or output that is not JSON, means the check itself failed; report

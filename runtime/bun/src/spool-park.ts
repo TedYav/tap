@@ -42,6 +42,8 @@ export interface ParkInput {
   cueRedAt: string;
   /** A direct submit-unverified hold keeps its canonical for the rc 5 contract. */
   retainCanonical?: boolean;
+  /** A same-id retry row (`tap resend`); see spool-publication `PublishInput.retry`. */
+  retry?: { uuid: string; ordinal: number };
   env?: NodeJS.ProcessEnv;
   now?: Date;
   lockTimeoutMs?: number;
@@ -127,6 +129,7 @@ function underClaim(input: ParkInput, env: NodeJS.ProcessEnv, fail: (detail: str
       reason: input.reason, reasonClass: "", timeoutSeconds: input.timeoutSeconds, pane: input.pane, paneId: input.paneId,
       toTeam: input.toTeam, policy, graceSeconds: input.graceSeconds, targetRegistry: input.targetRegistry,
       windowSeconds, lastDelivered, cueStyle: input.cueStyle, cueRedAt: input.cueRedAt,
+      ...(input.retry ? { retry: input.retry } : {}),
       env, now: input.now, lockTimeoutMs: input.lockTimeoutMs,
     });
     hooks?.afterPublish?.(payload, metaPath(input.spoolDir, input.id));

@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as tmp:
     canon,_=seed(1,canonical=True); own,path=seed(2); wrong,_=seed(3,to='other',instance='other|current'); old,_=seed(4,instance='worker|old'); foreign,_=seed(5,to_team='elsewhere')
     mismatch,_=seed(6,target='other')
     out=run('poll','worker','--json')
-    assert out.returncode==2,(runtime,out.stdout,out.stderr)
+    assert out.returncode==0,(runtime,out.stdout,out.stderr)
     assert trace.read_text()=='native poll\n',trace.read_text()
     rows=json.loads(out.stdout)['pending']; ids=[r['id'] for r in rows]
     assert ids==[canon,own],(runtime,'parked visibility/team/instance/target gates',rows)
@@ -194,7 +194,7 @@ with tempfile.TemporaryDirectory() as tmp:
     bad,badpath=seed(10,canonical=True)
     badpath.write_text('invalid envelope\n')
     mixed=run('poll','worker')
-    assert mixed.returncode==2 and mixed.stdout.index(canon)<mixed.stdout.index('quarantined'),(runtime,mixed.stdout,mixed.stderr)
+    assert mixed.returncode==0 and canon in mixed.stdout and mixed.stdout.index(canon)<mixed.stdout.index('quarantined'),(runtime,mixed.stdout,mixed.stderr)
     transcript=log.read_text() if log.exists() else ''
     assert 'send-keys' not in transcript and 'select-pane' not in transcript,(runtime,transcript)
     print('parked-mail-read:',runtime,'visibility, refusal, claim handoff, broken-claim refusals, byte custody, ask/note, duplicate and zero pane effects: ok')

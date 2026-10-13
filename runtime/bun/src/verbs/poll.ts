@@ -1,12 +1,13 @@
 // `tap poll [me]` — list unprocessed payloads addressed to me.
 //
 // unprocessed = a payload whose envelope `to` is me and which has no `.done`.
-// Exit 2 when at least one is listed, 0 when none. That inversion is deliberate:
-// a caller can branch on "do I owe anything" without parsing output.
+// Exit 0 whether or not anything is listed: pending mail is ordinary state, not
+// an error (CLI-STANDARDS exit rule). A caller branches on "do I owe anything"
+// with --json `pending`. Non-zero means a usage error or an unreadable inbox.
 //
 // TWO RULES THAT LOOK LIKE EDGE CASES AND ARE NOT:
 //   - a MALFORMED payload is quarantined once and never changes the
-//     0/2 exit contract. One bad canonical must not starve its valid siblings.
+//     exit status. One bad canonical must not starve its valid siblings.
 //   - an UNATTRIBUTED payload (no .placed, no legacy .sent) is LISTED and
 //     labelled, never hidden. Hiding mail is the one thing a transport may not do.
 
@@ -193,14 +194,10 @@ export function cmdPoll(argv: string[]): number {
     if (degraded) process.stderr.write(`tap poll: WARNING: ${degraded} malformed payload(s) could not be fully quarantined (moved without a generation mark, or not moved at all) — inspect ${ctx.bus.payloadsDir}/.quarantine and run tap doctor\n`);
     if (json) {
       process.stdout.write(`${ensureAscii(JSON.stringify({ ok: true, agent: me, pending: rows.map(row => row.item), ...(ctx.team ? { team: ctx.team } : {}) }))}\n`);
-      return quiet || !found ? 0 : 2;
-    }
-    if (quiet) return 0;
-    if (!found) {
-      process.stdout.write("tap poll: empty\n");
       return 0;
     }
-    return 2;
+    if (!quiet && !found) process.stdout.write("tap poll: empty\n");
+    return 0;
   } catch (error) {
     if (!json || !(error instanceof TapError)) throw error;
     process.stdout.write(`${ensureAscii(JSON.stringify({ ok: false, error_class: error.errorClass,

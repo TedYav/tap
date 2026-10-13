@@ -1,26 +1,33 @@
-import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+// `tap resend <id>`: the sender's explicit same-id retry (delivery decision-v1,
+// L1-L7). It re-rings the SAME canonical message: no successor id, no withdrawal,
+// no age reset, one obligation. The canonical is re-parked into the spool as a
+// retry row and the existing drain delivers it under the retry's own one-shot
+// license (`<id>.retry-<uuid>.attempted`) with a `retry` wire tag. An urgent or
+// escalation original re-rings as ordinary delivery: never a second interrupt.
+// A message the recipient already observed, settled or that was cancelled is a
+// recorded, suppressed request: exit 0, no pane effect.
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { TapError, observeCallingPane, resolveSelf, type ResolvedContext } from "../context";
-import { ensureAscii, writeAllSync } from "../fsatomic";
-import { mintId, utcStamp, validId, validToken } from "../ids";
-import { describeResendFailure, formatResendResult, ResendReceiptError } from "../resend-format";
-import { lockRoot, acquireObligationLock, acquirePathLock, type PaneLock } from "../panelock";
+import { ensureAscii } from "../fsatomic";
+import { validId, validToken } from "../ids";
+import { lockRoot, acquireObligationLock, type PaneLock } from "../panelock";
 import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
-import { enrolledSeatForObservedPane, seatMap } from "../registry";
+import { enrolledSeatForObservedPane, loadRegistry, seatMap } from "../registry";
 import { isFile } from "../watch-lease";
-import { acquireResetMutationLock, markResetGenerationReused } from "../reset";
-import { isDict, jsonDumpBytes, parseJsonPreserving, PyFloat, PyInt, pyTruthy } from "../spool-publication";
-import { rawPreview } from "../sentinel-preview";
-import { claimAcquire, claimRelease, pyPrint } from "../spool-sidecar";
-import { bunBinary } from "../courier-argv";
-import { runtimeModule } from "../scripts-dir";
+import { acquireResetMutationLock } from "../reset";
+import { isDict, parseJsonPreserving } from "../spool-publication";
+import { recipientState } from "../harness-queue";
+import { appendRetryRecord, attemptCount, nextRetryOrdinal, pendingRetry, retryClosed, retryIdleSubmitPath, retryMarkerPath, returnBodyHome, rowRetry, spentOriginalPark, spentRetryRow } from "../retry";
+import { metaField, removeEntry } from "../spool-sidecar";
+import { archivedPayload } from "../bus-archive-index";
+import { pendingReprobe } from "../submit-phase";
+import { bindRemoteTeam } from "../remote-target";
+import { ParkRefusal, parkPlaced, type Parked } from "../spool-park";
+import { finishPark, type ParkReportInput } from "../spool-park-report";
 
-/** A failed successor: the router renders the one text line; --json prints `body`, the standard envelope plus recovery. */
-class ResendFailure extends TapError {
-  constructor(code: number, errorClass: string, action: string, detail: string, readonly body: Record<string, unknown>) { super(code, errorClass, action, detail); }
-}
 class GuardRefusal extends Error {
   constructor(readonly errorClass: string, detail: string) { super(detail); }
 }
@@ -79,109 +86,116 @@ function envelope(data: Buffer): { fields: Map<string, string>; body: Buffer } {
   }
   return { fields, body: data.subarray(fence + 5) };
 }
-// Exclusive final names are forensic artifacts even when a write/fsync fails.
-// Private like every other bus payload writer (fsatomic.atomicWrite's 0o600).
-function publish(path: string, data: Uint8Array): void {
-  const fd = openSync(path, "wx", 0o600);
-  try { writeAllSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); }
-}
-function publishJson(path: string, value: Record<string, unknown>): void { publish(path, Buffer.from(jsonDumpBytes(value))); }
-function unlinkIfPresent(path: string): void {
-  try { unlinkSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-}
-export function retractionAdvice(bus: string, id: string, source?: string): string {
-  if (existsSync(join(bus, "receipts", `${id}.done`))) return `it is already settled; inspect it with: tap show ${id}`;
-  const cancelled = join(bus, "receipts", `${id}.cancelled`);
-  if (existsSync(cancelled)) {
-    let via = "cancelled", successor = "";
-    try {
-      const rec = readJson(cancelled);
-      via = pyPrint(pyTruthy(rec.via) ? rec.via : "cancelled");
-      successor = pyPrint(pyTruthy(rec.superseded_by) ? rec.superseded_by : "");
-    } catch { /* unreadable is still terminal */ }
-    if (via === "withdrawn") return successor
-      ? `its sender already withdrew it; answer '${successor}' instead, or inspect with: tap show ${id}`
-      : `its sender already withdrew it; inspect it with: tap show ${id}`;
-    return `it is already terminal (via: ${via}); inspect it with: tap show ${id}`;
+
+type Verdict =
+  | { status: "queued"; to: string; retry: string; ordinal: number; input: ParkReportInput; parked: Parked }
+  | { status: "suppressed"; to: string; state: string; via?: string; ask: boolean }
+  | { status: "pending"; to: string; detail: string };
+
+/** Runs under the shared reset lock and the id's obligation lock. */
+function retryUnderLocks(ctx: ResolvedContext, id: string, actor: string, scriptsDir: string): Verdict {
+  const bus = ctx.bus.home, spool = join(bus, "spool"), canonical = ctx.bus.payloadPath(id), parked = join(spool, `${id}.md`);
+  let source = [canonical, parked, join(bus, "archive", `${id}.cancelled.md`)].find(isFile), archived = false;
+  if (!source) {
+    // `tap bus archive` moves only terminal mail, with its receipts, into a month bucket.
+    try { source = archivedPayload(bus, id) || undefined; archived = Boolean(source); } catch { /* an unsafe or corrupt archive is not found */ }
   }
-  if (source && basename(dirname(source)) === "spool") return `it was never delivered; withdraw the spooled copy with: tap cancel ${id} --spooled`;
-  return `if you SUPERSEDED this send rather than needing it re-delivered, withdraw it instead: tap withdraw ${id} -m '<why>' (no second delivery, and the recipient gets a tombstone)`;
+  if (!source) refuse("not_found", "no local payload with this id; tap resend runs on the sender's bus");
+  const fields = envelope(readFileSync(source)).fields;
+  if (fields.get("id") !== id) refuse("invalid_payload", "payload id disagrees with its filename");
+  if (fields.get("from") !== actor) refuse("not_sender", "only the original sender may resend");
+  const registry = readJson(ctx.registryPath);
+  if (registry.team !== undefined && !isDict(registry.team)) throw new TypeError("registry team is not an object");
+  const team = (registry.team as Record<string, unknown> | undefined)?.name;
+  if (fields.get("from_team") && fields.get("from_team") !== team) refuse("not_sender", "original belongs to a different sender team");
+  const seats = seatMap(registry), current = Object.hasOwn(seats, actor) ? seats[actor] : undefined;
+  if (fields.get("sender_instance")) {
+    if (Object.hasOwn(seats, actor) && !isDict(current)) throw new TypeError("sender row is not an object");
+    if (current?.instance !== fields.get("sender_instance")) refuse("not_sender", "original sender instance is not current");
+  }
+  const handle = fields.get("to") ?? "", toTeam = fields.get("to_team") && fields.get("to_team") !== ctx.team ? fields.get("to_team")! : "";
+  if (!handle || (fields.get("cross_worktree") && !fields.get("to_team"))) refuse("invalid_payload", "original lacks a resolvable recipient team/handle");
+  const to = toTeam ? `${toTeam}/${handle}` : handle, ask = (fields.get("reply") ?? "expected") === "expected";
+  const attempts = attemptCount(bus, id);
+
+  // Archived mail is terminal: a suppressed no-op. Nothing is recorded, because an active
+  // receipt for an archived id would contradict the archive's moved evidence.
+  if (archived) return { status: "suppressed", to, state: "archived", ask: false };
+  // Observed, settled or cancelled: a recorded, suppressed request. No pane effect.
+  const seen = recipientState(bus, id);
+  if (seen.state !== "unobserved") {
+    appendRetryRecord(bus, { id, retry: randomUUID(), ordinal: nextRetryOrdinal(bus, id), event: "suppressed", actor, trigger: "explicit",
+      prior: { state: seen.state, ...(seen.via ? { via: seen.via } : {}), ...(seen.at ? { at: seen.at } : {}), attempts },
+      detail: `recipient state ${seen.state}; no pane effect` });
+    return { status: "suppressed", to, state: seen.state, ...(seen.via ? { via: seen.via } : {}), ask };
+  }
+  // A parked row whose own attempt is spent can never ring again: a retry row after a kill
+  // or refusal post-admission, or an original park after its possible effect. Coalescing
+  // into it would block the blessed retry forever, so it retires — the body back to
+  // payloads, every attempt and interrupt receipt kept — and this invocation mints fresh
+  // below. A spent retry closes as `unknown`: its attempt may have rung. Staged-idle holds
+  // and pending reprobes are runnable completions and still coalesce.
+  const reprobe = pendingReprobe(bus, id);
+  const spentRetry = reprobe ? null : spentRetryRow(bus, spool, id);
+  if (spentRetry || (!reprobe && spentOriginalPark(bus, spool, id))) {
+    // removeEntry deletes the spool body: the row goes only once a regular canonical holds it.
+    if (!returnBodyHome(parked, canonical)) refuse("retire_held", "its spent parked row could not move back to payloads/; the row and body are kept");
+    removeEntry(spool, id, process.env, 5000);
+    if (spentRetry && !retryClosed(bus, id, spentRetry.retry)) appendRetryRecord(bus, { id, retry: spentRetry.retry, ordinal: spentRetry.ordinal,
+      event: "outcome", outcome: "unknown", detail: "license spent with no recorded outcome; the attempt may have rung" });
+  }
+  // Delivery work already queued for this id coalesces: one runnable row per id.
+  const queued = rowRetry(spool, id);
+  if (queued) return { status: "pending", to, detail: `retry ${queued.ordinal} is already queued` };
+  if (existsSync(parked)) return { status: "pending", to, detail: "it is still queued for delivery" };
+
+  // The recipient must have a pane to ring; a poll-only seat reads with tap poll.
+  let registryPath = ctx.registryPath, bound = "";
+  if (toTeam) {
+    const remote = bindRemoteTeam(toTeam, handle, process.env.TAP_INDEX_HOME);
+    registryPath = remote.registryPath; bound = remote.team;
+  }
+  let row: Record<string, unknown> | undefined;
+  try { row = seatMap(loadRegistry(registryPath))[handle] as Record<string, unknown> | undefined; } catch { row = undefined; }
+  const pane = typeof row?.pane === "string" ? row.pane : "", paneId = typeof row?.pane_id === "string" ? row.pane_id : "";
+  if (!row || row.delivery === "poll" || !pane || !paneId) refuse("recipient_unbound", `'${to}' has no registered pane to ring; it reads its mail with tap poll`);
+  // A different instance under the same handle is a different seat (spool-rebind's rule): the
+  // retry never exposes this message to it. A follow-up send reaches whoever holds the handle now.
+  const sentTo = fields.get("recipient_instance") ?? "", nowAt = typeof row.instance === "string" ? row.instance : "";
+  if (sentTo && nowAt && sentTo !== nowAt) refuse("recipient_changed", `'${to}' is now a different seat instance than the one this message was sent to; follow up with tap send ${to} -f <file>`);
+
+  // Persist the request and its uuid BEFORE any runnable work exists. A request whose park was
+  // interrupted (recorded, no row, no outcome, never attempted) resumes under its own uuid.
+  const pending = pendingRetry(bus, id);
+  const resumed = pending && !existsSync(retryMarkerPath(bus, id, pending.retry)) ? pending : null;
+  const retry = resumed?.retry ?? randomUUID(), ordinal = resumed?.ordinal ?? nextRetryOrdinal(bus, id);
+  // The license `<id>.retry-<uuid>.idle-submit` is the longest name a retry writes: refuse before
+  // recording anything when it cannot fit, rather than queue a row no drain can ever admit.
+  if (Buffer.byteLength(basename(retryIdleSubmitPath(bus, id, retry))) > 255) refuse("id_too_long", "this id is too long for a retry license filename; follow up with tap send");
+  if (!resumed) appendRetryRecord(bus, { id, retry, ordinal, event: "request", actor, trigger: "explicit", prior: { state: "unobserved", attempts } });
+  const input: ParkReportInput = {
+    spoolDir: spool, home: bus, id, canonical, target: handle, acting: ctx.team, reason: "retry", timeoutSeconds: "",
+    pane, paneId, toTeam: bound, targetRegistry: registryPath, policy: "standard", graceSeconds: "", cueStyle: "", cueRedAt: "",
+    env: { ...process.env, TAP_LOCK_DIR: lockRoot(), TAP_HOME: bus },
+    from: actor, kind: fields.get("kind") ?? "discuss", replyExpect: ask ? "expected" : "none", scriptsDir,
+    retry: { uuid: retry, ordinal },
+  };
+  resendBarrier("parking", id);
+  try { return { status: "queued", to, retry, ordinal, input, parked: parkPlaced(input) }; }
+  catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    // A failure AFTER the row was published (canonical cleanup) leaves runnable work: it is
+    // queued, never refused, and still gets its waiter. The park released its claim.
+    if (rowRetry(spool, id)?.retry === retry) {
+      process.stderr.write(`tap resend: ${id} retry ${ordinal} is queued; its park reported: ${detail}\n`);
+      return { status: "queued", to, retry, ordinal, input,
+        parked: { payload: join(spool, `${id}.md`), meta: join(spool, `${id}.meta.json`), deadlineEpoch: metaField(spool, id, "deadline_epoch") } };
+    }
+    try { appendRetryRecord(bus, { id, retry, ordinal, event: "outcome", outcome: "refused", detail }); } catch { /* the request stays unknown */ }
+    throw new TapError(1, error instanceof ParkRefusal ? error.klass : "spool_publish_failed", `tap show ${id}`, `retry was not queued: ${detail}`);
+  }
 }
-function prepare(ctx: ResolvedContext, id: string, actor: string, newId: string, scriptsDir: string): string[] {
-  const bus = ctx.bus.home, receipts = join(bus, "receipts"), spool = join(bus, "spool"), archive = join(bus, "archive");
-  mkdirSync(spool, { recursive: true });
-  // The spool's own claim, not a private `wx`: every destroyer of a `.claim` runs under the claim mutex and
-  // rechecks identity there, so this one must too. No steal: a stale claim is not proof of no effect.
-  const claim = claimAcquire(spool, id, true);
-  if (claim.status === "held") refuse("delivery_busy", "courier claim exists; a stale claim is not proof of no effect");
-  let fields: Map<string, string>, target: string, prepared: string;
-  try {
-    const metaLock = acquirePathLock(join(spool, `${id}.meta.json.lock`), Infinity);
-    if (!metaLock) throw new Error("could not acquire resend metadata custody");
-    try {
-      const source = [join(spool, `${id}.md`), ctx.bus.payloadPath(id), join(archive, `${id}.cancelled.md`)].find(isFile);
-      if (!source) refuse("not_found", "original payload is unavailable");
-      const data = readFileSync(source), parsed = envelope(data);
-      fields = parsed.fields;
-      if (fields.get("id") !== id) refuse("invalid_payload", "payload id disagrees with its filename");
-      if (fields.get("from") !== actor) refuse("not_sender", "only the original sender may resend");
-      const registry = readJson(ctx.registryPath);
-      if (registry.team !== undefined && !isDict(registry.team)) throw new TypeError("registry team is not an object");
-      const team = (registry.team as Record<string, unknown> | undefined)?.name;
-      if (fields.get("from_team") && fields.get("from_team") !== team) refuse("not_sender", "original belongs to a different sender team");
-      const seats = seatMap(registry), current = Object.hasOwn(seats, actor) ? seats[actor] : undefined;
-      if (fields.get("sender_instance")) {
-        if (Object.hasOwn(seats, actor) && !isDict(current)) throw new TypeError("sender row is not an object");
-        if (current?.instance !== fields.get("sender_instance")) refuse("not_sender", "original sender instance is not current");
-      }
-      if (existsSync(join(receipts, `${id}.resent`))) refuse("already_resent", "original already consumed; inspect its .resent receipt");
-      for (const dir of [receipts, ctx.bus.payloadsDir, spool, archive]) {
-        for (const suffix of ["attempted", "attempts", "sent", "read", "done"]) {
-          if (existsSync(join(dir, `${id}.${suffix}`))) refuse("delivery_attempted", `delivery evidence exists: ${id}.${suffix}; possible effect prohibits resend. ${retractionAdvice(bus, id, source)}`);
-        }
-      }
-      const metaPath = join(spool, `${id}.meta.json`);
-      const meta = readJson(existsSync(metaPath) ? metaPath : join(archive, `${id}.meta.json`));
-      const count = meta.attempts;
-      if (!(typeof count === "number" && Number.isInteger(count)) && !(count instanceof PyInt)) refuse("effect_unknown", "missing or malformed attempt count");
-      if (count !== 0) refuse("delivery_attempted", `original records ${count instanceof PyInt ? count.source : count} delivery attempts; resend refused. ${retractionAdvice(bus, id, source)}`);
-      const fence = meta.attempt_fence;
-      if (!(fence === 1 || fence === true || (fence instanceof PyFloat && fence.value === 1)) || meta.id !== id) refuse("effect_unknown", "legacy zero count has no pre-attempt fence; no-effect cannot be proved");
-      if (existsSync(join(spool, `${id}.json`))) refuse("effect_unknown", "native intent requires its own delivery evidence");
-      if (fields.get("kind") === "escalate" || fields.get("urgency") === "urgent" || meta.policy === "urgent") refuse("interrupt_resend", "interrupt-class resends are excluded; original retained");
-      target = fields.get("to") ?? "";
-      if (fields.get("to_team")) target = `${fields.get("to_team")}/${target}`;
-      if (!target || (fields.get("cross_worktree") && !fields.get("to_team"))) refuse("invalid_payload", "original lacks a resolvable recipient team/handle");
-      mkdirSync(archive, { recursive: true });
-      prepared = join(archive, `${newId}.resend.md`);
-      const header = [...fields].filter(([key]) => key !== "resend_of").map(([key, value]) => `${key}: ${value}\n`).join("");
-      publish(prepared, Buffer.concat([Buffer.from(`---\n${header}resend_of: ${id}\n---\n`), parsed.body]));
-      resendBarrier("prepared", id);
-      publishJson(join(receipts, `${id}.resent`), { id, resend_id: newId, by: actor, delivery: "at-least-once", prepared, at: Math.floor(Date.now() / 1000) });
-      markResetGenerationReused(bus, "resend");
-      resendBarrier("consumed", id);
-      const archived = join(archive, `${id}.cancelled.md`);
-      if (source !== archived) { publish(archived, data); unlinkSync(source); }
-      const cancel = ctx.bus.cancelPath(id);
-      if (!existsSync(cancel)) publishJson(cancel, { id, status: "cancelled", via: "cancelled", by: actor, reason: "spooled_withdrawn", at: utcStamp(), resend_id: newId });
-      for (const path of [join(spool, `${id}.md`), metaPath, `${metaPath}.reown`]) unlinkIfPresent(path);
-    } finally { metaLock.release(); }
-  } finally { claimRelease(spool, id, claim.token); }
-  // resend-successor.ts reads this tuple as [_, <path in the scripts dir>, ...send
-  // args] and runs cmdSend natively; it never executes the path. The shape is
-  // frozen so an old successor and a new resend (or the reverse) still agree
-  // across an install mid-resend: the named file need not exist.
-  const args = ["bash", join(scriptsDir, "tap-send.sh"), target, prepared, "--from", actor, "--id", newId, "--kind", fields.get("kind") ?? "discuss", "--json"];
-  args.push((fields.get("reply") ?? "expected") === "expected" ? "--ask" : "--note");
-  if (fields.get("reply_to")) args.push("--reply-to", fields.get("reply_to")!);
-  if (fields.get("in_reply_to")) args.push("--in-reply-to", fields.get("in_reply_to")!);
-  // An explicit stored hint travels as an explicit --preview, because canonical stamping drops
-  // the copied field. Raw-decoded so the toggle cannot erase it; `--preview ""` re-stamps a
-  // rejected hint's suppression marker (stampPreview), and no field means derive as before.
-  const preview = fields.get("sentinel_preview");
-  if (preview !== undefined) args.push("--preview", rawPreview(preview));
-  return args;
-}
+
 function implicitActor(ctx: ResolvedContext): string {
   const seen = observeCallingPane();
   if (seen.state === "inside") {
@@ -213,59 +227,40 @@ export function cmdResend(argv: string[], scriptsDir: string): number {
     const ctx = resolveSelection(pin, team);
     if (!actor) actor = implicitActor(ctx);
     if (!validToken(actor)) throw new TapError(1, "usage_error", "tap help resend", "invalid sender");
+    let verdict: Verdict;
     const reset = acquireResetMutationLock(ctx.bus.home, "tap resend", undefined, "shared");
     let lock: PaneLock | null = null;
     try {
-      let args: string[], newId: string;
-      try {
-        lock = acquireObligationLock(id);
-        if (!lock) throw new TapError(1, "obligation_busy", "tap outstanding", "original obligation is busy");
-        ctx.bus.ensureDirs();
-        newId = mintId(actor);
-        args = prepare(ctx, id, actor, newId, scriptsDir);
-      } finally { reset.release(); }
-      resendBarrier("handoff", id);
-      // Only the prepared successor runs here; it cannot restart this consumed
-      // original, even after a reset intervenes.
-      const successor = spawnSync(bunBinary(), [runtimeModule("src/resend-successor.ts"), JSON.stringify(args)], {
-        env: { ...process.env, TAP_LOCK_DIR: lockRoot(), TAP_HOME: ctx.bus.home },
-      });
-      const code = successor.status ?? 1;
-      // One error path for every failed successor. The original is already consumed, so the failure
-      // is loud about what is left, and the next step only DESCRIBES an inspection; nothing retries
-      // or re-sends. The child's stderr is folded into the cause (never forwarded raw: text mode is
-      // one diagnostic line, --json one object on stdout and nothing on stderr). A caller's pinned
-      // TAP_HOME wins over --team, and neither outlives this command, so the inspection names the
-      // bus actually selected (the pin's bus, else the team), never the raw --team text.
-      const anchor = pin ? { pin: ctx.bus.home } : { team: team ? ctx.team : "" };
-      const stdout = successor.stdout ?? Buffer.alloc(0), stderr = successor.stderr ?? Buffer.alloc(0);
-      // A killed child or a failed spawn leaves no status or stderr of its own; keep how it died.
-      const crash = successor.signal ? `the successor was killed by ${successor.signal}` : successor.error ? `the successor could not run: ${successor.error.message}` : "";
-      let invalid: ResendReceiptError | undefined, out: Uint8Array | undefined;
-      if (code === 0) {
-        try { out = formatResendResult(stdout, code, id, newId, json); } catch (error) {
-          if (!(error instanceof ResendReceiptError)) throw error;
-          invalid = error;
-        }
-      }
-      if (out === undefined) {
-        const failure = describeResendFailure(stdout, stderr, code, id, newId, anchor, invalid, crash);
-        throw new ResendFailure(code || 1, failure.errorClass, failure.action, failure.detail, failure.body);
-      }
-      // A successful send keeps its warnings (an ask downgraded, evidence not recorded); --json stays stderr-free.
-      if (stderr.length && !json) process.stderr.write(stderr);
-      process.stdout.write(out);
-      return code;
-    } finally { lock?.release(); }
+      lock = acquireObligationLock(id);
+      if (!lock) throw new TapError(1, "obligation_busy", "tap outstanding", "another process is acting on this message; retry shortly");
+      ctx.bus.ensureDirs();
+      verdict = retryUnderLocks(ctx, id, actor, scriptsDir);
+    } finally { lock?.release(); reset.release(); }
+    // The waiter starts after the locks are released, so its first drain can take the obligation lock.
+    let spawned = true;
+    if (verdict.status === "queued") spawned = finishPark(verdict.input, verdict.parked).spawned;
+    if (json) {
+      const base = { status: verdict.status, id, to: verdict.to };
+      const body = verdict.status === "queued" ? { ...base, retry: verdict.retry, ordinal: verdict.ordinal, delivery_semantics: "at-least-once", waiter: spawned }
+        : verdict.status === "suppressed" ? { ...base, state: verdict.state, ...(verdict.via ? { via: verdict.via } : {}) }
+        : { ...base, detail: verdict.detail };
+      process.stdout.write(`${ensureAscii(JSON.stringify(body))}\n`);
+    } else if (verdict.status === "queued") {
+      process.stdout.write(`tap resend: ok ${id} retry ${verdict.ordinal}\n`);
+      if (!spawned) process.stderr.write(`tap resend: warning: the retry for ${id} is queued but no waiter started; the next drain delivers it (inspect with tap show ${id})\n`);
+    } else if (verdict.status === "suppressed") {
+      const what = verdict.state === "observed" ? "read" : verdict.state;
+      process.stdout.write(`tap resend: ${id} already ${what}${verdict.state === "observed" && verdict.ask ? `; follow up: tap send ${verdict.to} -f <file>` : ""}\n`);
+    } else process.stdout.write(`tap resend: ${id} already queued\n`);
+    return 0;
   } catch (error) {
     if (error instanceof GuardRefusal) {
-      process.stdout.write(jsonDumpBytes({ status: "refused", error_class: error.errorClass, detail: error.message }) + "\n");
+      if (json) process.stdout.write(`${ensureAscii(JSON.stringify({ ok: false, error_class: error.errorClass, action: `tap show ${id}`, detail: error.message }))}\n`);
+      else process.stderr.write(`tap resend: ${error.message} (${error.errorClass})\n`);
       return 1;
     }
     if (!json || !(error instanceof TapError)) throw error;
-    // A failed successor's envelope carries its receipt fields and the recovery facts beside the standard four.
-    const body = error instanceof ResendFailure ? error.body : { ok: false, error_class: error.errorClass, action: error.action, detail: error.detail };
-    process.stdout.write(`${ensureAscii(JSON.stringify(body)).replace(/\x7f/g, "\\u007f")}\n`);
+    process.stdout.write(`${ensureAscii(JSON.stringify({ ok: false, error_class: error.errorClass, action: error.action, detail: error.detail }))}\n`);
     return error.code;
   }
 }

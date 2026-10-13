@@ -50,7 +50,7 @@ describe("post-placement identity and pane-gone keep canonical", () => {
     const poll = Bun.spawnSync([process.execPath, MAIN, "poll", "ub"], {
       cwd: fx.wt, env: { ...fx.env, TAP_SELF: "ub" }, stdout: "pipe", stderr: "pipe",
     });
-    expect(poll.exitCode).toBe(2);
+    expect(poll.exitCode).toBe(0);
     expect(poll.stdout.toString()).toContain(id);
   }, 30_000);
 
@@ -899,7 +899,7 @@ describe("native send_submit_unverified is durable", () => {
       [process.execPath, MAIN, "outstanding", "ua", "--json"],
       { cwd: fx.wt, env: fx.env, stdout: "pipe", stderr: "pipe", timeout: 20_000, killSignal: "SIGKILL" },
     );
-    expect(outstanding.exitCode).toBe(2);
+    expect(outstanding.exitCode).toBe(0);
     expect(outstanding.stdout.toString()).toContain(`"kind":"send_unverified"`);
     expect(outstanding.stdout.toString()).toContain(`"id":"${id}"`);
     // tap-7r3fn.146, same budget invariant: the 15000ms --ask send plus the

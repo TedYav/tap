@@ -54,6 +54,7 @@ import { METADATA_LOCK_TIMEOUT_MS, isDict, metaBytes, parseJsonPreserving, pyRea
 import { pyStr } from "./digest-window";
 import { AGENT_FAMILIES } from "./harness-families";
 import { notifyHuman } from "./watch-notice";
+import { currentAttemptMarker } from "./retry";
 
 // --- inputs -------------------------------------------------------------------------
 
@@ -151,7 +152,7 @@ export function isDone(ctx: DeadlineContext, id: string): boolean {
  * narrower per-id recovery authority must not make an entry batchable.
  */
 export function graceAttempted(ctx: DeadlineContext, id: string): boolean {
-  return exists(join(ctx.home, "receipts", `${id}.attempted`))
+  return exists(currentAttemptMarker(ctx.home, ctx.spoolDir, id))
     && metaField(ctx.spoolDir, id, "waiter_lifetime") === "grace-window";
 }
 
@@ -737,7 +738,7 @@ export async function disposeAtDeadline(ctx: DeadlineContext, row: DeadlineRow, 
     // `spool-grace.ts`: `possible = True` unless lstat says ENOENT — an unreadable
     // marker is conservatively a possible effect.
     let possible = true;
-    try { lstatSync(join(ctx.home, "receipts", `${row.id}.attempted`)); }
+    try { lstatSync(currentAttemptMarker(ctx.home, ctx.spoolDir, row.id)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") possible = false; }
     if (!watcherProbe && graceCanReprobe(meta, possible) && (ready === "ready" || ready === "busy" || ready.startsWith("busy:"))) return "reprobe-eligible";
     if (isDone(ctx, row.id) || !entryFiles(ctx, row.id)) return "escalate-declined";

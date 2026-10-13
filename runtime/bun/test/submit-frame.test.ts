@@ -105,7 +105,7 @@ for (const dim of [true, false]) {
 
 
 for (const width of [50, 69, 140]) {
-  for (const tag of ["urgent", "escalate", "escalate urgent", "urgent agent-interrupt", "escalate urgent agent-interrupt"]) {
+  for (const tag of ["urgent", "escalate", "escalate urgent", "urgent agent-interrupt", "escalate urgent agent-interrupt", "retry", "escalate retry"]) {
     test(`wrapped ${tag} wire uses complete-text containment at ${width}`, () => {
       const tagged = `[[TAP v0.23 note ArchitectureAudit/${id} ${tag}]]`;
       const capture = frame(tagged, width);

@@ -31,6 +31,14 @@ without asking. Enrollment creates
 `.tap/bus` and a team named after the directory; in Git it also ignores
 `.tap/`.
 
+It then asks `Trust current directory in installed harnesses Y/n`, listing the
+directory and supported installed harnesses (Codex, Antigravity, Claude and Cursor).
+Enter grants each harness's normal folder trust, including any project settings
+and hooks that it ties to folder trust. Separate approval dialogs remain untouched.
+No leaves trust unchanged; some harnesses may need manual trust before use here.
+`tap init --yes` also accepts this question; add `--no-trust-folders` to skip it.
+Automatic onboarding and setup do not grant folder trust.
+
 ## 3. Launch both harnesses
 
 Run these from your project terminal, one at a time:

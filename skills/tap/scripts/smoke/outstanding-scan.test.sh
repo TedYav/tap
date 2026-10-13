@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='outstanding-scan-') as tmp:
             assert 'no outstanding sends' not in out, 'interrupted scan claimed empty'
             raise AssertionError(f'{label}: scan exceeded 12s; launches={len(launches.read_text().splitlines())}')
         elapsed = time.monotonic()-started
-        assert p.returncode == 2, (p.returncode, out, err)
+        assert p.returncode == 0, (p.returncode, out, err)  # exit 0 either way; the exact row below proves it is listed
         expected = {'ok': True, 'agent': 'sender', 'outstanding': [{'id': 'custom-open-id', 'to': 'peer', 'kind': 'discuss', 'path': str(bus/'payloads'/'custom-open-id.md')}]}
         assert out == json.dumps(expected, separators=(',', ':'))+'\n', out
         names = launches.read_text().splitlines()

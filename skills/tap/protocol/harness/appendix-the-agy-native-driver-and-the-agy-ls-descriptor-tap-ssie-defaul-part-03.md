@@ -11,52 +11,40 @@
 
 <!-- tap-source id=source-0144 start=917878 end=919665 sha256=bae7b55efd2a400d5375dfdc511be82276c91f4ae4f330a9e54d7cef150cf8e2 fragment=3/3 transform=wrapper_prefix -->
 <!-- TAP_SOURCE_BYTES_BEGIN -->
-The operation holds the existing obligation lock, a non-stealing spool claim,
-and the metadata lock while checking evidence and withdrawing the old spool.
-It archives the original and exclusively records `.resent` with the successor id
-before invoking ordinary send once. A crash or failed successor send never reopens
-the original: inspect `.resent` and its retained prepared payload rather than
-repeating the old id. The cancellation receipt withdraws the old obligation; it
-does not claim recipient processing. Delivery policy uses ordinary send defaults.
+The successor-mode resend custody (withdrawal, `.resent` publication, a prepared
+`archive/<newId>.resend.md` and one delegated send) retired on 2026-10-12. Native
+`resend` validates arguments, context and actor, then takes shared reset custody
+and the id's obligation lock. Under them it checks sender authority and recipient
+state, records a suppressed or requested retry in `receipts/<id>.retries.jsonl`,
+and parks the canonical as a retry row. It releases both locks before starting
+the waiter, so the drain can take the obligation lock, recheck observation and
+admit the retry under its own license; see the
+[explicit same-ID retry](../delivery/reliability.md#explicit-same-id-retry).
+Refusals exit 1: one `ok: false` JSON object on stdout with `--json`, otherwise
+one `tap resend: ` stderr line.
 
-Every public `resend` form uses the native eligibility, preparation and withdrawal
-owner, including `--team` and implicit actors. The Bash
-bootstrap and Python owner are deleted. No public option selects preparation alone.
-
-Argument, context and actor validation precede reset mutation custody, then the
-obligation lock, non-stealing claim and metadata lock. Reset custody spans
-preparation; the metadata lock retains its unbounded wait. Immediately after
-durable `.resent` publication, resend marks the reset generation reused. A marking
-failure retains the consumed and partial artifacts and prevents successor
-invocation. A prepared-only artifact remains in `archive`, whose reset fate is
-`preserve`; it does not mark successful consumption.
-
-The parent releases reset custody before invoking ordinary send, which takes its
-own reset custody. The original obligation lock remains held through that one
-attempt and its output. Reset may intervene in this handoff and the child may
-refuse; the consumed original stays consumed. This does not make preparation and
-delivery one atomic transaction or guarantee redelivery. All doors now give reset
-custody/fence refusal precedence over obligation-busy and guarded eligibility,
-replacing the former native lock-first and Bash precondition-first split.
-
-Every prepared argv runs native send, including team-qualified targets, `--note`,
-`--reply-to` and `--in-reply-to` originals. Only pre-effect send
-delegation invokes the prepared Bash send, exactly once. Such
-delegation never restarts the consumed resend. Other successor failures are reported
-without retry. The successor retains its existing send delegation rules.
-
-Guard refusals retain their `status: refused` JSON on stdout even without `--json`.
-Receipt, output and body bytes are preserved. Native parser and OS exception tails
-may differ for malformed/unreadable evidence and incidental filesystem failures;
-error class, stream, exit, fixed prefix and evidence filename stay unchanged. The
-authored non-object diagnostic remains `expected an object`. JSON byte encodings,
-BOM handling and numeric eligibility retain their existing meaning.
-Missing or empty `--by`/`--team` operands retain exit 1 and stderr-only output,
-even after `--json`; their diagnostic now starts with `tap resend: ` instead of
-the deleted Bash script's path and line number.
+Crash and refusal edges. A request recorded but never parked or attempted
+resumes under its own uuid on the next resend. A parked row whose own attempt
+is spent can never ring again: a retry row after a kill or refusal past
+admission, or an original park after its possible effect. The drain (retry rows)
+or the next resend moves the canonical back to `payloads/`, removes the row, and
+mints fresh; a spent retry also records outcome `unknown`. The row goes only once
+a regular canonical holds the body; a failed move keeps row and body and refuses
+(`retire_held`). A staged-idle hold or a pending reprobe still runs on its spent
+attempt and coalesces. Resend also refuses `recipient_changed` when the handle now
+names a different instance than the envelope's `recipient_instance` (the drain
+rechecks it and retires such a row as suppressed, with no effect), and
+`id_too_long` when the license filename cannot fit. It suppresses an archived
+message without writing an active receipt. A park that fails after publishing
+its row reports the retry queued, never refused, and starts its waiter. In `tap
+outstanding`, a later retry recorded as confirmed supersedes an earlier
+`retry_submit_unverified`. The license records its admission: `admitted_at`, the bound
+`target`, `pane`, `pane_id` and `instance`, and the checked `prior_state`. An
+unverified retry logs `retry_submit_unverified`, never the original's
+`redelivery_submit_unverified`; `tap outstanding` reports both as stopped.
 
 | Verb | Runtime boundary |
 | --- | --- |
-| `resend` | Native preparation and guard on every public form; one existing successor send. |
+| `resend` | Native on every public form; parks a same-ID retry row for the existing drain. |
 | `withdraw` | Native on every form; the verb has no Bash door. |
 | `nudge` | Native (`cmdNudge`); the recorded submit boundary runs the courier's `submitStagedLocked` in-process, each Enter through the recovery effect owner. |

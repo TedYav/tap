@@ -17,12 +17,13 @@ tap_smoke_enroll_current "$WORK/team" "$WORK/team/.tap/bus" fixture
 unset TMUX TMUX_PANE TAP_FLIP_MARKER
 for source in startup resume clear compact fork; do
   for harness in claude codex cursor; do
+    transcript_field=''
     case "$harness" in
       claude) adapter=tap-advisory.sh ;;
-      codex) adapter=tap-codex-session-start.sh ;;
+      codex) adapter=tap-codex-session-start.sh; transcript_field=",\"transcript_path\":\"$WORK/codex-rollout.jsonl\"" ;;
       cursor) adapter=tap-cursor-session-start.sh ;;
     esac
-    printf '{"source":"%s","cwd":"%s","workspace_roots":["%s"]}\n' "$source" "$WORK/team" "$WORK/team" |
+    printf '{"source":"%s","cwd":"%s","workspace_roots":["%s"]%s}\n' "$source" "$WORK/team" "$WORK/team" "$transcript_field" |
       bash "$ROOT/hooks/$adapter" > "$WORK/output/$harness-$source"
   done
 done

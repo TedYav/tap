@@ -757,7 +757,8 @@ EOF
   set +e
   out="$("$TAP" outstanding sender 2>&1)"; rc=$?
   set -e
-  [ "$rc" -eq 2 ] || { echo "communication-identity: legacy spool disappeared from outstanding" >&2; echo "$out" >&2; exit 1; }
+  [ "$rc" -eq 0 ] || { echo "communication-identity: outstanding exited $rc reading the legacy spool" >&2; echo "$out" >&2; exit 1; }
+  [[ "$out" == *"$id"* ]] || { echo "communication-identity: legacy spool disappeared from outstanding" >&2; echo "$out" >&2; exit 1; }
   [[ "$out" == *"reason: legacy_meta_no_binding"* ]] || { echo "communication-identity: legacy spool lacks named recovery reason" >&2; echo "$out" >&2; exit 1; }
   [ -f "$ABUS/spool/$id.md" ] || { echo "communication-identity: legacy spool was injected" >&2; exit 1; }
   [ "$(python3 -B -c 'import json,sys; print(json.load(open(sys.argv[1])).get("reason", ""))' "$ABUS/spool/$id.meta.json")" = legacy_meta_no_binding ]

@@ -179,12 +179,10 @@ TAP_HOME="$ALPHA_BUS" "$TAP" poll fable >"$WORK/poll.out" 2>"$WORK/poll.err" || 
 #
 # sol's RE-review corrected this fix twice over: `-le 2` admits 1, which
 # tap-poll.sh uses for USAGE errors, and my comment had the codes backwards.
-# Per tap-poll.sh's header: 0 = no pending payloads, 2 = at least one listed,
-# 1 = usage error, 4 = ungrounded bus. Exact membership, not a range.
-case "$poll_rc" in
-  0|2) ;;
-  *) fail "tap poll returned rc=$poll_rc (want 0=empty or 2=listed) — the absence of the relay id proves nothing: $(cat "$WORK/poll.err")" ;;
-esac
+# poll now exits 0 for every real read, listed or empty (pending mail is state,
+# not an error); 1 = usage error, 4 = ungrounded bus. Exact value, not a range.
+[ "$poll_rc" -eq 0 ] \
+  || fail "tap poll returned rc=$poll_rc (want 0, a successful read) — the absence of the relay id proves nothing: $(cat "$WORK/poll.err")"
 grep -q 'sol-20260813T000000Z-w66z0001' "$WORK/poll.out" \
   && fail "sender-team same-handle poll treated outbound relay as inbox"
 

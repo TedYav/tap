@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { cmdKeybinding } from "../src/verbs/keybinding";
-import { cmdPick, lookupModel, typeIntoPane } from "../src/verbs/pick";
+import { cmdPick, currentTeam, lookupModel, typeIntoPane } from "../src/verbs/pick";
+import type { PickerTeam } from "../src/attach-picker";
 import { fixtureFzf } from "./support/fzf-fixture";
 
 // A real tmux server on a private socket, a real pty client, the real generated binding:
@@ -40,7 +41,7 @@ async function stdoutOf(fn: () => Promise<number>): Promise<{ code: number; out:
   (process.stdout as any).write = (s: string) => { out += s; return true; };
   try { return { code: await fn(), out }; } finally { (process.stdout as any).write = write; }
 }
-const model = () => lookupModel(teams);
+const model = () => teams as PickerTeam[];
 
 test("--list prints the seats, as JSON on request, without a terminal or tmux", async () => {
   const chooser = async () => { throw new Error("must not open a picker"); };
@@ -56,10 +57,42 @@ test("usage refusals: bad pane id, --list with --pane, --json without --list, un
   for (const argv of [["--pane", "main:0.0"], ["--pane"], ["--list", "--pane", "%1"], ["--json"], ["--bogus"], ["extra"]]) {
     await expect(cmdPick(argv, chooser, model), argv.join(" ")).rejects.toMatchObject({ code: 1 });
   }
-  await expect(cmdPick([], chooser, () => ({ seats: [], skipped: [] }))).rejects.toMatchObject({ errorClass: "no_candidates" });
+  await expect(cmdPick([], chooser, () => [])).rejects.toMatchObject({ errorClass: "no_candidates" });
   // An unreadable roster is not an empty one: it must not send the operator off to launch a duplicate.
-  await expect(cmdPick([], chooser, () => ({ seats: [], skipped: [{ team: "bad", state: "unobservable", detail: "seat classifier could not observe this team" }] })))
+  await expect(cmdPick([], chooser, () => [{ name: "bad", state: "unobservable", detail: "seat classifier could not observe this team", seats: [] }]))
     .rejects.toMatchObject({ errorClass: "teams_unobservable", action: "tap doctor" });
+});
+
+test("the picker lists the current team first, says so, and lets that order break fzf ties; --list keeps index order", async () => {
+  let seen = { targets: [] as string[], options: {} as Record<string, unknown> }, asked = "";
+  const chooser = async (choices: { value: string }[], options: Record<string, unknown>) => {
+    seen = { targets: choices.map(c => c.value), options }; return { kind: "cancelled" as const };
+  };
+  expect(await cmdPick(["--pane", "%9"], chooser as any, model, (_, pane) => { asked = pane; return "beta"; })).toBe(0);
+  expect(asked).toBe("%9");
+  expect(seen.targets).toEqual(["beta/sol", "alpha/fable"]);
+  expect(seen.options).toMatchObject({ tiebreak: "index", header: "beta first · Type to search · Enter types the name · Esc cancels" });
+  // Without --pane there is no origin pane: an ambient TMUX_PANE may belong to another tmux server than the one observed.
+  const ambient = process.env.TMUX_PANE; process.env.TMUX_PANE = "%3";
+  try { expect(await cmdPick([], chooser as any, model, (_, pane) => { asked = pane; return ""; })).toBe(0); }
+  finally { if (ambient === undefined) delete process.env.TMUX_PANE; else process.env.TMUX_PANE = ambient; }
+  expect(asked).toBe("");
+  expect(seen.targets).toEqual(["alpha/fable", "beta/sol"]);
+  expect(seen.options).toMatchObject({ tiebreak: "index", header: "Type to search · Enter select · Esc cancel" });
+  const list = await stdoutOf(() => cmdPick(["--list"], chooser as any, model, () => { throw new Error("--list must not resolve a current team"); }));
+  expect(list.out).toBe("alpha/fable\tclaude\tlive\nbeta/sol\tcodex\tlive\n");
+});
+
+test("current team: the team whose live seat occupies the origin pane; none or two claimants is no preference", () => {
+  const at = (pane: string) => ({ observedPaneId: pane });
+  const seated = [{ ...teams[0]!, seats: [{ ...teams[0]!.seats[0]!, identity: at("%4") }] },
+    { ...teams[1]!, seats: [{ ...teams[1]!.seats[0]!, identity: at("%5") }] }] as any as PickerTeam[];
+  expect(currentTeam(seated, "%4")).toBe("alpha");
+  expect(currentTeam(seated, "%5")).toBe("beta");
+  expect(currentTeam(seated, "%6")).toBe("");
+  expect(currentTeam(seated, "")).toBe("");
+  const contested = [seated[0]!, { ...teams[1]!, seats: [{ ...teams[1]!.seats[0]!, identity: at("%4") }] }] as any as PickerTeam[];
+  expect(currentTeam(contested, "%4")).toBe("");
 });
 
 test("an unvetted target is never typed: only team/handle tokens pass", () => {
@@ -80,14 +113,14 @@ beforeAll(async () => {
   const entry = join(root, "entry.ts");
   // The chooser is the pinned fzf by default; LOOKUP_CHOOSER=list exercises the built-in fallback.
   // LOOKUP_PICK_SRC lets a mutant copy of pick.ts stand in for the real one.
-  writeFileSync(entry, `import {lookupModel} from ${JSON.stringify(join(src, "verbs/pick.ts"))};
-const mod = await import(process.env.LOOKUP_PICK_SRC || ${JSON.stringify(join(src, "verbs/pick.ts"))});
+  writeFileSync(entry, `const mod = await import(process.env.LOOKUP_PICK_SRC || ${JSON.stringify(join(src, "verbs/pick.ts"))});
 import {pick} from ${JSON.stringify(join(src, "fzf.ts"))};
-const teams=${JSON.stringify(teams)};
+const teams = process.env.LOOKUP_TEAMS ? JSON.parse(process.env.LOOKUP_TEAMS) : ${JSON.stringify(teams)};
+const current = process.env.LOOKUP_CURRENT ? () => process.env.LOOKUP_CURRENT : undefined;
 import {appendFileSync} from 'node:fs';
 const log = (m) => appendFileSync(${JSON.stringify(join(root, "popup.log"))}, m + '\\n');
 log('start ' + process.argv.slice(2).join(' ') + ' tty=' + process.stdin.isTTY + process.stdout.isTTY);
-try { process.exitCode = await mod.cmdPick(process.argv.slice(3), process.env.LOOKUP_CHOOSER==='list' ? mod.listChoose : pick, () => lookupModel(teams)); }
+try { process.exitCode = await mod.cmdPick(process.argv.slice(3), process.env.LOOKUP_CHOOSER==='list' ? mod.listChoose : pick, () => teams, current); }
 catch (e) { log('ERR ' + e.errorClass + ':' + e.detail + ' ' + e.stack); console.error('ERR:' + e.errorClass + ':' + e.detail); process.exitCode = e.code || 1; }
 log('exit ' + process.exitCode);
 `);
@@ -166,6 +199,12 @@ test("prefix @ opens the popup; selection types a trailing space for continued t
   expect(typedOnly(o, "beta/sol x")).toBe(true);
 }, 60_000);
 
+// fzf's default smart-case would read "Sol" as case-sensitive and match nothing ("0/2").
+test("a capital in the query still finds a lowercase handle", () => {
+  const o = scenario([["READY>", "\x02@"], ["Teammate >", "Sol"], ["1/2", "\r"]]);
+  expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
+}, 60_000);
+
 test("Esc closes the popup and types nothing", () => {
   const o = scenario([["READY>", "\x02@"], ["Teammate >", "\x1b"]]);
   expect(o.origin).toEqual([prompt.trimEnd()]);
@@ -205,4 +244,20 @@ test("RED mutant: typing into the other pane instead of the captured origin is c
   T("kill-server");
   const o = scenario(select, { LOOKUP_PICK_SRC: path, MUT_PANE: "%1" });
   expect(typedOnly(o, "beta/sol"), JSON.stringify(o)).toBe(false);
+}, 60_000);
+
+// beta/sol and zeta-team/sol score the same for "sol"; fzf's default tiebreak takes the shorter row
+// ("beta/sol  codex (crew)" beats "zeta-team/sol  codex (crew)"), so only the index tiebreak picks zeta-team.
+const tie = [...teams.slice(0, 2), { name: "zeta-team", state: "ok", detail: "", seats: [{ handle: "sol", harness: "codex", session: "zeta-team/sol", crew: true }] }];
+const tieEnv = { LOOKUP_TEAMS: JSON.stringify(tie), LOOKUP_CURRENT: "zeta-team" };
+const tieSelect: [string, string][] = [["READY>", "\x02@"], ["Teammate >", "sol"], ["2/3", "\r"]];
+test("the same handle on two teams: Enter types the current team's seat", () => {
+  const o = scenario(tieSelect, tieEnv);
+  expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}zeta-team/sol`]);
+}, 60_000);
+
+test("RED mutant: without the index tiebreak the shorter row from another team wins", () => {
+  const path = mutant("tiebreak", t => t.replace('tiebreak: "index", ', ""));
+  const o = scenario(tieSelect, { ...tieEnv, LOOKUP_PICK_SRC: path });
+  expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
 }, 60_000);

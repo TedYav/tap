@@ -8,7 +8,7 @@
 // deletes that line and nothing else. A defaults file that is not byte-for-byte
 // what TAP renders is the user's now: never overwritten, never deleted.
 //
-// Exit: 0 done | installed | already so; 1 refusal; 2 status: not installed.
+// Exit: 0 done | installed | already so | status reported (installed or not); 1 refusal.
 
 import { accessSync, constants, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -383,7 +383,7 @@ export function cmdTmuxDefaults(argv: string[]): number {
       `clipboard: ${st.clipboard}${st.copy_tool_present === null ? "" : st.copy_tool_present ? " (tool present)" : " (tool MISSING; reinstall to choose another mode)"}`,
       `live: ${st.live.server}${st.live.server === "up" ? liveValues : ""}${notes.length ? "\n" + notes.join("\n") : ""}`].join("\n");
     emit(json, { ...st }, human);
-    return st.installed ? 0 : 2;
+    return 0;
   }
   if (sub === "remove") {
     const r = removeDefaults(dry, env);

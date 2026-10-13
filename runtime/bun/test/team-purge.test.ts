@@ -204,13 +204,14 @@ finally:
 sys.stdout.buffer.write(output)
 raise SystemExit(os.waitstatus_to_exitcode(status))
 `;
+// A typed or default "no" is the operator's answer and exits 0 (CLI-EXIT-0); EOF obtained no answer and stays a refusal.
 test("TTY defaults no, reprompts invalid answers, and preserves EOF refusal", () => {
   for (const [answer, yes, reprompt] of [["yes\n", true, false], ["\n", false, false], ["No\n", false, false], ["\x04", false, false], ["maybe\nYes\n", true, true], [" y \nyEs\nn\n", false, true]] as const) {
     const f = fixture(), target = f.archive();
     const result = spawnSync("python3", ["-B", "-c", ttyRunner, answer, join(repo, "bin/tap"), "team", "purge", "chosen"], {
       cwd: f.work, env: f.env, encoding: "utf8", timeout: 15000,
     });
-    expect(result.status, result.stdout + result.stderr).toBe(yes ? 0 : 1);
+    expect(result.status, result.stdout + result.stderr).toBe(answer === "\x04" ? 1 : 0);
     expect(result.stdout).toContain("[y/N]");
     expect(result.stdout.includes("choose y or n")).toBe(reprompt);
     expect(existsSync(target)).toBe(!yes);

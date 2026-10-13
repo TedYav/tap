@@ -145,15 +145,13 @@ PY
 #
 # sol's RE-review: `-le 2` was still wrong — it admits 1, which tap-poll.sh
 # uses for usage errors (unknown option, missing name). Exact membership, not
-# a range. Per tap-poll.sh's header: 0 = no pending payloads, 2 = at least one
-# listed, 1 = usage error, 4 = cwd-derived bus not grounded. Both 0 and 2 are
-# real reads and both must stay allowed.
+# a range. poll now exits 0 for every real read, listed or empty (pending mail
+# is state, not an error); 1 = usage error, 4 = cwd-derived bus not grounded.
+# Only 0 is a read whose output can prove absence.
 poll_rc=0
 poll_out="$(cd "$WORK/team" && env -u TAP_HOME "$TAP" poll bob 2>"$WORK/poll.err")" || poll_rc=$?
-case "$poll_rc" in
-  0|2) ;;
-  *) fail "(3) tap poll returned rc=$poll_rc (want 0=empty or 2=listed) — the absence of ib-pane proves nothing: $(cat "$WORK/poll.err")" ;;
-esac
+[ "$poll_rc" -eq 0 ] \
+  || fail "(3) tap poll returned rc=$poll_rc (want 0, a successful read) — the absence of ib-pane proves nothing: $(cat "$WORK/poll.err")"
 grep -q 'ib-pane' <<<"$poll_out" && fail "fresh bob must not poll predecessor's payload"
 echo "instance-binding: (3) fresh recipient inbox empty: ok"
 

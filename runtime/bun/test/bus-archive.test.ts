@@ -63,6 +63,17 @@ test("torn append is ignored and a rerun records complete history; prefix IDs re
  const rows=archiveRows(f.bus);expect(rows.get("a")!.receipts).toEqual(["a.done"]);expect(rows.get("a.b")!.receipts).toEqual(["a.b.done"]);
  expect(archiveBus(f.bus,7,false,f.now).archived).toBe(0);
 });
+test("a retried message archives with its retry stream and marker, never a phantom id",()=>{
+ const f=fixture();f.put("old");const uuid="00000000-0000-4000-8000-000000000001";
+ for(const name of ["old.attempted","old.idle-submit","old.retries.jsonl",`old.retry-${uuid}.attempted`,`old.retry-${uuid}.idle-submit`]){const p=join(f.bus,"receipts",name);writeFileSync(p,JSON.stringify({id:"old",retry:uuid})+"\n");utimesSync(p,f.old,f.old);}
+ expect(archiveBus(f.bus,7,false,f.now).archived).toBe(1);
+ expect([...archiveRows(f.bus).keys()]).toEqual(["old"]);
+ expect(archiveRows(f.bus).get("old")!.receipts.sort()).toEqual(["old.attempted","old.done","old.idle-submit","old.retries.jsonl",`old.retry-${uuid}.attempted`,`old.retry-${uuid}.idle-submit`].sort());
+ for(const name of ["old.retries.jsonl","old.idle-submit",`old.retry-${uuid}.attempted`,`old.retry-${uuid}.idle-submit`]) {
+  expect(existsSync(join(f.bus,"receipts",name))).toBe(false);
+  expect(readFileSync(join(f.bus,"archive",f.old.toISOString().slice(0,7),"receipts",name),"utf8")).toContain('"id":"old"');
+ }
+});
 test("symlinked evidence refuses before removal",()=>{
  const f=fixture(),path=f.put("link");const copy=join(f.root,"outside");copyFileSync(path,copy);rmSync(path);symlinkSync(copy,path);
  expect(()=>archiveBus(f.bus,7,false,f.now)).toThrow("ordinary file");expect(readFileSync(copy,"utf8")).toContain("history body");
@@ -152,7 +163,7 @@ test("corrupt index rows preserve poll and valid history but refuse publication;
  const damaged='garbage\n{}\n{"id":"torn\n';
  writeFileSync(index,damaged+"\n"+valid);f.put("pending","pending body",false);writeFileSync(join(f.bus,"receipts/pending.placed"),"courier");
  {
-  const poll=f.run(["poll","reader"]);expect({rc:poll.status,out:poll.stdout,err:poll.stderr}).toMatchObject({rc:2});expect(poll.stdout).toContain("pending");
+  const poll=f.run(["poll","reader"]);expect({rc:poll.status,out:poll.stdout,err:poll.stderr}).toMatchObject({rc:0});expect(poll.stdout).toContain("pending");
   expect(poll.stderr).toContain(index);expect(poll.stderr.match(/run tap bus archive/g)?.length).toBe(1);
   const show=f.run(["show","history"]);expect(show.status).toBe(0);expect(show.stdout).toContain("history body");
   const read=f.run(["read","history"]);expect(read.status).toBe(0);expect(read.stdout).toContain("settled");

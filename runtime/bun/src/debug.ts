@@ -13,6 +13,7 @@ import { KERNEL_LOCK, kernelLockArgs } from "./panelock";
 import { pythonInt } from "./pyint";
 import { errorJson } from "./native-error";
 import { bunBinary } from "./courier-argv";
+import { deliveryStats, renderStats } from "./debug-stats";
 
 export type Run = { id: string; directory: string; socket: string; config: { max_mb: number; retain_mb?: number } };
 export type Identity = { pid: number; start: string; socket: string };
@@ -522,8 +523,8 @@ export async function withControl<T>(directory: string, body: (signal: AbortSign
 
 const DEFAULT_MAX_MB = 1024, DEFAULT_RETAIN_MB = 2048;
 const HELP = `usage: tap debug [-h] [--json] [--socket SOCKET] [--max-mb MAX_MB]
-                 [--retain-mb RETAIN_MB]
-                 [{status,on,off,config,trace}] [seconds]
+                 [--retain-mb RETAIN_MB] [--days N]
+                 [{status,on,off,config,trace,stats}] [seconds]
 
 Opt-in, cross-team flight journal. Records until tap debug off.
 The collector lives outside tmux.
@@ -534,9 +535,10 @@ subcommands, and the options each one accepts:
   off              stop recording                                [--json]
   config           show the stored capture settings, or set them [--max-mb N] [--retain-mb N] [--json]
   trace <seconds>  record one uncapped trace window; starts the recorder if it is not running   [--socket SOCKET] [--json]
+  stats            count nightly deliveries, same-id retries and extra rings across team buses; read-only   [--days N] [--json]
 
 positional arguments:
-  {status,on,off,config,trace}
+  {status,on,off,config,trace,stats}
   seconds               duration of an uncapped trace window; trace only,
                         a finite number above zero
 
@@ -553,6 +555,8 @@ options:
                         on keeps the newest earlier captures within this total
                         and prunes older ones (1..1048576 MiB, default 2048).
                         Set it with config only; on uses the stored value
+  --days N              nights to report by .placed UTC date (1..365, default
+                        7). stats only
   --lifetime-hours       retired; recording now continues until tap debug off
 
 examples:
@@ -561,6 +565,7 @@ examples:
   tap debug trace 120 --json
   tap debug config --max-mb 2048 --retain-mb 4096
   tap debug status
+  tap debug stats --days 3
   tap debug off
 
 Recovery post-mortems: tap debug recovery [recovery-id|payload-id] [--json]
@@ -571,18 +576,18 @@ exit: 0 done, 2 usage error, 1 any other failure.
 class UsageError extends Error {}
 class RetiredLifetimeError extends UsageError {}
 export function parse(argv: string[]) {
-  const values: string[] = []; let jsonOutput = false, socket: string | undefined, max: number | undefined, retain: number | undefined;
+  const values: string[] = []; let jsonOutput = false, socket: string | undefined, max: number | undefined, retain: number | undefined, days: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i]!;
     if (arg === "--") { values.push(...argv.slice(i + 1)); break; }
     if (arg.startsWith("--")) {
       const key = arg.split("=", 1)[0]!;
-      const matches = ["--help", "--json", "--socket", "--max-mb", "--retain-mb", "--lifetime-hours"].filter(option => option.startsWith(key));
+      const matches = ["--help", "--json", "--socket", "--max-mb", "--retain-mb", "--days", "--lifetime-hours"].filter(option => option.startsWith(key));
       if (matches.length === 1) arg = matches[0]! + arg.slice(key.length); // argparse's unambiguous long options
     }
     if (arg === "-h" || arg === "--help") return null;
     if (arg === "--json") { jsonOutput = true; continue; }
-    if (/^--(?:socket|max-mb|retain-mb|lifetime-hours)(?:=|$)/.test(arg)) {
+    if (/^--(?:socket|max-mb|retain-mb|days|lifetime-hours)(?:=|$)/.test(arg)) {
       const equals = arg.indexOf("="), key = equals < 0 ? arg : arg.slice(0, equals);
       if (key === "--lifetime-hours") throw new RetiredLifetimeError("--lifetime-hours is retired; recording continues until tap debug off");
       const value = equals < 0 ? argv[++i] : arg.slice(equals + 1);
@@ -591,13 +596,13 @@ export function parse(argv: string[]) {
       else {
         const n = pythonInt(value, true);
         if (n === null) throw new UsageError(`${key}: invalid int value: '${value}'`);
-        if (key === "--max-mb") max = Number(n); else retain = Number(n);
+        if (key === "--max-mb") max = Number(n); else if (key === "--days") days = Number(n); else retain = Number(n);
       }
     } else if (arg.startsWith("-") && !/^-\d*(?:\.\d+)?$/.test(arg)) throw new UsageError(`unrecognized arguments: ${arg}`);
     else values.push(arg);
   }
   const action = values[0] ?? "status";
-  if (!["status", "on", "off", "config", "trace"].includes(action)) throw new UsageError(`invalid choice: '${action}' (choose from 'status', 'on', 'off', 'config', 'trace')`);
+  if (!["status", "on", "off", "config", "trace", "stats"].includes(action)) throw new UsageError(`invalid choice: '${action}' (choose from 'status', 'on', 'off', 'config', 'trace', 'stats')`);
   if (values.length > 2) throw new UsageError(`unrecognized arguments: ${values.slice(2).join(" ")}`);
   let seconds: number | undefined;
   if (values[1] !== undefined) {
@@ -611,7 +616,9 @@ export function parse(argv: string[]) {
   if (retain !== undefined && !(retain >= 1 && retain <= 1048576)) throw new UsageError("--retain-mb must be between 1 and 1048576");
   if ((max !== undefined || retain !== undefined) && action !== "config") throw new UsageError("settings belong to tap debug config");
   if (socket && action !== "on" && action !== "trace") throw new UsageError("--socket belongs to tap debug on or trace");
-  return { action, seconds, socket, max, retain, jsonOutput };
+  if (days !== undefined && !(days >= 1 && days <= 365)) throw new UsageError("--days must be between 1 and 365");
+  if (days !== undefined && action !== "stats") throw new UsageError("--days belongs to tap debug stats");
+  return { action, seconds, socket, max, retain, days, jsonOutput };
 }
 
 export async function main(argv: string[], env = process.env): Promise<number> {
@@ -631,6 +638,8 @@ export async function main(argv: string[], env = process.env): Promise<number> {
   const config = { max_mb: saved?.max_mb ?? DEFAULT_MAX_MB, retain_mb: saved?.retain_mb ?? DEFAULT_RETAIN_MB };
   let result: any;
   if (args.action === "status") result = await status(env);
+  // Read-only over every enrolled bus: no debug home, control lock or recorder.
+  else if (args.action === "stats") result = deliveryStats(teamBuses(env), { days: args.days ?? 7, env });
   else if (args.action === "config" && args.max === undefined && args.retain === undefined) result = config;
   else {
     mkdirSync(home(env), { recursive: true, mode: 0o700 });
@@ -706,6 +715,7 @@ export async function main(argv: string[], env = process.env): Promise<number> {
     });
   }
   if (args.jsonOutput) console.log(json(result));
+  else if (args.action === "stats") process.stdout.write(renderStats(result));
   else if (args.action === "config") console.log("tap debug config: " + json(result));
   else {
     console.log(`tap debug: ${result.state} (${result.mode})\n  Recovery post-mortems: tap debug recovery [recovery-id|payload-id]`);

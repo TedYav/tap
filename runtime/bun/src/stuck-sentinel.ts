@@ -203,7 +203,7 @@ function parseV023(normalized: string): StuckSentinelVerdict {
   // unknown trailing tokens, and that tolerance is what let a wrong-shaped
   // sentinel look well-formed. Rejoined for the same reason the slots are: a
   // wrap lands inside `digest` or `path=` as easily as inside an id.
-  const TAG_RE = /^(?:urgent|critical|escalate|digest|agent-interrupt|preview="")$/;
+  const TAG_RE = /^(?:urgent|critical|escalate|digest|agent-interrupt|retry|preview="")$/;
   while (i < tokens.length) {
     const [tag, next] = take(i, TAG_RE);
     if (tag !== null) { i = next; continue; }

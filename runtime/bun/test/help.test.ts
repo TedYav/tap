@@ -357,7 +357,8 @@ describe("accepted rows come from accepting cases", () => {
 
   test("init, setup, config and presets lead with their scope", () => {
     const init = lookupHelp(["init"]).stdout, setup = lookupHelp(["setup"]).stdout;
-    expect(init).toContain("Scope: this project only.");
+    expect(init).toContain("Scope: this project.");
+    expect(init).toContain("Optional folder trust records this current directory");
     expect(init).toContain("tap setup --machine");
     expect(init).toContain("it prompts when AGENTS.md is absent, you pass neither --yes nor --json, and stdin/stderr are terminals");
     for (const mode of ["tap setup --machine ", "tap setup --machine --answers <file|->", "tap setup [--yes] [--team <name>]", "tap setup --repo [--check]"]) {
@@ -381,7 +382,7 @@ describe("accepted rows come from accepting cases", () => {
       expect(longest).toBeLessThan(500);
     }
     const init = lookupHelp(["init"]).stdout;
-    expect(init).toContain("a team that is already initialized is reported and left untouched");
+    expect(init).toContain("an existing team is left untouched; the folder-trust offer still applies");
     expect(init).toContain("\n    - .tap/ in the project");
     expect(init).toContain("\n    - on a fresh machine, ~/.tap/global-registry.json");
   });
@@ -1133,25 +1134,43 @@ describe("launch help is a public no-effect operation", () => {
 });
 
 describe("watch help documents status's branchable exit (tap-zpmvx)", () => {
-  test("`tap help watch` names exit 0 and the exit 2 attention state for a dead dispatcher", () => {
+  test("`tap help watch` says status exits 0 for a dead dispatcher and leaves the check to tap health", () => {
     const page = lookupHelp(["watch"]).stdout;
-    expect(page).toContain("status  Prints the lease, or \"disarmed\", and the dispatcher's liveness. Exit 0 when disarmed or the dispatcher is alive; exit 1 when it cannot be checked (unknown, unsafe to check); exit 2 (attention) when it is dead");
+    expect(page).toContain("status  Prints the lease, or \"disarmed\", and the dispatcher's liveness. Exit 0 when it reports: disarmed, alive, or dead");
+    expect(page).toContain("tap health is the check that exits 2 for a dead dispatcher");
     // The spelling `tap watch status` shares the page; there is no second copy to drift.
     expect(lookupHelp(["watch", "status"]).stdout).toBe(page);
   });
 });
 
-describe("resend help documents its failure output (tap-e0i3z.5)", () => {
+describe("resend help documents the same-id retry", () => {
   const page = lookupHelp(["resend"]).stdout;
-  test("names the failure exits and both error classes", () => {
+  test("names the same-id contract and the recovery ladder", () => {
+    expect(page).toContain("tap resend — ring an unconfirmed send again, under the same id");
+    expect(page).toContain("It\n  keeps the id, the body and the one obligation; nothing is withdrawn and no new id is\n  minted.");
+    expect(page).toContain("    not confirmed, and still unread          tap resend <id>\n");
+    expect(page).toContain("  Only resend rings again, under the same id; a repeat is safe to read.\n");
+  });
+  test("names the exits: 0 for queued or nothing to ring, 1 for each refusal", () => {
     expect(page).toContain("EXIT CODES");
-    expect(page).toContain("resend_successor_failed");
-    expect(page).toContain("resend_receipt_invalid");
-    expect(page).toMatch(/exit 5|5 /);
+    expect(page).toContain("0   queued, or nothing to ring (already read, settled, cancelled, or already queued)");
+    for (const refusal of ["usage_error", "not_found", "not_sender", "invalid_payload", "recipient_unbound", "obligation_busy"]) {
+      expect(page).toContain(refusal);
+    }
+    expect(page).not.toMatch(/^  5 /m);
   });
-  test("documents the JSON recovery schema and that the next step is inspection only", () => {
-    expect(page).toContain("recovery");
-    for (const field of ["original", "receipt", "prepared", "successor", "next"]) expect(page).toContain(field);
-    expect(page).toMatch(/inspect/i);
+  test("no longer documents a successor, its failure classes or the no-attempt guard", () => {
+    for (const retired of ["FAILED SUCCESSOR", "resend_successor_failed", "resend_receipt_invalid", "resend_of", "successor", "proven never attempted", "None of them re-delivers"]) {
+      expect(page).not.toContain(retired);
+    }
   });
+});
+
+test("cancel and withdraw share the resend recovery ladder", () => {
+  for (const verb of ["cancel", "withdraw"]) {
+    const page = lookupHelp([verb]).stdout;
+    expect(page).toContain("    not confirmed, and still unread          tap resend <id>\n");
+    expect(page).toContain("  Only resend rings again, under the same id; a repeat is safe to read.\n");
+    expect(page).not.toContain("proven never attempted");
+  }
 });

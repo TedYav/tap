@@ -10,7 +10,7 @@
 existing `redelivery_submit_unverified`. `tap outstanding` renders it as a `send_unverified`
 condition, worded like `redelivery_stopped`'s — reports the SUBMIT going unconfirmed, never claims
 non-delivery, since the canonical payload stays on the bus and the peer may already have it — with
-remedy `tap show <id>`. The `.placed`-without-`.sent` ladder likewise says delivery is not confirmed and names inspection; `tap resend <id>` separately requires affirmative no-attempt proof. What
+remedy `tap show <id>`. The `.placed`-without-`.sent` ladder likewise says delivery is not confirmed and names inspection, then a same-ID `tap resend <id>` if it is still unread. What
 the durable event adds over the ladder: the ladder is derived from receipt residue at read time (it
 says nothing about what actually happened and vanishes if the receipts change), while the event is a
 durable record of the submit-unverified moment itself; a prominent `CONDITION` line rather than a

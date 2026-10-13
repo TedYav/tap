@@ -58,17 +58,41 @@ export function terminalCancelMarker(home: string, id: string): boolean {
 }
 
 /** Durable carry for the authorized successor read: minted only by a
- *  grant-validated, non-forced, non-retired read whose queued completion was
- *  impossible at read time — the queue receipt arrives later through
- *  recordHarnessQueued and can no longer consult the transient evidence. The
- *  forced/retired first observation stays byte-immutable beside it. */
+ *  grant-validated, non-forced, non-retired read that follows a forced or
+ *  retired first observation. It is the only proof of that genuine read, so it
+ *  is kept even when transport `.sent` already exists (a confirmed pane send):
+ *  the queue receipt may arrive later through recordHarnessQueued, and retry
+ *  suppression and stats read it through recipientState. The forced/retired
+ *  first observation stays byte-immutable beside it. */
 export function recordAuthorizedRead(home: string, id: string, evidence: AuthorizedReadEvidence): void {
   try {
-    if (receipt(home, id, "sent") || terminalCancelMarker(home, id) || receipt(home, id, "authorized-read")) return;
+    if (terminalCancelMarker(home, id) || receipt(home, id, "authorized-read")) return;
     publishOnce(join(home, "receipts", `${id}.authorized-read`), {
       id, by: evidence.by, at: evidence.at, via: "read", turn: "unconfirmed",
     });
   } catch (error) { console.error(`tap: authorized-read evidence unavailable for ${id}: ${error}`); }
+}
+
+/**
+ * The recipient-observed rule (receipt-measures.md): terminal state first, then
+ * any authoritative observation. A forced or retired-instance `.read` never
+ * counts; the genuine successor read is carried by `.authorized-read` or by a
+ * `.sent` minted on harness-queue read. Marker presence fails closed for the
+ * terminal states, as `terminalCancelMarker` does.
+ */
+export function recipientState(home: string, id: string): { state: "cancelled" | "settled" | "observed" | "unobserved"; via?: string; at?: string } {
+  if (terminalCancelMarker(home, id)) return { state: "cancelled" };
+  if (existsSync(join(home, "receipts", `${id}.done`))) {
+    const done = receipt(home, id, "done");
+    return { state: "settled", via: done?.via || "done", ...(done?.at ? { at: done.at } : {}) };
+  }
+  const read = receipt(home, id, "read");
+  if (read?.by && !nonAuthoritativeRead(read)) return { state: "observed", via: "read", ...(read.at ? { at: read.at } : {}) };
+  const authorized = receipt(home, id, "authorized-read");
+  if (authorized?.by) return { state: "observed", via: "authorized-read", ...(authorized.at ? { at: authorized.at } : {}) };
+  const sent = receipt(home, id, "sent");
+  if (sent?.via === "harness-queue-read" && sent.read_by) return { state: "observed", via: "harness-queue-read", ...(sent.read_at ? { at: sent.read_at } : {}) };
+  return { state: "unobserved" };
 }
 
 /** Returns whether the queued delivery is complete (`.sent` exists) after the

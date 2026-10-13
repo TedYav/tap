@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -189,6 +189,28 @@ describe("tap health (native)", () => {
     const report = JSON.parse(run.stdout) as { status: string; attention: unknown[] };
     expect(report.status).toBe("healthy");
     expect(report.attention).toEqual([]);
+  });
+
+  test("a live watcher pid with a stale heartbeat is the check verb's dead watcher; a fresh one is healthy", () => {
+    const fx = fixture(LIVE_TMUX);
+    // A real process whose command line carries the watcher signature; this test stops only its own child.
+    const child = spawn("bash", ["-c", "sleep 300; :", "watch-run.ts run"], { stdio: "ignore" });
+    try {
+      const now = Number(env(fx).TAP_WATCH_NOW);
+      const health = (heartbeat: number) => {
+        writeFileSync(join(fx.worktree, ".tap", "bus", "watch", "arm.json"), JSON.stringify({
+          mode: "supervision", armed_by: "owner", armed_at: now - 20_000, threshold_seconds: 1500, tick_interval_seconds: 60,
+          done_when: "ship it", heartbeat_at: heartbeat, watcher_pid: child.pid, watcher_command: "watch-run.ts run",
+        }));
+        return spawnSync(shippedEntry, ["health", "--json"], { cwd: fx.worktree, env: env(fx), encoding: "utf8" });
+      };
+      const stale = health(now - 10_000);
+      expect(stale.status, stale.stderr).toBe(2);
+      expect(stale.stdout).toContain("armed-but-watcher-dead");
+      const fresh = health(now - 10);
+      expect(fresh.status, fresh.stderr).toBe(0);
+      expect(fresh.stdout).not.toContain("armed-but-watcher-dead");
+    } finally { child.kill("SIGKILL"); }
   });
 
   test("health reads the same waiting answer as the roster for a notify-done compute job (tap-i5fzq)", () => {

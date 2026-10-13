@@ -13,7 +13,7 @@ Every drain pass settles such parks before Phase A plans digests by pane. A park
 | The no-effect proof fails (any attempt count, attempt or delivery evidence, a missing fence, unreadable evidence, a native intent) | **Terminal**: promoted to `payloads/`, event `spool_terminal_seat_restarted`, and a `DELIVERY UNCONFIRMED` notice to the sender. No retry after a possible effect: the body is never typed into the new pane. |
 | No `recipient_instance`, and the no-effect proof passes | **Terminal** with a `NOT DELIVERED … was never attempted` notice: nothing can prove the new pane is the same seat. |
 
-The no-effect proof is the one `tap nudge` requeue uses: zero recorded attempts behind the pre-attempt fence (`attempt_fence: 1`), no native intent, and no `attempted`, `attempts`, `idle-submit`, `unconfirmed`, `sent`, `read`, `harness-queued`, `done`, `cancelled` or `resent` evidence under `receipts/`, `payloads/`, `spool/` or `archive/`.
+The no-effect proof is the one `tap nudge` requeue uses: zero recorded attempts behind the pre-attempt fence (`attempt_fence: 1`), no native intent, and no `attempted`, `attempts`, `idle-submit`, `unconfirmed`, `sent`, `read`, `harness-queued`, `done`, `cancelled` or `resent` evidence under `receipts/`, `payloads/`, `spool/` or `archive/`. Retry `.attempted` and `.idle-submit` licenses under `receipts/` also refuse the proof.
 
 Custody follows the requeue order: the obligation lock, the no-steal spool claim, reset custody, then the metadata lock. Every leg is re-read under custody before the write. A busy lock or claim leaves the park for the next pass.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Public `tap done` is a non-mutating tombstone: it settles nothing, writes no
-# receipt and no audit row, names its replacement, and exits 2 with the stable
+# receipt and no audit row, names its replacement, and exits 1 with the stable
 # error class done_retired. It touches no bus, registry or pane, so every
 # argument shape (and a live reset fence) answers identically.
 set -euo pipefail
@@ -57,7 +57,7 @@ shapes=(
   "no-such-id --by nobody"
 )
 check_refusal() { # <label>
-  [ "$rc" = 2 ] || { cat "$WORK/out" >&2; fail "$1: exit=$rc, want 2"; }
+  [ "$rc" = 1 ] || { cat "$WORK/out" >&2; fail "$1: exit=$rc, want 1"; }
   grep -q 'tap done is retired' "$WORK/out" || { cat "$WORK/out" >&2; fail "$1: retirement not named"; }
   grep -qF 'tap reply <id> --by <you> -f <file>' "$WORK/out" || { cat "$WORK/out" >&2; fail "$1: replacement missing"; }
   grep -qF 'tap read <id>' "$WORK/out" || { cat "$WORK/out" >&2; fail "$1: note replacement missing"; }
@@ -69,7 +69,7 @@ done
 [ "$(snapshot)" = "$before" ] || fail 'tap done changed a payload, receipt, registry, audit or generation'
 # The stable error class rides the JSON error object.
 rc=0; TAP_JSON=1 "$TAP" done tomb-expected --by worker >"$WORK/out" 2>"$WORK/err" || rc=$?
-[ "$rc" = 2 ] || fail "JSON refusal exit=$rc, want 2"
+[ "$rc" = 1 ] || fail "JSON refusal exit=$rc, want 1"
 grep -q '"error_class": *"done_retired"' "$WORK/out" "$WORK/err" || { cat "$WORK/out" "$WORK/err" >&2; fail 'stable error class done_retired missing from the JSON error'; }
 [ "$(snapshot)" = "$before" ] || fail 'JSON refusal changed the bus'
 [ ! -e "$TAP_HOME/receipts/done-alias-hits.jsonl" ] || fail 'tap done appended an audit row'

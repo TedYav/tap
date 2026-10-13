@@ -247,12 +247,27 @@ EOF
 rm -f "$LOCAL_BUS/receipts/$PAYLOAD_A.cancelled"
 # Cancel it fresh
 bash "$TAPSH" cancel "$PAYLOAD_A" --by fable >/dev/null 2>&1 || true
-# Try again
-OUT="$(bash "$TAPSH" cancel "$PAYLOAD_A" --by fable 2>&1)" || true
-if grep -qi "already_cancelled\|already cancelled" <<<"$OUT"; then
-  ok "already-cancelled id refuses re-cancel"
+# Try again: re-cancelling is idempotent, so it says so and exits 0 (CLI-EXIT-0)
+RC=0; OUT="$(bash "$TAPSH" cancel "$PAYLOAD_A" --by fable 2>&1)" || RC=$?
+if [ "$RC" -eq 0 ] && grep -qi "already cancelled; nothing to do" <<<"$OUT"; then
+  ok "already-cancelled id reports nothing to do and exits 0"
 else
-  bad "already-cancelled id did not refuse (output: $OUT)"
+  bad "already-cancelled re-cancel should exit 0 with nothing to do (rc=$RC, output: $OUT)"
+fi
+# Idempotence is the canceller's alone: another actor still gets the already_cancelled refusal.
+RC=0; OUT="$(bash "$TAPSH" cancel "$PAYLOAD_A" --by sol 2>&1)" || RC=$?
+if [ "$RC" -eq 1 ] && grep -qi "already cancelled (.cancelled exists)" <<<"$OUT"; then
+  ok "another actor's re-cancel of a cancelled id refuses with exit 1"
+else
+  bad "another actor's re-cancel should refuse already_cancelled with exit 1 (rc=$RC, output: $OUT)"
+fi
+# A squatted receipt naming only the actor is not a cancellation: it still refuses.
+printf '{"by":"fable"}\n' > "$LOCAL_BUS/receipts/$PAYLOAD_A.cancelled"
+RC=0; OUT="$(bash "$TAPSH" cancel "$PAYLOAD_A" --by fable 2>&1)" || RC=$?
+if [ "$RC" -eq 1 ] && grep -qi "already cancelled (.cancelled exists)" <<<"$OUT"; then
+  ok "a malformed .cancelled receipt refuses with exit 1"
+else
+  bad "a malformed .cancelled receipt should refuse already_cancelled with exit 1 (rc=$RC, output: $OUT)"
 fi
 
 # (h) non-sender refuses cancel

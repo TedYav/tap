@@ -24,7 +24,7 @@ Already parked entries keep their stored windows and remain deliverable. Ordinar
 
 ### Public `tap done` retirement (tap-7r3fn.6)
 
-Since tap-7r3fn.69, public `tap done` is a non-mutating tombstone. For every argument shape it exits 2 with `error_class=done_retired`, one line naming the replacement (`tap reply <id> --by <you> -f <file>` for an ask, `tap read <id>` for a note), and `effect: none`. It reads no bus, registry, pane or reset fence, settles nothing, and writes no receipt and no audit row. `tap help done` explains the tombstone and the verb is absent from help listings and completion.
+Since tap-7r3fn.69, public `tap done` is a non-mutating tombstone. For every argument shape it exits 1 with `error_class=done_retired`, one line naming the replacement (`tap reply <id> --by <you> -f <file>` for an ask, `tap read <id>` for a note), and `effect: none`. It reads no bus, registry, pane or reset fence, settles nothing, and writes no receipt and no audit row. `tap help done` explains the tombstone and the verb is absent from help listings and completion.
 
 The release window opened by tap-7r3fn.6 closed with the v0.23 version line. The retained `receipts/done-alias-hits.jsonl` logs and the counter `python3 skills/tap/scripts/tap-done-alias-count.py <log> --since <ISO-start>` stay as evidence only; nothing appends to a log, and a missing log is unavailable evidence (counter exit 2), never zero use. The private settlement primitive in `verbs/done.ts` stays live for `tap reply` (`via: reply`, with its evidence fields); the retired public door never reaches it.
 

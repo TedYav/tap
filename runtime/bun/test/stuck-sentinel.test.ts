@@ -22,6 +22,9 @@ test("three positional slots, tags, path and inline body parse; decoy keys in th
   expect(region(`[[TAP v0.23 ask ${ID} escalate]]`)).toEqual(ok(ID));
   expect(region(`[[TAP v0.23 ask ${ID} escalate urgent]]`)).toEqual(ok(ID));
   expect(region(`[[TAP v0.23 note ${ID} urgent agent-interrupt]]`)).toEqual(ok(ID));
+  // A same-id retry (tap resend) is a closed-set tag too.
+  expect(region(`[[TAP v0.23 note ${ID} retry]]`)).toEqual(ok(ID));
+  expect(region(`[[TAP v0.23 ask ${ID} escalate retry]]`)).toEqual(ok(ID));
   expect(region(`[[TAP v0.23 ask ${ID} escalate urgent agent-interrupt path=/x/p.md]]`)).toEqual(ok(ID));
   expect(region(`[[TAP v0.23 note ${ID} digest path=/x/i.json]]`)).toEqual(ok(ID));
   expect(region(`[[TAP v0.23 note ${ID}: a short inline body]]`)).toEqual(ok(ID));

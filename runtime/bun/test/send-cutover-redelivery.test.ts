@@ -49,7 +49,7 @@ describe("native cutover shared-spool parity", () => {
   }
   for (const native of [false, true]) {
     const label = native ? "native" : "bash";
-    test(`${label}: a parked draft redelivers exactly once and then refuses resend`, () => {
+    test(`${label}: a parked draft redelivers exactly once; a resend of the unread message re-rings under the same id`, () => {
       const fx = teamFixture({});
       writeFileSync(fx.env.FAKE_BAND!, "unfinished human draft");
       const result = door(fx, native, ["send", "ub", "--ask", "-m", "hello", "--from", "ua"]);
@@ -74,8 +74,8 @@ describe("native cutover shared-spool parity", () => {
       const keys = readFileSync(fx.env.FAKE_KEYS!, "utf8");
       expect(drain().exitCode).toBe(0);
       expect(readFileSync(fx.env.FAKE_KEYS!, "utf8")).toBe(keys);
-      const resend = door(fx, false, ["resend", id, "--by", "ua"]);
-      expect(resend.exitCode).not.toBe(0);
+      const resend = door(fx, false, ["resend", id, "--by", "ua", "--json"]);
+      expect(resend.exitCode).toBe(0);
       // tap-7r3fn.166 killed-child control: a cap-killed resend must fail
       // here, not pass as a plausible refusal. The not-0 check alone accepts
       // one (exitCode null), the signal guard accepts a child that handles
@@ -85,22 +85,24 @@ describe("native cutover shared-spool parity", () => {
       // the cap fired, regardless of how the child then exited.
       expect(resend.signalCode ?? null).toBeNull();
       expect(resend.exitedDueToTimeout).toBe(false);
-      expect(JSON.parse(resend.stdout.toString()).error_class).toBe("delivery_attempted");
+      // Delivered but unread: the same id is re-parked as a retry row (decision-v1 L2); no successor.
+      expect(JSON.parse(resend.stdout.toString())).toMatchObject({ status: "queued", id, ordinal: 1 });
+      expect(JSON.parse(readFileSync(join(fx.bus, "spool", `${id}.meta.json`), "utf8"))).toMatchObject({ reason: "retry", retry_ordinal: 1 });
+      expect(existsSync(join(fx.bus, "receipts", `${id}.resent`))).toBe(false);
     }, 40_000);
 
-    test(`${label}: a native-format-free park retains no-attempt resend eligibility`, () => {
+    test(`${label}: a resend of a send still waiting for its first delivery coalesces`, () => {
       const fx = teamFixture({});
       writeFileSync(fx.env.FAKE_BAND!, "unfinished human draft");
       const first = door(fx, native, ["send", "ub", "--ask", "-m", "hello", "--from", "ua"]);
       expect(first.exitCode).toBe(0);
       const id = placed(fx.bus)[0]!.replace(/\.placed$/, "");
       assertParked(fx, id, "pending-input");
-      const resent = door(fx, false, ["resend", id, "--by", "ua"]);
+      const resent = door(fx, false, ["resend", id, "--by", "ua", "--json"]);
       expect(resent.exitCode).toBe(0);
-      const receipt = JSON.parse(readFileSync(join(fx.bus, "receipts", `${id}.resent`), "utf8"));
-      expect(receipt.resend_id).not.toBe(id);
-      expect(existsSync(join(fx.bus, "spool", `${receipt.resend_id}.md`))).toBe(true);
-      expect(existsSync(join(fx.bus, "spool", `${id}.md`))).toBe(false);
+      expect(JSON.parse(resent.stdout.toString())).toMatchObject({ status: "pending", id });
+      expect(existsSync(join(fx.bus, "receipts", `${id}.resent`))).toBe(false);
+      expect(existsSync(join(fx.bus, "spool", `${id}.md`))).toBe(true);
     }, 30_000);
 
     test(`${label}: an unverified attempt does not stamp a delivery clock`, () => {

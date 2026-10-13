@@ -96,13 +96,13 @@ echo "assign-verb: (3) --fyi refused with the assign message, no payload: ok"
 # --- (4) the obligation is TRACKED on both sides -------------------------------
 # The whole point of the verb: a forgotten task with no reply obligation is
 # invisible to the bus. Assert it is visible from the sender AND the recipient.
-# tap outstanding exits 2 WHEN OBLIGATIONS EXIST and 0 when none do
-# (runtime/bun/src/slices/outstanding.ts). So rc=2 is the assertion here, not a
-# tolerated failure: an assign that minted no obligation would exit 0 and this
-# reds.
+# tap outstanding and tap poll exit 0 whether or not anything is listed (open
+# work is state, not an error; runtime/bun/src/slices/outstanding.ts). So rc=0
+# only proves the read worked; the id grep is the assertion: an assign that
+# minted no obligation would list nothing and this reds.
 rc=0
 ( cd "$WORK/TeamA" && bash "$ROOT/bin/tap" outstanding boss ) >"$WORK/o4" 2>&1 || rc=$?
-[ "$rc" = 2 ] || { cat "$WORK/o4" >&2; fail "(4) outstanding should exit 2 with an open obligation, got $rc"; }
+[ "$rc" = 0 ] || { cat "$WORK/o4" >&2; fail "(4) outstanding should exit 0 and list the open obligation, got $rc"; }
 grep -q 'a-1' "$WORK/o4" || { cat "$WORK/o4" >&2; fail "(4) assign not listed in sender outstanding"; }
 # The RECIPIENT side must prove ASK SEMANTICS, not mere presence. Greping for
 # the id alone stays green even if poll renders every expected item as
@@ -111,7 +111,7 @@ grep -q 'a-1' "$WORK/o4" || { cat "$WORK/o4" >&2; fail "(4) assign not listed in
 # branch a settle-only item could never reach.
 rc=0
 ( cd "$WORK/TeamA" && bash "$ROOT/bin/tap" poll hand ) >"$WORK/o5" 2>&1 || rc=$?
-[ "$rc" = 2 ] || { cat "$WORK/o5" >&2; fail "(4) poll should exit 2 with a pending payload, got $rc"; }
+[ "$rc" = 0 ] || { cat "$WORK/o5" >&2; fail "(4) poll should exit 0 and list the pending payload, got $rc"; }
 grep -q 'a-1' "$WORK/o5" || { cat "$WORK/o5" >&2; fail "(4) assign not visible in recipient poll"; }
 grep -q 'next step: tap reply a-1' "$WORK/o5" \
   || { cat "$WORK/o5" >&2; fail "(4) poll did not present the assign as an ASK (expected a tap reply next step)"; }

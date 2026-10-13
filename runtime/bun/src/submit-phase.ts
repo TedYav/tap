@@ -1,9 +1,10 @@
-import {harnessQueued,hasTerminalQueueReceipt} from "./harness-queue";
+import {harnessQueued,hasTerminalQueueReceipt,recipientState} from "./harness-queue";
 // Positive submission evidence only. These rows never authorize a retry.
 import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { validId } from "./ids";
 import { readRun } from "./recovery/state";
+import { RETRY_UUID, retryIdleSubmitPath, retryMarkerPath } from "./retry";
 
 export type SubmitPhase = "interrupt-intent" | "interrupt-sent" | "injected-text-confirmed" | "Enter-intent" | "completion-Enter-intent" | "Enter-sent" | "verify-result";
 export interface InterruptDetails {
@@ -77,22 +78,50 @@ export function pendingReprobe(home: string, id: string): boolean {
  * enter_count — stop-ambiguous included), no idle-submit license was spent,
  * and no settlement or queue receipt supersedes the unfinished attempt.
  */
-export function stagedIdleEvidence(home: string, id: string): boolean {
+export function stagedIdleEvidence(home: string, id: string, retry?: string): boolean {
   if (!validId(id)) return false;
-  try { lstatSync(join(home, "receipts", `${id}.idle-submit`)); return false; }
+  let admitted = 0;
+  if (retry !== undefined) {
+    try {
+      const path = retryMarkerPath(home, id, retry);
+      if (!lstatSync(path).isFile()) return false;
+      const marker = JSON.parse(readFileSync(path, "utf8"));
+      if (marker?.id !== id || marker.retry !== retry || marker.effect !== "possible" || typeof marker.admitted_at !== "string") return false;
+      admitted = Date.parse(marker.admitted_at);
+      if (!Number.isFinite(admitted) || new Date(admitted).toISOString() !== marker.admitted_at) return false;
+    } catch { return false; }
+    if (recipientState(home, id).state !== "unobserved") return false;
+  }
+  try { lstatSync(retry === undefined ? join(home, "receipts", `${id}.idle-submit`) : retryIdleSubmitPath(home, id, retry)); return false; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false; }
-  if (harnessQueued(home, id)) return false;
-  // Canonical receipts from a later read/settle supersede an unfinished
-  // attempt. PRESENCE is the evidence: a receipt that exists but cannot be
-  // read or parsed is uncertainty, not proof of absence, and uncertainty
-  // ends this authority (never re-opens it).
-  for (const suffix of ["sent", "read", "done", "cancelled", "harness-queued"]) {
-    try { lstatSync(join(home, "receipts", `${id}.${suffix}`)); return false; }
+  // Retries may ignore only proven older transport receipts; uncertainty ends authority.
+  for (const suffix of retry === undefined ? ["sent", "read", "done", "cancelled", "harness-queued"]
+    : ["sent", "read", "authorized-read", "idle-submit", "done", "cancelled", "harness-queued"]) {
+    try {
+      const path = join(home, "receipts", `${id}.${suffix}`), stat = lstatSync(path);
+      if (retry === undefined || suffix === "done" || suffix === "cancelled" || suffix === "authorized-read" || !stat.isFile()) return false;
+      if (suffix === "read") {
+        const read = JSON.parse(readFileSync(path, "utf8"));
+        if (read?.id === id && typeof read.by === "string" && read.by
+          && (read.forced === true || read.forced === "true" || read.reason === "instance_retired")) continue;
+        return false;
+      }
+      if (suffix === "harness-queued") {
+        const queued = JSON.parse(readFileSync(path, "utf8"));
+        if (queued?.id !== id || queued.status !== "queued" || queued.delivery !== "harness-queue" || typeof queued.at !== "string") return false;
+        const at = Date.parse(queued.at);
+        const iso = new Date(at).toISOString();
+        if (queued.at !== iso && queued.at !== iso.replace(".000Z", "Z")) return false;
+        // Whole-second stamps overlap admission within that second; unknown order refuses.
+        const resolution = /:\d{2}\.\d/.test(queued.at) ? 1 : 1000;
+        if (!Number.isFinite(at) || at + resolution > admitted) return false;
+      } else if (stat.mtimeMs >= admitted) return false;
+    }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false; }
   }
   const rows = phaseRows(home, id);
   const injected = rows.findLast(row => row.phase === "injected-text-confirmed");
-  if (!injected) return false;
+  if (!injected || (retry !== undefined && injected.attempt !== retry)) return false;
   const result = rows.findLast(row => row.attempt === injected.attempt && row.phase === "verify-result");
   return result?.result === "unverified";
 }
@@ -101,8 +130,8 @@ export function stagedIdleEvidence(home: string, id: string): boolean {
  * A staged-idle hold's full eligibility, a sibling of `pendingReprobe` — which
  * stays untouched and keeps refusing Enter rows. The spool metadata must name
  * the hold (`reason: staged-idle`) AND the evidence core must hold. The
- * link-atomic `receipts/<id>.idle-submit` license caps the whole path at one
- * automatic Enter per staged observation; its presence ends eligibility.
+ * link-atomic idle-submit license (retry-scoped when present) caps the whole
+ * path at one automatic Enter per staged observation.
  */
 export function stagedIdleSubmitEligible(home: string, id: string, env: NodeJS.ProcessEnv = process.env): boolean {
   if (!validId(id)) return false;
@@ -122,7 +151,9 @@ export function stagedIdleSubmitEligible(home: string, id: string, env: NodeJS.P
   const now = env.TAP_SPOOL_NOW && /^[0-9]+$/.test(env.TAP_SPOOL_NOW)
     ? Number(env.TAP_SPOOL_NOW) : Math.floor(Date.now() / 1000);
   if (now >= deadline) return false;
-  return stagedIdleEvidence(home, id);
+  const retry = (meta as Record<string, unknown>).retry;
+  if (retry !== undefined && (typeof retry !== "string" || !RETRY_UUID.test(retry))) return false;
+  return stagedIdleEvidence(home, id, retry as string | undefined);
 }
 
 /** Effect evidence cannot identify the harness work that a key cancelled. */

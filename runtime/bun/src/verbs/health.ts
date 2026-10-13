@@ -9,7 +9,7 @@ import { injectionFaultOrRefuse } from "./injection-fault";
 import { ensureAscii } from "../fsatomic";
 import { envelopeField } from "../envelope";
 import { registryEventsPath } from "../events";
-import { pidAlive } from "../watch-sidecar";
+import { dispatcherLiveness, pidAlive } from "../watch-sidecar";
 import { armPath, notifyPath } from "../watch-notice";
 import { readRegistry, observe, observedRows, table, withAgentStates, type RegistryRow } from "./team";
 import { tmuxReadOnly } from "../tmux";
@@ -207,8 +207,11 @@ function watchSignal(busHome: string): { watch: WatchRecord; attention: string |
     || !(arm.paused_until === undefined || arm.paused_until === null || arm.paused_until === "" || arm.paused_until === 0 || arm.paused_until === "0");
   // A dead watcher draws attention UNCONDITIONALLY (incumbent `if not alive:`)
   // — pausing silences nobody; the paused block still renders below. The parse
-  // error branch above already overrides with watch-state-unreadable.
-  const dead = !watcherAlive ? "armed-but-watcher-dead" : undefined;
+  // error branch above already overrides with watch-state-unreadable. A live pid
+  // whose heartbeat went stale (or never came) is the same verdict `tap watch
+  // status` reports as dead: health is the check verb that exits non-zero for it.
+  const stalled = watcherAlive && dispatcherLiveness(value, Number(process.env.TAP_WATCH_NOW || Math.floor(Date.now() / 1000))).state === "dead";
+  const dead = !watcherAlive || stalled ? "armed-but-watcher-dead" : undefined;
   return {
     watch: {
       armed: true,

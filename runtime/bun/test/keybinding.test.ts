@@ -173,12 +173,12 @@ test("unsafe or relative tap paths and bad keys are refused before any write", (
   expect(existsSync(userConf())).toBe(false);
 });
 
-test("--dry-run changes nothing; status reports 2 until installed and is JSON-clean", () => {
+test("--dry-run changes nothing; status exits 0 reporting installed:false until installed and is JSON-clean", () => {
   const dry = run("install", "--tap", tap, "--dry-run");
   expect(dry.code).toBe(0); expect(dry.out).toContain("would install");
   expect(existsSync(tapConfPath())).toBe(false);
   const before = run("status", "--json");
-  expect(before.code).toBe(2);
+  expect(before.code).toBe(0);
   const parsed = JSON.parse(before.out);
   expect(parsed).toMatchObject({ ok: true, installed: false, key: null });
   expect(run("install", "--tap", tap).code).toBe(0);

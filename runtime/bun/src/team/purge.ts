@@ -11,18 +11,19 @@ function refuse(klass: string, detail: string, action = "tap help team purge"): 
   throw new TapError(1, klass, action, detail, verb);
 }
 
-function confirmed(target: string, path: string): boolean {
+/** "eof" means no answer came, so consent was never obtained; "no" is the operator's answer. */
+function confirmed(target: string, path: string): "yes" | "no" | "eof" {
   const byte = Buffer.alloc(1);
   for (;;) {
     process.stderr.write(`${verb}: delete archive '${target}' at ${path} [y/N] `);
     let answer = "";
     for (;;) {
-      if (readSync(0, byte, 0, 1, null) === 0) return false;
+      if (readSync(0, byte, 0, 1, null) === 0) return "eof";
       if (byte[0] === 10) break;
       answer += byte.toString();
     }
-    if (["y", "Y", "yes", "YES", "Yes"].includes(answer)) return true;
-    if (["", "n", "N", "no", "NO", "No"].includes(answer)) return false;
+    if (["y", "Y", "yes", "YES", "Yes"].includes(answer)) return "yes";
+    if (["", "n", "N", "no", "NO", "No"].includes(answer)) return "no";
     process.stderr.write(`${verb}: choose y or n\n`);
   }
 }
@@ -83,7 +84,10 @@ export function cmdTeamPurge(argv: string[], archiveRoot: string): number {
     }
     if (!yes) {
       if (!process.stdin.isTTY) refuse("confirmation_required", `refusing to delete archive '${target}' without confirmation — pass --yes (or --dry-run to preview)`, `${verb} ${target} --yes`);
-      if (!confirmed(target, path)) refuse("aborted", "aborted at confirmation — archive left intact", `${verb} ${target} --yes`);
+      const answer = confirmed(target, path);
+      if (answer === "eof") refuse("aborted", "aborted at confirmation — archive left intact", `${verb} ${target} --yes`);
+      // A declined confirmation is the operator's answer, not a failure (CLI-EXIT-0).
+      if (answer === "no") { process.stdout.write(`${verb}: declined at confirmation — archive left intact\n`); return 0; }
     }
     // Delete the lexical entry: resolving a directory symlink here would delete its referent.
     try { rmSync(path, { recursive: true, force: true }); }

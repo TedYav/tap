@@ -158,14 +158,14 @@ TAP_HOME="$BUS" bash "$TAPSH" watch on --by lead -m "suite green; proof: run smo
 # (3) status prints the armed record. (Capture first — piping a multi-line producer
 # into `grep -q` under pipefail would SIGPIPE the producer and fail spuriously.)
 # The fixture spawns no real watcher (the tmux stub answers the fake pid 99999, which the lease
-# records as watcher_pid), so `status` reports the dispatcher dead and exits 2 (attention, CLI-EXIT-2):
-# capture that exit rather than let `set -e` kill the run, and assert it.
+# records as watcher_pid), so `status` reports the dispatcher dead. That is reported state, so it
+# exits 0 (CLI-EXIT-0); capture the exit rather than let `set -e` kill the run, and assert it.
 st_rc=0
 st="$(TAP_HOME="$BUS" bash "$TAPSH" watch status 2>&1)" || st_rc=$?
 [[ "$st" == *"armed by: lead"* ]] || { echo "watch-arm: (3) status did not report armed: $st" >&2; exit 1; }
 [[ "$st" == *"dispatcher: dead (pid 99999 is not running the watcher)"* ]] || { echo "watch-arm: (3) status did not report the missing dispatcher: $st" >&2; exit 1; }
-[ "$st_rc" = "2" ] || { echo "watch-arm: (3) a dead dispatcher should exit 2, got $st_rc: $st" >&2; exit 1; }
-echo "watch-arm: (3) status reports the arm record and exits 2 for the dead dispatcher: ok"
+[ "$st_rc" = "0" ] || { echo "watch-arm: (3) a dead dispatcher is reported state and should exit 0, got $st_rc: $st" >&2; exit 1; }
+echo "watch-arm: (3) status reports the arm record and the dead dispatcher, exit 0: ok"
 
 # (4) AE7: tap team reset archives watch/ -> lease gone.
 # tap-9tqt: --keep-registry removed (use team down to retain roster). Reset archives

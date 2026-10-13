@@ -48,12 +48,12 @@ function fixture(enrolled = true) {
   return { root, index, home, cwd, bus, registry, foreign, foreignRegistry, doc, env, seed, run };
 }
 
-for (const door of doors) test(`${door}: pending/empty, quiet signal, JSON and usage are native terminal outcomes`, () => {
+for (const door of doors) test(`${door}: pending and empty both exit 0 and differ by output; quiet, JSON and usage are native terminal outcomes`, () => {
   const f = fixture();
   f.seed("pending", { reply: "settle-only", epoch: "7", from_team: "sender", reply_to: "recipient/leader" });
   for (const args of [["me"], ["me", "--quiet"], ["me", "--json"], ["me", "--quiet", "--json"]]) {
     const r = f.run(args, door);
-    expect(r.code, r.err).toBe(args.includes("--quiet") ? 0 : 2);
+    expect(r.code, r.err).toBe(0);
     expect(r.out).toContain("pending");
     if (args.includes("--json")) {
       expect(JSON.parse(r.out)).toMatchObject({ ok: true, agent: "me", team: "recipient", pending: [{ id: "pending", epoch: "7", reply_to: "recipient/leader" }] });
@@ -91,7 +91,7 @@ test("canonical and parked rows share exact adoption, instance and queue authori
   f.seed("missing-meta", {}, true);
   writeFileSync(join(f.bus, "spool/missing-meta.meta.json"), "null");
   f.seed("canonical-wins", {}, true); const canonical = f.seed("canonical-wins");
-  const r = f.run(); expect(r.code, r.err).toBe(2);
+  const r = f.run(); expect(r.code, r.err).toBe(0);
   const rows = JSON.parse(r.out).pending;
   expect(rows.map((v: { id: string }) => v.id).sort()).toEqual(["canonical-wins", ...["local-", "queued-"].flatMap(p => ["current", "unbound", "rewritten", "unrevised"].map(n => p + n))].sort());
   expect(rows.find((v: { id: string }) => v.id === "local-rewritten").adopted_from).toBe("fork");
@@ -134,7 +134,7 @@ test("foreign parked custody uses the recipient registry; source receipts and ex
   }
   const broken = join(f.foreign, "payloads/broken.md"); writeFileSync(broken, "foreign evidence");
   const before = paths.map(p => readFileSync(p, "utf8"));
-  const result = f.run(); expect(result.code, result.err).toBe(2);
+  const result = f.run(); expect(result.code, result.err).toBe(0);
   expect(JSON.parse(result.out).pending.map((r: { id: string }) => r.id).sort()).toEqual(["foreign-canonical", "foreign-queued"]);
   expect(result.err).toContain("ambiguous unstamped predecessor mail");
   expect(f.run(["me"]).out).toContain(`tap read path=${paths[1]} --by me`);
@@ -145,7 +145,9 @@ test("foreign parked custody uses the recipient registry; source receipts and ex
   writeFileSync(join(f.foreign, "receipts/foreign-canonical.done"), "{}");
   expect(JSON.parse(f.run().out).pending.map((r: { id: string }) => r.id)).toEqual(["foreign-queued"]);
   f.doc.seats.me.instance = "me|replacement"; writeFileSync(f.registry, JSON.stringify(f.doc));
-  expect(f.run().code).toBe(0);
+  const replaced = f.run();
+  expect(replaced.code, replaced.err).toBe(0);
+  expect(JSON.parse(replaced.out).pending).toEqual([]);
 });
 
 test("malformed isolation preserves bytes and quiet/JSON stderr while valid siblings stay pending", () => {
@@ -155,7 +157,7 @@ test("malformed isolation preserves bytes and quiet/JSON stderr while valid sibl
     f.seed("mismatch", { id: "different" });
     writeFileSync(join(f.bus, "spool/parked-broken.md"), "parked evidence");
     const result = f.run(args);
-    expect(result.code).toBe(args.includes("--quiet") ? 0 : 2);
+    expect(result.code).toBe(0);
     expect(result.out).toContain("good"); expect(result.out).toContain("invalid-reply");
     expect(result.out).not.toContain("quarantined");
     expect(result.err).toContain("quarantined 2 malformed payload(s)");

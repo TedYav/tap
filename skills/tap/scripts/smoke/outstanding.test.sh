@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # outstanding.test.sh — tap outstanding (rest-refusal sink signal, matrix #7).
-# Lists MY un-answered sends (from==me, no .done); exit 2 when any, 0 when clean.
+# Lists MY un-answered sends (from==me, no .done). Exit 0 whether any are open or
+# none: open sends are state, not an error, so every arm proves listed-vs-clean from
+# the output (the id appears, or the empty-state line does).
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../tap/scripts/smoke/sandbox-pins.sh"
@@ -29,12 +31,12 @@ EOF
 mk ask1 claude codex
 mk other1 alice codex
 
-# 1. claude has an outstanding send (ask1) → exit 2, lists it; does NOT leak other1
+# 1. claude has an outstanding send (ask1) → exit 0, lists it; does NOT leak other1
 set +e
 out="$("$TAP" outstanding claude --json)"
 rc="$?"
 set -e
-[ "$rc" -eq 2 ] || { echo "outstanding: expected exit 2 while a send is unanswered, got $rc" >&2; exit 1; }
+[ "$rc" -eq 0 ] || { echo "outstanding: expected exit 0 while a send is unanswered, got $rc" >&2; exit 1; }
 python3 -c '
 import json,sys
 d=json.loads(sys.stdin.read())
@@ -43,7 +45,7 @@ assert any(i["id"]=="ask1" and i.get("to")=="codex" for i in items), d
 ' <<<"$out" || { echo "outstanding: did not list ask1: $out" >&2; exit 1; }
 case "$out" in *other1*) echo "outstanding: leaked another sender's payload" >&2; exit 1 ;; esac
 
-# 2. malformed outbound payloads from claude keep exit 2 and warn instead of hiding
+# 2. malformed outbound payloads from claude keep exit 0 and warn instead of hiding
 cat > "$TAP_HOME/payloads/malformed-out.md" <<'EOF'
 ---
 id: malformed-out
@@ -58,7 +60,11 @@ set +e
 "$TAP" outstanding claude >"$TAP_HOME/out-malformed.stdout" 2>"$TAP_HOME/out-malformed.stderr"
 rc="$?"
 set -e
-[ "$rc" -eq 2 ] || { echo "outstanding: real outstanding sends remain on this bus, so exit stays 2, got $rc" >&2; exit 1; }
+[ "$rc" -eq 0 ] || { echo "outstanding: a malformed sibling is not an error, so exit stays 0, got $rc" >&2; exit 1; }
+grep -q 'ask1' "$TAP_HOME/out-malformed.stdout" || {
+  echo "outstanding: the malformed sibling hid the real outstanding send ask1" >&2
+  cat "$TAP_HOME/out-malformed.stdout" >&2; exit 1
+}
 [ -f "$TAP_HOME/payloads/.quarantine/malformed-out.md" ] || {
   echo "outstanding: the malformed outbound was not quarantined" >&2
   cat "$TAP_HOME/out-malformed.stdout" >&2; exit 1
@@ -73,11 +79,13 @@ grep -qE 'quarantin' "$TAP_HOME/out-malformed.stdout" || {
 }
 rm -f "$TAP_HOME/payloads/malformed-out.md" "$TAP_HOME/payloads/.quarantine/malformed-out.md"
 
-# 3. recipient settles ask1 → claude is clean (exit 0)
+# 3. recipient settles ask1 → claude is clean (exit 0, empty-state line, no ask1)
 printf '%s\n' '{"schema": "0.20", "team":{"name":"team"},"seats":{"codex":{"status":"active","delivery":"poll"},"claude":{"status":"active","delivery":"poll"}}}' > "$TAP_HOME/registry.json"
 printf 'answer\n' > "$TAP_HOME/answer.txt"
 "$TAP" reply ask1 --by codex -f "$TAP_HOME/answer.txt"
-"$TAP" outstanding claude || { echo "outstanding: should be clean after recipient settled" >&2; exit 1; }
+clean="$("$TAP" outstanding claude)" || { echo "outstanding: could not read claude's outstanding after settlement" >&2; exit 1; }
+grep -qi 'no outstanding' <<<"$clean" || { echo "outstanding: should be clean after recipient settled: $clean" >&2; exit 1; }
+case "$clean" in *ask1*) echo "outstanding: settled ask1 is still listed: $clean" >&2; exit 1 ;; esac
 
 # 4. tap-9i8v item (1): the receipt ladder is VISIBLE to the sender ------------
 # Ids carry a real timestamp because ids.ts idAgeSeconds parses age FROM the id —
@@ -133,7 +141,7 @@ grep -q 'Delivery not confirmed.' <<<"$_open_row" || {
   echo "outstanding: the open-ladder row must say Delivery not confirmed; got: $_open_row" >&2; exit 1
 }
 # Explicit labeled resend is the ratified sender recovery; use the message id.
-grep -q 'tap resend claude-20260811T010203Z-ladderopen requires proof that no attempt occurred.' <<<"$_open_row" || {
+grep -qF 'if it is still unread, tap resend claude-20260811T010203Z-ladderopen rings it again under the same id.' <<<"$_open_row" || {
   echo "outstanding: sender recovery must name the original id; got: $_open_row" >&2; exit 1
 }
 grep -q 'Delivery not confirmed.' <<<"$_closed_row" && {
@@ -362,7 +370,7 @@ set +e
 pout="$(TAP_HOME="$PARITY_HOME" "$TAP" outstanding parityme --json 2>/dev/null)"
 prc="$?"
 set -e
-[ "$prc" -eq 2 ] || { echo "outstanding: parity expected exit 2 (3 unsettled mine), got $prc" >&2; exit 1; }
+[ "$prc" -eq 0 ] || { echo "outstanding: parity expected exit 0 (3 unsettled mine, listed below), got $prc" >&2; exit 1; }
 POUT="$pout" python3 -B - <<'PY' || { echo "outstanding: parity set mismatch" >&2; printf '%s\n' "$pout" >&2; exit 1; }
 import json, os
 d = json.loads(os.environ["POUT"])

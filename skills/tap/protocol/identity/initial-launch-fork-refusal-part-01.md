@@ -14,7 +14,7 @@ The decision table's full reasoning is preserved in the internal launcher-respaw
 
 The native CLI lets pending stdout/stderr writes finish before exiting. Pipe
 backpressure must not truncate JSON or JSONL; a stream write failure exits
-nonzero. Normal verb statuses, including outstanding exit 2, remain unchanged.
+nonzero. Normal verb statuses remain unchanged.
 
 The native `read`, `show`, and `outstanding` handlers preserve the current
 verb outputs and receipt rules. None of the three has a Bash door
@@ -46,8 +46,8 @@ assuming an id prefix. Existing quarantine and selected-row queue diagnostics
 retain their owners. No archive or persistent index is created.
 
 An interrupted or failed scan is not an empty result. Callers that impose a
-timeout must inspect its exit status; only a completed exit 0 reports no
-outstanding sends. Exit 2 continues to mean outstanding sends exist.
+timeout must inspect its exit status; only a completed exit 0 carries a
+result, and only its empty listing reports no outstanding sends.
 
 Reader age calculations accept `TAP_SPOOL_NOW` in epoch seconds on both runtimes,
 with an explicit age-helper argument taking precedence. This pins display and

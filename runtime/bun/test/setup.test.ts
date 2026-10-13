@@ -113,6 +113,8 @@ test("non-TTY setup skips both offers and --yes creates then preserves config", 
   expect(existsSync(join(f.cwd, ".tap/config"))).toBe(false);
   const first = run(f, ["--yes"]);
   expect(first.code).toBe(0); expect(first.out).toContain("wrote .tap/config");
+  expect(first.out + first.err).not.toContain("folder trusted:");
+  expect(existsSync(join(f.home, ".claude.json"))).toBe(false);
   const path = join(f.cwd, ".tap/config"); writeFileSync(path, "operator config\n");
   const next = run(f, ["-y"]);
   expect(next.code).toBe(0); expect(next.out).toContain("kept existing .tap/config");

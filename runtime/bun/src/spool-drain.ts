@@ -31,6 +31,7 @@ import { fieldValue, readLoose } from "./watch-lease";
 import { KIND_DELIVERY_FAILED } from "./notice";
 import { loadRegistry, seatMap } from "./registry";
 import { acquireStallLock, harnessEvidence, noteStallNotified, observeStall, stallBoundSeconds, stallNoticeId } from "./readiness-stall";
+import { rowRetry } from "./retry";
 
 export interface DrainContext extends DeadlineContext {
   gcBatch?: GcBatch;
@@ -389,6 +390,9 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
     // tap-9lqa7: a staged-idle hold is Enter-only by construction — it never
     // joins a digest (new bytes); Phase B's solo path owns it exclusively.
     if (row.reason === "staged-idle") continue;
+    // A same-id retry row rings only through the solo path, which carries its own
+    // license, retry wire and observation recheck; a digest would bypass all three.
+    if (rowRetry(ctx.spoolDir, id)) continue;
     if (!registryMatchesTeam(row.targetRegistry, row.toTeam) || isDone(ctx, id)) continue;
     if (row.policy === "urgent" && !pyTruthy(listed.held_drain_visits)) continue;
     const ready = await effects.readiness(row);

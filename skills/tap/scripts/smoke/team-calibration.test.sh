@@ -325,8 +325,8 @@ grep -q '2026-07-02–07-04' <<<"$out" \
 
 # --- a CORRUPT registry refuses; it never reports the team as empty ---------
 # The third RED, and the one the codex bot caught in review: tap team --json emits
-# {"team":null,"agents":[],"error":...} and exits 42 when the acting registry will
-# not parse, but team_list swallows that 42 into `return 0`, so the only surviving
+# {"team":null,"agents":[],"error":...} and exits 1 when the acting registry will
+# not parse, but team_list swallows that exit into `return 0`, so the only surviving
 # evidence is the error key. Miss it and this view prints "no seats registered yet"
 # over a corrupt file -- the same confidently-wrong-about-the-roster class this whole
 # change exists to kill, on its own new surface. Effect witnesses, both directions:
@@ -337,8 +337,8 @@ set +e
 corrupt_out="$("$TAP" team calibration 2>"$WORK/calibration-corrupt.err")"
 corrupt_rc=$?
 set -e
-[ "$corrupt_rc" -eq 42 ] \
-  || fail "corrupt registry must exit 42; got rc=$corrupt_rc and:\n$corrupt_out"
+[ "$corrupt_rc" -eq 1 ] \
+  || fail "corrupt registry must exit 1 (cannot do its job); got rc=$corrupt_rc and:\n$corrupt_out"
 [ -z "$corrupt_out" ] || fail "corrupt registry must produce no calibration stdout: $corrupt_out"
 corrupt_out="$(cat "$WORK/calibration-corrupt.err")"
 [ "$corrupt_out" = 'tap team calibration: acting registry unreadable; repair or restore the acting registry file (tap doctor names it), then retry' ] \
@@ -363,8 +363,8 @@ set +e
 strong_corrupt="$("$TAP" team calibration --strongest 2>"$WORK/strongest-corrupt.err")"
 strong_rc=$?
 set -e
-[ "$strong_rc" -eq 42 ] \
-  || fail "--strongest under a corrupt registry must exit 42; got rc=$strong_rc and:\n$strong_corrupt"
+[ "$strong_rc" -eq 1 ] \
+  || fail "--strongest under a corrupt registry must exit 1; got rc=$strong_rc and:\n$strong_corrupt"
 [ -z "$strong_corrupt" ] || fail "corrupt registry must produce no strongest stdout: $strong_corrupt"
 strong_corrupt="$(cat "$WORK/strongest-corrupt.err")"
 [ "$strong_corrupt" = "$corrupt_out" ] || fail "--strongest changed the corrupt registry refusal: $strong_corrupt"

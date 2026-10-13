@@ -39,7 +39,7 @@ peer_submit_stub() {
 }
 `);
   writeFileSync(join(dir, "courier-stand-in.sh"), 'cp "$3" "$FIXTURE/focus-body"\nexit "${WAKE_RC:-0}"\n');
-  writeFileSync(join(dir, "bin/tmux"), '#!/bin/sh\nprintf "%s" "${LIVE_HARNESS:-claude}"\n', { mode: 0o755 });
+  writeFileSync(join(dir, "bin/tmux"), '#!/bin/sh\nprintf "%s" "${LIVE_HARNESS-claude}"\n', { mode: 0o755 });
   writeFileSync(join(dir, "entry.ts"), `import { mock } from "bun:test";
 const context = await import(${JSON.stringify(join(root, "runtime/bun/src/context.ts"))});
 mock.module(${JSON.stringify(join(root, "runtime/bun/src/context.ts"))}, () => ({ ...context,
@@ -124,6 +124,54 @@ test("OpenCode peer suffix stays visible and its focus stays separate; preparati
     expect(result.code).toBe(1); expect(result.err).toContain("refusing before pane input");
     expect(existsSync(join(blocked.dir, "submits"))).toBe(false);
   } finally { blocked.close(); }
+});
+
+test("--all with no peer seats says so and exits 0 (CLI-EXIT-0)", async () => {
+  const f = fixture();
+  try {
+    const registry = join(f.bus, "registry.json"), doc = JSON.parse(readFileSync(registry, "utf8"));
+    delete doc.seats.a; delete doc.seats.b;
+    writeFileSync(registry, JSON.stringify(doc));
+    const result = await f.run(["--all"]);
+    expect({ code: result.code, out: result.out, err: result.err }).toEqual({
+      code: 0, out: "tap compact: compact --all: no active peer pane seats; nothing to compact\n", err: "" });
+    expect(existsSync(join(f.dir, "submits"))).toBe(false);
+  } finally { f.close(); }
+});
+
+test("--all skips Codex peers with a printed route and exits 0; naming one still refuses", async () => {
+  const f = fixture();
+  try {
+    const all = await f.run(["--all"], { LIVE_HARNESS: "codex" });
+    expect({ code: all.code, err: all.err }).toEqual({ code: 0, err: "" });
+    for (const seat of ["a", "b"]) expect(all.out).toContain(`tap compact: compact ${seat}: skipped (Codex seat; it self-compacts with tap self compact --handoff FILE -- FOCUS)\n`);
+    expect(existsSync(join(f.dir, "submits"))).toBe(false);
+    const named = await f.run(["a"], { LIVE_HARNESS: "codex" });
+    expect(named.code).toBe(1); expect(named.err).toContain("'a' is a Codex seat");
+  } finally { f.close(); }
+});
+
+test("--all treats an unobservable or ambiguous harness as a failure, never a skip", async () => {
+  const f = fixture();
+  try {
+    for (const harness of ["", "node"]) {
+      const all = await f.run(["--all"], { LIVE_HARNESS: harness });
+      expect(all.code).toBe(1);
+      expect(all.out).not.toContain("skipped");
+      expect(all.err).toContain(`unsupported harness '${harness}'`);
+    }
+    expect(existsSync(join(f.dir, "submits"))).toBe(false);
+  } finally { f.close(); }
+});
+
+test("--all skips a positively observed non-agent pane and exits 0", async () => {
+  const f = fixture();
+  try {
+    const all = await f.run(["--all"], { LIVE_HARNESS: "zsh" });
+    expect({ code: all.code, err: all.err }).toEqual({ code: 0, err: "" });
+    for (const seat of ["a", "b"]) expect(all.out).toContain(`tap compact: compact ${seat}: skipped (harness 'zsh' is not an agent)\n`);
+    expect(existsSync(join(f.dir, "submits"))).toBe(false);
+  } finally { f.close(); }
 });
 
 test("all excludes own aliases; audit and submit IDs differ; rowless arguments survive", async () => {

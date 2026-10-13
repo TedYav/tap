@@ -411,6 +411,10 @@ async function main(argv: string[]): Promise<number> {
       const lines = root ? sessionContext(root, input, process.env, launch) : [];
       if (lines.length) writeSync(1, `${lines.join("\n")}\n`);
     } else if (mode === "codex") {
+      // Internal memory workers inherit the pane and launch env, but have no
+      // transcript. This persistence proxy also skips user --ephemeral sessions.
+      // Do not require the file to exist: Codex can supply a path before a write succeeds.
+      if (!field(parseHookInput(input), "transcript_path")) return 0;
       const launch = resolveLaunchEvidence(process.env);
       const root = launch?.root ?? codexRoot(input, process.env);
       if (root) {

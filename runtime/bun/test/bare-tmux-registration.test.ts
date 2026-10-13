@@ -67,7 +67,7 @@ beforeAll(() => {
     const built = spawnSync("cc", [source, "-o", join(root, name)], { env, encoding: "utf8", timeout: 20_000 });
     expect(built.status, built.stdout + built.stderr).toBe(0);
   }
-  expect(tap("init", "--yes").code).toBe(0);
+  expect(tap("init", "--yes", "--no-trust-folders").code).toBe(0);
 });
 
 afterAll(() => {

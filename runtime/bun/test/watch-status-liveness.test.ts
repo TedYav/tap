@@ -37,7 +37,7 @@ describe("tap watch status reports dispatcher liveness beside the armed line", (
   test("armed with a watcher pid that is gone reads dead and names the restart", () => {
     // ps's real no-match shape for a gone pid: exit 1, empty stdout, empty stderr.
     const got = status("liveness-dead-pid", lease({ watcher_pid: 4242, watcher_command: "watch-run.ts run", heartbeat_at: 1980 }), {}, "#!/bin/bash\nexit 1\n");
-    expect(got.rc).toBe(2); // attention, not failure
+    expect(got.rc).toBe(0); // reported state, not failure (CLI-EXIT-0)
     expect(got.stdout.split("\n").slice(0, 2)).toEqual(["tap watch: armed", "  dispatcher: dead (pid 4242 is not running the watcher)"]);
     expect(got.stdout).toContain("  next: re-run the `tap watch on` that armed this");
   });
@@ -49,7 +49,7 @@ describe("tap watch status reports dispatcher liveness beside the armed line", (
 
   test("a live pid whose heartbeat is past the bound reads dead, not armed-and-fine", () => {
     const got = status("liveness-stale-heartbeat", lease({ watcher_pid: 4242, watcher_command: "watch-run.ts run", heartbeat_at: 1000 }), { SHIM_ALIVE_PID: "4242", SHIM_ALIVE_COMMAND: "watch-run.ts run" });
-    expect(got.rc).toBe(2);
+    expect(got.rc).toBe(0);
     expect(got.stdout.split("\n")[1]).toBe("  dispatcher: dead (pid 4242 is running but its last heartbeat was 1000s ago)");
     expect(got.stdout).toContain("  next: re-run");
   });
@@ -63,7 +63,7 @@ describe("tap watch status reports dispatcher liveness beside the armed line", (
     // A watcher that hung or stopped before its first heartbeat keeps its pid and command; it must not read alive forever.
     for (const heartbeat_at of [undefined, 0, ""]) {
       const stuck = status(`liveness-never-ticked-${JSON.stringify(heartbeat_at)}`, lease({ armed_at: 1000, watcher_pid: 4242, watcher_command: "watch-run.ts run", ...(heartbeat_at === undefined ? {} : { heartbeat_at }) }), shim);
-      expect([JSON.stringify(heartbeat_at), stuck.rc]).toEqual([JSON.stringify(heartbeat_at), 2]);
+      expect([JSON.stringify(heartbeat_at), stuck.rc]).toEqual([JSON.stringify(heartbeat_at), 0]);
       expect(stuck.stdout.split("\n")[1]).toBe("  dispatcher: dead (pid 4242 is running but has not ticked in 1000s since arming)");
       // The usual "re-run tap watch on" hint would be a lie here: ensureSidecar reads an empty heartbeat as a
       // just-spawned loop and leaves the live matching watcher alone. The recovery that works is off, then on
@@ -106,7 +106,7 @@ describe("a recorded watcher pid that is present but not a pid", () => {
     }
     for (const missing of [undefined, "", 0, "0"]) {
       const got = status(`liveness-missing-pid-${JSON.stringify(missing)}`, lease(missing === undefined ? {} : { watcher_pid: missing }));
-      expect([JSON.stringify(missing), got.rc, got.stdout.split("\n")[1]]).toEqual([JSON.stringify(missing), 2, "  dispatcher: dead (no watcher recorded)"]);
+      expect([JSON.stringify(missing), got.rc, got.stdout.split("\n")[1]]).toEqual([JSON.stringify(missing), 0, "  dispatcher: dead (no watcher recorded)"]);
     }
   });
 });
@@ -128,9 +128,9 @@ describe("a running pid is not evidence of the watcher unless the lease names a 
     expect([retired.rc, retired.stdout.split("\n")[1]]).toEqual([1, "  dispatcher: unknown (pid 4242's recorded watcher command 'tap-watch.sh run' is not a known watcher signature)"]);
     // A pid no process holds is dead whatever the record names: no dispatcher runs there, and `tap watch on` recovers.
     const gone = status("liveness-signature-gone", lease({ watcher_pid: 4242, watcher_command: "bash", heartbeat_at: 1980 }), {}, "#!/bin/bash\nexit 1\n");
-    expect([gone.rc, gone.stdout.split("\n")[1]]).toEqual([2, "  dispatcher: dead (pid 4242 is not running the watcher)"]);
+    expect([gone.rc, gone.stdout.split("\n")[1]]).toEqual([0, "  dispatcher: dead (pid 4242 is not running the watcher)"]);
     const goneMissing = status("liveness-signature-gone-missing", lease({ watcher_pid: 4242, heartbeat_at: 1980 }), {}, "#!/bin/bash\nexit 1\n");
-    expect([goneMissing.rc, goneMissing.stdout.split("\n")[1]]).toEqual([2, "  dispatcher: dead (pid 4242 is not running the watcher)"]);
+    expect([goneMissing.rc, goneMissing.stdout.split("\n")[1]]).toEqual([0, "  dispatcher: dead (pid 4242 is not running the watcher)"]);
     // A probe that cannot tell stays unknown, whatever the record names.
     const blind = status("liveness-signature-blind", lease({ watcher_pid: 4242, watcher_command: "bash", heartbeat_at: 1980 }), {}, "#!/bin/bash\necho 'ps: cannot read process table' >&2\nexit 2\n");
     expect([blind.rc, blind.stdout.split("\n")[1]]).toEqual([1, "  dispatcher: unknown (cannot inspect pid 4242)"]);
@@ -167,7 +167,7 @@ describe("an armed lease with no watcher where a watch window already exists", (
   const windowed = (name: string, extra: Record<string, string>) => status(name, lease({}), extra);
   test("status names the window collision and its remediation, not the re-run that cannot recover", () => {
     const got = windowed("liveness-no-watcher-window", { SHIM_WINDOW: "777" });
-    expect(got.rc).toBe(2);
+    expect(got.rc).toBe(0);
     expect(got.stdout.split("\n")[1]).toBe("  dispatcher: dead (no watcher recorded)");
     expect(got.stdout).toContain("  next: a `watch` window already exists in '");
     expect(got.stdout).toContain("but the lease records no watcher, so re-running `tap watch on` leaves it untouched and cannot recover");
@@ -178,13 +178,13 @@ describe("an armed lease with no watcher where a watch window already exists", (
   test("a tmux that cannot be inspected keeps the dead verdict and falls back to the re-run hint, noting the limit", () => {
     // `fork failed: Device not configured` is the ServerUnresponsive shape; the optional window lookup must not turn it into a generic failure.
     const got = status("liveness-no-watcher-tmux-blind", lease({}), {}, undefined, "#!/bin/bash\necho 'fork failed: Device not configured' >&2\nexit 1\n");
-    expect(got.rc).toBe(2);
+    expect(got.rc).toBe(0);
     expect(got.stdout.split("\n")[1]).toBe("  dispatcher: dead (no watcher recorded)");
     expect(got.stdout).toContain("  next: re-run the `tap watch on` that armed this (or any `tap remind me`) to respawn the sidecar (tmux could not be inspected for an existing `watch` window; if the re-run leaves it untouched, see tap health)");
   });
   test("with no such window the re-run hint stands (ensureSidecar can spawn)", () => {
     const got = windowed("liveness-no-watcher-nowindow", {});
-    expect(got.rc).toBe(2);
+    expect(got.rc).toBe(0);
     expect(got.stdout).toContain("  next: re-run the `tap watch on` that armed this");
   });
 });

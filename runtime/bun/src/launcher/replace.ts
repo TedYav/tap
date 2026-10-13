@@ -686,9 +686,12 @@ async function sendClearInstruction(recipient: string, instruction: string, busH
 
 // ---- dark entry (tests only until R7b routes `tap clear`) ----
 
-/** Resolve the caller team's scope from cwd, as `tap clear` does. */
-export function clearScopeForCwd(cwd: string = process.cwd(), env: NodeJS.ProcessEnv = process.env): ClearScope {
-  const ctx = resolveContext(cwd, env);
+/** Resolve the caller team's scope from cwd, as `tap clear` does (a seat verb: the calling pane's
+ * team wins over an enrolled cwd, tap-djlri). A caller that already resolved its team (refresh)
+ * names it, so the selection is fresh and revalidated here yet never a different team from the
+ * caller's preflight and retirement. */
+export function clearScopeForCwd(cwd: string = process.cwd(), env: NodeJS.ProcessEnv = process.env, team?: string): ClearScope {
+  const ctx = resolveContext(cwd, env, team ? { explicitTeam: team } : undefined);
   return { root: ctx.root, registryPath: ctx.registryPath, busHome: ctx.bus.home };
 }
 
@@ -701,8 +704,15 @@ function printOutcome(outcome: ReplaceOutcome, verb: string): void {
   process.stderr.write(`${verb}: ${outcome.detail.replace(/[\r\n]/g, " ")}; next: ${outcome.action}\n`);
 }
 
-/** `tap clear <seat> [-m <instruction>] [--dry-run]` */
-export async function cmdClearNative(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
+/** A caller that already resolved its scope (refresh): the clear is selected fresh, pinned to
+ * the caller's enrolled team when it has one (a custom TAP_HOME bus has no index row to pin, so
+ * the same cwd/TAP_HOME resolution reproduces it), and refuses before any effect when the fresh
+ * selection no longer matches the caller's (`expect`), so the caller's later phases never run
+ * against a moved registry. */
+export interface ClearPin { team?: string; expect: ClearScope }
+
+/** `tap clear <seat> [-m <instruction>] [--dry-run]`. */
+export async function cmdClearNative(argv: string[], env: NodeJS.ProcessEnv = process.env, pin?: ClearPin): Promise<number> {
   const verb = "tap clear";
   let seat: string | null = null, message: string | null = null, dryRun = false;
   for (let i = 0; i < argv.length; i++) {
@@ -722,7 +732,11 @@ export async function cmdClearNative(argv: string[], env: NodeJS.ProcessEnv = pr
   if (!seat) { process.stderr.write(`${verb}: usage: tap clear <seat> [-m <instruction>]\n`); return 2; }
   let scope: ClearScope;
   try {
-    scope = clearScopeForCwd(process.cwd(), env);
+    scope = clearScopeForCwd(process.cwd(), env, pin?.team);
+    if (pin && (scope.root !== pin.expect.root || scope.registryPath !== pin.expect.registryPath || scope.busHome !== pin.expect.busHome)) {
+      printOutcome(refusal("team_moved", "re-run the command", `team '${pin.team ?? scope.root}' is no longer where its caller resolved it (${pin.expect.registryPath} -> ${scope.registryPath}); nothing was cleared`), verb);
+      return 2;
+    }
     assertResetUnfenced(scope.busHome, "clear");
   } catch (error) {
     if (error instanceof TapError) { printOutcome(refusal(error.errorClass, error.action, error.detail), verb); return 2; }

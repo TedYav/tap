@@ -3,10 +3,11 @@
 // (spool-rebind.ts) both re-hand an entry to the courier only on this proof, so
 // a possible effect is never retried. A leaf module on purpose: the spool
 // waiter's stamped import closure reaches it through the drain.
-import { lstatSync } from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { PyFloat, PyInt } from "./spool-publication";
+import { RETRY_IDLE_SUBMIT_SUFFIX, RETRY_MARKER_SUFFIX } from "./retry";
 
 /** Evidence of a recipient attempt, a delivery, a read, a settlement or a consumed resend. Presence alone refuses. */
 const RECEIPT_EVIDENCE = ["attempted", "attempts", "idle-submit", "unconfirmed", "sent", "read", "harness-queued", "done", "cancelled", "resent"];
@@ -29,6 +30,12 @@ export function noEffectProof(home: string, spoolDir: string, id: string, meta: 
       if (seen === "present") return `.${suffix} evidence exists`;
     }
   }
+  // Both retry injection and idle-Enter licenses prove a possible effect.
+  try {
+    for (const name of readdirSync(join(home, "receipts"))) {
+      if (name.startsWith(`${id}.retry-`) && (RETRY_MARKER_SUFFIX.test(name) || RETRY_IDLE_SUBMIT_SUFFIX.test(name))) return `.${name.slice(id.length + 1)} evidence exists`;
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "retry evidence is unreadable"; }
   return "";
 }
 

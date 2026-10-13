@@ -267,7 +267,7 @@ injected a1 && fail "(1) an eligible settle-only send injected a sentinel"
 [ -n "$(meta_field a1 hold_until_epoch)" ] || fail "(1) park carries no hold_until_epoch"
 [ ! -f "$BUS/receipts/a1.done" ] || fail "(1) a receipt exists before the doorbell landed — .done must mean the seat RECEIVED it"
 [ ! -f "$BUS/payloads/a1.md" ] || fail "(1) canonical left behind by a parked send"
-# exit 2 = "some outstanding", which is the expected state here.
+# outstanding exits 0 whether or not sends are open; the a1 row below is the proof.
 OUT="$(bash "$TAPSH" outstanding alice --json 2>/dev/null || true)"
 python3 -c '
 import json, sys
@@ -393,7 +393,7 @@ d1_before="$(cat "$BUS/receipts/d1.done")"
 set +e
 DONE_OUT="$(TAP_JSON=1 bash "$TAPSH" done d1 --by peer 2>&1)"; DONE_RC=$?
 set -e
-[ "$DONE_RC" = "2" ] || fail "(6) tap done should refuse as retired (exit 2), got $DONE_RC"
+[ "$DONE_RC" = "1" ] || fail "(6) tap done should refuse as retired (exit 1), got $DONE_RC"
 python3 -c 'import json,sys; d=json.loads(sys.argv[1]); assert d["error_class"]=="done_retired", d' "$DONE_OUT" \
   || fail "(6) refusal class is not done_retired"
 [ "$(cat "$BUS/receipts/d1.done")" = "$d1_before" ] || fail "(6) the tombstone rewrote a settlement receipt"
@@ -516,13 +516,14 @@ PY12
 [ -f "$BUS/payloads/f1.md" ] || fail "(12) the payload the notice pointed at is gone"
 # ABSENCE IS EVIDENCE ONLY IF THE READ SUCCEEDED. `$(… || true)` turns any failure
 # into an empty string, and empty does not contain the id — so this assertion
-# passed with the command replaced by `false`. The read is now checked first: an
-# accepted exit status (0 = none outstanding, 2 = some), parseable JSON, and the
-# right agent — and only then is the id's absence meaningful.
+# passed with the command replaced by `false`. The read is now checked first: exit
+# 0 (outstanding exits 0 whether or not sends are open; non-zero means the read
+# failed), parseable JSON, and the right agent — and only then is the id's absence
+# meaningful.
 set +e
 OUT12="$(bash "$TAPSH" outstanding alice --json 2>/dev/null)"; RC12=$?
 set -e
-case "$RC12" in 0|2) ;; *) fail "(12) could not read the sender's outstanding (rc $RC12) — absence proves nothing" ;; esac
+[ "$RC12" -eq 0 ] || fail "(12) could not read the sender's outstanding (rc $RC12) — absence proves nothing"
 python3 -B - "$OUT12" <<'PY12B' || fail "(12) the id is still outstanding after the courier gave up on it, or its queue could not be read"
 import json, sys
 d = json.loads(sys.argv[1])          # unparseable => the read failed => assertion void

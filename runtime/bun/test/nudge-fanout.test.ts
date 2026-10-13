@@ -92,10 +92,14 @@ test("without a TTY, a multi-seat or '*' nudge requires --yes and sends nothing"
   expect(sent).toEqual([]);
 });
 
-test("a TTY decline sends nothing; --yes skips the prompt", () => {
+test("a TTY decline sends nothing and exits 0 (CLI-EXIT-0); --yes skips the prompt", () => {
   const declined = effects({ interactive: () => true, confirm: () => false });
-  expect(runFanout(args(["--harness", "codex", "--team", "*"]), self, declined.fx)).toBe(1);
+  expect(runFanout(args(["--harness", "codex", "--team", "*"]), self, declined.fx)).toBe(0);
   expect(declined.sent).toEqual([]);
+  // Declining does not hide a cannot-check team: the run still fails for it.
+  const partial = effects({ interactive: () => true, confirm: () => false, roster: loc => loc.startsWith("/a") ? { error: "registry unreadable" } : { rows: ROSTERS[loc]! } });
+  expect(runFanout(args(["--harness", "codex", "--team", "*"]), self, partial.fx)).toBe(1);
+  expect(partial.sent).toEqual([]);
   const yes = effects();
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--yes"]), self, yes.fx)).toBe(0);
   expect(yes.sent).toEqual(["a/cx1", "b/cx2"]);

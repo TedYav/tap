@@ -173,7 +173,7 @@ export async function cmdSetup(argv: string[], scripts: string): Promise<number>
     if (repo) return charter(root, scripts, check);
     // Consent given to setup is consent to its init: a user who passed --yes
     // is never told to run tap init --yes (the non-git consent case).
-    const child = Bun.spawn(initArgv(scripts, [...(yes ? ["--yes"] : []), ...(team ? ["--team", team] : [])]), { env: { ...process.env, TAP_SETUP_REPO_PENDING: "1" }, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+    const child = Bun.spawn(initArgv(scripts, ["--no-trust-folders", ...(yes ? ["--yes"] : []), ...(team ? ["--team", team] : [])]), { env: { ...process.env, TAP_SETUP_REPO_PENDING: "1" }, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
     const interrupt = () => child.kill("SIGINT"), terminate = () => child.kill("SIGTERM"), hangup = () => child.kill("SIGHUP");
     process.on("SIGINT", interrupt); process.on("SIGTERM", terminate); process.on("SIGHUP", hangup);
     let status: number;

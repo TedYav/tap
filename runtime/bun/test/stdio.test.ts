@@ -77,7 +77,8 @@ for(let i=0;i<1000;i++) {
     writeFileSync(join(bus,"spool",`${id}.json`),encodeCourierIntent({v:1,id,from:"sender",to:"seat0",to_team:"fixture",target_registry:join(bus,"registry.json"),pane:"%1",pane_id:"%1",server_epoch:"srv:1:1",harness:"codex",policy:"standard",reason:"busy",first_parked_epoch:1000+i,deadline_epoch:null,hold_until_epoch:null,disposition_at_deadline:"notify-and-cancel",busy_pending_probes:0,escalated_at:null,excluded:false}));
     writeFileSync(join(bus,"payloads",`${id}.md`),`---\nid: ${id}\nfrom: sender\nto: seat0\nkind: discuss\npath: ${join(bus,"payloads",`${id}.md`)}\nreply: expected\n---\nbody\n`);
   }
-for(const [args,code] of [[["spool","list","--json"],0],[["outstanding","sender","--json"],2]] as const) {
+for(const [args,code] of [[["spool","list","--json"],0],[["outstanding","sender","--json"],0]] as const) {
+  // Open sends are ordinary state: outstanding exits 0 (CLI-EXIT-0).
   test(`${args[0]} shares complete output and preserves exit ${code}`, () => {
     const file=observe("file",[...args]), pipe=observe("pipe",[...args]);
     expect(file).toMatchObject({rc:code,count:1000});

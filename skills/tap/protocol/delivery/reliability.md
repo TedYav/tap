@@ -1,10 +1,10 @@
 # Delivery reliability
 
-TAP aims for highly reliable delivery. Its service target is **99.9%
-recipient-observed messages**, measured from receipts as defined in
-[Delivery receipt measures](./receipt-measures.md). This is
-a target, not an at-least-once delivery promise or proof that an agent processed
-the instructions.
+TAP delivery is **at-least-once, best effort**, measured in nines. Its service
+target is **99.9% recipient-observed messages**, measured from receipts as
+defined in [Delivery receipt measures](./receipt-measures.md). The target is not
+proof that an agent processed the instructions; best effort promises neither
+eventual execution nor exactly-once effects.
 
 ## Persistence, doorbells and recovery
 
@@ -12,11 +12,15 @@ A successful send leaves the message on disk before returning. If placement
 fails, send fails visibly. Atomic placement is a process-level persistence
 contract; it does not promise survival of storage failure or power loss.
 
-The sentinel is a best-effort doorbell. The courier must not start another
-injection attempt after a possible effect. Pre-effect refusal or parking is not
-an injection; ordinary deferred delivery may proceed only under its existing
-identity, custody and no-effect rules. No new retry is authorized by a missed
-reliability target.
+The sentinel is a best-effort doorbell, and it may ring twice: a repeat carries
+the same id and is not a failure. A possible effect does not license arbitrary
+replay. The courier never starts another injection attempt on its own after a
+possible effect; the one blessed re-entry is the sender's
+[explicit same-ID retry](#explicit-same-id-retry). Pre-effect refusal or parking
+is not an injection; ordinary deferred delivery may proceed only under its
+existing identity, custody and no-effect rules. Courier-automatic retry is
+deferred until measured unobserved mail or repeated manual recovery shows its
+value. The no-retry rule still holds for non-idempotent control and mutation effects.
 
 The forward **no-silent-misses requirement** is recoverability: unconfirmed mail
 stays pollable and unfinished work stays visible to a responsible sender,
@@ -60,14 +64,38 @@ without the mark, losing kill-window protection for that one entry, and reports
 
 **Courier drain effects under reset custody (tap-g191v).** Team reset copies `payloads/`, then `receipts/`, then `spool/` as separate components, so a body moved or minted between two copies would reach neither archive. Each durable drain effect holds reset custody with its fence rechecked: the canonical move before submit, the shared native `.attempted` mint (including the Bash door), each post-submit receipt/removal or repark, the digest canonicalize, terminalization, retirement (canonical link, `.cancelled` and removal as one span) and courier notice placement, taken at the notice callers and never inside `canonicalPlaceLocked`. Readiness, identity probes, copy-mode exit and submit stay outside custody. Obligation/claim/pane locks may enclose reset. Reset precedes metadata/clock/event locks, taken one at a time with `RESET_HELD_LOCK_WAIT_MS` (one second); never acquire reset while holding one. Reset holders do no pane I/O, spawn, day-long metadata wait or coordination-lock wait, without an exception for cancel. The other holders follow the same bound (tap-12ys6): retirement and terminalization remove under it, and retirement takes its notice obligation before reset; a terminalization whose removal refuses still reports terminal and leaves the sidecar to the drain's stale-sidecar reap. A send park holds reset only for its transaction and failed-park fallback, and a pane-effect cue only for each token write. A fenced or busy effect is not performed and never replayed: the body stays where it is and a preserved `spool_effect_fenced id=… stage=… reason=fenced|busy` registry event records it. The one retried move is a **busy repark** (tap-conft). It restores the park after a no-effect refusal and is not a delivery effect. Left in place, it strands a parked entry: the body stays in `payloads/`, the metadata still names a due probe, and the waiter, which runs while the spool body exists, has ended. The mark licenses only while no attempt evidence or receipt exists: one predicate gating every move and surfacing (retry, watch tick, reap, unverified-canonical verdict). A marked entry stays live for its waiter. The waiter retries that move alone, bounded by `TAP_SPOOL_REPARK_DELAYS` (default `1 2 4 8 15 30 30 30`), no lock across a pause. Each retry takes the id's obligation lock first (every mover holds it across its attempt — the race guard), then reset custody, then the metadata lock, moves the body back before clearing the mark — a kill between leaves an inert stale mark, not the clear-first miss. Evidence, a receipt, or a gone body consumes the mark without a move — withdrawn, possible-effect mail is never re-parked. If the waiter died, the next armed tick re-drives licensed strands via the same retry, listing `spool/`, not the cleanup cursor (tap-kip6q): zero waits, busy skips a tick, delivering that pass. After a landed repark the waiter re-probes on its cadence; an exhausted bound logs `spool_repark_abandoned id=… reason=…` and leaves the body canonical. A drain also stops its pass on seeing the fence. Behavior change: `acquireResetFence` waits at most ten seconds for the sidecar, so `tap team reset` refuses `reset_custody_busy` before any stop or checkpoint instead of hanging. Send, drain and spool cancel take their obligation lock before shared reset admission. No admission is upgraded. Contention waits use jittered backoff within the existing deadline; they never retry a possible delivery effect.
 
-## Explicit resend compatibility
+## Explicit same-ID retry
 
-`tap resend` requires affirmative no-attempt proof, withdraws the original and
-invokes ordinary send once under a fresh ID with `resend_of`. Existing
-`delivery_semantics: at-least-once`, `.resent` delivery fields and verbose output
-remain compatibility labels. They promise neither at-least-once delivery nor
-permission to retry after a possible effect. No receipt schema or resend
-eligibility changes accompany this documentation.
+`tap resend <id>` re-rings the same canonical message: same id, body and
+obligation; no successor, withdrawal or age reset. It is allowed after any prior
+attempt, including exit 5 (still nonzero; its recovery names resend, never a
+fresh send), until the recipient observes the message by the
+[recipient-observed rule](./receipt-measures.md).
+
+Under shared reset custody and the id's obligation lock, resend checks sender
+authority and recipient state. Cancelled, settled or observed mail is a recorded,
+suppressed no-op (exit 0); a read, unanswered ask needs a follow-up, not a retry.
+A runnable retry or park coalesces (exit 0), a spent one retires `unknown`;
+a poll-only recipient refuses
+`recipient_unbound`. Otherwise resend records the request and re-parks the
+canonical as a retry row.
+
+Retry rows ring solo, never in digests. Under the obligation
+lock it rechecks observation and retires an observed row without a pane effect.
+It admits one attempt under the retry's own one-shot license,
+`receipts/<id>.retry-<uuid>.attempted`, with ordinary admission, identity, reset,
+pane and draft protections. The original `<id>.attempted` is never cleared or
+reused; no-effect proofs count every retry marker. The wire adds a bare `retry`
+tag, which grants no authority. An urgent or escalation original re-rings as
+ordinary delivery: no interrupt key, no `urgent` or `agent-interrupt` tag.
+
+Staged retries use their own [idle Enter](./idle-staged-submit.md).
+
+Each invocation grants at most one new attempt; there is no loop or scheduler.
+`receipts/<id>.retries.jsonl` records requests, suppressions and outcomes
+([retry measures](./receipt-measures.md#retry-measures)). JSON
+`delivery_semantics: at-least-once` now describes this contract. The fresh-id
+successor mode (`resend_of`, `.resent`) is retired; old receipts stay readable.
 
 ## Park retention (tap-nzjvi)
 

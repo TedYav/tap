@@ -71,7 +71,7 @@ json.dump({'kind':'digest','digest_id':ident,'to':'worker','to_team':'alpha','it
 PYDATA
 mv "$TAP_HOME/payloads/archived-item.md" "$TAP_HOME/archive/archived-item.cancelled.md"
 out="$(run read courier-20260905T000000Z-aabbccddeeff --by worker --all)"
-[[ "$out" == *'tap read: ask archived-item from=sender settled'* && "$out" == *body-archived-item* ]]
+[[ "$out" == *'tap read: ask archived-item from=sender already settled; nothing owed'* && "$out" == *body-archived-item* ]]
 [ ! -f "$TAP_HOME/receipts/archived-item.read" ]
 [ ! -f "$TAP_HOME/receipts/archived-item.done" ]
 run show aabbccddeeff | grep archived-item

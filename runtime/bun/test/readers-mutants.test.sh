@@ -37,7 +37,7 @@ mutant ambiguity runtime/bun/src/payload-view.ts show-native.test.ts \
   'if (result.status === "ambiguous")' 'if (false)'
 mutant attempt-proof runtime/bun/src/slices/outstanding.ts outstanding-native.test.ts \
   'spool delivery uncertainty, digest state and display snapshot' \
-  ' requires proof that no attempt occurred.' '.'
+  ' rings it again under the same id.' '.'
 
 mutant show-write runtime/bun/src/verbs/show.ts show-native.test.ts \
   "show displays full envelope and receipt chain without settling another seat's note" \

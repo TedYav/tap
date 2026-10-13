@@ -34,6 +34,7 @@ rg -n -i -C 2 'term|alias' <tap-skill-dir>/GUIDE.md <tap-skill-dir>/protocol
 | shared worktree, writer token, lane custody | [worktrees and handoffs](../tap/references/worktrees-and-handoffs.md) | explicit TAP custody handoff |
 | smoke isolation, full gate, sandbox | [gates and testing](protocol/gates/README.md) | repository `AGENTS.md` |
 | driver behavior, pane effects, submit verify | [delivery and recovery index](protocol/delivery/README.md) | `tap help advisory` |
+| skill that uses TAP, fallback, no tmux, cloud, CI, `.tap-fallback.md` | [writing TAP skills](guide/writing-tap-skills.md) | `tap help whoami` |
 
 ## Browse by area
 

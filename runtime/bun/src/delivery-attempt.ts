@@ -4,6 +4,7 @@ import { receiptBytes } from "./fsatomic";
 import { validId } from "./ids";
 import { acquireResetMutationLock } from "./reset";
 import { TapError } from "./context";
+import { retryIdleSubmitPath } from "./retry";
 
 /** All callers mint under short reset custody, immediately before their first effect. */
 export function beginDeliveryAttempt(home: string, id: string): "created" | "existing" {
@@ -37,27 +38,28 @@ export function beginDeliveryAttempts(home: string, ids: readonly string[], befo
  * never a reuse of the attempt license. `receipts/<id>.attempted` already
  * exists for a staged-idle entry and `admitEffect` rightly refuses it; the
  * single Enter on a composer holding exactly one well-formed sentinel adds no
- * bytes, so its own link-atomic receipt is the admission record. Minted under
+ * bytes, so its own link-atomic receipt is the admission record (scoped to the
+ * retry UUID for a retry row). Minted under
  * short reset custody, under the pane lock, after the final authorize and the
  * two-sample check, immediately before the key. Existence refuses re-fire.
  */
 export function beginIdleSubmit(home: string, id: string, fields: {
-  stagedId: string; pane: string; agentState: string;
+  stagedId: string; pane: string; agentState: string; retry?: string;
 }): "created" | "existing" {
   if (!home || !validId(id)) throw new Error("idle submit license needs a bus home and a valid id");
+  const destination = fields.retry === undefined ? join(home, "receipts", `${id}.idle-submit`) : retryIdleSubmitPath(home, id, fields.retry);
   const lock = acquireResetMutationLock(home, "courier idle submit license", undefined, "shared");
   try {
-    try { lstatSync(join(home, "receipts", `${id}.idle-submit`)); return "existing"; }
+    try { lstatSync(destination); return "existing"; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const receipts = join(home, "receipts");
     mkdirSync(receipts, { recursive: true });
-    const destination = join(receipts, `${id}.idle-submit`);
     const temporary = join(receipts, `.idle-submit.${process.pid.toString(36)}.${Math.random().toString(36).slice(2, 10)}`);
     const fd = openSync(temporary, "wx", 0o600);
     try {
       try {
         writeFileSync(fd, receiptBytes({
-          id, effect: "possible",
+          id, effect: "possible", ...(fields.retry === undefined ? {} : { retry: fields.retry }),
           label: "idle-time submit of a staged sentinel (Enter only, no bytes)",
           expected_id: id, staged_id: fields.stagedId, pane: fields.pane, agent_state: fields.agentState,
         }));

@@ -112,7 +112,6 @@ const ALLOWLIST: Array<{ anchor: RegExp; reason: string; file?: string }> = [
   { anchor: /resolveBus\(root, pin && !isAbsolute\(pin\)/, reason: "in-process bus derivation", file: "spool-engine-worker.ts" },
   { anchor: /cleanEnv: NodeJS\.ProcessEnv = \{ \.\.\.env, TAP_HOME: home \}/, reason: "pins TAP_LOCK_DIR two lines below unless the parent already carries a root", file: "spool-engine-worker.ts" },
   { anchor: /watchRemedy = team \? `TAP_HOME=/, reason: "remedy text printed to the operator, not a child env", file: "verbs/remind.ts" },
-  { anchor: /if \(pin\) return `TAP_HOME=\$\{shellQuote\(pin\)\} tap show/, reason: "inspection command printed to the operator, not a child env", file: "resend-format.ts" },
   { anchor: /process\.env\.TAP_HOME = home/, reason: "sets the TAP_TEAM_OVERRIDE_BUS marker alongside, which lockRoot excludes by contract", file: "team-override.ts" },
   { anchor: /env\.TAP_HOME = home/, reason: "the spool engine worker already normalized TAP_LOCK_DIR in the waiter's inherited env", file: "spool-waiter-loop.ts" },
   { anchor: /env\.TAP_HOME = busHome/, reason: "publishDerivedBus pins the process's lock root ABOVE this line; behavior pinned in child-bus-env.test.ts (tap-b5qrj)", file: "verbs/register.ts" },

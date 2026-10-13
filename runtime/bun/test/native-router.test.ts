@@ -374,7 +374,7 @@ esac
     const expected = run("bash", [incumbent, "done", id], worktree, env);
     const actual = run("bun", [candidate, "done", id], worktree, env);
 
-    expect(actual.status).toBe(2);
+    expect(actual.status).toBe(1);
     expect(actual.status).toBe(expected.status);
     expect(actual.stdout).toBe(expected.stdout);
     expect(actual.stderr).toBe(expected.stderr);
@@ -709,7 +709,7 @@ esac
 
     const actual = run("bun", [candidate, "done", id], worktree, paneEnv);
 
-    expect(actual.status).toBe(2);
+    expect(actual.status).toBe(1);
     expect(actual.stderr).toContain("tap done is retired");
     expect(actual.stderr).toContain("tap reply <id> --by <you> -f <file>");
     expect(existsSync(join(bus, "receipts", `${id}.done`))).toBe(false);
@@ -734,7 +734,7 @@ esac
 
     const actual = run("bun", [candidate, "done", id], worktree, paneEnv);
 
-    expect(actual.status).toBe(2);
+    expect(actual.status).toBe(1);
     expect(actual.stderr).toContain("tap done is retired");
     expect(actual.stderr).toContain("tap reply <id> --by <you> -f <file>");
     expect(existsSync(join(busA, "receipts", "done-alias-hits.jsonl"))).toBe(false);
@@ -776,7 +776,7 @@ esac
     seedPayload(bus, unbound);
 
     const first = run("bun", [candidate, "poll", "rcv"], worktree, env);
-    expect(first.status).toBe(2);
+    expect(first.status).toBe(0);
     expect(first.stdout).toContain(current);
     expect(first.stdout).not.toContain(predecessor);
     expect(first.stdout).toContain(unbound);
@@ -786,7 +786,7 @@ esac
       seats: { rcv: { status: "active" } },
     }));
     const instanceLess = run("bun", [candidate, "poll", "rcv"], worktree, env);
-    expect(instanceLess.status).toBe(2);
+    expect(instanceLess.status).toBe(0);
     expect(instanceLess.stdout).not.toContain(current);
     expect(instanceLess.stdout).not.toContain(predecessor);
     expect(instanceLess.stdout).toContain(unbound);
@@ -888,7 +888,7 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
 
     const expectedDone = run("bash", [incumbent, "done", id, "--by"], worktree, env);
     const actualDone = run("bun", [candidate, "done", id, "--by"], worktree, env);
-    expect(actualDone.status).toBe(2);
+    expect(actualDone.status).toBe(1);
     expect(actualDone.status).toBe(expectedDone.status);
     expect(actualDone.stdout).toBe(expectedDone.stdout);
     expect(actualDone.stderr).toBe(expectedDone.stderr);
@@ -1822,7 +1822,7 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
     const actual = run("bun", [candidate, "poll", "rcv"], worktree, env);
     const normalizeAge = (s: string) => s.replace(/  \d+s/g, "  <age>s");
     expect(readFileSync(trace, "utf8")).toBe("native poll\nnative poll\n");
-    expect(actual.status).toBe(2);
+    expect(actual.status).toBe(0);
     expect(actual.stdout).toContain(`${id}  snd  note  `);
     expect(actual.stdout).not.toContain("path:");
     expect(actual.stdout).toContain("reply_to: routerteam/supervisor");
@@ -1854,7 +1854,8 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
       const actual = run("bun", [candidate, "poll", "rcv"], worktree, env);
       expect(readFileSync(trace, "utf8")).toBe("native poll\nnative poll\n");
       const normalizeAge = (s: string) => s.replace(/  \d+s/g, "  <age>s");
-      expect(actual.status).toBe(2);
+      expect(actual.status).toBe(0);
+      expect(actual.stdout).toContain(id);
       expect(normalizeAge(actual.stdout!)).toBe(normalizeAge(expected.stdout!));
       expect(actual.stderr).toBe(expected.stderr);
       expect(actual.stdout!.includes(hint)).toBe(state === "placed-only");
@@ -1887,7 +1888,7 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
         : run(shippedEntry, ["poll", "rcv"], worktree, env);
       const first = poll();
       if (door === "native") expect(readFileSync(trace, "utf8")).toBe("native poll\n");
-      expect(first.status).toBe(2);
+      expect(first.status).toBe(0);
       expect(first.stdout).toContain("quarantined 2 malformed payload(s)");
       expect(first.stdout).toContain("reply_invalid: optional");
       expect(first.stdout).toContain(`next step: tap show ${id}`);
@@ -1965,7 +1966,8 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
     expect(payloads).toHaveLength(1);
     expect(existsSync(join(bus, "receipts", `${payloads[0]!.slice(0, -3)}.placed`))).toBe(true);
     expect(result.stderr).toContain("Delivery not confirmed. Inspect with tap show");
-    expect(result.stderr).toContain("requires proof that no attempt occurred.");
+    expect(result.stderr).toContain("if it is still unread, tap resend ");
+    expect(result.stderr).toContain(" rings it again under the same id.");
     expect(result.stderr).not.toMatch(/tap register|retry|human_relay/);
   });
 
@@ -1976,7 +1978,8 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
     expect(payloads).toHaveLength(1);
     expect(existsSync(join(bus, "receipts", `${payloads[0]!.slice(0, -3)}.placed`))).toBe(true);
     expect(result.stderr).toContain("Delivery not confirmed. Inspect with tap show");
-    expect(result.stderr).toContain("requires proof that no attempt occurred.");
+    expect(result.stderr).toContain("if it is still unread, tap resend ");
+    expect(result.stderr).toContain(" rings it again under the same id.");
     expect(result.stderr).not.toMatch(/tap register|retry|human_relay/);
   });
 

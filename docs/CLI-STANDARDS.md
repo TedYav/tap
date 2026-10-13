@@ -111,13 +111,25 @@ Unknown commands/options, missing help and renamed verbs use this same grammar
 with the narrowest useful help or replacement. TTY and `NO_COLOR` do not change
 JSON bytes.
 
-**CLI-EXIT-1/2:** Command pages may narrow these meanings, not contradict them.
+**CLI-EXIT-0:** Non-zero means the command could not do its
+job: bad input, a refusal, an unreadable bus or registry, unobservable tmux, a
+failed action. The one other non-zero is a check verb (`doctor`, `health`)
+reporting the problem it exists to find. A command that reports state exits 0
+whatever the state is: open sends, pending mail, "not installed". Agent
+harnesses render every non-zero exit as "Command exited with an error", which
+sends readers investigating ordinary state. Scripts branch on the `--json`
+fields, not the exit. This follows [clig.dev](https://clig.dev/#the-basics)
+("Return zero exit code on success, non-zero on failure") and the precedent of
+`git status`, which exits 0 whatever the state.
+
+**CLI-EXIT-1/2:** Command pages may narrow these meanings, not contradict them
+or CLI-EXIT-0.
 
 | Exit | Meaning | Caller action |
 |---:|---|---|
-| 0 | Completed or durably accepted (send may be queued); a read found no attention unless its page says otherwise | Continue under the command's contract; acceptance is not recipient processing |
+| 0 | Completed or durably accepted (send may be queued); a read or status command reported, whatever the state | Continue under the command's contract; acceptance is not recipient processing |
 | 1 | Invalid input, refusal, integrity failure or unsafe-to-check state | Fix or follow `action` |
-| 2 | Valid alternate, attention or soft configured-absent state; no unsafe partial mutation | Branch using the page's contract |
+| 2 | A check verb found attention, or an existing page-specific alternate that is not ordinary state; no unsafe partial mutation | Branch using the page's contract |
 | 3 | Delivery target unavailable before canonical placement | Repair/re-register target, then retry |
 | 4 | Unanchored bus for `poll`, `outstanding`, `peek` and `doctor`; retired as a public send exit | Resolve/pin the bus for those read commands; current send accepts queued delivery with 0 |
 | 5 | Delivery attempted; submission unverified; durable pending id/path emitted | Supervise pending id; do not assume absence |
@@ -137,9 +149,9 @@ only the finite action pointers its page names. Clean registration ends with
 pointer, not a digest. Take-over guidance requires genuine ambiguity. Routine
 success ends without an imperative menu or unbounded list.
 
-Read-only checks may be quiet when exit status is the documented signal.
-There is no global `--quiet`; a command-specific form needs a named consumer
-and explicit stdout/exit semantics (`poll --quiet` is the precedent).
+Read-only commands may offer a command-specific quiet form for a named
+consumer; there is no global `--quiet`. Quiet changes output, never the exit
+(`poll --quiet` is the precedent).
 
 **CLI-OUT-2/3/5:** Align columns for tabular read-only reports, not receipts or
 errors. A shared table helper needs three actual implementations that drifted.

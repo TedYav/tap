@@ -87,7 +87,7 @@ test("public out atomically retires source and exposes unchanged pending and pre
     for (const ext of ["sent", "harness-queued", "attempted"]) expect(readFileSync(join(f.home, "receipts", `old-custom-id.${ext}`), "utf8")).toBe(`original-${ext}`);
     expect(readdirSync(join(f.home, "payloads")).filter(n => n.endsWith(".attempts"))).toEqual([]);
     const poll = f.run("poll", "b", "--json");
-    expect(poll.code, poll.err).toBe(2);
+    expect(poll.code, poll.err).toBe(0);
     expect(JSON.parse(poll.out).pending.find((v: any) => v.id === "old-custom-id").adopted_from).toBe("a");
     const outstanding = f.run("outstanding", "b", "--json");
     expect(JSON.parse(outstanding.out).outstanding.find((v: any) => v.id === "old-outbound")).toMatchObject({ from: "a", sender_instance: "a|1", adopted_from: "a" });
@@ -198,7 +198,7 @@ test("successor discovers and reads parked foreign custom-id mail without replay
     expect(f.run("out", "a", "--forward-to", "b").code).toBe(0);
     expect(existsSync(path)).toBe(false);
     const poll = f.run("poll", "b", "--json");
-    expect(poll.code, poll.err).toBe(2);
+    expect(poll.code, poll.err).toBe(0);
     expect(JSON.parse(poll.out).pending.find((v: any) => v.id === id)).toMatchObject({ adopted_from: "a", path: parked, residency: "parked" });
     const invalidPath = join(home, "payloads", "foreign-invalid.md");
     writeFileSync(invalidPath, raw.replaceAll(id, "foreign-invalid").replace("reply: expected", "reply: unexpected"));

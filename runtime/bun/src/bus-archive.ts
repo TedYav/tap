@@ -7,9 +7,10 @@ import {resolveContext,TapError} from "./context";
 import {assertResetUnfenced,markResetGenerationReused,withResetCustody} from "./reset";
 
 import {archiveRows,archivedPayload,type ArchiveRow} from "./bus-archive-index";
+import { RETRY_IDLE_SUBMIT_SUFFIX, RETRY_MARKER_SUFFIX } from "./retry";
 const ID=/^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const RECEIPTS=new Set(["placed","done","sent","attempted","submit-phases.jsonl","harness-queued","read","authorized-read","submit-unverified.frame","submit-unverified.json","unconfirmed","cancelled","opencode-submit-unverified.ansi"]);
-const TERMINAL_RECEIPT=/\.(?:placed|done|sent|attempted|harness-queued|read|authorized-read|unconfirmed|cancelled)$/;
+const RECEIPTS=new Set(["placed","done","sent","attempted","idle-submit","submit-phases.jsonl","harness-queued","read","authorized-read","submit-unverified.frame","submit-unverified.json","unconfirmed","cancelled","opencode-submit-unverified.ansi","retries.jsonl"]);
+const TERMINAL_RECEIPT=/\.(?:placed|done|sent|attempted|idle-submit|harness-queued|read|authorized-read|unconfirmed|cancelled)$/;
 const sha=(bytes:Buffer)=>createHash("sha256").update(bytes).digest("hex");
 function regular(path:string) {const stat=lstatSync(path);if(!stat.isFile() || stat.isSymbolicLink())throw new Error(`not an ordinary file: ${path}`);return stat;}
 function directory(path:string) {if(existsSync(path)){if(!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink())throw new Error(`not an ordinary directory: ${path}`);}else mkdirSync(path);}
@@ -42,7 +43,8 @@ export function archiveBus(home:string,days=7,dryRun=false,now=Date.now()) {
   const spoolNames=names(spool);
   const ids=new Set(names(payloads).filter(n=>n.endsWith(".md")&&ID.test(n.slice(0,-3))).map(n=>n.slice(0,-3)));
   const receiptNames=names(receipts);
-  const receiptIds=receiptNames.filter(n=>TERMINAL_RECEIPT.test(n)).map(n=>n.replace(TERMINAL_RECEIPT,""));
+  // Retry attempt and idle-submit markers name <id>, never a phantom `<id>.retry-<uuid>`.
+  const receiptIds=receiptNames.filter(n=>TERMINAL_RECEIPT.test(n)).map(n=>{const retry=RETRY_MARKER_SUFFIX.exec(n)??RETRY_IDLE_SUBMIT_SUFFIX.exec(n);return retry?n.slice(0,retry.index):n.replace(TERMINAL_RECEIPT,"");});
   const allIds=new Set([...receiptIds,...ids,...index.keys(),...spoolNames.filter(n=>n.endsWith(".md")).map(n=>n.slice(0,-3))]);
   const suffixes=new Map<string,string[]>();
   for(const id of allIds){const suffix=id.match(/-([a-f0-9]{12})$/)?.[1];if(suffix)suffixes.set(suffix,[...(suffixes.get(suffix)??[]),id]);}
@@ -50,7 +52,7 @@ export function archiveBus(home:string,days=7,dryRun=false,now=Date.now()) {
   for(const name of receiptNames) {
    if(name.endsWith(".lock"))continue;
    let prefix=name;
-   while(prefix.includes(".")) {prefix=prefix.slice(0,prefix.lastIndexOf("."));if(allIds.has(prefix)){if(!RECEIPTS.has(name.slice(prefix.length+1)))unknownReceipts.add(prefix);const row=byId.get(prefix)??[];row.push(name);byId.set(prefix,row);break;}}
+   while(prefix.includes(".")) {prefix=prefix.slice(0,prefix.lastIndexOf("."));if(allIds.has(prefix)){{const suffix=name.slice(prefix.length+1);if(!RECEIPTS.has(suffix)&&!RETRY_MARKER_SUFFIX.test("."+suffix)&&!RETRY_IDLE_SUBMIT_SUFFIX.test("."+suffix))unknownReceipts.add(prefix);}const row=byId.get(prefix)??[];row.push(name);byId.set(prefix,row);break;}}
   }
   // Indexed rows with leftover active receipts are interrupted cleanup, not open work.
   for(const id of index.keys())if(byId.has(id))ids.add(id);

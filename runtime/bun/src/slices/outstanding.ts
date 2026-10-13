@@ -1,4 +1,5 @@
 import { lockRoot } from "../panelock";
+import { retryRecords } from "../retry";
 import { readDisplayState } from "../spool-readiness";
 import { backlogThresholds, spoolBacklog } from "../spool-backlog";
 import { queueExplanation } from "../queue-explanation";
@@ -122,7 +123,7 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
   const rows: { item: Record<string, any>; human: string; spool: boolean; held: boolean }[] = [];
   const openIds: string[] = [], nudgeTarget = new Map<string, string>(), ages: number[] = [], targets = new Set<string>();
   let quarantined = 0, degraded = 0;
-  const ladder = (id: string) => `Delivery not confirmed. Inspect with tap show ${id}; tap resend ${id} requires proof that no attempt occurred.`;
+  const ladder = (id: string) => `Delivery not confirmed. Inspect with tap show ${id}; if it is still unread, tap resend ${id} rings it again under the same id.`;
   const add = (id: string, path: string, parked: boolean) => {
     if (settled(id)) return;
     const raw = text(path);
@@ -228,13 +229,16 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
   }
   const events = text(join(ctx.bus.home, "registry-events.log"));
   for (const kind of ["redelivery_stopped", "send_unverified"]) for (const id of openIds) {
-    const action = kind === "redelivery_stopped" ? "redelivery_submit_unverified" : "send_submit_unverified";
+    // A same-id retry that went unverified stops the same ladder under its own action.
+    // A later retry whose recorded outcome is a confirmed submission supersedes an earlier retry's unverified event.
+    const retrySettled = kind === "redelivery_stopped" && latestRetryOutcomeConfirmed(ctx.bus.home, id);
+    const actions = kind === "redelivery_stopped" ? ["redelivery_submit_unverified", ...(retrySettled ? [] : ["retry_submit_unverified"])] : ["send_submit_unverified"];
     // Event lines are space-separated key=value fields (atom() folds spaces inside a value to `_`),
     // so match whole fields: a substring test lets id X match a longer id XSUFFIX (tap-z63i). The one
     // composite detail the courier writes is disposeGrace's `id=<id> notice_id=<n>`, which atom() folds
     // to `id=<id>_notice_id=<n>`; `_` is legal inside ids, so no other suffix is accepted.
     const detail = `detail=id=${id}`;
-    if (!events.split("\n").some(line => line.split(" ").some(f => f === `action=${action}`) && line.split(" ").some(f => f === detail || f.startsWith(`${detail}_notice_id=`)))) continue;
+    if (!events.split("\n").some(line => line.split(" ").some(f => actions.some(action => f === `action=${action}`)) && line.split(" ").some(f => f === detail || f.startsWith(`${detail}_notice_id=`)))) continue;
     const peer = nudgeTarget.get(id) ?? "<peer>";
     conditions.push({ condition: true, kind, id,
       line: kind === "redelivery_stopped"
@@ -255,7 +259,8 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
     if (openIds.some(id => receipts.has(`${id}.sent`) && json(ctx.bus.sentPath(id)).delivery !== "poll")) writeOut("tap outstanding: turn unconfirmed on injected sends — submitted to pane; recipient seat-side processing unverified. The courier verified the sentinel left the input band, not that a turn began.\n");
     if (stale || ages.some(age => age >= 3600)) writeOut("tap outstanding: a send whose addressee can never settle it (seat gone, or its team retired) is cleared from HERE: tap cancel <id>\n");
   }
-  return { stdout, stderr, code: rows.length ? 2 : 0 };
+  // Open sends are ordinary state, not an error: exit 0 either way (CLI-STANDARDS exit rule).
+  return { stdout, stderr, code: 0 };
 }
 
 if (import.meta.main) {
@@ -267,4 +272,19 @@ if (import.meta.main) {
     const result = outstanding({ bus: new Bus(home), team, registryPath }, me, machine === "1", stale, filterInstances === "1");
     console.log(JSON.stringify(result));
   } catch (error) { console.error(String(error)); process.exit(1); }
+}
+
+/**
+ * Whether this id's LATEST requested retry itself confirmed submission (or a harness queue took
+ * it). An earlier retry's success never stands in for a later one whose outcome is missing: the
+ * courier logs `retry_submit_unverified` before its best-effort outcome append.
+ */
+function latestRetryOutcomeConfirmed(home: string, id: string): boolean {
+  let rows: ReturnType<typeof retryRecords>;
+  try { rows = retryRecords(home, id); } catch { return false; }
+  const latest = rows.filter(row => row.event === "request").reduce<(typeof rows)[number] | undefined>(
+    (best, row) => !best || row.ordinal >= best.ordinal ? row : best, undefined);
+  if (!latest) return false;
+  const outcome = rows.filter(row => row.retry === latest.retry && row.event === "outcome").at(-1)?.outcome;
+  return outcome === "submission-confirmed" || outcome === "harness-queued";
 }

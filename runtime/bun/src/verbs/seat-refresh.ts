@@ -291,13 +291,21 @@ function writeTombstone(teamDir: string, handle: string, row: Seat): string {
 
 /**
  * The peer clear, in-process. `tap clear`'s own output reaches the operator;
- * refresh only claims the EXIT CODE, never the text. Resolved the same way the
- * public verb resolves it: from this process's cwd, and the caller pane from the
- * tty walk, so a refresh run inside the target's own pane still refuses.
+ * refresh only claims the EXIT CODE, never the text. The clear selects its scope
+ * fresh (revalidated through the index) but pinned to refresh's own team (its
+ * --team, or the calling pane's team), so preflight, clear and retirement never
+ * mix teams (tap-djlri), and the clear refuses `team_moved` before any effect
+ * when that fresh selection differs from this context's, so Phase C never
+ * follows a destructive clear against a moved registry; the caller pane still
+ * comes from the tty walk, so a refresh run inside the target's own pane still
+ * refuses.
  */
-async function peerClear(handle: string): Promise<number> {
+async function peerClear(handle: string, ctx: ResolvedContext): Promise<number> {
   const { cmdClearNative } = await import("../launcher/replace");
-  try { return await cmdClearNative([handle]); }
+  // An enrolled team is pinned by name; a custom TAP_HOME bus (authority "bus") has no index row
+  // to pin, so the clear re-resolves the same way and the expected scope still guards it.
+  const team = ctx.selection?.authority === "enrolled" ? ctx.team : undefined;
+  try { return await cmdClearNative([handle], process.env, { team, expect: { root: ctx.root, registryPath: ctx.registryPath, busHome: ctx.bus.home } }); }
   catch (error) {
     console.error(`tap clear: ${error instanceof TapError ? error.detail : String(error)}`);
     return error instanceof TapError ? error.code : 1;
@@ -418,7 +426,7 @@ export async function cmdSeatRefresh(argv: string[], scriptsDir: string): Promis
       }
       return 0;
     }
-    const clearRc = await peerClear(handle);
+    const clearRc = await peerClear(handle, ctx);
     if (clearRc === 7) {
       process.stderr.write(`tap refresh: '${handle}' WAS cleared — its process was replaced — but the fresh process did not confirm its rebind in time. The pane is the authority: look at it rather than re-running, because this is not a refusal and retrying treats it as one.\n`);
       return 8;
@@ -492,7 +500,7 @@ export async function cmdSeatRefresh(argv: string[], scriptsDir: string): Promis
   if (isSelf) {
     clearRc = selfClear(ctx, scriptsDir);
   } else {
-    clearRc = await peerClear(handle);
+    clearRc = await peerClear(handle, ctx);
   }
   if (clearRc === 7 && !isSelf) {
     process.stderr.write(`tap refresh: '${handle}' WAS cleared — its process was replaced — but the fresh process did not confirm its rebind in time. Nothing was retired and no sender was told anything; the instance is intact and every obligation is still settleable by this seat. The pane is the authority: look at it before re-running.\n`);
