@@ -96,11 +96,15 @@ for function_name in link_user_skills; do
   [ -n "$function_body" ] || { echo "install-skill-coverage: missing installer function $function_name" >&2; exit 1; }
   eval "$function_body"
 done
+# A home is linked only when its harness command is on PATH (tap-gjwtw): Hermes needs a stub,
+# while OpenCode must stay the real command so its discovery below is unchanged.
+mkdir -p "$probe_dir/hermes-bin"
+printf '#!/bin/sh\nexit 0\n' >"$probe_dir/hermes-bin/hermes"; chmod +x "$probe_dir/hermes-bin/hermes"
 for harness in Hermes OpenCode; do
   installed_home="$probe_dir/installed-$harness"
   mkdir -p "$installed_home"
   for pass in 1 2; do
-    link_user_skills "$harness" "$installed_home" > "$probe_dir/install-$harness-$pass.out"
+    PATH="$probe_dir/hermes-bin:$PATH" link_user_skills "$harness" "$installed_home" > "$probe_dir/install-$harness-$pass.out"
     for skill in tap-collab tap-pair tap-discuss; do
       if ! grep -Fq "tap help skill ${skill#tap-}" "$installed_home/skills/$skill/SKILL.md"; then
         echo "install-skill-coverage: $harness install $pass did not delegate /$skill to its shipped source" >&2

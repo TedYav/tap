@@ -18,13 +18,12 @@ import { installMachineSkills, removeOwnedLink } from "../install-skill-links";
 import { readIndexJson } from "../index-home";
 import { CORE_SKILLS, savedFullKit, skillManifestPath } from "../skill-policy";
 import { removeSkillPlugin, RETAINED_LISTING } from "../install-skill-plugin";
-import { CODEX_BEGIN, readManifestRecord, scanManifestEntries } from "../install-manifest";
+import { CODEX_BEGIN, SHELL_BLOCK_BEGIN, SHELL_BLOCK_BEGINS, SHELL_BLOCK_END, SHELL_BLOCK_MARKERS, readManifestRecord, scanManifestEntries } from "../install-manifest";
 import { relocateCodexEndMarker } from "../codex-fence";
 import { archiveHistory, removeRoots } from "../install-history";
 import { tapRoot } from "../scripts-dir";
 
 const REPO = tapRoot();
-const BEGIN = "# >>> tap aliases >>>", END = "# <<< tap aliases <<<";
 type Entry = { kind: string; path: string; [key: string]: any };
 type Manifest = { version: number; repo: string; targets?: Record<string,string>; entries: Entry[]; historyPending?: boolean };
 export type Prompt = (question: string) => Promise<string>;
@@ -145,7 +144,7 @@ function permissionNotes(plan: SetupPlan, notes: string[], log: Log) {
 /** What auto and bypass mean on each harness whose permissions TAP owns. */
 const PERMISSION_EXPLANATIONS: Record<string, string> = {
   claude: "Claude auto uses its automatic permission mode; it may still require attention in the attached session. Bypass skips permission checks.",
-  codex: "Codex auto keeps Codex's file sandbox and its automatic approval review (--approve-for-me), not a human approval dialog. TAP also turns on Codex's network proxy with no allowed domains and lets the sandbox write TAP's index folder, so seats can reach the tmux socket and TAP state while other network destinations stay blocked for commands the sandbox runs (Codex's own model traffic is not affected). Bypass disables approvals and sandboxing.",
+  codex: "Codex auto keeps Codex's file sandbox and its automatic approval review (--approve-for-me), not a human approval dialog. TAP also turns on Codex's network proxy with no allowed domains and lets the sandbox write TAP's index folder and the receipt folders of enrolled team buses, so seats can reach the tmux socket and TAP state while other network destinations stay blocked for commands the sandbox runs (Codex's own model traffic is not affected). Bypass disables approvals and sandboxing.",
   cursor: "Cursor auto uses its automatic review (--auto-review): safe tool calls run, the rest wait for you in the attached session. Bypass (--force --sandbox disabled) runs every command without asking.",
   agy: "Antigravity has no automatic approval mode: auto stops for every permission request until you answer it in the attached session. Bypass (--dangerously-skip-permissions) approves every request.",
 };
@@ -278,40 +277,95 @@ function aliasPreview(lines: string[], names: string[]): string {
     ...shadowed.map(([name,path])=>`  note: the alias ${name} would take precedence over ${path} in interactive shells`)].join("\n");
 }
 
+const TAP_LAUNCH_HELPER = 'tap_launch() { local preset="$1" name="$1"; shift; if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then name="$name-$1"; shift; fi; tap session launch "$preset" "$name" "$@"; }';
+/** The wizard once wrote this obsolete PATH element; an upgrade strips only it. */
+const OBSOLETE_PATH_ELEMENT = "/opt/python@3.11/libexec/bin";
+const installBinDir = () => process.env.TAP_INSTALL_BIN || join(home(), ".local", "bin");
+const shellStartupFile = (shell: string) => join(home(),shell.endsWith("bash") ? ".bashrc" : ".zshrc");
+
 /** The parts a fresh managed block carries: the write emits them and the preview names them. */
 function freshBlockParts(shell: string) {
-  const binDir = process.env.TAP_INSTALL_BIN || join(home(), ".local", "bin");
+  const binDir = installBinDir();
   const pathLine = (process.env.PATH || "").split(":").includes(binDir) ? [] : [`export PATH=${quote(binDir)}:"$PATH"`];
   const completion = shell.endsWith("zsh") ? zshCompletionLines(binDir) : [];
   return { pathLine, completion };
 }
 
 const shellSupported = (shell: string) => /(?:^|\/)(?:bash|zsh)$/.test(shell);
+
+/** The marker pair a startup file carries: the current spelling, else the legacy one a block written before the rename still uses. */
+function shellBlockMarkers(original: string): readonly [string, string] | undefined {
+  return SHELL_BLOCK_MARKERS.find(([begin,end]) => original.includes(begin) || original.includes(end));
+}
+
+type ShellPlan =
+  | { kind: "fresh"; path: string; block: string; pathLine: string[]; completion: string[]; aliases: string[] }
+  | { kind: "upgrade"; path: string; owned: Entry; content: string; block: string; prunedPath: boolean; completionAdded: boolean; completionPresent: boolean; aliases: string[] }
+  | { kind: "preserve"; path: string };
+
+/**
+ * One plan serves the dry run and the write, so the bytes the preview prints are the bytes
+ * the write lands. An undefined manifest means ownership cannot be proven: an existing block
+ * is then preserved, never rewritten.
+ */
+function planShellChange(shell: string, names: string[], original: string, manifest: Manifest | undefined, symlink: boolean): ShellPlan {
+  const path = shellStartupFile(shell);
+  const markers = shellBlockMarkers(original);
+  if (!markers) {
+    const {pathLine,completion} = freshBlockParts(shell);
+    const aliases = missingAliases(names,original);
+    return { kind:"fresh", path, block:[SHELL_BLOCK_BEGIN,...pathLine,...completion,TAP_LAUNCH_HELPER,...aliases,SHELL_BLOCK_END].join("\n"), pathLine, completion, aliases };
+  }
+  const [begin,end] = markers;
+  const owned = !symlink && manifest ? ownedShellBlock(path,original,manifest,markers) : undefined;
+  if (!owned) return { kind:"preserve", path };
+  const start = original.indexOf(begin), stop = original.indexOf(end) + end.length;
+  const content = original.slice(start,stop);
+  const zsh = shell.endsWith("zsh");
+  const completion = zshCompletionLines(installBinDir());
+  const lines = content.split("\n");
+  const prunedLines: string[] = [];
+  for (const line of lines) {
+    if (!line.includes(OBSOLETE_PATH_ELEMENT)) { prunedLines.push(line); continue; }
+    // The wizard wrote one line: export PATH='<brew>/bin:<brew>/opt/python@3.11/libexec/bin':"$PATH".
+    // Strip only the obsolete element so Homebrew's bin prefix survives; drop
+    // the line entirely when nothing but the python element remained.
+    const stripped = line.replace(/:[^:'"]*\/opt\/python@3\.11\/libexec\/bin(?=['"])/, "");
+    if (!stripped.includes(OBSOLETE_PATH_ELEMENT)) prunedLines.push(stripped);
+  }
+  const pruned = prunedLines.join("\n");
+  const completionAdded = zsh && !prunedLines.some(line => completion.includes(line));
+  const aliases = missingAliases(names,original);
+  let block = completionAdded ? pruned.replace(begin,[begin,...completion].join("\n")) : pruned;
+  if (aliases.length) block = block.replace(end,[...aliases,end].join("\n"));
+  return { kind:"upgrade", path, owned, content, block, prunedPath: pruned !== content, completionAdded, completionPresent: zsh && lines.includes(completion[0]!), aliases };
+}
+
 /** What a shell write would do, read from the same file and ownership record the write uses. */
 function describeShellChange(names: string[]): string {
   const shell = process.env.SHELL || "/bin/zsh";
-  const path = join(home(),shell.endsWith("bash") ? ".bashrc" : ".zshrc");
+  const path = shellStartupFile(shell);
   const original = regularText(path,"shellIntegration") ?? "";
   // Every shell write records its block, so an unreadable manifest refuses here, before any effect.
-  const manifest = readManifest();
-  const lines = missingAliases(names,original);
-  if (!original.includes(BEGIN) && !original.includes(END)) {
-    const {pathLine,completion} = freshBlockParts(shell);
-    const parts = [...(pathLine.length ? ["PATH"] : []), ...(completion.length ? ["completion"] : []), "the tap_launch helper"];
+  const plan = planShellChange(shell,names,original,readManifest(),false);
+  if (plan.kind === "fresh") {
+    const parts = [...(plan.pathLine.length ? ["PATH"] : []), ...(plan.completion.length ? ["completion"] : []), "the tap_launch helper"];
     const held = parts.length > 1 ? `${parts.slice(0,-1).join(", ")} and ${parts.at(-1)}` : parts[0];
-    return `Would add the managed TAP shell block (${held}) to ${path}, with ${aliasPreview(lines,names)}`;
+    return [`Would add the managed TAP shell block (${held}) to ${path}, with ${aliasPreview(plan.aliases,names)}`, "The block, exactly as it would be written:", plan.block].join("\n");
   }
-  return ownedShellBlock(path,original,manifest)
-    ? `Would update the owned TAP shell block in ${path}, preserving existing definitions, refreshing TAP's own PATH and completion lines where outdated, and adding ${aliasPreview(lines,names)}`
-    : `Would preserve the unowned or edited TAP shell block in ${path}; no new aliases would be added.`;
+  if (plan.kind === "upgrade") {
+    const head = `Would update the owned TAP shell block in ${path}, preserving existing definitions, refreshing TAP's own PATH and completion lines where outdated, and adding ${aliasPreview(plan.aliases,names)}`;
+    return plan.block === plan.content ? `${head}\nNo line in that block would change.` : [head, "The block, exactly as it would be rewritten:", plan.block].join("\n");
+  }
+  return `Would preserve the unowned or edited TAP shell block in ${path}; no new aliases would be added.`;
 }
 
-function ownedShellBlock(path: string, original: string, manifest: Manifest): Entry | undefined {
-  if (original.split(BEGIN).length !== 2 || original.split(END).length !== 2) return undefined;
-  const start = original.indexOf(BEGIN), stop = original.indexOf(END);
+function ownedShellBlock(path: string, original: string, manifest: Manifest, [begin,end]: readonly [string,string]): Entry | undefined {
+  if (original.split(begin).length !== 2 || original.split(end).length !== 2) return undefined;
+  const start = original.indexOf(begin), stop = original.indexOf(end);
   if (stop < start) return undefined;
-  const content = original.slice(start,stop+END.length);
-  return manifest.entries.find(entry=>entry.kind === "block" && entry.path === path && entry.begin === BEGIN && entry.end === END && entry.content === content);
+  const content = original.slice(start,stop+end.length);
+  return manifest.entries.find(entry=>entry.kind === "block" && entry.path === path && entry.begin === begin && entry.end === end && entry.content === content);
 }
 
 // Zsh completion: put TAP's function directory on fpath, then register `_tap` without a
@@ -324,58 +378,37 @@ function zshCompletionLines(binDir: string): string[] {
 
 function applyShellIntegration(names: string[], log: Log) {
   const shell = process.env.SHELL || "/bin/zsh";
-    const path = join(home(),shell.endsWith("bash") ? ".bashrc" : ".zshrc");
-    const original = existsSync(path) ? readFileSync(path,"utf8") : "";
-    if (original.includes(BEGIN) || original.includes(END)) {
-      const binDir = process.env.TAP_INSTALL_BIN || join(home(), ".local", "bin");
-      const completion = zshCompletionLines(binDir);
-      const zsh = shell.endsWith("zsh");
-      let upgraded = false;
-      if (!lstatSync(path).isSymbolicLink()
-        && original.split(BEGIN).length === 2 && original.split(END).length === 2) {
-        const start = original.indexOf(BEGIN), stop = original.indexOf(END) + END.length;
-        const content = original.slice(start, stop);
-        let owned: Entry | undefined;
-        try { owned = ownedShellBlock(path,original,readManifest()); }
-        catch { /* Missing or invalid ownership evidence preserves the existing block. */ }
-        const lines = content.split("\n");
-        const prunedLines: string[] = [];
-        for (const line of lines) {
-          if (!line.includes("/opt/python@3.11/libexec/bin")) { prunedLines.push(line); continue; }
-          // The wizard wrote one line: export PATH='<brew>/bin:<brew>/opt/python@3.11/libexec/bin':"$PATH".
-          // Strip only the obsolete element so Homebrew's bin prefix survives; drop
-          // the line entirely when nothing but the python element remained.
-          const stripped = line.replace(/:[^:'"]*\/opt\/python@3\.11\/libexec\/bin(?=['"])/, "");
-          if (!stripped.includes("/opt/python@3.11/libexec/bin")) prunedLines.push(stripped);
-        }
-        const pruned = prunedLines.join("\n");
-        const wantsCompletion = zsh && !prunedLines.some(line => completion.includes(line));
-        const newAliases = missingAliases(names,original);
-        if (owned && (pruned !== content || wantsCompletion || newAliases.length)) {
-          let updated = wantsCompletion ? pruned.replace(BEGIN, [BEGIN, ...completion].join("\n")) : pruned;
-          if (newAliases.length) updated = updated.replace(END,[...newAliases,END].join("\n"));
-          record({ ...owned, content: updated });
-          atomic(path, original.replace(content, updated));
-          if (pruned !== content) log(`Removed the obsolete python PATH line from the owned TAP alias block at ${path}`);
-          if (wantsCompletion) log(`Enabled zsh completion in the owned TAP alias block at ${path}`);
-          if (newAliases.length) log(`Added ${newAliases.length} preset aliases to the owned TAP block at ${path}`);
-          upgraded = true;
-        } else if (owned && zsh && lines.includes(completion[0]!)) {
-          log(`Zsh completion is already enabled in the owned TAP alias block at ${path}`);
-          upgraded = true;
-        }
-      }
-      if (!upgraded) log(`Existing TAP alias block preserved in ${path}; edit it to add new choices.`);
-      if(original.includes("Scripts"))log(`Check the existing PATH in ${path}: TAP now installs to ${join(home(),".local/bin")}.`);
-    } else {
-      const {pathLine,completion} = freshBlockParts(shell);
-      const block = [BEGIN,...pathLine,...completion,'tap_launch() { local preset="$1" name="$1"; shift; if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then name="$name-$1"; shift; fi; tap session launch "$preset" "$name" "$@"; }',...missingAliases(names,original),END].join("\n");
-      record({kind:"block",path,begin:BEGIN,end:END,content:block});
-      atomic(path,original+(original.endsWith("\n") || !original ? "" : "\n")+block+"\n");
-      const wrote = [...(pathLine.length ? ["PATH"] : []), ...(completion.length ? ["zsh completion"] : []),
-        ...(missingAliases(names,original).length ? [`${missingAliases(names,original).length} preset alias${missingAliases(names,original).length === 1 ? "" : "es"}`] : []), "tap_launch helper"];
-      log(`Wrote the TAP shell block to ${path}: ${wrote.join(", ")}`);
+  const path = shellStartupFile(shell);
+  const original = existsSync(path) ? readFileSync(path,"utf8") : "";
+  const symlink = existsSync(path) && lstatSync(path).isSymbolicLink();
+  let manifest: Manifest | undefined;
+  try { manifest = readManifest(); }
+  catch { /* Missing or invalid ownership evidence preserves the existing block. */ }
+  const plan = planShellChange(shell,names,original,manifest,symlink);
+  if (plan.kind === "fresh") {
+    record({kind:"block",path,begin:SHELL_BLOCK_BEGIN,end:SHELL_BLOCK_END,content:plan.block});
+    atomic(path,original+(original.endsWith("\n") || !original ? "" : "\n")+plan.block+"\n");
+    const wrote = [...(plan.pathLine.length ? ["PATH"] : []), ...(plan.completion.length ? ["zsh completion"] : []),
+      ...(plan.aliases.length ? [`${plan.aliases.length} preset alias${plan.aliases.length === 1 ? "" : "es"}`] : []), "tap_launch helper"];
+    log(`Wrote the TAP shell block to ${path}: ${wrote.join(", ")}`);
+    return;
+  }
+  let upgraded = false;
+  if (plan.kind === "upgrade") {
+    if (plan.block !== plan.content) {
+      record({ ...plan.owned, content: plan.block });
+      atomic(path, original.replace(plan.content, plan.block));
+      if (plan.prunedPath) log(`Removed the obsolete python PATH line from the owned TAP alias block at ${path}`);
+      if (plan.completionAdded) log(`Enabled zsh completion in the owned TAP alias block at ${path}`);
+      if (plan.aliases.length) log(`Added ${plan.aliases.length} preset aliases to the owned TAP block at ${path}`);
+      upgraded = true;
+    } else if (plan.completionPresent) {
+      log(`Zsh completion is already enabled in the owned TAP alias block at ${path}`);
+      upgraded = true;
     }
+  }
+  if (!upgraded) log(`Existing TAP alias block preserved in ${path}; edit it to add new choices.`);
+  if (original.includes("Scripts")) log(`Check the existing PATH in ${path}: TAP now installs to ${join(home(),".local/bin")}.`);
 }
 
 async function applySetup(snapshot: SetupSnapshot, plan: SetupPlan, json: boolean, interactive: boolean, notes: string[], log: Log, dryRun = false, verbose = false): Promise<number> {
@@ -404,8 +437,23 @@ async function applySetup(snapshot: SetupSnapshot, plan: SetupPlan, json: boolea
   if (dryRun) {
     if (regularText(config,"config") !== (existed ? source : undefined)) throw new TapError(2,"setup_refused","tap help setup","config: changed during setup; rerun with the current file");
     const lines = [`Dry run: no effects. TOML-key diff for ${target}:`];
+    const keyOf = (path: string[]) => path.map(part=>/^[A-Za-z0-9_-]+$/.test(part) ? part : JSON.stringify(part)).join(".");
+    // A starter's calibration notes are many keys nobody chose one by one: one line per preset
+    // unless --verbose, and always in full when a note already saved would change.
+    const isNewNote = (change: {path: string[]; before?: unknown}) => !verbose && change.path.length > 3 && change.path[0] === "presets" && change.path[2] === "metadata" && change.before === undefined;
+    const noteCounts = new Map<string, number>();
+    for (const change of plan.changes) if (isNewNote(change)) noteCounts.set(change.path[1]!,(noteCounts.get(change.path[1]!) ?? 0)+1);
+    const summarized = new Set<string>();
     for (const change of plan.changes) {
-      const key = change.path.map(part=>/^[A-Za-z0-9_-]+$/.test(part) ? part : JSON.stringify(part)).join(".");
+      if (isNewNote(change)) {
+        const preset = change.path[1]!;
+        if (summarized.has(preset)) continue;
+        summarized.add(preset);
+        const n = noteCounts.get(preset)!;
+        lines.push(`+ ${keyOf(["presets",preset,"metadata"])} = ${n} calibration note${n === 1 ? "" : "s"} (--verbose lists each)`);
+        continue;
+      }
+      const key = keyOf(change.path);
       if (change.before !== undefined) lines.push(`- ${key} = ${JSON.stringify(change.before)}`);
       lines.push(`+ ${key} = ${JSON.stringify(change.after)}`);
     }
@@ -477,9 +525,11 @@ async function applySetup(snapshot: SetupSnapshot, plan: SetupPlan, json: boolea
     }
     if (changed && choices.write === "candidate") log(`next: review ${target}; it is inactive until adopted.`);
     else {
-      const name = chosen.fable ? "fable" : Object.keys(chosen)[0];
+      // Every preset this run added or aliased, in config order; the first is the example, the rest are named so none looks arbitrary.
+      const names = [...Object.keys(chosen), ...selected.filter(name => !Object.hasOwn(chosen,name))];
       const harness = Object.keys(choices.harnesses ?? {})[0];
-      log(name || harness ? `next: from your work directory, run tap launch ${name || `${harness} <name>`}` : "Requested setup effects applied.");
+      const others = names.length > 1 ? ` (or any of: ${names.slice(1).join(", ")})` : "";
+      log(names.length ? `next: from your work directory, run tap launch ${names[0]}${others}` : harness ? `next: from your work directory, run tap launch ${harness} <name>` : "Requested setup effects applied.");
     }
     waitTip(choices,snapshot.previous,interactive,log);
   } catch (error) {
@@ -662,7 +712,7 @@ export function removeEntry(entry: Entry, plan?: Plan): string {
         if(differences.length)return "preserved ambiguous TOML containers";
       } catch { return "preserved ambiguous TOML containers"; }
     }
-    return settle(entry,next,!next.trim(),entry.begin === BEGIN ? "removed the TAP alias block" : "removed the TAP block",plan);
+    return settle(entry,next,!next.trim(),SHELL_BLOCK_BEGINS.includes(entry.begin) ? "removed the TAP alias block" : "removed the TAP block",plan);
   }
   const data = JSON.parse(raw);
   if (entry.kind === "json-key") {

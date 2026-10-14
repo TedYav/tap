@@ -542,6 +542,24 @@ test.each(["missing", "gone", "foreign", "unstamped"])("explicit-fresh uses the 
   expect(JSON.parse(readFileSync(f.registry,"utf8")).seats.seat.session).toBe(f.record.name);
 },15000);
 
+// `--fresh --resume` replaces an incarnation and then lets the human pick a conversation, possibly the one the
+// outgoing incarnation held. Its accepted capture result must not survive into the new row: register's
+// same-observation branch would read the re-picked id as already judged and skip writing the binding.
+test.each(["picker", "exact", null] as const)("a replacement with launch_resume=%s decides the prior capture result", async marker => {
+  const f = fixture("claude");
+  const prior = { result: "accepted", mode: "launcher_new", observed_harness_session_id: "old-conversation" };
+  incumbent(f, { harness_session_id: "old-conversation", identity_capture_result: prior });
+  Object.assign(f.record, { replaces_session: f.record.name, kill_backup_required: true, launch_resume: marker,
+    harness_session_id: marker === "exact" ? "old-conversation" : null });
+  const result = await launchTransaction({ kind: "new", record: f.record }, f.env);
+  expect(result.code).toBe(0);
+  const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.seat;
+  expect(row.session).toBe(f.record.name);
+  if (marker) expect(Object.hasOwn(row, "identity_capture_result")).toBe(false);
+  else expect(row.identity_capture_result).toEqual(prior); // an ordinary replacement is unchanged here
+  expect(Object.hasOwn(row, "launch_resume")).toBe(false);
+}, 15_000);
+
 test("legacy transaction waits beyond both native reset and registry limits", async () => {
   const f = fixture("claude");
   const {acquirePathLockAsync} = await import("../src/panelock");
@@ -608,11 +626,14 @@ test("post-kill restart failure carries the retained recipe and manual recovery 
   expect(readFileSync(join(f.root, "attempts"), "utf8")).toBe("attempt\n");
 }, 15000);
 
-test.each(["new", "exact", "picker", "opencode-picker", "cursor-fresh", "family-change"])("claim preserves recipe and %s capture provenance", async mode => {
+test.each(["new", "exact", "picker", "opencode-picker", "cursor-fresh", "family-change", "launch-picker", "launch-exact"])("claim preserves recipe and %s capture provenance", async mode => {
   const f = fixture(mode === "opencode-picker" ? "opencode" : mode === "cursor-fresh" ? "cursor" : "claude");
   const { reserveTransaction, recordFromRow } = await import("../src/launcher/transaction");
   const { selectCaller } = await import("../src/selector");
-  Object.assign(f.record, { harness_session_id: ["new","exact"].includes(mode) ? "native-id" : null,
+  // launch-picker: `tap launch --resume` mints nothing and captures as launcher_new with no expectation;
+  // launch-exact: `--resume=<id>` carries the id as an exact-resume expectation on a fresh launch.
+  Object.assign(f.record, { harness_session_id: ["new","exact","launch-exact"].includes(mode) ? "native-id" : null,
+    ...(mode === "launch-picker" ? { launch_resume: "picker" } : mode === "launch-exact" ? { launch_resume: "exact" } : {}),
     transcript_path:"/old/transcript", quarantined_harness_session_id:"quarantined", quarantined_transcript_path:"/quarantined", identity_quarantine_reason:"mismatch",
     adopted_from_manual:true,passthrough_from_config:true,harness_passthrough:["--literal"],harness_unset_env:["OLD"],history:["old-id"],
     preset:{name:"fixture",source_path:"/fixture/config",config_digest:"sha256:fixture"},last_seen:"2026-01-01T00:00:00Z" });
@@ -623,11 +644,14 @@ test.each(["new", "exact", "picker", "opencode-picker", "cursor-fresh", "family-
   }
   const selection = selectCaller({cwd:f.root,env:f.env,verbClass:"lifecycle"});
   const evidence = { selection,handle:"seat",token:"",instance:null,record:f.record,vessel:null,backup:{status:"not-needed"} as const,reason:"restart_failed",output_path:"" };
-  const kind = mode === "new" ? "new" : "resume";
+  const kind = ["new", "launch-picker", "launch-exact"].includes(mode) ? "new" : "resume";
   await reserveTransaction(selection,{kind,record:f.record},evidence,f.env);
   const doc = JSON.parse(readFileSync(selection.registryLocation,"utf8"));
   const row = doc.seats.seat;
-  expect(row.identity_capture).toEqual({mode:kind === "new" || mode === "opencode-picker" || mode === "cursor-fresh" ? "launcher_new" : mode === "exact" ? "exact_resume" : "untrusted_resume",...(f.record.harness_session_id ? {expected_harness_session_id:f.record.harness_session_id}:{})});
+  expect(row.identity_capture).toEqual({mode:mode === "launch-exact" ? "exact_resume" : kind === "new" || mode === "opencode-picker" || mode === "cursor-fresh" ? "launcher_new" : mode === "exact" ? "exact_resume" : "untrusted_resume",...(f.record.harness_session_id ? {expected_harness_session_id:f.record.harness_session_id}:{})});
+  // The picker marker is consumed by the launch argv and never stored: a restart rebuilds the record without it.
+  expect(row.launch_resume).toBeUndefined();
+  expect(recordFromRow("seat",row,doc.team,f.root)?.launch_resume ?? null).toBeNull();
   expect(row.history).toEqual(["old-id"]); expect(row.harness_env).toEqual(f.record.harness_env);
   expect(row.harness_unset_env).toEqual(["OLD"]); expect(row.passthrough).toEqual(["--literal"]);
   expect(row.preset).toEqual(f.record.preset); expect(row.quarantined_harness_session_id).toBe("quarantined");

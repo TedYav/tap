@@ -865,7 +865,11 @@ function cmdSendOutcomeBody(
         authorizedHarness = String(toSeat.harness ?? "");
         authorizedBoot = boundBoot;
         authorizedInstance = typeof toSeat.instance === "string" ? toSeat.instance : "";
-        const evidence = evaluateBoundHarness(obs, authorizedHarness, { scriptsDir, agentFamilies, registryPath: "" });
+        const { state: evidence, error } = evaluateBoundHarness(obs, authorizedHarness, { scriptsDir, agentFamilies, registryPath: "" });
+        if (evidence === "unobservable") {
+          throw new TapError(1, "harness_unobservable", "if this command runs in a sandbox, retry the exact authorized command once with approved sandbox escalation",
+            `process inspection unavailable; identity unobservable, not proven stale (bound family '${authorizedHarness}', live command '${obs.currentCommand}')${error ? `; ${error}` : ""}`);
+        }
         if (evidence !== "alive") {
           throw new TapError(1, "identity_mismatch", identityAction(`tap register ${to}   (the recorded pane is stale; re-register to rebind)`),
             `harness evidence ${evidence} for bound family '${authorizedHarness}' (live command '${obs.currentCommand}')`);

@@ -16,7 +16,7 @@ import { basename, dirname, join } from "node:path";
 import { TapError, resolveContext, type Context } from "../context";
 import { envelopeBodyBytes, envelopeField, validateEnvelope } from "../envelope";
 import { mintId, validId } from "../ids";
-import { acquireObligationLock, type PaneLock } from "../panelock";
+import { attemptObligationLock, type PaneLock } from "../panelock";
 import { forwardingRoute } from "../forwarding";
 import { loadRegistry, seatMap, type RegistryDoc } from "../registry";
 import { bindRemoteTeam } from "../remote-target";
@@ -197,8 +197,22 @@ export function cmdReply(argv: string[], scriptsDir: string, agentFamilies: Read
   const custodyHomes = foreign && inboundBus !== ctx.bus.home ? [ctx.bus.home, inboundBus].sort() : [ctx.bus.home];
   for (const home of custodyHomes) assertResetUnfenced(home, "tap reply");
 
-  const lock = acquireObligationLock(ref);
+  const attempt = attemptObligationLock(ref);
+  const lock = attempt.lock;
   if (!lock) {
+    // Empty with no failure is contention. A failure is the acquisition's own cause (an
+    // unwritable lock root under a sandbox, a host whose flock(2) cannot operate): not
+    // another process, so say what happened and what to change.
+    const { failure, path } = attempt;
+    if (failure) {
+      const code = (failure as NodeJS.ErrnoException).code;
+      if (code) {
+        throw new TapError(1, "lock_unwritable", `allow writes to ${dirname(path)} (in a sandboxed harness, approve the sandbox escalation for it), then retry tap reply ${ref}`,
+          `cannot open the obligation lock ${path} (${code}${code === "EACCES" || code === "EPERM" ? ": permission denied" : ""}); nothing was sent`);
+      }
+      throw new TapError(1, "lock_unsupported", `run tap reply ${ref} on a filesystem and host where flock(2) works`,
+        `cannot take the obligation lock ${path}: ${failure.message}; nothing was sent`);
+    }
     throw new TapError(1, "obligation_busy", `retry tap reply ${ref}`,
       `another process is replying to or settling '${ref}'; refusing to emit a second outbound`);
   }

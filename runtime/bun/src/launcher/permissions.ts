@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { lockRoot } from "../panelock";
 import { physicalSocketPath } from "../tmux";
+import { busHomeForRegistry, loadGlobalRegistry, resolveTeamFromDoc } from "../index-home";
 import { LauncherError } from "./types";
 
 export type PermissionMode = "bypass" | "auto";
@@ -27,7 +28,7 @@ export const PERMISSION_HARNESSES = Object.keys(PERMISSION_ARGV);
  * Codex's auto sandbox denies the tmux socket and TAP's state writes, so a seat has no pane identity
  * and cannot send, read or reply. TAP's own profile extends the built-in `:workspace` sandbox and adds
  * only: the exact tmux socket (reachable only through Codex's network proxy, which blocks every
- * destination because no domain is allowed) and write access to TAP's index home and lock root (a send writes locks/, runtime-cache/ and send-refusals.log there). Socket-only and proxy-off variants were measured and do not work (tap-21bdj).
+ * destination because no domain is allowed) and write access to TAP's index home, lock root and enrolled receipt folders. Socket-only and proxy-off variants were measured and do not work (tap-21bdj).
  */
 export const CODEX_AUTO_PROFILE = "tap_launcher_auto";
 const PROFILE_NAME = /^tap_launcher_auto_[0-9a-f]{12}$/;
@@ -46,6 +47,19 @@ export function codexAutoProfileArgv(env: NodeJS.ProcessEnv, name: string = code
   // Index home holds what a send/read/reply writes (locks/, runtime-cache/, send-refusals.log); a pinned lock dir may live elsewhere.
   const locks = lockRoot(env);
   const writable = locks === indexHome || locks.startsWith(`${indexHome}/`) ? [indexHome] : [indexHome, locks];
+  // Cross-team reads and replies write receipts on the sender's bus.
+  const index = loadGlobalRegistry(indexHome);
+  if (index.marker === "live" && index.doc) {
+    for (const team of Object.keys(index.doc.teams ?? {})) {
+      const resolved = resolveTeamFromDoc(index.doc, team);
+      if (resolved.status !== "ok") continue;
+      const bus = busHomeForRegistry(resolved.registryLocation);
+      if (!bus) continue;
+      const receipts = join(bus, "receipts"), kind = lstatSync(receipts, { throwIfNoEntry: false });
+      if (!kind?.isDirectory()) throw new LauncherError(`harness_permissions_conflict: ${receipts} receipts must be a real directory, not missing, a symlink or a file`, "harness_permissions_conflict");
+      if (!writable.includes(receipts)) writable.push(receipts);
+    }
+  }
   const p = `permissions.${name}`;
   return [
     "-c", `default_permissions=${JSON.stringify(name)}`,

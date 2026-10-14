@@ -7,6 +7,8 @@
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../tap/scripts/smoke/sandbox-pins.sh"
+# shellcheck source=skills/tap/scripts/smoke/harness-stubs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/harness-stubs.sh"
 # shellcheck source=skills/tap/scripts/smoke/fzf-archive-pin.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fzf-archive-pin.sh"
 
@@ -46,7 +48,7 @@ switch_current() { ln -sfn "versions/$1" "$WORK/prefix/current"; }
 S="$WORK/scratch"
 run_install() { # [extra args]; targets all in $S, Bun absent from PATH
   set +e
-  out="$(env -u TAP_HOME HOME="$WORK/home" PATH="$S/bin:$NOBUN_PATH" TAP_INSTALL_BIN="$S/bin" \
+  out="$(env -u TAP_HOME HOME="$WORK/home" PATH="$S/bin:$S/harness-bin:$NOBUN_PATH" TAP_INSTALL_BIN="$S/bin" \
     TAP_CLAUDE_HOME="$S/claude" TAP_CODEX_HOME="$S/codex" TAP_HERMES_HOME="$S/hermes" TAP_CURSOR_HOME="$S/cursor" \
     TAP_OPENCODE_HOME="$S/opencode" TAP_GEMINI_HOME="$S/gemini" TAP_CURSOR_AGENT_HOME="$S/cursor-agent" \
     TAP_AGENTS_HOME="$S/agents" TAP_INDEX_HOME="$S/tap-index" \
@@ -58,6 +60,7 @@ mkdir -p "$WORK/home"
 # The installer links skills and hooks only into harness homes that exist, as on a machine with
 # those harnesses installed.
 mkdir -p "$S/claude" "$S/codex" "$S/cursor" "$S/opencode"
+make_harness_stubs "$S/harness-bin"   # ...and wires a home only when its command is on PATH
 CUR="$WORK/prefix/current"
 
 # (1) First install from version one, through the logical current path, with no Bun on PATH.

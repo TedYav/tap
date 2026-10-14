@@ -15,6 +15,8 @@
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../tap/scripts/smoke/sandbox-pins.sh"
+# shellcheck source=skills/tap/scripts/smoke/harness-stubs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/harness-stubs.sh"
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 BINTAP="$ROOT/bin/tap"
@@ -93,7 +95,8 @@ echo "caveat-generated: (b) setup-generated AGENTS.md delegates operational guid
 # signpost; /tap retains the complete operational rules.
 IHOME="$WORK/install"; CHOME="$IHOME/claude"; XHOME="$IHOME/codex"; HHOME="$IHOME/hermes"; CUHOME="$IHOME/cursor"; OHOME="$IHOME/opencode"; CURHOME="$IHOME/cursor-agent"; AHOME="$IHOME/agents"
 mkdir -p "$CHOME" "$XHOME" "$HHOME" "$CUHOME" "$OHOME" "$CURHOME" "$AHOME"
-PATH="$IHOME/bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" TAP_CLAUDE_HOME="$CHOME" TAP_CODEX_HOME="$XHOME" TAP_HERMES_HOME="$HHOME" TAP_CURSOR_HOME="$CUHOME" TAP_OPENCODE_HOME="$OHOME" TAP_GEMINI_HOME="$IHOME/gemini" TAP_CURSOR_AGENT_HOME="$CURHOME" TAP_AGENTS_HOME="$AHOME" TAP_INDEX_HOME="$IHOME/tap-index" TAP_INSTALL_HOOK=0 \
+make_harness_stubs "$IHOME/harness-bin"
+PATH="$IHOME/bin:$IHOME/harness-bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" TAP_CLAUDE_HOME="$CHOME" TAP_CODEX_HOME="$XHOME" TAP_HERMES_HOME="$HHOME" TAP_CURSOR_HOME="$CUHOME" TAP_OPENCODE_HOME="$OHOME" TAP_GEMINI_HOME="$IHOME/gemini" TAP_CURSOR_AGENT_HOME="$CURHOME" TAP_AGENTS_HOME="$AHOME" TAP_INDEX_HOME="$IHOME/tap-index" TAP_INSTALL_HOOK=0 \
   bash "$ROOT/install.sh" >/dev/null 2>&1 \
   || { echo "caveat-generated: (c) install.sh failed" >&2; exit 1; }
 grep -qF "$USING_TAP" "$XHOME/AGENTS.md" \

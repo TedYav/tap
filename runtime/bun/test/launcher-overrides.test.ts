@@ -114,6 +114,25 @@ test("a malformed option-looking value cannot turn a later help flag into succes
   expect(launchHelpRequested(["codex", "--model", "-1", "--help"])).toBe(true);
 });
 
+test("--resume is a launcher flag: picker or =id, never forwarded, and the next word stays the seat name", () => {
+  expect(parseNew(["claude", "installer", "--resume"])).toMatchObject({ harness: "claude", label: "installer", resume: true, resume_id: null, harness_passthrough: [] });
+  expect(parseNew(["claude", "--resume", "installer"])).toMatchObject({ label: "installer", resume: true, resume_id: null, harness_passthrough: [] });
+  expect(parseNew(["codex", "seat", "--resume=0199-abc"])).toMatchObject({ resume: false, resume_id: "0199-abc", harness_passthrough: [] });
+  expect(splitLaunchPassthrough(["new", "claude", "installer", "--resume", "--", "--verbose"])).toEqual([["new", "claude", "installer", "--resume"], ["--verbose"]]);
+  expect(() => parseNew(["claude", "seat", "--resume="], () => {})).toThrow(TapError);
+  // An id rides the harness argv as a bare operand (`codex resume <id>`), so an option-looking or
+  // malformed value is refused before any effect rather than becoming `codex resume --last`.
+  for (const bad of ["--resume=--last", "--resume=-1", "--resume=a b", "--resume=;rm"]) {
+    expect(() => parseNew(["codex", "seat", bad], () => {})).toThrow(TapError);
+  }
+  expect(parseNew(["codex", "seat", "--resume=0199aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])).toMatchObject({ resume_id: "0199aaaa-bbbb-cccc-dddd-eeeeeeeeeeee" });
+  expect(parseNew(["claude", "seat"])).toMatchObject({ resume: false, resume_id: null });
+  // The help probe knows the flag in both forms, so TAP's launch page still answers --help after it.
+  expect(launchHelpRequested(["claude", "writer", "--resume", "--help"])).toBe(true);
+  expect(launchHelpRequested(["claude", "writer", "--resume=0199-abc", "--help"])).toBe(true);
+  expect(launchHelpRequested(["claude", "writer", "--resume", "--", "--help"])).toBe(false);
+});
+
 test("launch parser refuses without printing and preserves value and harness ownership", () => {
   const writes: string[] = [], original = process.stderr.write;
   process.stderr.write = ((chunk: unknown) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;

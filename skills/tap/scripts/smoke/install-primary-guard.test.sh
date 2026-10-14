@@ -16,7 +16,7 @@ LANE="$WORK/lane"
 
 cleanup() {
   git -C "$PRIMARY" worktree remove --force "$LANE" >/dev/null 2>&1 || true
-  rm -rf "$WORK"
+  rm -rf "${WORK:?}"
 }
 trap cleanup EXIT
 
@@ -56,7 +56,7 @@ chmod +x "$PRIMARY/bin/tap"
 cp "$ROOT/install.sh" "$PRIMARY/install.sh"
 mkdir -p "$PRIMARY/runtime/bun/src"
 # install.sh's Bun import closure; the manifest recorder runs at EXIT on every install.
-cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-skill-links,install-skill-plugin,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-harness-state,install-skill-links,install-skill-plugin,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
 cp -R "$ROOT/skills/." "$PRIMARY/skills"
 cp -R "$ROOT/vendor" "$PRIMARY/vendor"
 mkdir -p "$PRIMARY/skills/lead/references/ingest"
@@ -227,12 +227,12 @@ echo "install-primary-guard: (5b) all-targets-redirected non-git install allowed
 # fixture is a standalone clone whose install.sh runs against itself, which is
 # what `primary_root == REPO` means.
 INSTALL_REPO="$WORK/install-arms-guard"
-rm -rf "$INSTALL_REPO"
+rm -rf "${INSTALL_REPO:?}"
 git init -q "$INSTALL_REPO"
 mkdir -p "$INSTALL_REPO/skills/lead/references/ingest" "$INSTALL_REPO/githooks"
 cp "$ROOT/install.sh" "$INSTALL_REPO/install.sh"
 mkdir -p "$INSTALL_REPO/runtime/bun/src"
-cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-skill-links,install-skill-plugin,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$INSTALL_REPO/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-harness-state,install-skill-links,install-skill-plugin,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$INSTALL_REPO/runtime/bun/src/"
 cp -R "$ROOT/skills/." "$INSTALL_REPO/skills"
 cp -R "$ROOT/vendor" "$INSTALL_REPO/vendor"
 cp -R "$PRIMARY/bin" "$INSTALL_REPO/bin"
@@ -272,6 +272,28 @@ armed_hp="$(git -C "$INSTALL_REPO" config --local core.hooksPath || true)"
 [[ "$arm_out" != *"tap-hook-marker"* ]] \
   || { echo "install-primary-guard: (5f) the marker warning fired on an intact guard: $arm_out" >&2; exit 1; }
 echo "install-primary-guard: (5f) the real primary installer arms the absolute hook path: ok"
+
+# (5f-neg) A clone that marks no tap-hooks files (an exported or end-user clone,
+# which carries no contributor hook directory) is left alone: core.hooksPath stays unset.
+# tap-yrgg6: the contributor guard must not reach an end user's install clone.
+NOHOOKS_REPO="$WORK/install-no-hooks"
+rm -rf "${NOHOOKS_REPO:?}"
+git clone -q "$INSTALL_REPO" "$NOHOOKS_REPO"
+git -C "$NOHOOKS_REPO" -c user.name=TAP -c user.email=tap@example.invalid rm -q -r githooks
+git -C "$NOHOOKS_REPO" -c user.name=TAP -c user.email=tap@example.invalid commit -qm "no tap-hooks files"
+NOHOOKS_SCRATCH="$WORK/install-no-hooks-scratch"
+nohooks_out="$(PATH="$NOHOOKS_SCRATCH/bin:$PATH" TAP_INSTALL_BIN="$NOHOOKS_SCRATCH/bin" TAP_CLAUDE_HOME="$NOHOOKS_SCRATCH/claude" \
+  TAP_CODEX_HOME="$NOHOOKS_SCRATCH/codex" TAP_HERMES_HOME="$NOHOOKS_SCRATCH/hermes" \
+  TAP_CURSOR_HOME="$NOHOOKS_SCRATCH/cursor" TAP_OPENCODE_HOME="$NOHOOKS_SCRATCH/opencode" \
+  TAP_GEMINI_HOME="$NOHOOKS_SCRATCH/gemini" TAP_CURSOR_AGENT_HOME="$NOHOOKS_SCRATCH/cursor-agent" \
+  TAP_AGENTS_HOME="$NOHOOKS_SCRATCH/agents" TAP_INDEX_HOME="$NOHOOKS_SCRATCH/tap-index" \
+  TAP_INSTALL_HOOK=0 bash "$NOHOOKS_REPO/install.sh" 2>&1)" \
+  || { echo "install-primary-guard: (5f-neg) installer failed: $nohooks_out" >&2; exit 1; }
+[ -z "$(git -C "$NOHOOKS_REPO" config --local core.hooksPath || true)" ] \
+  || { echo "install-primary-guard: (5f-neg) the installer set core.hooksPath on a clone that marks no tap-hooks files" >&2; exit 1; }
+[[ "$nohooks_out" != *"core.hooksPath"* ]] \
+  || { echo "install-primary-guard: (5f-neg) the installer mentioned core.hooksPath on a clone with no hooks: $nohooks_out" >&2; exit 1; }
+echo "install-primary-guard: (5f-neg) a clone with no tap-hooks files keeps core.hooksPath unset: ok"
 
 # (5g) A STALE LINKED WORKTREE CANNOT CREATE main AFTERWARDS.
 #

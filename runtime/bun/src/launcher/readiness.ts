@@ -21,7 +21,8 @@ export type PaneFacts = { pane: string; pane_id: string; command: string; server
 
 export function parsePaneFacts(line: string, env: NodeJS.ProcessEnv = process.env): PaneFacts | null {
   const fields = line.replace(/\n+$/, "").split("\t");
-  if (fields.length < 7 || !fields[0] || !fields[1] || !["0", "1"].includes(fields[4]!) || !/^\d+$/.test(fields[5]!)) return null;
+  if (fields.length < 7 || !fields[0] || !fields[1] || !["0", "1"].includes(fields[4]!)) return null;
+  if (!/^\d+$/.test(fields[5]!) && !(fields[4] === "1" && fields[5] === "")) return null;
   return { pane: fields[0], pane_id: fields[1], command: fields[2]!, server_epoch: serverEpochFromRaw(fields[3]!, env),
     dead: fields[4] === "1", pane_pid: Number(fields[5]), path: fields.slice(6).join("\t") };
 }

@@ -7,13 +7,14 @@
 // fence shapes. Shared world: support/reply-foreign-fixture.ts (this file
 // registers its own afterAll(releaseScratch, 40_000)).
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { envelopeField } from "../src/envelope";
 import { TapError } from "../src/context";
 import { refuseUnreachableSenderTeam } from "../src/verbs/reply";
+import { acquireObligationLock } from "../src/panelock";
 import { removeScratchTree } from "./support/scratch";
 import { fixture, run, outbounds, injected, settlement, INBOUND_ID, releaseScratch, TAP } from "./support/reply-foreign-fixture";
 
@@ -83,6 +84,49 @@ describe("the foreign payload file", () => {
       stderr: `tap reply: id ${INBOUND_ID} already settled at 2026-09-16T11:00:00Z; you have 0 open: none; next: tap send\n`,
       alpha: 0,
     });
+  }, 120_000);
+
+  // A refused reply leaves the sidecar file but never a held lock (reply releases in
+  // a finally); the same id is immediately re-acquirable, so the file is litter.
+  test("refusal leaves no held lock: after already_settled the same obligation re-acquires at once", () => {
+    const fx = fixture({ betaDone: { id: INBOUND_ID, status: "done", at: "2026-09-16T11:00:00Z", by: "ua", via: "done" } });
+    const v = run(fx, ["reply", fx.payload, "-m", "answer", "--by", "ua"]);
+    expect(v.code).toBe(1);
+    const lock = join(fx.root, "locks", `obligation-${INBOUND_ID}.lock`);
+    expect(existsSync(lock)).toBe(true);
+    const again = acquireObligationLock(INBOUND_ID, 0, { ...process.env, TAP_LOCK_DIR: join(fx.root, "locks") });
+    expect(again).not.toBeNull();
+    again!.release();
+  }, 120_000);
+
+  // A lock sidecar the caller cannot open (a sandbox denying writes under ~/.tap) is
+  // not "another process": the refusal names the lock path and the permission.
+  // chmod 000 denies EACCES only to non-root, so this arm skips when the runner is uid 0;
+  // the directory-sidecar arm below reaches the same refusal for root too.
+  test.skipIf(process.getuid?.() === 0)("refusal: the obligation lock cannot be opened — lock_unwritable names the path and permission, not another process; nothing sent", () => {
+    const fx = fixture();
+    const locks = join(fx.root, "locks"), lock = join(locks, `obligation-${INBOUND_ID}.lock`);
+    mkdirSync(locks, { recursive: true });
+    writeFileSync(lock, ""); chmodSync(lock, 0o000);
+    try {
+      const v = run(fx, ["reply", fx.payload, "-m", "answer", "--by", "ua"]);
+      expect({ code: v.code, route: v.route, stdout: v.stdout, alpha: outbounds(fx.alpha.bus).length, ...settlement(fx) })
+        .toEqual({ code: 1, route: "native reply", stdout: "", alpha: 0, betaDone: null, alphaDone: false });
+      expect(v.stderr).toContain(`cannot open the obligation lock <root>/locks/obligation-${INBOUND_ID}.lock (EACCES: permission denied); nothing was sent`);
+      expect(v.stderr).toContain("sandbox escalation");
+      expect(v.stderr).not.toContain("another process");
+    } finally { chmodSync(lock, 0o600); }
+  }, 120_000);
+
+  test("refusal: the obligation sidecar is a directory — lock_unwritable with EISDIR for any uid, not another process; nothing sent", () => {
+    const fx = fixture();
+    const lock = join(fx.root, "locks", `obligation-${INBOUND_ID}.lock`);
+    mkdirSync(lock, { recursive: true });
+    const v = run(fx, ["reply", fx.payload, "-m", "answer", "--by", "ua"]);
+    expect({ code: v.code, route: v.route, stdout: v.stdout, alpha: outbounds(fx.alpha.bus).length, ...settlement(fx) })
+      .toEqual({ code: 1, route: "native reply", stdout: "", alpha: 0, betaDone: null, alphaDone: false });
+    expect(v.stderr).toContain(`cannot open the obligation lock <root>/locks/obligation-${INBOUND_ID}.lock (EISDIR); nothing was sent`);
+    expect(v.stderr).not.toContain("another process");
   }, 120_000);
 
   test("refusal: the sender team's acting registry is unreachable through the index — reply's own unreachable_team sentence, nothing sent, nothing settled", () => {

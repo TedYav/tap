@@ -83,7 +83,7 @@ export function unboundPaneIdentityRecord(
   if (found.dead) return verdict("pane_dead", found.pane_id, epoch);
   if (expected.harness) {
     const { state } = harnessEvidence(
-      expected.harness, found.command, found.pane_pid, snap.psRows, snap.psOk, agentFamilies(obsEnv),
+      expected.harness, found.command, found.pane_pid, snap.psRows, snap.psOk, agentFamilies(obsEnv), obsEnv,
     );
     if (state === "exited") return verdict("harness_exited", found.pane_id, epoch);
     if (state === "mismatch") return verdict("harness_mismatch", found.pane_id, epoch);

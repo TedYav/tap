@@ -52,9 +52,10 @@ export function claudeHome(env: NodeJS.ProcessEnv = process.env): string {
 export function claudeSessionTranscriptExists(
   sessionId: string | null | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  home: string = claudeHome(env),
 ): boolean {
   if (!sessionId) return false;
-  const projects = join(claudeHome(env), "projects");
+  const projects = join(home, "projects");
   try {
     for (const name of readdirSync(projects)) {
       try {
@@ -335,6 +336,29 @@ function composeSeatEnv(record: SessionRecord, env: NodeJS.ProcessEnv): { seat: 
 export function seatHarnessEnv(record: SessionRecord, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv | null {
   const composed = composeSeatEnv(record, env);
   return composed && !composed.degraded ? composed.seat : null;
+}
+
+/** The environment the seat's harness child reads its native store with, for a store probe that must agree with
+ * the child: the composed seat env (policy, then the seat's declared env, then its unsets), minus TAP's own
+ * aliases for a store root (`TAP_CLAUDE_HOME`, `TAP_CODEX_HOME`), which the launcher never passes to the child
+ * and which the child would not read if it did. The child's store is therefore its own spelling when that is in
+ * its effective env, declared or inherited (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), else the native default under
+ * its HOME. Null when the policy refused or degraded: the root cannot be verified, and the launch itself answers
+ * for the policy. */
+export function seatStoreEnv(record: SessionRecord, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv | null {
+  const composed = composeSeatEnv(record, env);
+  if (composed === null || composed.degraded) return null;
+  const { seat } = composed;
+  delete seat.TAP_CLAUDE_HOME;
+  delete seat.TAP_CODEX_HOME;
+  return seat;
+}
+
+/** The Claude store root the seat child reads, from its `seatStoreEnv`: the child's own `CLAUDE_CONFIG_DIR`, else
+ * `~/.claude` under the child's HOME, with `claudeHome`'s expansion and HOME-absent fallback; `CLAUDE_HOME` is a
+ * TAP-side spelling the child does not read, so it is not consulted here. */
+export function claudeChildStoreRoot(seat: NodeJS.ProcessEnv): string {
+  return claudeHome({ ...seat, TAP_CLAUDE_HOME: seat.CLAUDE_CONFIG_DIR || "", CLAUDE_HOME: undefined });
 }
 
 /** The cursor seat's own view of its store root, as the relaunched harness will see it. It

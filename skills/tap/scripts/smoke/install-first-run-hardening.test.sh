@@ -43,8 +43,16 @@ def fresh(w, name):
         if not (root / 'skills' / source.parent.name / 'SKILL.md').exists():
             source.unlink()
     (scope / 'home').mkdir()
+    # The installer wires a harness home only when its command is on PATH (tap-gjwtw);
+    # these arms exercise the wired path, so each harness command exists as a stub.
+    stubs = scope / 'harness-bin'
+    stubs.mkdir()
+    for command in ('claude', 'codex', 'cursor-agent', 'agy', 'opencode', 'hermes'):
+        (stubs / command).write_text('#!/bin/sh\nexit 0\n')
+        (stubs / command).chmod(0o755)
     env = dict(os.environ, HOME=str(scope / 'home'), TAP_INSTALL_BIN=str(scope / 'bin'),
-               TAP_INSTALL_HOOK='1', TAP_INDEX_HOME=str(scope / 'index'))
+               TAP_INSTALL_HOOK='1', TAP_INDEX_HOME=str(scope / 'index'),
+               PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}")
     for key in HOME_KEYS:
         env[key] = str(scope / key)
     return scope, repo, env

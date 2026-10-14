@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { awaitStableHarness, awaitReplacedHarness, codexComposerIdle, opencodeComposerIdle, opencodeReadySignal, memoizedStartupObservation, paneTailLines, PaneObservationTimeout, type PaneFacts } from "../src/launcher/readiness";
+import { awaitStableHarness, awaitReplacedHarness, codexComposerIdle, opencodeComposerIdle, opencodeReadySignal, memoizedStartupObservation, paneTailLines, PaneObservationTimeout, parsePaneFacts, type PaneFacts } from "../src/launcher/readiness";
 import { bindFingerprintOf, claudeBaselineAfterPlaceholderBind, claudeBindSignal } from "../src/launcher/transaction";
 
 const first:PaneFacts={pane:"fixture/seat:0.0",pane_id:"%1",server_epoch:"srv:1:1",pane_pid:2002,command:"codex",dead:false,path:"/fixture"};
 const makeFacts = (): PaneFacts => ({ ...first });
+test("only retained dead panes may omit their process id", () => {
+  expect(parsePaneFacts("fixture/seat:0.0\t%1\t\t1:1\t1\t\t/fixture")).toMatchObject({ pane_id: "%1", dead: true, pane_pid: 0 });
+  expect(parsePaneFacts("fixture/seat:0.0\t%1\tclaude\t1:1\t0\t\t/fixture")).toBeNull();
+  expect(parsePaneFacts("fixture/seat:0.0\t%1\t\t1:1\t1\tbad\t/fixture")).toBeNull();
+});
 test("readiness needs consecutive observations of one live process in one frame", async()=>{
   for(const moved of [{...first,dead:true},{...first,pane_pid:3003},{...first,pane_id:"%2"},{...first,server_epoch:"srv:2:2"}]){
     let time=0, reads=0;

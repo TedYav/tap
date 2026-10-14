@@ -6,7 +6,7 @@
 //
 // Exit: 0 resolved | 1 usage / not in tmux | 2 pane not registered.
 
-import { TapError, displayCwd, observeCallingPane, observeHarnessSessionPane, resolveContext, resolveSelf, observeSelfPane, refuseUnanchoredPane, type ResolvedContext, type IdentityPaneObservation } from "../context";
+import { TapError, callerObservationReason, displayCwd, observeCallingPane, observeHarnessSessionPane, resolveContext, resolveSelf, observeSelfPane, refuseUnanchoredPane, type ResolvedContext, type IdentityPaneObservation } from "../context";
 import { missingLocalTeam } from "../onboarding";
 import { LAUNCH_TEAM, noTeamMessage } from "../first-run";
 import { NO_MACHINE_INDEX } from "../selector";
@@ -92,7 +92,7 @@ export function cmdWhoami(argv: string[]): number {
         if (bySession) pane = bySession;
         else {
           throw new TapError(1, "not_in_tmux", "tap session launch <preset|harness> [name]",
-            `caller pane is not observable (${seen.detail}; pass --pane <tmux-target>)`);
+            `caller pane is not observable (${callerObservationReason(seen)}; pass --pane <tmux-target>)`);
         }
       } else {
         throw new TapError(1, "not_in_tmux", "tap session launch <preset|harness> [name]",

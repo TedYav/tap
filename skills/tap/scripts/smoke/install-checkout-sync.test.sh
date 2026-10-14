@@ -8,6 +8,8 @@
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../tap/scripts/smoke/sandbox-pins.sh"
+# shellcheck source=skills/tap/scripts/smoke/harness-stubs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/harness-stubs.sh"
 . "$(dirname "${BASH_SOURCE[0]}")/fzf-archive-pin.sh"
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
@@ -34,7 +36,8 @@ recorder_ran() {
 }
 
 run_install() {
-  PATH="$SCRATCH/bin:$PATH" TAP_INSTALL_BIN="$SCRATCH/bin" \
+  make_harness_stubs "$SCRATCH/harness-bin"   # a home is wired only when its command is on PATH
+  PATH="$SCRATCH/bin:$SCRATCH/harness-bin:$PATH" TAP_INSTALL_BIN="$SCRATCH/bin" \
   TAP_CLAUDE_HOME="$SCRATCH/claude" \
   TAP_CODEX_HOME="$SCRATCH/codex" \
   TAP_HERMES_HOME="$SCRATCH/hermes" \
@@ -59,7 +62,7 @@ seed_primary() {
   cp "$ROOT/install.sh" "$PRIMARY/install.sh"
   mkdir -p "$PRIMARY/runtime/bun/src"
   # install.sh's Bun import closure; Unicode decimals moved out of launcher/naming.ts.
-  cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
+  cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-harness-state,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
 cp -R "$ROOT/skills/." "$PRIMARY/skills"
 cp -R "$ROOT/vendor" "$PRIMARY/vendor"
   cp "$ROOT/skills/lead/references/ingest/README.md" \
@@ -391,6 +394,7 @@ git clone -q --depth 1 "file://$SHALLOW_ORIGIN" "$SHALLOW" 2>/dev/null
 cp "$ROOT/install.sh" "$SHALLOW/install.sh"
 mkdir -p "$SHALLOW/runtime/bun/src"
 cp "$ROOT/runtime/bun/src/install-skill-links.ts" "$SHALLOW/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/install-harness-state.ts" "$SHALLOW/runtime/bun/src/"
 mkdir -p "$SHALLOW/skills/lead/references/ingest" "$SHALLOW/bin"
 cp "$ROOT/skills/lead/references/ingest/README.md" "$SHALLOW/skills/lead/references/ingest/README.md" 2>/dev/null || printf 'ingest\n' > "$SHALLOW/skills/lead/references/ingest/README.md"
 cp "$ROOT/bin/tap" "$SHALLOW/bin/tap" 2>/dev/null || printf '#!/bin/sh\n' > "$SHALLOW/bin/tap"
@@ -433,6 +437,7 @@ git -C "$PRIMARY" worktree add -q --detach "$LANE" HEAD
 cp "$ROOT/install.sh" "$LANE/install.sh"
 mkdir -p "$LANE/runtime/bun/src"
 cp "$ROOT/runtime/bun/src/install-skill-links.ts" "$LANE/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/install-harness-state.ts" "$LANE/runtime/bun/src/"
 git_ok commit --allow-empty -qm origin-ahead-2
 git_ok push -q origin main
 git_ok reset --hard -q HEAD~1
@@ -440,6 +445,7 @@ git_ok reset --hard -q HEAD~1
 cp "$ROOT/install.sh" "$LANE/install.sh"
 mkdir -p "$LANE/runtime/bun/src"
 cp "$ROOT/runtime/bun/src/install-skill-links.ts" "$LANE/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/install-harness-state.ts" "$LANE/runtime/bun/src/"
 pre_lane_head="$(git -C "$PRIMARY" rev-parse HEAD)"
 origin_head="$(git -C "$PRIMARY" rev-parse origin/main)"
 [ "$pre_lane_head" != "$origin_head" ] \
@@ -575,7 +581,7 @@ grep -q 'if \[ -n "\$primary_root" \] && \[ "\$REPO" != "\$primary_root" \]; the
 grep -q 'Re-exec unconditionally (tap-sge4)' "$MIG_PRIMARY/install.sh" \
   && { echo "install-checkout-sync: (11) constructed install.sh still carries the fix's marker comment — inversion did not take" >&2; exit 1; }
 mkdir -p "$MIG_PRIMARY/runtime/bun/src"
-cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$MIG_PRIMARY/runtime/bun/src/"
+cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-harness-state,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$MIG_PRIMARY/runtime/bun/src/"
 cp -R "$ROOT/skills/." "$MIG_PRIMARY/skills"
 cp -R "$ROOT/vendor" "$MIG_PRIMARY/vendor"
 cp "$ROOT/skills/lead/references/ingest/README.md" "$MIG_PRIMARY/skills/lead/references/ingest/README.md"

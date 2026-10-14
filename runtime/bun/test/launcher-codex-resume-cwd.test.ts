@@ -45,6 +45,15 @@ test("a seat with no recorded launch workdir resumes into its cwd", () => {
   expect(tail(launch(machine(), {}, "resume", null))).toEqual(["resume", "--cd", A, ID]);
 });
 
+// `tap launch codex <name> --resume=<id>` reopens the conversation under action "new" and is just as unattended when
+// the seat is launched detached, so it names its destination too; the bare picker has no id to key on and someone at
+// the keyboard to answer, so it stays bare.
+test("an exact launch names its destination like a resume; a picker launch stays bare", () => {
+  expect(tail(launch(machine(), { launch_resume: "exact" }, "new"))).toEqual(["resume", "--cd", B, ID]);
+  expect(tail(launch(machine(), { launch_resume: "picker", harness_session_id: null }, "new"))).toEqual(["resume"]);
+  expect(launch(machine(), { launch_resume: "exact" }, "new")).not.toContain("--session-id");
+});
+
 test("the destination rides ahead of a trailing prompt, and the model flags stay in place", () => {
   const record: SessionRecord = { name: "seat", harness: "codex", cwd: A, launch_workdir: B, base: "team", model: "gpt-6.1-sol", harness_session_id: ID };
   const argv = launchInvocation("resume", record, new Notices(), { env: machine(), resume: ID, prompt: "carry on", notify: false }).argv;

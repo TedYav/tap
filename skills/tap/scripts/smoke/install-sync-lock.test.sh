@@ -55,7 +55,7 @@ seed_primary() {
   printf 'export.jsonl tap-sync-regenerable\n' > "$PRIMARY/gen/.gitattributes"
   cp "$ROOT/install.sh" "$PRIMARY/install.sh"
   mkdir -p "$PRIMARY/runtime/bun/src"
-  cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
+  cp "$ROOT/runtime/bun/src/"{config-file,config-error,skill-policy,install-harness-state,install-skill-links,install-skill-plugin,install-roster-hook-cleanup,install-manifest,install-fzf,fzf-tool,install-hooks,install-history,watch-detect,lossless-json,pyint,spool-publication,fsatomic,panelock,remind-lock,unicode-decimal,codex-fence}.ts "$PRIMARY/runtime/bun/src/"
   cp -R "$ROOT/skills/." "$PRIMARY/skills"
   cp -R "$ROOT/vendor" "$PRIMARY/vendor"
   printf '#!/bin/sh\necho tap-fixture\n' > "$PRIMARY/bin/tap"

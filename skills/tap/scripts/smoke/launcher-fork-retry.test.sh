@@ -11,7 +11,7 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$ROOT/tmp/fork-retry"
-# A child that fails immediately still has a pid and exit status; tmux accepts
+# A child that fails immediately still records its pid and exit status; tmux accepts
 # the respawn. Keep server logs as evidence of the discriminator, not a claim
 # that the historical intermittent ENXIO has been reproduced.
 (
@@ -34,9 +34,10 @@ mkdir -p "$ROOT/tmp/fork-retry"
         echo "startup discriminator refused: child signalled ($signal), not an exit status; facts=$facts" >&2
         return 1
       fi
-      if [[ "$dead" == 1 && "$status" =~ ^[0-9]+$ && "$pid" =~ ^[1-9][0-9]*$ && -s "$pidfile" ]]; then
+      if [[ "$dead" == 1 && "$status" =~ ^[0-9]+$ && -s "$pidfile" ]]; then
         child="$(cat "$pidfile")"
-        [[ "$child" == "$pid" && "$status" == "$expected" ]] || {
+        # tmux 3.8 drops pane_pid on exit; the child's own pid receipt remains.
+        [[ "$child" =~ ^[1-9][0-9]*$ && ( -z "$pid" || "$child" == "$pid" ) && "$status" == "$expected" ]] || {
           echo "startup discriminator failed: expected status=$expected child-pid=$child; facts=$facts" >&2
           return 1
         }

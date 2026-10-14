@@ -135,6 +135,19 @@ test("folder trust requires completed consent; no and terminal loss leave trust 
   expect(existsSync(join(skipped.root, "home/.codex/config.toml"))).toBe(false);
 }, 120000);
 
+test("without a terminal, plain init names the --yes step that grants the folder trust it skipped", () => {
+  const root = fixture(), bin = join(root, "tools"); mkdirSync(bin);
+  writeFileSync(join(bin, "codex"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  expect(Bun.spawnSync(["git", "init", "-q", root]).exitCode).toBe(0);
+  const result = Bun.spawnSync([join(repo, "bin/tap"), "init"], {
+    cwd: root, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdin: "ignore", stdout: "pipe", stderr: "pipe",
+  });
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  const hint = result.stderr.toString().split("\n").find(line => line.startsWith("tap init: folder trust skipped"));
+  expect(hint).toMatch(/^tap init: folder trust skipped \(no terminal to ask\); next: tap init --yes to trust this folder in [A-Za-z, ]*Codex[A-Za-z, ]*\.$/);
+  expect(existsSync(join(process.env.CODEX_HOME!, "config.toml"))).toBe(false);
+}, 30000);
+
 test("JSON init needs --yes for trust and reports partial failure without losing enrollment", () => {
   const root = fixture(), bin = join(root, "tools"); mkdirSync(bin);
   for (const name of ["codex", "claude"]) writeFileSync(join(bin, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });

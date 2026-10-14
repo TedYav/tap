@@ -102,7 +102,8 @@ shipped default applies unless their own harness settings, environment or a
 `[harness.<name>]` policy in the TAP config already set an effort.
 
 Starters arrive with basic calibration and role notes (`metadata.*`): what the
-model tends to be good at, and which team roles suit it. With a pinned effort
+model tends to be good at, which team roles suit it, and a pronoun teammates
+use for that model's seat (`metadata.pronouns`), which the preview will show. With a pinned effort
 that matches a catalog entry, the notes are that entry's. With `default`, the
 roles and summary stay as a labelled prior and the effort-specific ratings
 (intelligence tier, cost level, speed) are left out, because nobody measured
@@ -116,7 +117,10 @@ catalog's tuning.
 ### 4. Permissions
 
 For each selected harness, explain the bypass flag's actual effect from the knob
-library, then ask once. Claude, Codex, Cursor and Antigravity record `"auto"` or
+library, then ask once. On a first installation recommend bypass and say its
+consequence in one sentence: bypass lets the agent run commands and edit files
+without asking, with the person's own permissions; auto keeps the harness's
+approval checks. Claude, Codex, Cursor and Antigravity record `"auto"` or
 `"bypass"`; a new Claude/Codex config needs an explicit answer, and bypass
 records the person's consent. Codex auto keeps Codex's file sandbox and its automatic approval review, not a
 human approval dialog, and TAP turns on Codex's network proxy with no allowed domains so seats can reach the tmux socket (other destinations stay blocked for commands the sandbox runs); Cursor auto uses `--auto-review`, which still prompts for
@@ -142,7 +146,7 @@ bypass parameters are advanced edits (below).
 Offer these once each and move on if they pass: the notifier (`system` or a
 literal `command` argv using the whole-token `{title}`, `{body}` and `{urgency}`
 placeholders), the full skill kit (`fullKit`), plugins, and the tmux lookup key
-(`tap keybinding status`, then `tap keybinding install`): prefix + @ opens a
+(`tap keybinding status`, then `tap keybinding install`): prefix + C-g opens a
 popup that fuzzy-finds a teammate and types its `team/handle` where they were
 writing. It needs tmux 3.2+; a binding already on that key is shown, never
 replaced, so offer `--key <other>`. On a first installation, leave them for a
@@ -192,11 +196,16 @@ tap setup --machine --answers "$answers_file" --dry-run
 This example assumes a person who chose common models for Claude and Codex,
 default effort, auto permissions and aliases. Substitute their answers.
 
-The dry run changes nothing. Show the person its output: the TOML-key diff, and
-for shell integration the startup file and every alias line it would add,
-with a note when an alias would take precedence over an existing command of the
-same name. Ask whether to apply. Only after a yes, run the same command without
-`--dry-run`. If they change an answer, preview again.
+The dry run changes nothing. Send the preview as a message of its own: a
+summary in the person's words (harnesses, presets, effort, permission per
+harness, the two new-user answers, aliases), then for shell integration the
+startup file and the managed block exactly as the dry run prints it, verbatim,
+with a note when an alias would take precedence over an existing command of
+the same name. The dry run shows a starter's calibration notes as one line per
+preset; `--verbose` lists every key, on request. End that turn with "Reply yes to
+apply, or tell me what to change"; a question dialog in the same turn hides the
+preview above it. Only after a yes, run the same command without `--dry-run`. If
+they change an answer, preview again.
 
 ### 9. Close
 

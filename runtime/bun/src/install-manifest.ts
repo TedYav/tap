@@ -108,6 +108,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 export const CODEX_BEGIN = "# tap-managed:begin Codex SessionStart";
+/** The managed shell block is named by its job; blocks written under the earlier name stay recognized and are never renamed in place. */
+export const SHELL_BLOCK_BEGIN = "# >>> tap shell integration >>>", SHELL_BLOCK_END = "# <<< tap shell integration <<<";
+export const LEGACY_SHELL_BLOCK_BEGIN = "# >>> tap aliases >>>", LEGACY_SHELL_BLOCK_END = "# <<< tap aliases <<<";
+export const SHELL_BLOCK_MARKERS: readonly (readonly [string, string])[] = [[SHELL_BLOCK_BEGIN, SHELL_BLOCK_END], [LEGACY_SHELL_BLOCK_BEGIN, LEGACY_SHELL_BLOCK_END]];
+export const SHELL_BLOCK_BEGINS: readonly string[] = SHELL_BLOCK_MARKERS.map(([begin]) => begin);
 export const CODEX_END = "# tap-managed:end Codex SessionStart";
 
 /**
@@ -529,7 +534,7 @@ export function recordManifest(argv: string[]): number {
     }
     migration = { kind: "migration", path: old, target: readlinkSync(old), destination };
     for (const entry of manifest["entries"] as ManifestEntry[]) {
-      if (entry.kind !== "block" || entry.begin !== "# >>> tap aliases >>>") continue;
+      if (entry.kind !== "block" || typeof entry.begin !== "string" || !SHELL_BLOCK_BEGINS.includes(entry.begin)) continue;
       let raw: string;
       try {
         raw = pyReadUtf8(entry.path);

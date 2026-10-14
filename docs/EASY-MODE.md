@@ -45,8 +45,10 @@ Confirm the pair, then ask once per selected harness, retaining any answer alrea
 walkthrough:
 
 > Use this harness's bypass mode?
-> Recommended for this walkthrough: yes. This changes future TAP launches and
-> can be changed later; it does not undo actions an agent has already taken.
+> Recommended for this walkthrough: yes. Bypass lets the agent run commands and
+> edit files without asking, with your own permissions; auto keeps the
+> harness's approval checks. This changes future TAP launches and can be
+> changed later; it does not undo actions an agent has already taken.
 
 Explain the flag's actual effect from the knob library. A recommendation or an
 unanswered default is not consent. Apply the recorded answer:

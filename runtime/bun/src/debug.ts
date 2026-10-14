@@ -1,12 +1,12 @@
 // Opt-in cross-team journal. This process owns its tmux log until closure is observed.
-import { appendFileSync, closeSync, constants, copyFileSync, chmodSync, existsSync, fchmodSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir, loadavg } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { atomicWrite } from "./fsatomic";
-import { JOURNAL_SECRET, json, readJson, recorderState, safeFields, timestamp } from "./debug-capture";
+import { copyRedactedFile, JOURNAL_SECRET, json, readJson, recorderState, redactJournalText, safeFields, timestamp } from "./debug-capture";
 export { debugAttention } from "./debug-capture";
 import { redact } from "./verbose";
 import { KERNEL_LOCK, kernelLockArgs } from "./panelock";
@@ -15,9 +15,9 @@ import { errorJson } from "./native-error";
 import { bunBinary } from "./courier-argv";
 import { deliveryStats, renderStats } from "./debug-stats";
 
-export type Run = { id: string; directory: string; socket: string; config: { max_mb: number; retain_mb?: number } };
+export type Run = { id: string; directory: string; socket: string; redaction?: "credentials-v1"; config: { max_mb: number; retain_mb?: number } };
 export type Identity = { pid: number; start: string; socket: string };
-export type Log = { identity: Identity; owned: boolean; path?: string; offset?: number; opened?: boolean; stop_signalled?: boolean };
+export type Log = { identity: Identity; owned: boolean; path?: string; artifact?: string; published?: boolean; offset?: number; opened?: boolean; stop_signalled?: boolean };
 type Trace = { id: string; directory: string; seconds: number; active: boolean; uncapped: boolean; files: string[];
   started_at?: string; ended_at?: string; deadline_epoch?: number; stopping?: string; error?: string; setup_error?: string; reason?: string };
 export type Result = { code: number; stdout: string; stderr: string };
@@ -25,7 +25,8 @@ type Files = { cwd: string; paths: string[] } | null;
 type Position = { dev: number; ino: number; offset: number };
 const clock = () => Number(process.hrtime.bigint()) / 1e9;
 const home = (env = process.env) => join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
-const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+const errorText = (error: unknown) => redactJournalText(error instanceof Error ? error.message : String(error));
+// Typed control metadata keeps exact IDs and paths; free-form errors are sanitized at their source.
 const writeJson = (path: string, value: unknown) => atomicWrite(path, json(value));
 const sameIdentity = (a: Identity | null, b: Identity) => !!a && a.pid === b.pid && a.start === b.start && a.socket === b.socket;
 
@@ -50,7 +51,7 @@ export function physicalPath(path: string, links = 0): string {
   try { return realpathSync(path); } catch { /* missing path or Unix socket */ }
   if (links >= 40) throw new Error("too many socket path links");
   try { return physicalPath(resolve(dirname(path), readlinkSync(path)), links + 1); }
-  catch (error) { if (errorText(error) === "too many socket path links") throw error; }
+  catch (error) { if (error instanceof Error && error.message === "too many socket path links") throw error; }
   const parent = dirname(path);
   return parent === path ? path : join(physicalPath(parent, links), basename(path));
 }
@@ -117,7 +118,7 @@ export async function toggle(identity: Identity, io = effects): Promise<void> {
 }
 
 export function appendEvent(run: Run, event: string, fields: Record<string, unknown> = {}): void {
-  appendFileSync(join(run.directory, "events.jsonl"), json({ schema: 1, timestamp: timestamp(), capture_id: run.id, event, ...fields }) + "\n", { mode: 0o600 });
+  appendFileSync(join(run.directory, "events.jsonl"), json(safeFields({ schema: 1, timestamp: timestamp(), capture_id: run.id, event, ...fields }, process.env)) + "\n", { mode: 0o600 });
 }
 
 export async function startLog(run: Run, identity: Identity, directory: string, record: Log, io = effects): Promise<Log> {
@@ -125,9 +126,14 @@ export async function startLog(run: Run, identity: Identity, directory: string, 
   if (observed.path) throw new Error("tmux logging is already enabled independently; stop that capture before tracing");
   if (!observed.cwd) throw new Error("cannot determine tmux server working directory");
   const path = join(observed.cwd, `tmux-server-${identity.pid}.log`);
-  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW, 0o600);
+  const artifact = join(directory, basename(path));
+  if (lstatSync(artifact, { throwIfNoEntry: false })) throw new Error("trace artifact already exists; refusing to replace it");
+  const privateDir = join(dirname(run.directory), ".raw", run.id, basename(directory));
+  mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+  writeJson(join(dirname(privateDir), "owner.json"), { id: run.id, pid: process.pid });
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try { fchmodSync(fd, 0o600); } finally { closeSync(fd); }
-  Object.assign(record, { identity, path, offset: statSync(path).size, owned: false, opened: false });
+  Object.assign(record, { identity, path, artifact, offset: 0, owned: false, opened: false });
   await io.toggle(identity, io);
   record.owned = true;
   for (let i = 0; i < 30; i++) {
@@ -136,10 +142,10 @@ export async function startLog(run: Run, identity: Identity, directory: string, 
     await sleep(50);
   }
   if (!record.opened) throw new Error("tmux did not open its log");
-  const destination = join(directory, basename(record.path!));
+  const destination = join(privateDir, basename(record.path!));
   io.rename(record.path!, destination); // same filesystem; tmux retains its open fd
   record.path = destination;
-  io.appendEvent(run, "tmux.logging", { server: identity, path: destination, enabled_by_tap: true, start_offset: record.offset });
+  io.appendEvent(run, "tmux.logging", { server: identity, private_raw_path: destination, artifact: record.artifact, enabled_by_tap: true, start_offset: record.offset });
   return record;
 }
 
@@ -159,6 +165,15 @@ export async function stopLog(record: Log | null, io = effects): Promise<void> {
   }
   if (!record.stop_signalled) { await io.toggle(identity, io); record.stop_signalled = true; }
   if ((await io.logPath(identity)).path) throw new Error("waiting for tmux to close its trace log");
+}
+
+function publishLog(record: Log | null, env: NodeJS.ProcessEnv, progress: () => void): void {
+  if (!record?.artifact || !record.path) return;
+  if (!record.published) {
+    copyRedactedFile(record.path, record.artifact, env, progress);
+    record.published = true;
+  }
+  try { unlinkSync(record.path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
 
 export function teamBuses(env = process.env): Record<string, string> {
@@ -243,7 +258,7 @@ export async function collectArtifacts(run: Run, buses: Record<string, string>, 
       try {
         const artifact = join(run.directory, "artifacts", createHash("sha256").update(frame).digest("hex").slice(0, 20));
         mkdirSync(artifact, { recursive: true, mode: 0o700 });
-        for (const source of [frame, metadata]) { const target = join(artifact, basename(source)); copyFileSync(source, target); chmodSync(target, 0o600); }
+        for (const source of [frame, metadata]) copyRedactedFile(source, join(artifact, basename(source)), env);
         append(run, "tap.failure_frame", { team, payload_id: info.payload_id, stage: info.stage ?? null, source: frame, artifact: join(artifact, basename(frame)) });
         seen.add(metadata);
       } catch (error) { append(run, "capture.gap", { team, source: frame, reason: errorText(error) }); }
@@ -308,9 +323,18 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
   const listings = new Map<string, Listing>();
   const stop = () => { stopping = true; };
   process.on("SIGTERM", stop); process.on("SIGINT", stop);
+  function publishNative(reason: string): void {
+    let nextHeartbeat = 0;
+    publishLog(native, env, () => {
+      if (clock() < nextHeartbeat) return;
+      writeJson(join(directory, "status.json"), { ...readJson(join(directory, "status.json")), recording: true,
+        mode: "trace", trace: { ...trace, stopping: reason }, heartbeat: Date.now() / 1000 });
+      nextHeartbeat = clock() + 1;
+    });
+  }
   async function finishTrace(reason: string): Promise<boolean> {
     if (!trace?.active) return true;
-    try { await io.stopLog(native, io); }
+    try { await io.stopLog(native, io); publishNative(reason); }
     catch (error) {
       const previous = trace.error; trace.stopping = reason; trace.error = errorText(error);
       try {
@@ -346,12 +370,12 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
           native = { identity, owned: false };
           native = await io.startLog(run, identity, trace.directory, native, io);
           Object.assign(trace, { active: true, started_at: timestamp(), deadline_epoch: Date.now() / 1000 + trace.seconds });
-          trace.files.push(native.path!); deadline = clock() + trace.seconds;
+          trace.files.push(native.artifact ?? native.path!); deadline = clock() + trace.seconds;
           io.appendEvent(run, "trace.started", { trace, server: identity });
         } catch (error) {
           trace.error = trace.setup_error = errorText(error);
           if (native?.owned) {
-            trace.files.push(native.path!);
+            trace.files.push(native.artifact ?? native.path!);
             Object.assign(trace, { active: true, deadline_epoch: Date.now() / 1000, stopping: "setup_failed" });
             deadline = clock(); await finishTrace("setup_failed");
           }
@@ -369,9 +393,10 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
           unavailable = false;
           if (tracing && native && !sameIdentity(identity, native.identity) && !trace!.stopping) {
             await io.stopLog(native, io);
+            publishNative("server_replaced");
             native = { identity, owned: false };
             native = await io.startLog(run, identity, trace!.directory, native, io);
-            trace!.files.push(native.path!); writeJson(join(trace!.directory, "status.json"), trace);
+            trace!.files.push(native.artifact ?? native.path!); writeJson(join(trace!.directory, "status.json"), trace);
           }
           if (tracing) {
             const result = await command(["ps", "-p", String(identity.pid), "-o", "pcpu=,rss=,stat="], 2000, env);
@@ -433,6 +458,7 @@ export async function status(env = process.env): Promise<any> {
   if (!run) return { recording: false, state: "off", mode: "off", directory: null, tmux_logging: false };
   const state = readJson(join(run.directory, "status.json")) ?? {};
   Object.assign(state, { directory: run.directory, capture_id: run.id, socket: run.socket, config: run.config });
+  state.redaction = run.redaction === "credentials-v1" ? run.redaction : null;
   const enabled = readJson(join(home(env), "enabled.json"))?.id === run.id;
   state.state = recorderState(state, enabled);
   state.recording = state.state === "recording" || state.state === "stopping";
@@ -460,8 +486,35 @@ export async function awaitRecorder(directory: string, exited: () => boolean, wa
   }
 }
 
-// Retention owns only capture directories: <UTC stamp>-<8 hex> with a matching session.json.
+// Retention owns captures with matching session.json and private raw trees with matching owner.json.
 const CAPTURE = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
+async function inactiveRaw(root: string, id: string, inspect: typeof processFiles): Promise<boolean> {
+  const rawRoot = join(root, ".raw"), directory = join(rawRoot, id);
+  try {
+    const parent = lstatSync(rawRoot, { throwIfNoEntry: false });
+    if (!parent) return true;
+    if (!parent.isDirectory()) return false;
+    const entry = lstatSync(directory, { throwIfNoEntry: false });
+    if (!entry) return true;
+    if (!entry.isDirectory() || !lstatSync(join(directory, "owner.json")).isFile()) return false;
+    const owner = readJson(join(directory, "owner.json"));
+    if (owner?.id !== id || !Number.isSafeInteger(owner.pid) || owner.pid <= 0) return false;
+    try { process.kill(owner.pid, 0); return false; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false; }
+    // A dead collector may leave tmux writing; only confirmed closed descriptors permit removal.
+    for (const trace of names(directory).filter(name => name !== "owner.json")) {
+      const traceDir = join(directory, trace);
+      if (!/^trace-[0-9a-f]{12}$/.test(trace) || !lstatSync(traceDir).isDirectory()) return false;
+      for (const file of names(traceDir)) {
+        const match = /^tmux-server-([1-9][0-9]*)\.log$/.exec(file), path = join(traceDir, file);
+        if (!match || !lstatSync(path).isFile()) return false;
+        const opened = await inspect(Number(match[1]));
+        if (opened?.paths.some(p => physicalPath(p.replace(/ \(deleted\)$/, "")) === physicalPath(path))) return false;
+      }
+    }
+    return true;
+  } catch { return false; } // Unreadable ownership or descriptors cannot license deletion.
+}
 // Every recovery record is read or retention does not run: a missed reference must never license a delete.
 function recoveryText(root: string): { text: string } | { unreadable: string } {
   const recovery = join(root, "recovery"), texts: string[] = [];
@@ -472,7 +525,7 @@ function recoveryText(root: string): { text: string } | { unreadable: string } {
 }
 
 /** Keep the newest captures within retain_mb; the newest, the enabled one and any a recovery post-mortem names are always kept. */
-export function pruneCaptures(env = process.env): { id: string; bytes: number }[] {
+export async function pruneCaptures(env = process.env, inspect = processFiles): Promise<{ id: string; bytes: number }[]> {
   const root = home(env), budget = (readJson(join(root, "config.json"))?.retain_mb ?? DEFAULT_RETAIN_MB) * 1048576;
   const enabled = readJson(join(root, "enabled.json"))?.id, recovery = recoveryText(root);
   if ("unreadable" in recovery) { console.error(`tap debug: retention skipped; ${recovery.unreadable} is unreadable`); return []; }
@@ -482,11 +535,19 @@ export function pruneCaptures(env = process.env): { id: string; bytes: number }[
   let kept = 0, retained = 0, full = false;
   for (const id of captures) {
     if (id === enabled || referenced.includes(id)) continue;
-    const directory = join(root, id), bytes = treeBytes(directory);
+    if (!await inactiveRaw(root, id, inspect)) continue;
+    const directory = join(root, id), raw = join(root, ".raw", id), bytes = treeBytes(directory) + treeBytes(raw);
     if (!full && (kept === 0 || retained + bytes <= budget)) { kept++; retained += bytes; continue; }
     full = true;
-    try { rmSync(directory, { recursive: true }); pruned.push({ id, bytes }); }
+    try { rmSync(raw, { recursive: true, force: true }); rmSync(directory, { recursive: true }); pruned.push({ id, bytes }); }
     catch (error) { console.error(`tap debug: kept ${id}: ${errorText(error)}`); }
+  }
+  for (const id of names(join(root, ".raw")).filter(id => CAPTURE.test(id))) {
+    if (id === enabled || referenced.includes(id) || lstatSync(join(root, id), { throwIfNoEntry: false })) continue;
+    if (!await inactiveRaw(root, id, inspect)) continue;
+    const raw = join(root, ".raw", id), bytes = treeBytes(raw);
+    try { rmSync(raw, { recursive: true }); pruned.push({ id, bytes }); }
+    catch (error) { console.error(`tap debug: kept raw ${id}: ${errorText(error)}`); }
   }
   return pruned;
 }
@@ -528,6 +589,12 @@ const HELP = `usage: tap debug [-h] [--json] [--socket SOCKET] [--max-mb MAX_MB]
 
 Opt-in, cross-team flight journal. Records until tap debug off.
 The collector lives outside tmux.
+Credential-named environment values (*TOKEN*, *SECRET*, *KEY*, *PASSWORD*, AUTH*)
+are redacted from journal writes and copied artifacts. Session IDs, paths, team
+and pane names, commands and terminal contents remain. Review before sharing.
+Existing captures are not rewritten on upgrade; status identifies legacy captures.
+Timed traces keep raw capture private outside the journal until logging closes;
+the published trace is then redacted and its raw file removed.
 
 subcommands, and the options each one accepts:
   status           show whether recording is on (the default)    [--json]
@@ -669,11 +736,11 @@ export async function main(argv: string[], env = process.env): Promise<number> {
         const socket = physicalPath(args.socket || env.TAP_TMUX_SOCKET_PATH || env.TMUX?.split(",")[0] || join(env.TMUX_TMPDIR || "/tmp", `tmux-${process.getuid!()}`, env.TAP_TMUX_SOCKET || "default"));
         if (!await server(socket)) throw new Error("no tmux server on " + socket);
         signal.throwIfAborted();
-        const pruned = pruneCaptures(env);
+        const pruned = await pruneCaptures(env);
         const id = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z") + "-" + randomUUID().slice(0, 8);
         const directory = join(home(env), id);
         mkdirSync(directory, { mode: 0o700 });
-        const run: Run = { id, directory, socket, config };
+        const run: Run = { id, directory, socket, config, redaction: "credentials-v1" };
         writeJson(join(directory, "session.json"), run); writeJson(join(home(env), "last.json"), run); writeJson(join(home(env), "enabled.json"), run);
         const log = openSync(join(directory, "recorder.log"), "a", 0o600);
         let exited = false;
@@ -722,8 +789,14 @@ export async function main(argv: string[], env = process.env): Promise<number> {
     if (result.directory) {
       const tmux = result.tmux_logging ? "confirmed" : result.trace?.active ? "unavailable" : "trace windows only (tap debug trace <seconds>)";
       console.log(`  Journal: ${result.directory}\n  tmux logging: ${tmux}`);
+      console.log(result.redaction === "credentials-v1"
+        ? "  Credential-named environment values redacted; session IDs, paths and terminal contents remain"
+        : "  Credential redaction is unverified for this legacy capture; review before sharing");
       if (result.trace?.active) {
         console.log(`  Trace: ${Math.max(0, result.trace.deadline_epoch - Date.now() / 1000).toFixed(1)}s remaining, no byte cap; ${result.trace.directory}`);
+        console.log(result.redaction === "credentials-v1"
+          ? "  Raw trace is private; the redacted artifact is published after logging closes"
+          : "  Legacy trace files may contain credentials; review before sharing");
         if (result.trace.stopping) console.log("  Trace stopping: " + (result.trace.error || "awaiting log closure"));
       }
       console.log(`  TAP event streams: ${(result.teams ?? []).length} teams\n  Basic journal: ${((result.bytes ?? 0) / 1048576).toFixed(1)} MiB / ${result.config.max_mb} MiB (oldest journal segments and artifact copies rotate out)`);

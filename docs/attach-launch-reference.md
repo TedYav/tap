@@ -119,6 +119,28 @@ policy silently. An unreadable, malformed or insecure file degrades to no
 policy with a notice rather than blocking the launch; an invalid value in the
 requested harness's table refuses before launch.
 
+### Resuming a conversation into a new seat
+
+`tap launch <harness|preset> [name] --resume` starts the seat in the harness's
+own conversation picker (Claude Code `claude --resume`, Codex `codex resume`)
+and mints no session id; the picked conversation's SessionStart binds as the
+seat's identity with no `tap in`. `--resume=<id>` resumes that id directly and
+expects it exactly. Only the `=` form takes a value: `--resume <id>` reads
+`<id>` as the seat name. Cursor, OpenCode, Antigravity and Hermes refuse
+(`launch_resume_unsupported`): they have no picker. The marker is consumed by
+the launch argv and never stored, so resume, restart and relaunch replay the
+bound conversation and never re-offer the picker. The picker lists
+conversations from the seat's start directory. As on `tap session resume`,
+an axis the harness restores natively (the conversation's own model; on Codex
+its effort too) is not re-passed from a preset or tail, and an exact Codex id
+names its resume directory with `--cd`. `--resume=<id>` also requires the
+conversation to exist in the store the seat's harness will read (its own
+`CLAUDE_CONFIG_DIR` or `CODEX_HOME`, declared or inherited, else the default
+under its home folder) and to belong to no other seat; the
+seat's own incumbent under `--fresh` is not another seat. Either refusal
+(`no_exact_resume_identity`, `launch_resume_identity_owned`) lands before the
+incumbent is touched, so a mistyped id never stops it.
+
 ### Names and collisions
 
 A name that is not on the roster launches fresh. With --json or without a

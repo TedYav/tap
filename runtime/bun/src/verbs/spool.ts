@@ -266,7 +266,7 @@ export function cmdSpool(argv: string[], scriptsDir = ""): number {
     // The SHARED actor path (done.ts resolveActor): --by > TAP_SELF >
     // callingPane + resolveSelf — an ordinary interactive cancel with neither
     // flag nor env still resolves its calling pane (anchor 2, corrected).
-    const actor = resolveActor(ctx, by);
+    const actor = resolveActor(ctx, by, `tap cancel ${id} --spooled --by <handle>`);
     if (!actor) {
       throw new TapError(1, "usage_error", "tap help spool", "cancellation requires a sender actor: pass --by <handle>, run with TAP_SELF set, or run from a registered pane");
     }

@@ -350,13 +350,20 @@ export async function reserveTransaction(selection: Selection, request: Transact
     Object.assign(row, { status: "pending", registered_from_worktree: request.kind === "seat-up" ? record.cwd : selection.rootReal,
       registered_at: now(), launch_id: record.launch_id });
     // A fork is a new conversation: its id is the launcher's minted one (claude) or the harness's own.
-    row.identity_capture = { mode: record.identity_capture_action === "new" || record.identity_capture_action === "fork" ? "launcher_new" : record.harness_session_id ? "exact_resume"
+    // A picker launch (`tap launch --resume`) mints nothing and is captured as launcher_new without an
+    // expectation, so the first SessionStart id, the picked conversation, becomes the seat's identity;
+    // `--resume=<id>` carries that id as an exact-resume expectation.
+    row.identity_capture = { mode: record.launch_resume === "exact" && record.harness_session_id ? "exact_resume"
+      : record.identity_capture_action === "new" || record.identity_capture_action === "fork" ? "launcher_new" : record.harness_session_id ? "exact_resume"
       // Id-less OpenCode and cursor resumes start a fresh conversation (neither opens a
       // picker), so the SessionStart id they report is the launcher's new identity.
       : record.harness === "opencode" || record.harness === "cursor" ? "launcher_new" : "untrusted_resume",
       ...(record.harness_session_id ? { expected_harness_session_id: record.harness_session_id } : {}) };
     // A new incarnation starts: the outgoing one's launch_witness never carries over.
     for (const field of ["pane", "pane_id", "pane_current_command", "wake_url", "status_reason", "exited_at", "launch_witness"]) delete row[field];
+    // A picker or exact launch decides its identity afresh: the outgoing incarnation's accepted capture result
+    // must not make a re-picked conversation read as an already-judged same observation and skip the bind.
+    if (record.launch_resume) delete row.identity_capture_result;
     const boot = bootId(env); if (boot) row.boot_id = boot;
     const instance = ensureSeatInstance(row, handle);
     Object.assign(evidence, { token: record.launch_id, instance, backup: preserved });
@@ -493,8 +500,9 @@ export async function validateSeatUp(selection: Selection, handle: string, expec
 const VESSEL_FORMAT = "#{pid}:#{start_time}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}\t#{socket_path}";
 export function parseVessel(raw: string): Vessel | null {
   const [server, session, window, pane, pid, socket, ...extra] = raw.trim().split("\t");
+  // PID is transient; an exited pane can omit it without changing vessel identity.
   if (extra.length || !/^\d+:\d+$/.test(server ?? "") || !/^\$\d+$/.test(session ?? "") ||
-      !/^@\d+$/.test(window ?? "") || !/^%\d+$/.test(pane ?? "") || !/^-?\d+$/.test(pid ?? "") || !socket?.startsWith("/")) return null;
+      !/^@\d+$/.test(window ?? "") || !/^%\d+$/.test(pane ?? "") || !(pid === "" || /^-?\d+$/.test(pid ?? "")) || !socket?.startsWith("/")) return null;
   return { server: server!, session: session!, window: window!, pane: pane!, socket };
 }
 const sameVessel = (a: Vessel, b: Vessel | null): boolean => !!b && Object.keys(a).every(key => a[key as keyof Vessel] === b[key as keyof Vessel]);

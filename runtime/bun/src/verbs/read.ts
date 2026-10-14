@@ -7,7 +7,7 @@ import { existsSync, closeSync, fsyncSync, linkSync, mkdirSync, openSync, readFi
 import { dirname, join } from "node:path";
 import { addresseeGrant, historyDirForBus, type GrantResult } from "../addressee-grant";
 import { settlingInstance } from "../recipient-instance";
-import { callingPane, resolveSelf, TapError, type ResolvedContext } from "../context";
+import { callerObservationReason, observeCallingPane, resolveSelf, TapError, type ResolvedContext } from "../context";
 import { envelopeField, validateEnvelope } from "../envelope";
 import { jsonObj } from "../fsatomic";
 import { ageNowEpoch, idAgeSeconds, utcStamp, validToken } from "../ids";
@@ -153,9 +153,16 @@ function readVerb(argv: string[]): number {
   assertResetUnfenced(ctx.bus.home,"tap read");
   let actor=by || (process.env.TAP_SELF ?? ""), identity="declared", pane="";
   if(!actor) {
-    const observed=callingPane();
-    if(observed?.status === "ok") { const self=resolveSelf(ctx,observed,1); actor=self.handle; pane=self.paneId; identity="pane"; }
-    else throw new TapError(1,"no_actor","pass --by <handle> (or run 'tap register' to join this team)","only the addressee reads (or use --force, which records you) (caller pane observation: tmux pane inventory is unavailable)");
+    const seen=observeCallingPane();
+    if(seen.state === "inside") { const self=resolveSelf(ctx,{status:"ok",paneId:seen.paneId,session:seen.session,serverEpoch:seen.serverEpoch},1); actor=self.handle; pane=self.paneId; identity="pane"; }
+    else {
+      // The next step is --by. --force alone fails on this same refusal: it
+      // widens WHOSE mail may be read, not WHO is reading. The detail carries
+      // why the pane could not be observed (whoami's pattern), not one fixed
+      // reason.
+      const typed=arg.startsWith("path=") ? "<id>" : arg;
+      throw new TapError(1,"no_actor",`tap read ${typed} --by <handle>   (add --force to read mail addressed to someone else; it is recorded)   OR   tap register   (join this team)`,`only the addressee reads (caller pane observation: ${callerObservationReason(seen)})`);
+    }
   }
   if(!validToken(actor)) throw new TapError(1,"usage_error","tap help read",`actor '${actor}' is not a valid token (^[A-Za-z0-9][A-Za-z0-9._-]*$)`);
   // A digest member re-enters the public door with the member's EFFECTIVE

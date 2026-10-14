@@ -321,11 +321,14 @@ esac
       const seen = observeCallingPane(f.env);
       expect(seen.state).toBe("outside");
       // The incumbent's sentence, carried as `detail` rather than `refusal`:
-      // nothing about a positive answer should read as a reason to refuse.
-      expect(seen).toEqual({
+      // nothing about a positive answer should read as a reason to refuse. The
+      // held-terminal climb adds only `climb` diagnostics (why no holder pane was
+      // admitted); state and detail are byte-identical.
+      expect(seen).toMatchObject({
         state: "outside",
         detail: "observed caller terminal is not owned by a pane on this tmux server",
       });
+      expect(seen.state === "outside" ? seen.climb ?? "" : "").toContain("ended on terminal");
     } finally {
       removeScratchTree(f.scratch);
     }
@@ -960,6 +963,14 @@ exit 0
       removeScratchTree(scratch);
     }
   }
+
+  test("a retained dead pane may omit its PID, while live or malformed records may not", () => {
+    expect(observeWith("%0\tprobe\t\t\t1\n")).toMatchObject({
+      status: "pane_dead", observation: { paneId: "%0", session: "probe", panePid: "" },
+    });
+    for (const row of ["%0\tprobe\t\tclaude\t0\n", "%0\tprobe\tbad\t\t1\n"])
+      expect(observeWith(row).status).toBe("unobservable");
+  });
 
   test("a well-formed five-field record is ok", () => {
     const r = observeWith("%7\tseat\t4242\tclaude\t0\n");

@@ -6,7 +6,7 @@ import {
   sessionPanesFor, serverEpochFromRaw, harnessFamily,
 } from "../src/observe";
 import { serverEpochFromRaw as serverEpochFromTmux } from "../src/tmux";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { removeScratchTree } from "./support/scratch";
@@ -237,6 +237,40 @@ test("observation confirms an attested expectation but never mints one", () => {
   expect(harnessEvidence("claude", "node", "4001", table, true, families)).toEqual({ state: "alive", family: "claude" });
   expect(harnessEvidence("claude", "node", "", table, true, families)).toEqual({ state: "unobservable", family: "" });
   expect(harnessEvidence("claude", "node", "4001", table, false, families)).toEqual({ state: "unobservable", family: "" });
+});
+
+test("a native Claude version command confirms the bound family without process inspection", () => {
+  const root = mkdtempSync(join(tmpdir(), "native-claude-"));
+  const versions = join(root, ".local/share/claude/versions");
+  mkdirSync(versions, { recursive: true });
+  writeFileSync(join(versions, "2.1.296"), "fixture", { mode: 0o755 });
+  const env = { HOME: root };
+  const families = ["claude", "codex"];
+  try {
+    expect(harnessEvidence("claude", "2.1.296", "4001", null, false, families, env))
+      .toEqual({ state: "alive", family: "claude" });
+    expect(harnessEvidence("", "2.1.296", "4001", null, false, families, env).state).toBe("unattested");
+    expect(harnessEvidence("codex", "2.1.296", "4001", null, false, families, env).state).toBe("mismatch");
+    for (const command of ["2.1.297", ["..", "2.1.296"].join("/"), "2.1.296-extra", "node"]) {
+      expect(harnessEvidence("claude", command, "4001", null, false, families, env).state).toBe("unobservable");
+    }
+    expect(harnessEvidence("claude", "bash", "4001", null, false, families, env).state).toBe("exited");
+    chmodSync(join(versions, "2.1.296"), 0o644);
+    expect(harnessEvidence("claude", "2.1.296", "4001", null, false, families, env).state).toBe("unobservable");
+  } finally { removeScratchTree(root); }
+});
+
+test("the roster keeps an attested native Claude seat active when ps cannot run", () => {
+  const root = mkdtempSync(join(tmpdir(), "native-claude-roster-"));
+  const versions = join(root, ".local/share/claude/versions");
+  mkdirSync(versions, { recursive: true });
+  writeFileSync(join(versions, "2.1.296"), "fixture", { mode: 0o755 });
+  try {
+    const payload = { sessions_text: `t\t${EPOCH}\t1\n`, sessions_rc: 0,
+      panes_text: `t\tt:0.0\t%1\t2.1.296\t4001\t${EPOCH}\t0\n`, panes_rc: 0, ps_rc: 127,
+      rows: [{ status: "active", pane: "t:0.0", pane_id: "%1", session: "t", harness: "claude" }] };
+    expect(observeRows(payload, { HOME: root })).toEqual([["active", "", "t:0.0", "%1", "claude", "1"].join(US)]);
+  } finally { removeScratchTree(root); }
 });
 
 test("command classification reads argv words and path segments, and survives an unbalanced quote", () => {
@@ -602,12 +636,18 @@ test("the ps invocation is single and carries an explicit registry-sized buffer"
   expect(gatherSrc).toContain("spawnProcessTable");
 });
 
-test("dead flag is mandatory and strict; a dead pane needs no cached command", () => {
+test("dead flag is mandatory and strict; a dead pane needs no cached command or PID", () => {
   const row = "t\tt:0.0\t%1\tclaude\t4001\t" + EPOCH;
   for (const suffix of ["", "\t", "\t2", "\ttrue", "\t0\textra"]) {
     const p = parsePanes(row + suffix + "\n", 0, null);
     expect(sessionPanesFor(p.bySession, p.mode, "t", SRV)).toBeNull();
   }
-  const p = parsePanes("t\tt:0.0\t%1\t\t4001\t" + EPOCH + "\t1\n", 0, null);
-  expect(sessionPanesFor(p.bySession, p.mode, "t", SRV)?.[0]).toMatchObject({ dead: true, command: "", pane_id: "%1" });
+  for (const pid of ["4001", ""]) {
+    const p = parsePanes(`t\tt:0.0\t%1\t\t${pid}\t${EPOCH}\t1\n`, 0, null);
+    expect(sessionPanesFor(p.bySession, p.mode, "t", SRV)?.[0]).toMatchObject({ dead: true, command: "", pane_id: "%1", pane_pid: pid });
+  }
+  for (const row of [`t\tt:0.0\t%1\tclaude\t\t${EPOCH}\t0\n`, `t\tt:0.0\t%1\t\tbad\t${EPOCH}\t1\n`]) {
+    const p = parsePanes(row, 0, null);
+    expect(sessionPanesFor(p.bySession, p.mode, "t", SRV)).toBeNull();
+  }
 });

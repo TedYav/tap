@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setupMachine } from "../src/verbs/machine";
+import { stubHarnessCommands } from "./support/harness-stubs";
 
 const repo = resolve(import.meta.dir,"../../..");
 const originalEnv = {...process.env};
@@ -28,6 +29,8 @@ function fixture(source?: string) {
   const root=mkdtempSync(join(tmpdir(),"tap-answers-"));roots.push(root);
   const config=join(root,"config/tap/config.toml"), home=join(root,"home"), tools=join(root,"tools");
   mkdirSync(home);mkdirSync(tools);
+  // Stub every harness command except codex (the plugin() recorder writes that one on demand).
+  stubHarnessCommands(tools,["claude","cursor-agent","agy","opencode","hermes"]);
   if(source!==undefined){mkdirSync(join(root,"config/tap"),{recursive:true});writeFileSync(config,source);}
   const env={...originalEnv,HOME:home,XDG_CONFIG_HOME:join(root,"config"),TAP_INDEX_HOME:join(root,"index"),TAP_INSTALL_BIN:join(root,"bin"),SHELL:"/bin/zsh",TAP_SETUP_OPEN_GUIDE:"0",PATH:tools+":"+originalEnv.PATH};
   const trace=join(root,"plugin-calls");
@@ -179,7 +182,18 @@ test("a starter named explicitly takes a supplied effort; another named variant 
   expect(presets["opus-high"]).toEqual(reference.presets["opus-high"]);
 });
 
-test("dry-run names the startup file and each alias line; aliases cover selected presets already saved",()=>{
+const SHELL_BEGIN="# >>> tap shell integration >>>",SHELL_END="# <<< tap shell integration <<<";
+const COMPDEF_LINE="(( $+functions[compdef] )) && { autoload -Uz _tap && compdef _tap tap; } || { autoload -Uz compinit && compinit; }";
+const HELPER_LINE='tap_launch() { local preset="$1" name="$1"; shift; if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then name="$name-$1"; shift; fi; tap session launch "$preset" "$name" "$@"; }';
+/** The block a preview printed after its heading, markers included. */
+function previewedBlock(note:string,heading:string,begin:string,end:string):string{
+  const at=note.indexOf(heading);expect(at,note).toBeGreaterThan(-1);
+  const shown=note.slice(at+heading.length);
+  return shown.slice(shown.indexOf(begin),shown.indexOf(end)+end.length);
+}
+const blockOf=(text:string,begin:string,end:string)=>text.slice(text.indexOf(begin),text.indexOf(end)+end.length);
+
+test("dry-run prints the managed block exactly as the write lands it; aliases cover selected presets already saved",()=>{
   const f=fixture(),rc=join(f.home,".zshrc");
   const first={harnesses:{claude:{presets:["opus"],permissions:"auto"}},write:"apply"};
   expect(f.run(first).exitCode).toBe(0);
@@ -191,9 +205,13 @@ test("dry-run names the startup file and each alias line; aliases cover selected
   const note=receipt(preview).notes.join("\n");
   expect(note).toContain(`Would add the managed TAP shell block (PATH, completion and the tap_launch helper) to ${rc}, with these preset aliases:`);
   expect(note).toContain("  alias opus='tap_launch opus'");expect(note).toContain("  alias fable='tap_launch fable'");
+  // The preview carries every line the write will land: markers, PATH, both completion lines, the helper, the aliases.
+  const previewed=previewedBlock(note,"The block, exactly as it would be written:\n",SHELL_BEGIN,SHELL_END);
+  expect(previewed.split("\n")).toEqual([SHELL_BEGIN,`export PATH='${f.env.TAP_INSTALL_BIN}':"$PATH"`,`fpath=('${join(f.env.TAP_INSTALL_BIN,"../share/zsh/site-functions")}' $fpath)`,COMPDEF_LINE,HELPER_LINE,"alias fable='tap_launch fable'","alias opus='tap_launch opus'",SHELL_END]);
   expect(existsSync(rc)).toBe(false);expect(readFileSync(f.config,"utf8")).toBe(saved);
   expect(f.run(again).exitCode).toBe(0);
   const block=readFileSync(rc,"utf8");
+  expect(blockOf(block,SHELL_BEGIN,SHELL_END)).toBe(previewed);
   // opus was saved by the earlier run: it gains an alias and its config bytes are untouched.
   expect(block).toContain("alias opus='tap_launch opus'");expect(block).toContain("alias fable='tap_launch fable'");
   expect((Bun.TOML.parse(readFileSync(f.config,"utf8")) as any).presets.opus).toEqual((Bun.TOML.parse(saved) as any).presets.opus);
@@ -387,6 +405,55 @@ test("repeat shell setup adds a requested alias to its owned block without repla
   const shell=Bun.spawnSync(["bash","-c",'source "$1"; alias astra',"_",rc],{env:f.env});
   expect(shell.exitCode).toBe(0);expect(shell.stdout.toString()).toContain("tap_launch astra");
   expect(f.run(choices).exitCode).toBe(0);expect(readFileSync(rc,"utf8")).toBe(text);
+});
+
+test("dry-run prints an owned legacy-marker block exactly as the upgrade rewrites it, and the write lands those bytes under the old name",()=>{
+  const f=fixture(),rc=join(f.home,".zshrc");
+  const begin="# >>> tap aliases >>>",end="# <<< tap aliases <<<";
+  const content=[begin,HELPER_LINE,end].join("\n");
+  writeFileSync(rc,`# personal\n${content}\n`);
+  mkdirSync(f.env.TAP_INDEX_HOME,{recursive:true});
+  writeFileSync(join(f.env.TAP_INDEX_HOME,"install-manifest.json"),JSON.stringify({version:1,repo,entries:[{kind:"block",path:rc,begin,end,content}]}));
+  const choices={harnesses:{codex:{presets:["astra"],permissions:"auto"}},write:"apply",shellIntegration:true};
+  const file=join(f.root,"legacy.json");writeFileSync(file,JSON.stringify(choices));
+  const preview=Bun.spawnSync([join(repo,"bin/tap"),"setup","--machine","--answers",file,"--dry-run","--json"],{env:f.env,stdin:"ignore",timeout:5000});
+  expect(preview.exitCode).toBe(0);
+  const note=receipt(preview).notes.join("\n");
+  expect(note).toContain(`Would update the owned TAP shell block in ${rc}`);
+  const previewed=previewedBlock(note,"The block, exactly as it would be rewritten:\n",begin,end);
+  expect(previewed.split("\n")).toEqual([begin,`fpath=('${join(f.env.TAP_INSTALL_BIN,"../share/zsh/site-functions")}' $fpath)`,COMPDEF_LINE,HELPER_LINE,"alias astra='tap_launch astra'",end]);
+  expect(readFileSync(rc,"utf8")).toBe(`# personal\n${content}\n`);
+  expect(f.run(choices).exitCode).toBe(0);
+  const written=readFileSync(rc,"utf8");
+  expect(blockOf(written,begin,end)).toBe(previewed);
+  expect(written).not.toContain("tap shell integration");
+});
+
+test("dry-run summarizes a starter's calibration notes one line per preset; --verbose lists each key",()=>{
+  const f=fixture();
+  const choices={harnesses:{claude:{presets:["opus"],permissions:"auto"}},starterEffort:"default",write:"apply"};
+  const file=join(f.root,"notes.json");writeFileSync(file,JSON.stringify(choices));
+  const dry=(extra:string[])=>{
+    const result=Bun.spawnSync([join(repo,"bin/tap"),"setup","--machine","--answers",file,"--dry-run","--json",...extra],{env:f.env,stdin:"ignore",timeout:5000});
+    expect(result.exitCode).toBe(0);
+    return receipt(result).notes.join("\n");
+  };
+  const summary=dry([]);
+  expect(summary).toMatch(/\+ presets\.opus\.metadata = \d+ calibration notes \(--verbose lists each\)/);
+  expect(summary).not.toContain("presets.opus.metadata.summary");
+  expect(summary).toContain('+ presets.opus.harness = "claude"');
+  const full=dry(["--verbose"]);
+  expect(full).toContain("+ presets.opus.metadata.summary = ");
+  expect(full).not.toContain("calibration notes (");
+});
+
+test("the closing hint names the presets this run added, the first as the example",()=>{
+  const f=fixture();
+  const file=join(f.root,"hint.json");writeFileSync(file,JSON.stringify({harnesses:{claude:{presets:["sonnet","opus"],permissions:"auto"}},starterEffort:"default",write:"apply"}));
+  // The hint is human output, not a receipt note: read it from the plain-text run.
+  const result=Bun.spawnSync([join(repo,"bin/tap"),"setup","--machine","--answers",file],{env:f.env,stdin:"ignore",timeout:5000});
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.toString()+result.stderr.toString()).toContain("next: from your work directory, run tap launch opus (or any of: sonnet)");
 });
 
 test("dry-run promises preservation rather than new aliases for an edited shell block",()=>{

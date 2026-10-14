@@ -154,11 +154,14 @@ exec "$REAL_BUN" "$@"
         state = json.loads(traced.stdout)
         assert state['mode']=='trace' and state['tmux_logging'] and state['trace']['uncapped'], state
         trace = pathlib.Path(state['trace']['directory'])
-        native = next(trace.glob('tmux-server-*.log'))
+        # The raw log stays private while tmux writes it; the redacted copy appears once logging closes.
+        assert not list(trace.glob('tmux-server-*.log')), 'raw trace was published while still open'
         assert tap('trace','3').returncode != 0, 'overlapping trace silently replaced the window'
         assert tmux('display-message','-p','debug-exact-command-proof').returncode == 0
-        wait_for(lambda: 'debug-exact-command-proof' in native.read_text())
         wait_for(lambda: json.loads(tap('status','--json').stdout)['mode']=='basic')
+        wait_for(lambda: list(trace.glob('tmux-server-*.log')))
+        native = next(trace.glob('tmux-server-*.log'))
+        assert 'debug-exact-command-proof' in native.read_text()
         assert any(e['event']=='trace.finished' for e in events())
         assert any(e['event']=='trace.telemetry' for e in events())
         # Deadline disables owned tracing without stopping basic mode or the server.
@@ -172,17 +175,20 @@ exec "$REAL_BUN" "$@"
         traced_state = json.loads(traced.stdout)['trace']
         trace = pathlib.Path(traced_state['directory'])
         deadline = traced_state['deadline_epoch']
-        native = next(trace.glob('tmux-server-*.log'))
         # A private server's last command survives death; the trace timer still expires.
         assert tmux('kill-server').returncode == 0
-        assert 'kill-server' in native.read_text()
         wait_for(lambda: any(e['event']=='tmux.unavailable' for e in events()))
         assert tmux('-f','/dev/null','new-session','-d','-s','replacement','sleep 90').returncode == 0
-        wait_for(lambda: len(list(trace.glob('tmux-server-*.log'))) == 2)
+        # The dead server's log is published while the replacement takes over; the replacement's at close.
+        wait_for(lambda: (lambda t: t['trace'] and len(t['trace']['files']) == 2 and t['tmux_logging'])(json.loads(tap('status','--json').stdout)))
+        wait_for(lambda: len(list(trace.glob('tmux-server-*.log'))) == 1)
+        native = next(trace.glob('tmux-server-*.log'))
+        assert 'kill-server' in native.read_text()
         replaced = json.loads(tap('status','--json').stdout)
         assert replaced['trace']['deadline_epoch'] == deadline, 'replacement extended the trace window'
         assert replaced['trace']['active'] and replaced['tmux_logging'], replaced
         wait_for(lambda: json.loads(tap('status','--json').stdout)['mode']=='basic')
+        wait_for(lambda: len(list(trace.glob('tmux-server-*.log'))) == 2)
         stopped = tap('off','--json')
         assert stopped.returncode == 0, (stopped.stdout,stopped.stderr)
         assert json.loads(stopped.stdout)['recording'] is False

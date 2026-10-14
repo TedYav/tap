@@ -8,9 +8,9 @@ Transport records effects; workflows own convergence/review/merge. Sender buses 
 
 Never read/migrate old stores (`old_store`). New `.tap/bus` roots via `init`, first launch (non-Git consent), or `register|in` (seats only); `tmp/tap` registries refuse. Custom `TAP_HOME`/enrolled registries, historical identity evidence stay valid. [Reset custody](../protocol/identity/registry-unit-1-part-02.md): mail/registry SH; cuts/fences EX. Register never drains; dead panes retain mail/identity.
 
-[Folder trust](../protocol/identity/README.md#folder-trust): native `init` consent; separate approvals stay blocked.
+[Trust](../protocol/identity/README.md#folder-trust): init consent; Codex hooks: prior exact-list consent; else block.
 
-Bun: send/assign/reply, sessions, [lifecycle](../protocol/identity/seat-lifecycle.md), clear, [`poll`](../protocol/delivery/poll-malformed-payload-contract.md#native-poll-ownership), [spool drain](../protocol/delivery/spool-part-01.md), single/digest submit/custody.
+Bun: send/assign/reply, sessions, [lifecycle, crew generations](../protocol/identity/seat-lifecycle.md), clear, [`poll`](../protocol/delivery/poll-malformed-payload-contract.md#native-poll-ownership), [spool drain](../protocol/delivery/spool-part-01.md), single/digest submit/custody.
 
 `send`: notes; `assign`: work; `reply`: answers; `escalate`: user questions. Resolved payload bodies alone authorize peer work. `tap read` settles notes; asks need `tap reply`. `user`: unclaimable operator; `[[TAP v0.23 nudge]]` means continue.
 
@@ -20,9 +20,7 @@ Bun: send/assign/reply, sessions, [lifecycle](../protocol/identity/seat-lifecycl
 
 [Pane enrollment](../protocol/identity/README.md): register/SessionStart/bind/repair scan id/generation/socket before publishing. Proven foreign/machine faults refuse `pane_enrolled_elsewhere`/`pane_enrollment_unknown`; other defects skip. No cross-bus lock; concurrent scans may see absence.
 
-Handles name seats; instances distinguish occupants. At every effect (detached too) and final registry read, recheck liveness, seat instance and pane/session/generation/socket binding; identity needs a process-owned pane ([poll exception](../protocol/messages/poll-mode-delivery-class-v0-4-part-02.md)). Outside ancestry: select at most one exact active Claude row per [background-job rules](../protocol/identity/registry-unit-1-part-09.md); background ownership replaces no identity or shared-actor rule.
-
-Crew: [parent/child pane generations](../protocol/identity/seat-lifecycle.md).
+Handles name seats; instances distinguish occupants. At every effect (detached too) and final registry read, recheck liveness, seat instance and pane/session/generation/socket binding; identity needs a process-owned pane ([poll exception](../protocol/messages/poll-mode-delivery-class-v0-4-part-02.md)). Outside ancestry: one exact active Claude row per [job rules](../protocol/identity/registry-unit-1-part-09.md), or the pane whose harness [holds the caller's terminal](../protocol/identity/held-terminal.md); neither replaces identity or shared-actor rules.
 
 Cwd walks stop at Git roots and only default a team; `unanchored_bus` or an enrolled cwd team not holding the calling pane re-anchors once via it: live marker, machine-unique row (`contested`/unproven fail closed), same Git common dir, revalidated; never launcher enrollment ([ref](../protocol/delivery/structured-failures-and-json-output-part-03.md)). Restart: no dispatch writes; lifecycle re-attests.
 

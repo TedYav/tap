@@ -80,6 +80,31 @@ test("resume omits the launch model only where the harness restores it", () => {
     .toEqual(["launch-model"]);
 });
 
+// `tap launch --resume` reopens a conversation under action "new" (the picker's pick or an exact id): the
+// restore rule applies to it as to a resume, so a preset's model or a tail's effort never overrides the
+// conversation's own, while the same fresh launch (no marker) keeps carrying the launch tuning.
+test("a picker or exact launch composes its tuning as a resume does", () => {
+  const env = machine('version=3\n[harness.codex]\nparams.config = [\'model_reasoning_effort="xhigh"\']\n');
+  const launch = (record: SessionRecord) => launchInvocation("new", record, new Notices(() => {}), { env, receipts: () => {} }).argv;
+  const picker = launch(seat("claude", { harness_session_id: null, launch_resume: "picker", harness_tail: ["--model", "tail-model"] }));
+  expect(picker.join(" ")).not.toMatch(/launch-model|tail-model/);
+  expect(picker).toContain("--resume"); expect(picker).not.toContain("--session-id");
+  const exact = launch(seat("claude", { launch_resume: "exact", harness_tail: ["--model", "tail-model"] }));
+  expect(exact.join(" ")).not.toMatch(/launch-model|tail-model/);
+  expect(exact.slice(exact.indexOf("--resume"), exact.indexOf("--resume") + 2)).toEqual(["--resume", ID]);
+  const codexSources: Partial<SessionRecord> = { harness_passthrough: ["-c", 'model="pass-model"', "-c", 'service_tier="fast"'], harness_tail: ["--model", "tail-model"] };
+  const codexPicker = launch(seat("codex", { harness_session_id: null, launch_resume: "picker", ...codexSources }));
+  expect(codexPicker.join(" ")).not.toMatch(/model_reasoning_effort|pass-model|tail-model|launch-model/);
+  expect(codexPicker).toContain('service_tier="fast"'); expect(codexPicker).toContain("resume");
+  const codexExact = launch(seat("codex", { launch_resume: "exact", launch_workdir: "/wt", ...codexSources }));
+  expect(codexExact.join(" ")).not.toMatch(/model_reasoning_effort|pass-model|tail-model|launch-model/);
+  expect(codexExact.slice(-3)).toEqual(["--cd", "/wt", ID]);
+  // The unmarked fresh launch still carries every source.
+  const fresh = launch(seat("codex", { harness_session_id: null, ...codexSources })).join(" ");
+  for (const source of ['model_reasoning_effort="xhigh"', "pass-model", "tail-model", "launch-model"]) expect(fresh).toContain(source);
+  expect(flagValue(launch(seat("claude", { harness_session_id: null })), "--model")).toEqual(["launch-model"]);
+});
+
 test("codex resume drops stored model and effort from passthrough, policy and tail, keeping other config", () => {
   const env = machine('version=3\n[harness.codex]\nparams.config = [\'model_reasoning_effort="xhigh"\']\n');
   const record = seat("codex", { harness_passthrough: ["-c", 'model="pass-model"', "-c", 'service_tier="fast"'], harness_tail: ["--model", "tail-model"] });

@@ -986,8 +986,8 @@ SEE ALSO
     "  injection: {behavior: clobber|wait} (messages arriving while you type: interrupt and keep the draft text TAP can capture, or wait until your input is empty).",
     "  Selected Claude/Codex require explicit permissions unless a valid choice is saved; omitted Cursor/AGY permissions keep their bypass default. Candidate config is inactive; shell integration requires apply. Plugins are independent explicit effects, never uninstalled by omission. Notifications are configured, not sent.",
     "  fullKit saves skills.full_kit; candidate/dry-run never changes live links. Omission keeps policy.",
-    "  --verbose shows each successful skill link and absent optional home; the default summarizes counts and keeps preservation warnings visible.",
-    "  --dry-run validates the same choices and prints a TOML-key diff and effect preview (for shellIntegration: the startup file and each alias line it would add), without writing config/backups/shell files, installing plugins or sending notifications.",
+    "  --verbose shows each successful skill link and absent optional home, and in a dry run every starter calibration key; the default summarizes counts and keeps preservation warnings visible.",
+    "  --dry-run validates the same choices and prints a TOML-key diff (starter calibration notes as one line per preset) and effect preview (for shellIntegration: the startup file and the managed block exactly as it would be written, alias lines included), without writing config/backups/shell files, installing plugins or sending notifications.",
     "",
     "WITHOUT --answers",
     "  Interactive full kit defaults to No and gates optional plugin questions. Interactive preset selection defaults to skip; simple starters remain optional. Team setup asks first; arriving messages interrupt and may clear a draft, keeping the text TAP can capture; pasting it back is conditional, and when it does not happen `tap draft` recovers it (OpenCode drafts always need that, and pasted content or images may not be captured). Type WAIT in caps to hold deliveries for two minutes.",
@@ -1370,7 +1370,7 @@ USAGE
   tap keybinding status [--json]
 
 DESCRIPTION
-  Binds prefix + @ (tmux's default prefix is C-b, so C-b @) to a popup running
+  Binds prefix + C-g (tmux's default prefix is C-b, so C-b C-g) to a popup running
   tap pick: fuzzy-search every live team/handle, Enter types the full name into
   the pane you were writing in. The root table is untouched, so typing @ in any
   harness is unchanged. Needs tmux 3.2 or newer.
@@ -1381,13 +1381,13 @@ DESCRIPTION
   the binding immediately.
 
 OPTIONS
-  --key <k>      one key: @, g, C-g, M-g, F5 (default @)
+  --key <k>      one key: C-g, M-g, F5 (default C-g; retains an installed TAP key)
   --tap <path>   absolute path to run from the popup (default: tap on PATH)
   --dry-run      resolve and validate, change nothing
 
 EXAMPLES
   tap keybinding install
-  tap keybinding install --key g
+  tap keybinding install --key F6
   tap keybinding status --json
   tap keybinding remove
 
@@ -1403,7 +1403,7 @@ PAGES["tmux-defaults"] = `NAME
   tap tmux-defaults — sensible tmux defaults so tmux disappears behind the harness
 
 USAGE
-  tap tmux-defaults install [--dry-run] [--json]
+  tap tmux-defaults install [--status-bar | --no-status-bar] [--dry-run] [--json]
   tap tmux-defaults remove [--dry-run] [--json]
   tap tmux-defaults status [--json]
 
@@ -1425,12 +1425,23 @@ DESCRIPTION
   docs/GETTING-STARTED.md for Shift+Enter options.
   A running server is given the file directly when it changes; your own
   settings re-assert on the next tmux start.
+  The file can also carry a calm status bar: the team/session name on the left,
+  windows by name (no index numbers, no hostname) and the time on the right,
+  in muted colors that read in light and dark terminals. It is on by default
+  only when you have no tmux config of your own (neither ~/.tmux.conf nor
+  $XDG_CONFIG_HOME/tmux/tmux.conf, default ~/.config/tmux/tmux.conf, holds a
+  line beyond TAP's); otherwise ask for it
+  with --status-bar. A rerun keeps what the file already records. status
+  --json reports it as status_bar; the lines are whatever --dry-run prints.
 
 OPTIONS
-  --dry-run      resolve and validate, print the exact lines, change nothing
+  --status-bar     include the status bar, whatever your config
+  --no-status-bar  leave the status bar out, even with no config of your own
+  --dry-run        resolve and validate, print the exact lines, change nothing
 
 EXAMPLES
   tap tmux-defaults install
+  tap tmux-defaults install --status-bar --dry-run
   tap tmux-defaults status --json
   tap tmux-defaults remove
 
@@ -1522,7 +1533,7 @@ PAGES["withdraw"] = lines(
   "  tap withdraw <old-id> --superseded-by <new-id> -m \"corrected head\"",
 );
 
-PAGES["launch"] = "NAME\n  tap launch — start a durable agent seat in this project\n\nUSAGE\n  tap launch <harness|preset> [name] [options] [-- harness-arguments...]\n  tap session launch <harness|preset> [name] [options]\n\nDESCRIPTION\n  Launch and register a seat, then attach from a foreground plain terminal.\n  A fresh project offers tap init; noninteractive callers must initialize first.\n  From an agent or without a terminal, use tap attach <team/seat> to visit it.\n  Bare harnesses: claude, codex, opencode, cursor, agy, hermes.\n  Choose with tap models; presets optionally save a combination you use often.\n  Preset model/effort cannot be overridden (preset_not_composable).\n\n  A name already in use offers resume, new, fork, kill or quit when available.\n  Without a terminal or with --json, collisions refuse (session_exists or\n  session_record_exists). --fresh replaces the existing seat without asking.\n  Saved overrides persist for resume and restart; machine policy is re-read.\n  Unknown flags warn, forward to the harness and persist across resume/restart.\n  Use -- before intentional harness flags.\n\nOPTIONS\n  --model <model> --effort <level>  bare-harness tuning; account access varies\n  --preset <name>                  saved launch; tuning stays preset-owned;\n                                   --env, --unset-env and -- still apply\n  --workdir <path>                 existing worktree of the enrolled repository;\n                                   run from the team root; --cwd is not an alias\n  --env KEY=VALUE --unset-env KEY  repeatable overrides; same key in both refuses\n  --tag <name> --unique <session>  named seat or exact session name\n  --new                           choose a fresh sibling name on collision\n  --fresh                         replace the existing seat with a fresh session\n  --attach                        request attachment; terminal checks still apply\n  --dry-run [--json]               preview without creating a seat\n  -h, --help                      this page before any harness option\n  --                              following arguments go literally to the harness;\n                                   cannot combine with top-level --effort\n\nEXAMPLES\n  tap launch claude\n  tap launch codex reviewer\n  tap launch codex reviewer --model <available-model> --effort high\n  tap launch codex lane --workdir ../Lane\n  tap launch codex -- --help       explicitly request the harness's own help\n\nEXIT CODES\n  0  launch succeeded (may remain detached), help, or successful preview\n  1/2  usage, configuration, or lifecycle refusal; read the reported next step\n  127  command not found during execution\n  130/143  interrupted by SIGINT/SIGTERM\n\nSEE ALSO\n  tap attach · tap team · tap presets · tap help session\n  docs/attach-launch-reference.md#launch-policy-and-naming\n    Harness effort levels, saved recipes, machine policy, workdirs and naming.\n";
+PAGES["launch"] = "NAME\n  tap launch — start a durable agent seat in this project\n\nUSAGE\n  tap launch <harness|preset> [name] [options] [-- harness-arguments...]\n  tap session launch <harness|preset> [name] [options]\n\nDESCRIPTION\n  Launch and register a seat, then attach from a foreground plain terminal.\n  A fresh project offers tap init; noninteractive callers must initialize first.\n  From an agent or without a terminal, use tap attach <team/seat> to visit it.\n  Bare harnesses: claude, codex, opencode, cursor, agy, hermes.\n  Choose with tap models; presets optionally save a combination you use often.\n  Preset model/effort cannot be overridden (preset_not_composable).\n\n  A name already in use offers resume, new, fork, kill or quit when available.\n  Without a terminal or with --json, collisions refuse (session_exists or\n  session_record_exists). --fresh replaces the existing seat without asking.\n  Saved overrides persist for resume and restart; machine policy is re-read.\n  Unknown flags warn, forward to the harness and persist across resume/restart.\n  Use -- before intentional harness flags.\n\nOPTIONS\n  --model <model> --effort <level>  bare-harness tuning; account access varies\n  --preset <name>                  saved launch; tuning stays preset-owned;\n                                   --env, --unset-env and -- still apply\n  --workdir <path>                 existing worktree of the enrolled repository;\n                                   run from the team root; --cwd is not an alias\n  --env KEY=VALUE --unset-env KEY  repeatable overrides; same key in both refuses\n  --tag <name> --unique <session>  named seat or exact session name\n  --new                           choose a fresh sibling name on collision\n  --fresh                         replace the existing seat with a fresh session\n  --resume[=<id>]                 claude and codex: open the harness's conversation picker (or resume\n                                   <id>) in the new seat; the conversation becomes its identity at\n                                   SessionStart. <id> must be unheld; --resume <id> reads <id> as the name.\n  --attach                        request attachment; terminal checks still apply\n  --dry-run [--json]               preview without creating a seat\n  -h, --help                      this page before any harness option\n  --                              following arguments go literally to the harness;\n                                   cannot combine with top-level --effort\n\nEXAMPLES\n  tap launch claude\n  tap launch codex reviewer\n  tap launch codex reviewer --model <available-model> --effort high\n  tap launch codex lane --workdir ../Lane\n  tap launch claude installer --resume   pick an existing conversation for the new seat\n  tap launch codex -- --help       explicitly request the harness's own help\n\nEXIT CODES\n  0  launch succeeded (may remain detached), help, or successful preview\n  1/2  usage, configuration, or lifecycle refusal; read the reported next step\n  127  command not found during execution\n  130/143  interrupted by SIGINT/SIGTERM\n\nSEE ALSO\n  tap attach · tap team · tap presets · tap help session\n  docs/attach-launch-reference.md#launch-policy-and-naming\n    Harness effort levels, saved recipes, machine policy, workdirs and naming.\n";
 PAGES["models"] = `NAME
   tap models — model guidance from personal calibration or the shipped reference
 

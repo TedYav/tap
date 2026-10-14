@@ -10,6 +10,10 @@ export type SessionRecord = {
   model?: string | null;
   launch_tuning?: import("./tuning").LaunchTuning;
   harness_session_id?: string | null;
+  /** `tap launch --resume` only, consumed by the fresh-launch argv: "picker" opens the harness's native
+   *  conversation picker and mints no id; "exact" resumes `harness_session_id`. Never stored on a row, so
+   *  restart and relaunch replay the bound conversation and never re-offer the picker. */
+  launch_resume?: "picker" | "exact" | null;
   /** `tap session fork` only: the source conversation the harness's native fork copies. Never a stored identity. */
   fork_source_session_id?: string | null;
   transcript_path?: string | null;

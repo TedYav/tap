@@ -96,6 +96,12 @@ fi
 # Child tests invoke `bun` too. Expose only the selected executable, so a
 # sibling tmux in its installation directory cannot bypass the caller's guard.
 ln -s "$(command -v "$_BUN")" "$WORK/bin/bun"
+# Every test that runs install.sh stages the pinned fzf, which downloads from GitHub: a stalled
+# network cost one runner 3 x 30 s per install. Point them at the account's verified cache the
+# way the install smokes do (fzf-archive-pin.sh); install-fzf.ts re-checks the sha256, and no
+# cache leaves the variable unset so the download happens as before.
+_fzf_archive="$(PATH="$WORK/bin:$PATH" bash -c '. "$1" && printf %s "${TAP_FZF_TEST_ARCHIVE:-}"' _ "$ROOT/skills/tap/scripts/smoke/fzf-archive-pin.sh" 2>/dev/null || true)"
+[ -z "$_fzf_archive" ] || export TAP_FZF_TEST_ARCHIVE="$_fzf_archive"
 # TMPDIR joins the other pins: tmpdir() fixtures land inside the runner-owned
 # WORK, so an interrupted run leaves nothing the lsof-guarded cleanup misses.
 test_rc=0

@@ -20,7 +20,7 @@ for mode in ['success', 'hook-warning', 'conflict', 'conflict-apply', 'abort-fai
         return r
     def git(*args,cwd=primary): return run(['git',*args],cwd)
     git('init','-q','-b','main'); git('config','user.name','fixture'); git('config','user.email','fixture@example.invalid')
-    for relative in ['runtime/bun/src/install-skill-links.ts','install.sh','skills/lead/references/ingest/README.md','runtime/bun/src/install-roster-hook-cleanup.ts','runtime/bun/src/watch-detect.ts','runtime/bun/src/spool-publication.ts','runtime/bun/src/fsatomic.ts','runtime/bun/src/pyint.ts','runtime/bun/src/panelock.ts','runtime/bun/src/launcher/naming.ts','runtime/bun/src/install-fzf.ts','runtime/bun/src/fzf-tool.ts']:
+    for relative in ['runtime/bun/src/install-skill-links.ts','runtime/bun/src/install-harness-state.ts','install.sh','skills/lead/references/ingest/README.md','runtime/bun/src/install-roster-hook-cleanup.ts','runtime/bun/src/watch-detect.ts','runtime/bun/src/spool-publication.ts','runtime/bun/src/fsatomic.ts','runtime/bun/src/pyint.ts','runtime/bun/src/panelock.ts','runtime/bun/src/launcher/naming.ts','runtime/bun/src/install-fzf.ts','runtime/bun/src/fzf-tool.ts']:
         dest=primary/relative; dest.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(root/relative,dest)
     shutil.copytree(root/'runtime/bun/src',primary/'runtime/bun/src',dirs_exist_ok=True)
     shutil.copytree(root/'skills',primary/'skills',dirs_exist_ok=True)

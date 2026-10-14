@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { enrollScratchRoot } from "./support/enroll-scratch";
 import { spawnSync as spawnPlan } from "node:child_process";
@@ -20,6 +20,7 @@ const newTs = resolve(import.meta.dir, "../src/launcher/new.ts");
 function plan(args: string[], env: { HOME: string; XDG_CONFIG_HOME: string }) {
   spawnPlan("git", ["init", "-q", env.HOME]);
   enrollScratchRoot(env.HOME, join(env.HOME, "index"));
+  mkdirSync(join(env.HOME, ".tap/bus/receipts"), { recursive: true });
   const merged = Object.fromEntries(Object.entries({ ...process.env, ...env, TAP_INDEX_HOME: join(env.HOME, "index"), TAP_HOME: undefined, TAP_JSON: undefined })
     .filter(([, value]) => value !== undefined)) as Record<string, string>;
   const result = spawnPlan(process.execPath, [newTs, "--dry-run", "--json", ...args], { cwd: env.HOME, env: merged, encoding: "utf8" });
@@ -31,6 +32,59 @@ const refusesPermissions = (result: ReturnType<typeof plan>) => {
 };
 /** The profile name an argv selects through `default_permissions`. */
 const selectedProfile = (argv: string[]): string => /default_permissions="([^"]+)"/.exec(argv.join("\n"))![1]!;
+
+test("Codex auto can write enrolled receipt folders without granting acting registries", () => {
+  const env = fixture("codex", '"auto"');
+  const index = join(env.HOME, "index");
+  const root = realpathSync(env.HOME);
+  const current = join(root, "current"), peer = join(root, "peer"), old = join(root, "old"), legacy = join(root, "legacy");
+  const registry = (root: string) => join(root, ".tap/team-registry.json");
+  for (const root of [current, peer, old]) {
+    mkdirSync(join(root, ".tap/bus/receipts"), { recursive: true });
+    writeFileSync(registry(root), JSON.stringify({ schema: "0.20", seats: {} }));
+  }
+  const legacyRegistry = join(legacy, ".tap/bus/registry.json");
+  mkdirSync(join(legacy, ".tap/bus/receipts"), { recursive: true });
+  writeFileSync(legacyRegistry, JSON.stringify({ schema: "0.20", seats: {} }));
+  mkdirSync(index);
+  writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
+    current: { root: current, registry_location: registry(current), state: "registered" },
+    peer: { root: peer, registry_location: registry(peer), state: "registered" },
+    old: { root: old, registry_location: registry(old), state: "historical" },
+    legacy: { root: legacy, registry_location: legacyRegistry, state: "registered" },
+  } }));
+  const argv = codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index }, "tap_launcher_auto_0123456789ab");
+  const config = Bun.TOML.parse(argv.filter((_, i) => i % 2 === 1).join("\n")) as any;
+  const filesystem = config.permissions.tap_launcher_auto_0123456789ab.filesystem;
+  expect(filesystem[join(current, ".tap/bus/receipts")]).toBe("write");
+  expect(filesystem[join(peer, ".tap/bus/receipts")]).toBe("write");
+  expect(filesystem[join(legacy, ".tap/bus/receipts")]).toBe("write");
+  expect(filesystem[join(old, ".tap/bus")]).toBeUndefined();
+  expect(filesystem[peer]).toBeUndefined();
+  expect(filesystem[registry(peer)]).toBeUndefined();
+  const grants = Object.entries(filesystem).filter(([, access]) => access === "write").map(([path]) => path);
+  for (const protectedPath of [legacyRegistry, legacyRegistry + ".lock", join(legacy, ".tap/bus/locks")]) {
+    expect(grants.some(path => protectedPath === path || protectedPath.startsWith(path + "/"))).toBe(false);
+  }
+});
+
+test("Codex auto refuses a receipts symlink that would expose the foreign acting registry", () => {
+  const env = fixture("codex", '"auto"');
+  const root = realpathSync(env.HOME), index = join(root, "index"), peer = join(root, "peer");
+  mkdirSync(peer);
+  enrollScratchRoot(peer, index, "peer");
+  const bus = join(peer, ".tap/bus");
+  symlinkSync(bus, join(bus, "receipts"));
+  expect(() => codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index })).toThrow("receipts must be a real directory");
+});
+
+test("Codex auto refuses a missing receipt root instead of granting its creation", () => {
+  const env = fixture("codex", '"auto"');
+  const root = realpathSync(env.HOME), index = join(root, "index"), peer = join(root, "peer");
+  mkdirSync(peer);
+  enrollScratchRoot(peer, index, "peer");
+  expect(() => codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index })).toThrow("receipts must be a real directory");
+});
 
 for (const harness of ["claude", "codex"]) {
   const bypass = harness === "claude" ? "--dangerously-skip-permissions" : "--dangerously-bypass-approvals-and-sandbox";

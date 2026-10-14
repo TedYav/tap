@@ -8,6 +8,8 @@
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/sandbox-pins.sh"
+# shellcheck source=skills/tap/scripts/smoke/harness-stubs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/harness-stubs.sh"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)"
 WORK="$(mktemp -d)"
@@ -29,13 +31,14 @@ scratch() {
   S="$WORK/$arm"
   mkdir -p "$S/bin"
   for h in "${HOMES[@]}"; do mkdir -p "$S/$h"; done
+  make_harness_stubs "$S/harness-bin"   # a home is linked only when its command is on PATH
   OUT="$S/out"
   ERR="$S/err"
 }
 
 run_install() {
   set +e
-  TAP_INSTALL_BIN="$S/bin" \
+  PATH="$S/harness-bin:$PATH" TAP_INSTALL_BIN="$S/bin" \
   TAP_CLAUDE_HOME="$S/claude" TAP_CODEX_HOME="$S/codex" TAP_HERMES_HOME="$S/hermes" \
   TAP_CURSOR_HOME="$S/cursor" TAP_OPENCODE_HOME="$S/opencode" TAP_GEMINI_HOME="$S/gemini" \
   TAP_CURSOR_AGENT_HOME="$S/cursor-agent" TAP_AGENTS_HOME="$S/agents" \

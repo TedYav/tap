@@ -53,7 +53,8 @@ symptom. Run the TAP baseline when nothing matches or the first route comes up c
   defaults are not installed; offer them through the installer's defaults step, and use the plain
   probes below. Otherwise it lists `options` (what TAP sets on this platform) and `live.values`
   (what the running server shows). A live value that differs is not an error: their own tmux.conf may override it,
-  or the server has not restarted since the install. Say that, in those words. A `live.server`
+  or the server has not restarted since the install. Say that, in those words. `status_bar` says whether TAP's optional status-bar section is in the file; a status bar
+  the human did not ask for is theirs to remove with `tap tmux-defaults install --no-status-bar`. A `live.server`
   other than `up` means the running values could not be read, which says nothing about the
   defaults. Any other exit, or output that is not JSON, means the check itself failed; report
   that rather than "not installed". Only when this TAP has no `tmux-defaults` verb at all

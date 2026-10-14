@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -127,7 +127,7 @@ test("a stale heartbeat reads unresponsive even while its recorded pid is alive"
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
-test("an unreadable recovery record keeps every capture", () => {
+test("an unreadable recovery record keeps every capture", async () => {
   const f = fixture("20260923T000000Z-0000000b");
   const old = join(f.home, "20260901T000000Z-00000001");
   mkdirSync(old); writeFileSync(join(old, "session.json"), JSON.stringify({ id: "20260901T000000Z-00000001" }));
@@ -138,14 +138,14 @@ test("an unreadable recovery record keeps every capture", () => {
   // stream, the product's "retention skipped" reads as an undeclared test skip.
   const error = spyOn(console, "error").mockImplementation(() => {});
   try {
-    expect(debug.pruneCaptures(f.env)).toEqual([]);
+    expect(await debug.pruneCaptures(f.env)).toEqual([]);
     expect(existsSync(old)).toBe(true);
     expect(error).toHaveBeenCalledTimes(1);
     expect(String(error.mock.calls[0]?.[0])).toMatch(/^tap debug: retention skipped; .*run\.json is unreadable$/);
   } finally { error.mockRestore(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-test("retention keeps the newest captures within budget and every referenced or foreign directory", () => {
+test("retention keeps the newest captures within budget and every referenced or foreign directory", async () => {
   const f = fixture("20260923T000000Z-0000000a");
   const capture = (id: string, mib: number) => {
     const directory = join(f.home, id);
@@ -167,11 +167,67 @@ test("retention keeps the newest captures within budget and every referenced or 
   writeFileSync(join(f.home, "config.json"), JSON.stringify({ max_mb: 1024, retain_mb: 4 }));
   rmSync(join(f.home, "enabled.json"));
   try {
-    const pruned = debug.pruneCaptures(f.env).map(p => p.id).sort();
+    const pruned = (await debug.pruneCaptures(f.env)).map(p => p.id).sort();
     expect(pruned).toEqual(["20260918T000000Z-00000005", "20260920T000000Z-00000007"]);
     for (const kept of ["20260923T000000Z-0000000a", "20260922T000000Z-00000009", "20260921T000000Z-00000008", "20260919T000000Z-00000006", "bootstrap", "20260917T000000Z-00000004", "recovery"])
       expect(existsSync(join(f.home, kept))).toBe(true);
     for (const gone of pruned) expect(existsSync(join(f.home, gone))).toBe(false);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("retention counts private raw bytes and prunes them with their capture", async () => {
+  const f = fixture("20260923T000000Z-0000000a"), id = "20260922T000000Z-00000009";
+  const child = spawn("sh", ["-c", "exit 0"]);
+  await new Promise<void>(done => child.once("exit", () => done()));
+  const raw = join(f.home, ".raw", id), directory = join(f.home, id);
+  mkdirSync(directory); writeFileSync(join(directory, "session.json"), JSON.stringify({ id }));
+  mkdirSync(join(raw, "trace-0123456789ab"), { recursive: true });
+  writeFileSync(join(raw, "owner.json"), JSON.stringify({ id, pid: child.pid }));
+  writeFileSync(join(raw, "trace-0123456789ab/tmux-server-123.log"), Buffer.alloc(2 * 1048576));
+  writeFileSync(join(f.home, "config.json"), JSON.stringify({ retain_mb: 1 }));
+  rmSync(join(f.home, "enabled.json"));
+  try {
+    const pruned = await debug.pruneCaptures(f.env, async () => null);
+    expect(pruned.map(p => p.id)).toEqual([id]);
+    expect(pruned[0]!.bytes).toBeGreaterThan(2 * 1048576);
+    expect(existsSync(directory)).toBe(false);
+    expect(existsSync(raw)).toBe(false);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("orphan raw cleanup requires a dead collector and closed tmux descriptors", async () => {
+  const f = fixture("20260923T000000Z-0000000a"), child = spawn("sh", ["-c", "exit 0"]);
+  await new Promise<void>(done => child.once("exit", () => done()));
+  const ids = ["20260922T000000Z-00000001", "20260922T000000Z-00000002", "20260922T000000Z-00000003", "20260922T000000Z-00000004", "20260922T000000Z-00000005"];
+  for (const [i, id] of ids.entries()) {
+    const raw = join(f.home, ".raw", id);
+    mkdirSync(join(raw, "trace-0123456789ab"), { recursive: true });
+    if (i !== 4) writeFileSync(join(raw, "owner.json"), JSON.stringify({ id, pid: i === 1 ? process.pid : child.pid }));
+    writeFileSync(join(raw, `trace-0123456789ab/tmux-server-${123 + i}.log`), "secret raw evidence");
+  }
+  try {
+    const pruned = await debug.pruneCaptures(f.env, async pid => {
+      if (pid === 126) throw new Error("inspection unavailable");
+      return pid === 125 ? { cwd: f.home, paths: [join(f.home, ".raw", ids[2]!, "trace-0123456789ab/tmux-server-125.log")] } : null;
+    });
+    expect(pruned.map(p => p.id)).toEqual([ids[0]!]);
+    expect(existsSync(join(f.home, ".raw", ids[0]!))).toBe(false);
+    for (const id of ids.slice(1)) expect(existsSync(join(f.home, ".raw", id))).toBe(true);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("raw retention never follows a symlink to an unowned directory", async () => {
+  const f = fixture("20260923T000000Z-0000000a"), id = "20260922T000000Z-00000001";
+  const child = spawn("sh", ["-c", "exit 0"]);
+  await new Promise<void>(done => child.once("exit", () => done()));
+  const foreign = join(f.root, "foreign");
+  mkdirSync(foreign);
+  writeFileSync(join(foreign, "owner.json"), JSON.stringify({ id, pid: child.pid }));
+  mkdirSync(join(f.home, ".raw")); symlinkSync(foreign, join(f.home, ".raw", id));
+  try {
+    expect(await debug.pruneCaptures(f.env, async () => null)).toEqual([]);
+    expect(read(join(foreign, "owner.json"))).toMatchObject({ id });
+    expect(existsSync(join(f.home, ".raw", id))).toBe(true);
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 

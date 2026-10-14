@@ -7,8 +7,8 @@ export function redact(text: string, env = process.env, secret = VERBOSE_SECRET)
     if (value && secret.test(key)) text = text.split(value).join("<redacted>");
   }
   text = text.replace(/(\bauthorization\s*:\s*)[^\r\n]+/gi, "$1<redacted>");
-  text = text.replace(new RegExp(`(["']?[A-Za-z_][A-Za-z0-9_-]*["']?\\s*(?:=|:)\\s*)(${value})`, "g"),
-    (all, key, val) => secret.test(key) ? `${key}<redacted>` : all);
+  text = text.replace(new RegExp(`(["']?(\\b[A-Za-z_][A-Za-z0-9_-]*)["']?\\s*(?:=|:)\\s*)(${value})`, "g"),
+    (all, key, name) => secret.test(name) ? `${key}<redacted>` : all);
   return text.replace(new RegExp(`(--[A-Za-z_-]+)(\\s+)(${value})`, "g"),
     (all, key, space) => secret.test(key) ? `${key}${space}<redacted>` : all);
 }

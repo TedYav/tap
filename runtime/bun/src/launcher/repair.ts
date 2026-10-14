@@ -49,7 +49,8 @@ export function parseRepairPane(line: string): PaneFacts | null {
   const text = line.replace(/\n$/, "");
   if (text.includes("\n")) return null;
   const parts = text.split("\t");
-  if (parts.length < 7 || !parts[0] || !parts[1] || !["0", "1"].includes(parts[4]!) || !/^[0-9]+$/.test(parts[5]!)) return null;
+  if (parts.length < 7 || !parts[0] || !parts[1] || !["0", "1"].includes(parts[4]!)) return null;
+  if (!/^[0-9]+$/.test(parts[5]!) && !(parts[4] === "1" && parts[5] === "")) return null;
   if (!isPaneId(parts[1])) {
     throw new SessionStateError("identity_unverified: tmux returned invalid pane_id " + pyRepr(parts[1]!) + "; refusing registry write; next: verify tmux and retry");
   }
@@ -100,7 +101,9 @@ function paneHarness(facts: PaneFacts): string {
 
 function matchingPane(record: SessionRecord): { facts: PaneFacts | null; harness: string | null } {
   const target = "=" + record.name;
-  const active = paneFacts(target), activeHarness = active ? paneHarness(active) : null;
+  let active = paneFacts(target);
+  if (active?.dead) active = null;
+  const activeHarness = active ? paneHarness(active) : null;
   if (active && activeHarness === record.harness) return { facts: active, harness: activeHarness };
   const run = paneQuery(["list-panes", "-s", "-t", target, "-F", PANE_FACTS_FORMAT], target);
   if (run.code !== 0) {
@@ -113,6 +116,7 @@ function matchingPane(record: SessionRecord): { facts: PaneFacts | null; harness
     return facts;
   });
   for (const facts of candidates) {
+    if (facts.dead) continue;
     const harness = paneHarness(facts);
     if (harness === record.harness) return { facts, harness };
   }
@@ -249,6 +253,7 @@ export function repairRecord(record: SessionRecord, dryRun: boolean): Result {
       if (!facts) continue;
       const session = facts.pane.split(":", 1)[0]!;
       if (session !== record.name) return result("pane_mismatch", "stored pane for " + handle + " belongs to " + session + ", not " + record.name);
+      if (facts.dead) return result("not_live", "session " + record.name + " is not live");
       const harness = paneHarness(facts);
       if (harness !== record.harness) return result("non_agent_pane", "stored pane for " + handle + " is " + harness + ", not " + record.harness);
       observed = facts;

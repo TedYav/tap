@@ -418,7 +418,10 @@ async function main(argv: string[]): Promise<number> {
       const launch = resolveLaunchEvidence(process.env);
       const root = launch?.root ?? codexRoot(input, process.env);
       if (root) {
-        const context = [...sessionContext(root, input, process.env, launch), CODEX_SKILLS].join("\n");
+        const lines = sessionContext(root, input, process.env, launch);
+        const registered = lines.findIndex(line => line.startsWith("TAP: registered as "));
+        if (registered >= 0) lines.splice(registered + 1, 0, "If TAP reports 'identity unobservable' or denied writes under ~/.tap or another team's .tap, retry the exact authorized command once with approved sandbox escalation; unobservable does not mean stale.");
+        const context = [...lines, CODEX_SKILLS].join("\n");
         writeSync(1, `${JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } })}\n`);
       }
     } else if (mode === "cursor") {

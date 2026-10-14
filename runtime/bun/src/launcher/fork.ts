@@ -131,7 +131,7 @@ export async function planFork(options: ForkOptions, cwd: string, deps: ForkDeps
     }
   }
   const args: Resolved = { harness, label: null, preset: null, tag: name, workdir: null, unique: null, model: null, effort: null,
-    env: null, unset_env: null, fresh: false, new: false, attach: false, dry_run: options.dryRun, json: options.json,
+    env: null, unset_env: null, fresh: false, new: false, attach: false, resume: false, resume_id: null, dry_run: options.dryRun, json: options.json,
     harness_passthrough: [], preset_resolution: null };
   const made = await makeNewRecord(args, state, cwd, deps);
   // The chooser can wait on a human: re-observe the source, then re-check its answer before any effect.

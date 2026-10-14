@@ -1,15 +1,16 @@
 import { acquirePathLock, lockRoot } from "./panelock";
 // Private failure evidence from observations the courier already made.
-import { appendFileSync, closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { spawnSync } from "node:child_process";
-import { atomicWrite, ensureAscii } from "./fsatomic";
+import { atomicWrite, ensureAscii, stagingPath } from "./fsatomic";
 import { redact } from "./verbose";
 import { tapScriptsDir, artifactBun } from "./scripts-dir";
 
-export const JOURNAL_SECRET = /key|token|secret|password|passwd|credential|authorization/i;
+export const JOURNAL_SECRET = /key|token|secret|password|passwd|credential|authorization|^auth/i;
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 export const timestamp = () => new Date().toISOString().slice(0, -1) + "000+00:00";
 export const json = (value: unknown) => ensureAscii(JSON.stringify(value));
@@ -43,11 +44,69 @@ export function debugAttention(env = process.env): Record<string, unknown> | nul
   return null;
 }
 
+export function redactJournalText(text: string, env: NodeJS.ProcessEnv = process.env): string {
+  // Native environment records can contain spaces or newlines in an unquoted value.
+  for (const match of text.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)=/g)) {
+    if (JOURNAL_SECRET.test(match[1]!)) return redact(text.slice(0, match.index) + match[1] + "=<redacted>", env, JOURNAL_SECRET);
+  }
+  return redact(text, env, JOURNAL_SECRET);
+}
+
 export function safeFields(value: unknown, env: NodeJS.ProcessEnv): unknown {
-  if (typeof value === "string") return redact(value, env, JOURNAL_SECRET);
+  if (typeof value === "string") return redactJournalText(value, env);
   if (Array.isArray(value)) return value.map(v => safeFields(v, env));
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safeFields(v, env)]));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, JOURNAL_SECRET.test(k) ? "<redacted>" : safeFields(v, env)]));
   return value;
+}
+
+/** Only sanitized bytes reach the destination, including its atomic staging file. */
+export function copyRedactedFile(source: string, target: string, env: NodeJS.ProcessEnv = process.env, progress?: () => void): void {
+  if (source.endsWith(".json")) {
+    const text = readFileSync(source, "utf8");
+    let safe: string;
+    try { safe = json(safeFields(JSON.parse(text), env)); }
+    catch { safe = redactJournalText(text, env); }
+    atomicWrite(target, safe + "\n");
+    return;
+  }
+  const input = openSync(source, "r"), temporary = stagingPath(dirname(target));
+  let output: number | undefined;
+  try {
+    output = openSync(temporary, "wx", 0o600);
+    const bytes = Buffer.alloc(65536), decoder = new StringDecoder("utf8");
+    const tmuxTrace = /^tmux-server-\d+\.log$/.test(basename(source));
+    let pending = "", record = "";
+    const write = (text: string) => {
+      let safe: string;
+      if (source.endsWith(".jsonl")) {
+        try { safe = json(safeFields(JSON.parse(text), env)); }
+        catch { safe = redactJournalText(text, env); }
+      } else safe = redactJournalText(text, env);
+      writeFileSync(output!, safe.replace(/\n$/, "") + "\n");
+    };
+    const line = (text: string) => {
+      if (!tmuxTrace) { write(text); return; }
+      if (/^\d+\.\d+\s/.test(text) && record) { write(record); record = ""; }
+      record += text + "\n";
+    };
+    for (;;) {
+      const count = readSync(input, bytes, 0, bytes.length, null);
+      if (!count) break;
+      progress?.();
+      pending += decoder.write(bytes.subarray(0, count));
+      let end: number;
+      while ((end = pending.indexOf("\n")) >= 0) { line(pending.slice(0, end)); pending = pending.slice(end + 1); }
+    }
+    pending += decoder.end();
+    if (pending) line(pending);
+    if (record) write(record);
+    closeSync(output); output = undefined;
+    renameSync(temporary, target);
+  } finally {
+    closeSync(input);
+    if (output !== undefined) closeSync(output);
+    try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
 }
 
 /** The opted-in capture, or null when recording is off or stopping. */
@@ -71,7 +130,7 @@ export function recordCommand(args: string[], env: NodeJS.ProcessEnv, callerPid:
   const home = join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
   let hide = false;
   const command = args.map(arg => {
-    const value = hide ? "<redacted>" : redact(arg, env, JOURNAL_SECRET);
+    const value = hide ? "<redacted>" : redactJournalText(arg, env);
     hide = ["-m", "--message", "--body"].includes(arg) || /^--(?:token|password|secret|api-key)$/.test(arg);
     return value;
   });
@@ -87,9 +146,9 @@ export function recordCommand(args: string[], env: NodeJS.ProcessEnv, callerPid:
       if (row.root.length > longest) { longest = row.root.length; team = name; }
     }
   }
-  appendFileSync(join(run.directory, "events.jsonl"), json({ schema: 1, timestamp: timestamp(), capture_id: run.id,
+  appendFileSync(join(run.directory, "events.jsonl"), json(safeFields({ schema: 1, timestamp: timestamp(), capture_id: run.id,
     event: "tap.command", operation_id: randomUUID().replaceAll("-", ""), argv: command,
-    caller_pid: callerPid, cwd: process.cwd(), pane: env.TMUX_PANE ?? null, tmux: env.TMUX ?? null, team }) + "\n",
+    caller_pid: callerPid, cwd: process.cwd(), pane: env.TMUX_PANE ?? null, tmux: env.TMUX ?? null, team }, env)) + "\n",
     { mode: 0o600 });
 }
 

@@ -15,7 +15,7 @@
 // touches the spool, and never moves the payload.
 import { mkdirSync, openSync, closeSync, fsyncSync, linkSync, unlinkSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { callingPane, resolveSelf, TapError } from "../context";
+import { callerObservationReason, observeCallingPane, resolveSelf, TapError } from "../context";
 import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
 import { envelopeField, validateEnvelope } from "../envelope";
@@ -118,12 +118,14 @@ export function cmdWithdraw(argv: string[]): number {
     applyTeamOverride(team);
     const ctx = resolveSelection(callerPin, team);
     if (!actor) {
-      const observed = callingPane();
-      if (observed?.status !== "ok") {
-        throw new TapError(1, "no_actor", "pass --by <handle> (or run 'tap register' to join this team)",
-          "only the original sender withdraws (caller pane observation: tmux pane inventory is unavailable)");
+      const seen = observeCallingPane();
+      if (seen.state !== "inside") {
+        // The next step names --by, and the detail carries why the pane could
+        // not be observed (whoami's pattern) instead of one fixed reason.
+        throw new TapError(1, "no_actor", `tap withdraw ${id} --by <handle>   OR   tap register   (join this team)`,
+          `only the original sender withdraws (caller pane observation: ${callerObservationReason(seen)})`);
       }
-      actor = resolveSelf(ctx, observed, 1).handle;
+      actor = resolveSelf(ctx, { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch }, 1).handle;
     }
     if (!validToken(actor)) {
       throw new TapError(1, "usage_error", "tap help withdraw", `actor '${actor}' is not a valid token (^[A-Za-z0-9][A-Za-z0-9._-]*$)`);

@@ -267,7 +267,9 @@ export function cmdInit(argv: string[]): number {
         accepted = !/^(n|no)$/i.test(answer.trim());
       }
       if (accepted) folderTrust = [...trustFolder(folder, targets), ...failures];
-      else if (harnesses.length && !opts.json) console.error("tap init: folder trust skipped. Some harnesses may require manual trust before use here.");
+      else if (harnesses.length && !opts.json) console.error(interactive(opts)
+        ? "tap init: folder trust skipped. Some harnesses may require manual trust before use here. tap init --yes grants it later."
+        : `tap init: folder trust skipped (no terminal to ask); next: tap init --yes to trust this folder in ${harnesses.join(", ")}.`);
       const failed = folderTrust.filter(result => result.status === "failed");
       if (failed.length) {
         if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: true, folder_trust: folderTrust, action: "fix the reported harness configuration, then rerun tap init --yes" }));

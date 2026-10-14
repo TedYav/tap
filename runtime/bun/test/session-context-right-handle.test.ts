@@ -408,6 +408,10 @@ function assertArm4(label: string, body: string): void {
   if (label.startsWith("codex/")) {
     expect(lines.at(-1), `(4/${label}) skill roots missing`).toBe(SKILL_ROOTS_LINE);
     lines = lines.slice(0, -1);
+    expect(lines[1]).toContain("identity unobservable");
+    expect(lines[1]).toContain("exact authorized command once with approved sandbox escalation");
+    expect(lines[1]).toContain("unobservable does not mean stale");
+    lines.splice(1, 1);
   }
   expect(lines, `(4/${label}) expected authorization and preview lines: ${stripped}`).toHaveLength(2);
   expect(lines[0], `(4/${label}) registered authorization line drifted`).toBe(REGISTERED_LINE);

@@ -24,7 +24,8 @@ import {
 import { enrolledNameForRootFromDoc, flipMarkerState, loadGlobalRegistry } from "./index-home";
 import { physicalSocketPath, serverEpochFromRaw, seedServerIdentity, socketFingerprint, tmux, tmuxReadOnly } from "./tmux";
 import { isFile } from "./watch-lease";
-import { libprocRow } from "./proc-row";
+import { pidHasAncestor, processRow } from "./process-ancestry";
+import { DEFAULT_AGENT_FAMILIES, classifyHolderCommand, readProcessTableMemoized } from "./observe";
 import { isOldStoreRefusal } from "./register-authority";
 
 export class TapError extends Error {
@@ -404,7 +405,7 @@ export function requireActingRegistry(ctx: Context, code: number): void {
 export type CallingPaneObservation =
   | { state: "inside"; paneId: string; session: string; serverEpoch: string;
       address?: string; panePid?: string; currentCommand?: string; currentPath?: string; socketPath?: string }
-  | { state: "outside"; detail: string }
+  | { state: "outside"; detail: string; climb?: string }
   | { state: "unobservable"; refusal: string; paneId?: string; unverifiable?: true; missing?: "session" | "epoch"; session?: string };
 
 export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnly = false, extended = false): CallingPaneObservation {
@@ -413,54 +414,17 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
   let pid = process.pid;
 
   for (let steps = 0; steps < 64; steps++) {
-    const row = spawnSync("ps", ["-o", "ppid=", "-o", "tty=", "-p", String(pid)], {
-      encoding: "utf8",
-      env,
-    });
-    // Bash's IFS, not JavaScript's `\s`. `read -r ppid tty _` splits on the
-    // default IFS -- space, tab, newline -- and NOTHING else, while JS `\s`
-    // also matches NBSP, U+2000-200A, U+202F, U+205F, U+3000 and U+FEFF. A
-    // `ps` row separated by NBSP therefore gave Bash an unusable parent pid
-    // (refused) and gave this function a plausible pid/tty pair (accepted).
-    // That divergence was harmless while every non-`ok` answer was `null`; it
-    // stopped being harmless the moment one of those answers became positive
-    // outside evidence that licenses attach (review, P2).
-    // Mirror the incumbent's STRUCTURE, not just its splitting. It guards on the
-    // raw row being empty (`[ -n "$row" ]`), then field-splits; a row with only
-    // one field therefore leaves `tty` EMPTY, and empty is in its skip set
-    // (`""|"?"|"??"|"-"`), so it falls through to the parent-pid check and
-    // refuses there. Treating a missing second field as "no row at all" reports
-    // the wrong refusal for a row that was read perfectly well -- found by
-    // The reviewer's NBSP specimen, which produces exactly that row.
-    // Three separate Bash behaviours, and getting two of them right is not
-    // enough (review, P2 twice):
-    //
-    //   `row="$(ps ...)"`            command substitution strips TRAILING
-    //                                newlines and nothing else -- a leading
-    //                                blank line survives and is meaningful.
-    //   `[ -n "$row" ]`              the emptiness guard is on the whole row.
-    //   `read -r ppid tty _ <<<`     consumes exactly ONE LINE, then splits it
-    //                                on IFS (space, tab) with leading and
-    //                                trailing IFS whitespace stripped.
-    //
-    // Splitting the entire stdout on whitespace matched the IFS CHARACTERS
-    // while destroying the RECORD BOUNDARY, so `1\nfaketty` was read as the
-    // pair `1 faketty` -- two separate records fused into one plausible
-    // observation, which then answered a positive `outside`. The boundary is
-    // load-bearing exactly because this function's one positive answer grants
-    // authority.
-    // `ps` that cannot run at all (a sandbox forbids exec of setuid binaries) falls back to the OS process table.
-    const raw = (row.error ? libprocRow(pid) ?? "" : row.stdout ?? "").replace(/\n+$/, "");
-    if (!raw) {
+    // The row parse (Bash IFS, record boundary, libproc fallback) lives in
+    // process-ancestry.ts, shared with the pane-ownership proofs.
+    const row = processRow(pid, env);
+    if (!row) {
       return { state: "unobservable", refusal: `process observation unavailable for pid '${pid}'` };
     }
-    const firstRecord = raw.split("\n", 1)[0] ?? "";
-    const fields = firstRecord.replace(/^[ \t]+|[ \t]+$/g, "").split(/[ \t]+/);
-    const parentRaw = fields[0] ?? "";
-    const ttyRaw = fields[1] ?? "";
+    const parentRaw = row.ppid;
+    const ttyRaw = row.tty;
 
     if (!["", "?", "??", "-"].includes(ttyRaw)) {
-      const paneTty = ttyRaw.startsWith("/dev/") ? ttyRaw : `/dev/${ttyRaw}`;
+      let paneTty = ttyRaw.startsWith("/dev/") ? ttyRaw : `/dev/${ttyRaw}`;
       // Remain-on-exit panes retain a tty after the OS can reuse it.
       const inventory = probe(["list-panes", "-a", "-f", "#{!=:#{pane_dead},1}", "-F", inventoryFormat], env);
       if (inventory.rateLimited) {
@@ -493,12 +457,23 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
         found = candidate ?? "";
       }
       // The first observed controlling TTY belongs either to this tmux server
-      // or to somewhere else. Never climb past it and borrow an ancestor pane.
+      // or to somewhere else. Never climb past it on ancestry alone and borrow
+      // an ancestor pane: a terminal-emulator window spawned from the pane, a
+      // nested foreground multiplexer, or a session leader that opened a pane
+      // tty by path all descend from pane processes without living in the
+      // pane. The ONE admitted climb is through a harness that holds this
+      // terminal for its own tool (Antigravity's run_command allocates a
+      // fresh pty per command while agy itself stays on the pane tty); see
+      // climbHeldTerminal for its four conditions. Anything else keeps the
+      // positive outside verdict, carrying the climb's refusal as diagnostics.
       //
       // THIS is the one positive answer in the function: a terminal was
       // observed, the inventory answered, and no pane on this server owns it.
       if (!found) {
-        return { state: "outside", detail: "observed caller terminal is not owned by a pane on this tmux server" };
+        const climbed = climbHeldTerminal(pid, paneTty, inventory.stdout, probe, env);
+        if (climbed.state !== "held") return climbed;
+        found = climbed.found;
+        paneTty = climbed.paneTty;
       }
 
       // The default mode stays the incumbent's FOUR-field identity record,
@@ -692,6 +667,118 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
     pid = parent;
   }
   return { state: "unobservable", refusal: "process ancestry exceeded 64 steps before finding a tmux pane" };
+}
+
+/** The incumbent's one positive-outside sentence (lib.sh `tap_calling_pane_observe`); attach keys on the state, whoami prints this. */
+const OUTSIDE_DETAIL = "observed caller terminal is not owned by a pane on this tmux server";
+
+type HeldTerminalClimb =
+  | { state: "held"; found: string; paneTty: string }
+  | Extract<CallingPaneObservation, { state: "outside" | "unobservable" }>;
+
+/**
+ * The one admitted climb past a controlling terminal no pane owns: a harness
+ * holding that terminal for its own tool. Antigravity's `run_command` runs
+ * each command on a fresh pty while `agy` stays on the pane tty, so the
+ * caller's first tty is a throwaway and the seat is one boundary up.
+ *
+ * Four conditions, every one fail-closed back to the positive `outside`
+ * verdict the walk already earned (with the refusal as `climb` diagnostics):
+ *
+ *  1. Walk the run of ancestors on the caller's terminal FIRST_TTY. The
+ *     direct parent of its topmost process is the holder. A parent with no
+ *     controlling terminal refuses (an emulator launched from a tool child:
+ *     claude -> xterm(??) -> zsh), as does the chain ending on FIRST_TTY.
+ *  2. The holder's own tty maps to exactly one live pane in the SAME
+ *     inventory the walk read -- one list-panes per walk, nothing to race.
+ *     A second foreign terminal (an emulator under agy's own tool pty) is
+ *     not a pane and refuses.
+ *  3. The holder is that pane's pane_pid or descends from it, by the shared
+ *     fail-closed ancestry walk. A session leader that acquired a pane tty by
+ *     opening the device is not under pane_pid and refuses.
+ *  4. The holder's EXECUTABLE classifies as a harness family (comm, argv[0],
+ *     or a supported runtime's script entrypoint, never a version-named
+ *     native binary proven only under $HOME; never a later argv word,
+ *     so `script -q /dev/null claude` and `xterm -e codex exec` refuse --
+ *     review, P1 round 3), against the FIXED canonical family set, never the
+ *     ambient TAP_OBS_HARNESS_FAMILIES override: that variable is
+ *     caller-controlled, and an identity proof may not take its admission
+ *     set from the process it is judging (review, P1). An emulator spawned
+ *     straight from the pane shell
+ *     inherits the pane tty into its own process and passes 2 and 3; it is
+ *     not a harness and refuses here. script(1), a nested tmux server, login
+ *     and sshd refuse the same way.
+ *
+ * The caller then re-verifies the pane through the unchanged targeted record
+ * (id grammar, id/tty binding, session, server generation). A rate-limited
+ * pane_pid read is `unverifiable`, never outside: tmux could not answer, and
+ * a seat may well exist. No environment variable takes part -- TMUX_PANE,
+ * harness session ids and TAP_LAUNCH_ID are inherited by every descendant,
+ * so none can tell a relayed tool terminal from an escaped one.
+ */
+function climbHeldTerminal(first: number, firstTty: string, inventoryStdout: string,
+  probe: (args: string[], env: NodeJS.ProcessEnv) => ReturnType<typeof tmux>, env: NodeJS.ProcessEnv): HeldTerminalClimb {
+  const outside = (climb: string): HeldTerminalClimb => ({ state: "outside", detail: OUTSIDE_DETAIL, climb });
+  // 1. Through the run on FIRST_TTY to the holder.
+  let current = first;
+  let holder = 0;
+  let holderTty = "";
+  for (let hops = 0; hops < 64 && !holder; hops++) {
+    const row = processRow(current, env);
+    if (!row) return outside(`process observation unavailable for pid '${current}' on terminal '${firstTty}'`);
+    if (!/^[0-9]+$/.test(row.ppid)) return outside(`process observation returned invalid parent pid '${row.ppid}'`);
+    const parent = Number(row.ppid);
+    if (parent <= 1 || parent === current) return outside(`process ancestry ended on terminal '${firstTty}' without reaching a pane`);
+    const parentRow = processRow(parent, env);
+    if (!parentRow) return outside(`process observation unavailable for pid '${parent}'`);
+    if (["", "?", "??", "-"].includes(parentRow.tty)) {
+      return outside(`terminal '${firstTty}' is held by pid ${parent}, which has no controlling terminal`);
+    }
+    const parentTty = parentRow.tty.startsWith("/dev/") ? parentRow.tty : `/dev/${parentRow.tty}`;
+    if (parentTty === firstTty) { current = parent; continue; }
+    holder = parent;
+    holderTty = parentTty;
+  }
+  if (!holder) return outside(`process ancestry exceeded 64 steps on terminal '${firstTty}'`);
+  // 2. The holder's terminal is one live pane in the same inventory.
+  let found = "";
+  for (const line of inventoryStdout.split("\n")) {
+    const [candidate, candidateTty] = line.split("\t", 2);
+    if (candidateTty !== holderTty) continue;
+    if (found) return outside(`holder terminal '${holderTty}' maps to multiple panes`);
+    found = candidate ?? "";
+  }
+  if (!found) return outside(`terminal '${firstTty}' is held by pid ${holder} on '${holderTty}', which no pane on this server owns either`);
+  // 3. The holder is under the pane's pane_pid.
+  const pidRead = probe(["display-message", "-p", "-t", found, "#{pane_pid}"], env);
+  if (pidRead.rateLimited) {
+    return { state: "unobservable", refusal: "tmux is rate limiting; the pane identity record is unavailable", paneId: found, unverifiable: true };
+  }
+  const panePid = pidRead.code === 0 ? (pidRead.stdout.split("\n", 1)[0] ?? "") : "";
+  if (!/^[0-9]+$/.test(panePid)) return outside(`pane ${found} reports no usable pane_pid for terminal holder pid ${holder}`);
+  if (!pidHasAncestor(holder, panePid, env)) {
+    return outside(`terminal '${firstTty}' is held by pid ${holder}, which is not under pane ${found}'s pane_pid ${panePid}`);
+  }
+  // 4. The holder is a harness process, by the registry's own classifier.
+  const { table, ok } = readProcessTableMemoized(env);
+  const holderRow = ok && table ? table.get(String(holder)) : undefined;
+  if (!holderRow) return outside(`process table has no row for terminal holder pid ${holder}`);
+  const family = classifyHolderCommand(holderRow[2], holderRow[3], DEFAULT_AGENT_FAMILIES);
+  if (!family) {
+    return outside(`terminal '${firstTty}' is held by '${basename(holderRow[2])}' (pid ${holder}), which is not a harness process`);
+  }
+  return { state: "held", found, paneTty: holderTty };
+}
+
+/**
+ * Why the caller's pane could not be used, for a refusal sentence: the
+ * refusal for an unobservable walk, the positive-outside sentence plus the
+ * climb's own reason for an outside one, empty for a caller inside a pane.
+ */
+export function callerObservationReason(seen: CallingPaneObservation): string {
+  if (seen.state === "inside") return "";
+  if (seen.state === "outside") return seen.climb ? `${seen.detail}; ${seen.climb}` : seen.detail;
+  return seen.refusal;
 }
 
 /**

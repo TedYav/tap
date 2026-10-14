@@ -6,6 +6,8 @@
 set -euo pipefail
 # shellcheck source=skills/tap/scripts/smoke/sandbox-pins.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../tap/scripts/smoke/sandbox-pins.sh"
+# shellcheck source=skills/tap/scripts/smoke/harness-stubs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/harness-stubs.sh"
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 BINTAP="$ROOT/bin/tap"
@@ -76,8 +78,9 @@ echo "bin-tap: (3) bus stays cwd-derived (whoami resolves through the symlink): 
 #     touches real user homes; the advisory-hook wiring is skipped.
 IHOME="$WORK/install"; CHOME="$IHOME/claude"; XHOME="$IHOME/codex"; HHOME="$IHOME/hermes"; CUHOME="$IHOME/cursor"; OHOME="$IHOME/opencode"; CURHOME="$IHOME/cursor-agent"; AHOME="$IHOME/agents"
 mkdir -p "$CHOME" "$XHOME" "$HHOME" "$CUHOME" "$OHOME" "$CURHOME" "$AHOME"   # Homes exist so install targets them
+make_harness_stubs "$IHOME/harness-bin"   # ...and a home is wired only when its command is on PATH
 run_install() {
-  PATH="$IHOME/bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" \
+  PATH="$IHOME/bin:$IHOME/harness-bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" \
   TAP_CLAUDE_HOME="$CHOME" \
   TAP_CODEX_HOME="$XHOME" \
   TAP_HERMES_HOME="$HHOME" \
@@ -153,7 +156,8 @@ echo "bin-tap: (6) unregistered SessionStart is one non-authorizing line: ok"
 NEST="$WORK/nest"; NCHOME="$NEST/hermes"; mkdir -p "$NCHOME/skills/tap"   # a REAL dir at the target
 echo "keep me" > "$NCHOME/skills/tap/sentinel"
 nest_rc=0
-nest_out="$(PATH="$NEST/bin:$PATH" TAP_INSTALL_BIN="$NEST/bin" TAP_CLAUDE_HOME="$NEST/claude" TAP_CODEX_HOME="$NEST/codex" TAP_HERMES_HOME="$NCHOME" TAP_CURSOR_HOME="$NEST/cursor" TAP_OPENCODE_HOME="$NEST/opencode" TAP_GEMINI_HOME="$NEST/gemini" TAP_CURSOR_AGENT_HOME="$NEST/cursor-agent" TAP_AGENTS_HOME="$NEST/agents" TAP_INDEX_HOME="$NEST/tap-index" TAP_INSTALL_HOOK=0 bash "$ROOT/install.sh" 2>&1)" || nest_rc=$?
+make_harness_stubs "$NEST/harness-bin"
+nest_out="$(PATH="$NEST/bin:$NEST/harness-bin:$PATH" TAP_INSTALL_BIN="$NEST/bin" TAP_CLAUDE_HOME="$NEST/claude" TAP_CODEX_HOME="$NEST/codex" TAP_HERMES_HOME="$NCHOME" TAP_CURSOR_HOME="$NEST/cursor" TAP_OPENCODE_HOME="$NEST/opencode" TAP_GEMINI_HOME="$NEST/gemini" TAP_CURSOR_AGENT_HOME="$NEST/cursor-agent" TAP_AGENTS_HOME="$NEST/agents" TAP_INDEX_HOME="$NEST/tap-index" TAP_INSTALL_HOOK=0 bash "$ROOT/install.sh" 2>&1)" || nest_rc=$?
 [ ! -L "$NCHOME/skills/tap" ] || { echo "bin-tap: (7) install replaced a real dir with a symlink" >&2; exit 1; }
 [ -f "$NCHOME/skills/tap/sentinel" ] || { echo "bin-tap: (7) install clobbered real content at the skill target" >&2; exit 1; }
 [ "$nest_rc" -eq 0 ] || { echo "bin-tap: (7) a blocked harness stopped the install (rc $nest_rc): $nest_out" >&2; exit 1; }

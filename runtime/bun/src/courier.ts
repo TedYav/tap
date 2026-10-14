@@ -35,7 +35,7 @@ import { stampEnvelope, stampEnvelopeBytes, validateEnvelope, type Routing } fro
 import { atomicWrite, jsonObj, stagingPath } from "./fsatomic";
 import { renderSentinel } from "./sentinel";
 import { acquireObligationLock, acquirePaneLock } from "./panelock";
-import { observeProcessHarness, readProcessTable } from "./observe";
+import { nativeClaudeCommand, observeProcessHarness, readProcessTable } from "./observe";
 import { APPROVAL_PROMPT_REASON, CLAUDE_FEEDBACK_DRAFT_REASON, CLAUDE_SCROLLED_DRAFT_REASON, observeCopyMode, observeInputId, paneState, claudeFeedbackOverlay, isPasteCollapse, type CopyModeObservation, type InputObservation, type PaneBand } from "./pane-state";
 import { repaintPane, type RepaintGate, type RepaintResult } from "./pane/repaint";
 import { overprintRepaintGate, overprintRetryDue, readOverprintRecord, retireOverprintRecord } from "./overprint-marker";
@@ -412,6 +412,7 @@ export const REAL_EFFECTS: PaneEffects = {
 };
 
 function familyOf(command: string, families: ReadonlySet<string>): string {
+  if (families.has("claude") && nativeClaudeCommand(command)) return "claude";
   const name = (command.split("/").pop() ?? command).toLowerCase();
   for (const fam of families) {
     if (name === fam || name.startsWith(`${fam}-`)) return fam;
@@ -450,9 +451,9 @@ export function observeHarnessPid(
   agentFamilies: ReadonlySet<string>,
   panePid: string,
   env: NodeJS.ProcessEnv = process.env,
-): { state: "observed" | "unobservable"; family: string; pid?: string } {
-  const { table, ok } = readProcessTable(env);
-  return observeProcessHarness(panePid, table, ok, [...agentFamilies]);
+): { state: "observed" | "unobservable"; family: string; pid?: string; error?: string } {
+  const { table, ok, error } = readProcessTable(env);
+  return { ...observeProcessHarness(panePid, table, ok, [...agentFamilies]), ...(error ? { error } : {}) };
 }
 
 export function evaluateHarnessEvidence(
@@ -478,15 +479,16 @@ function collectEvidence(
   expected: string,
   fx: PaneEffects,
   authority?: SubmitAuthority,
-): HarnessEvidenceClass {
-  if (fx.harnessEvidence) return fx.harnessEvidence(obs, expected);
-  if (!authority) return "unobservable";
+): { state: HarnessEvidenceClass; error?: string } {
+  if (fx.harnessEvidence) return { state: fx.harnessEvidence(obs, expected) };
+  if (!authority) return { state: "unobservable" };
   const observed = familyOf(obs.currentCommand, authority.agentFamilies);
-  let processObs: { state: "observed" | "unobservable"; family: string } | null = null;
+  let processObs: ReturnType<typeof observeHarnessPid> | null = null;
   if (!authority.agentFamilies.has(observed) && !DENYLIST.has(observed)) {
     processObs = observeHarnessPid(authority.scriptsDir, authority.agentFamilies, obs.panePid);
   }
-  return evaluateHarnessEvidence(expected, obs.currentCommand, obs.panePid, authority.agentFamilies, processObs);
+  return { state: evaluateHarnessEvidence(expected, obs.currentCommand, obs.panePid, authority.agentFamilies, processObs),
+    ...(processObs?.error ? { error: processObs.error } : {}) };
 }
 
 /** Pre-placement twin of the post-lock authorize harness check. */
@@ -494,7 +496,7 @@ export function evaluateBoundHarness(
   obs: PaneObservation,
   expected: string,
   authority: SubmitAuthority,
-): HarnessEvidenceClass {
+): { state: HarnessEvidenceClass; error?: string } {
   return collectEvidence(obs, expected, REAL_EFFECTS, authority);
 }
 
@@ -684,7 +686,7 @@ function authorize(
       ? `the pane reports server generation ${obs.serverEpoch}, not the bound ${bound.serverEpoch}`
       : `the pane's server generation is not observable, so the bound generation ${bound.serverEpoch} cannot be verified` };
   }
-  const evidence = collectEvidence(obs, bound.harness ?? "", fx, authority);
+  const { state: evidence, error } = collectEvidence(obs, bound.harness ?? "", fx, authority);
   if (evidence === "alive" && checkInput && bound.serverEpoch && fx.inputHeld) {
     const held = fx.inputHeld(obs.paneId, obs.serverEpoch);
     if (held) return { status: "band_busy", bandState: "busy", detail: protectionDetail(held), disposition: {
@@ -695,7 +697,7 @@ function authorize(
   if (evidence === "alive") return { status: "ok", observation: obs };
   return {
     status: "identity_mismatch",
-    detail: `harness evidence ${evidence} for bound family '${bound.harness ?? ""}' (live command '${obs.currentCommand}')`,
+    detail: `harness evidence ${evidence} for bound family '${bound.harness ?? ""}' (live command '${obs.currentCommand}')${error ? `; ${error}` : ""}`,
   };
 }
 

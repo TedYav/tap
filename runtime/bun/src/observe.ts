@@ -19,6 +19,9 @@
 // removes live seats. Every `null`/`unobservable` path below is that rule.
 
 import { spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { invocationMemoActive, onInvocationMemoScope } from "./invocation-memo";
 import { REGISTRY_MAX_BUFFER } from "./spawn";
 import { PY_SPACE } from "./events";
@@ -235,6 +238,55 @@ export function classifyCommCommand(comm: string, command: string, families: rea
 }
 
 /**
+ * Holder classification for the caller-pane climb (held-terminal.md,
+ * condition 4): only the EXECUTABLE may name the family. `classifyCommCommand`
+ * above scans every command word, which is right for a pane's own harness
+ * (where the question is "which harness runs here") and wrong for an identity
+ * proof: `script -q /dev/null claude` and `xterm -e codex exec` both carry a
+ * harness name as a later argv word while being a terminal relay, not a
+ * harness. Candidates are therefore `comm`, `argv[0]`, and -- only when
+ * `argv[0]` is a supported script runtime (node, bun, deno, python) -- its
+ * script entrypoint, which is `argv[1]` and ONLY `argv[1]` (Claude Code
+ * installed through npm runs as `node .../claude-code/cli.js`). A runtime
+ * option may take a separate value (`node --require /tmp/claude.js
+ * relay.js`), and guessing which options do is how a preload value became an
+ * entrypoint (review, P1 round 4), so an option-led runtime command line is
+ * not admitted at all; the real harness shims pass the script first. A
+ * candidate names a
+ * family by its basename (an entrypoint's `.js`/`.mjs`/`.cjs`/`.py`/`.ts`
+ * suffix stripped), by a `<family>-` prefix on that basename, or by a
+ * `<family>-` path segment. Nothing after the entrypoint counts, and
+ * FAMILIES is the caller's fixed set. Claude's version-named native
+ * executable is NOT admitted here: `nativeClaudeCommand` proves only that a
+ * file of that name is executable under `$HOME`, which the judged process
+ * controls (review, P1 round 5), and Claude's tool children carry no
+ * terminal, so the walk reaches the claude process on the pane tty without
+ * this arm.
+ */
+const HOLDER_RUNTIMES = /^(node|bun|deno|python)[0-9.]*$/;
+export function classifyHolderCommand(comm: string, command: string, families: readonly string[]): string {
+  const words = shlexSplit(command);
+  const argv0 = words[0] ?? "";
+  const candidates = [comm, argv0];
+  if (HOLDER_RUNTIMES.test(pyBasename(argv0).toLowerCase())) {
+    const entry = words[1] ?? "";
+    if (entry !== "" && !entry.startsWith("-")) candidates.push(entry);
+  }
+  for (const word of candidates) {
+    const base = pyBasename(word);
+    const low = base.toLowerCase().replace(/\.(js|mjs|cjs|py|ts)$/, "");
+    for (const family of families) if (low === family || low.startsWith(`${family}-`)) return family;
+  }
+  for (const word of candidates) {
+    for (const segment of word.replaceAll("\\", "/").split("/")) {
+      const low = segment.toLowerCase();
+      for (const family of families) if (low.startsWith(`${family}-`)) return family;
+    }
+  }
+  return "";
+}
+
+/**
  * `shlex.split` enough for a ps command line, with Python's fallback: an
  * unbalanced quote raises ValueError there and the caller splits on
  * whitespace instead, so an unparseable command still yields words.
@@ -356,6 +408,15 @@ export function observeProcessHarness(
 
 export type HarnessState = "alive" | "exited" | "mismatch" | "unattested" | "unobservable";
 
+/** Claude's native executable is named by version, which tmux reports without its path. */
+export function nativeClaudeCommand(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!/^\d+\.\d+\.\d+$/.test(command)) return false;
+  try {
+    const binary = statSync(join(env.HOME || homedir(), ".local/share/claude/versions", command));
+    return binary.isFile() && (binary.mode & 0o111) !== 0;
+  } catch { return false; }
+}
+
 /**
  * Observation can CONFIRM an attested expectation but never mint one: an empty
  * expected family is a repairable write-boundary omission, not a matches-any
@@ -364,10 +425,11 @@ export type HarnessState = "alive" | "exited" | "mismatch" | "unattested" | "uno
 export function harnessEvidence(
   expectedHarness: string, command: string, panePid: string,
   psRows: PsTable | null, psOk: boolean, families: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
 ): { state: HarnessState; family: string } {
   const expected = harnessFamily(expectedHarness, families);
   if (!expected) return { state: "unattested", family: "" };
-  const observed = harnessFamily(command, families);
+  const observed = families.includes("claude") && nativeClaudeCommand(command, env) ? "claude" : harnessFamily(command, families);
   const klass = classifyHarness(observed, families);
   if (klass === "agent") return observed === expected ? { state: "alive", family: observed } : { state: "mismatch", family: observed };
   if (klass === "denylist") return { state: "exited", family: observed };
@@ -443,7 +505,7 @@ export function parsePanes(
     const [session, address, paneId, command, panePid, rawEpoch, dead] = parts as [string, string, string, string, string, string, string];
     if (!session) { mark(""); continue; }
     if (!address || !isPaneId(paneId) || (!command && dead !== "1") || (dead !== "0" && dead !== "1")) { mark(session); continue; }
-    if (!isAsciiDigits(panePid)) { mark(session); continue; }
+    if (!isAsciiDigits(panePid) && !(dead === "1" && panePid === "")) { mark(session); continue; }
     const parsed = serverEpochFromRaw(rawEpoch, epochPin);
     if (!parsed) { mark(session); continue; }
     const list = bySession.get(session) ?? [];
@@ -537,7 +599,7 @@ export interface RowInput {
 }
 
 /** `state\x1freason\x1fpane\x1fpane_id\x1fharness\x1fattached`. */
-export function classifyRow(row: RowInput, snap: Snapshot): string {
+export function classifyRow(row: RowInput, snap: Snapshot, env: NodeJS.ProcessEnv = process.env): string {
   const status = row.status || "active";
   const delivery = row.delivery || "pane";
   const pane = row.pane || "";
@@ -643,7 +705,7 @@ export function classifyRow(row: RowInput, snap: Snapshot): string {
     : record("offline", "pane_dead", selectedAddress, selectedId, "", attached);
 
   const { state: harnessState, family: observedHarness } = harnessEvidence(
-    expectedHarness, selectedCommand, selectedPid, snap.psRows, snap.psOk, snap.families,
+    expectedHarness, selectedCommand, selectedPid, snap.psRows, snap.psOk, snap.families, env,
   );
   if (harnessState === "alive") {
     if (recovering) return record("unbound", "server_restarted", selectedAddress, selectedId, observedHarness, attached);
@@ -673,7 +735,7 @@ export function observeRows(payload: ObservePayload, env: NodeJS.ProcessEnv = pr
   const snap = buildSnapshot(payload, env);
   return (payload.rows ?? []).map(row => {
     const key = row.key || "";
-    const record = classifyRow(row, snap);
+    const record = classifyRow(row, snap, env);
     return key !== "" ? `${key}${US}${record}` : record;
   });
 }
@@ -724,13 +786,16 @@ export function spawnProcessTable(env: NodeJS.ProcessEnv = process.env, timeoutM
 
 export function readProcessTable(
   env: NodeJS.ProcessEnv = process.env,
-): { table: PsTable | null; ok: boolean } {
+): { table: PsTable | null; ok: boolean; error?: string } {
   try {
     const r = spawnProcessTable(env);
-    if (r.status !== 0) return { table: null, ok: false };
+    if (r.status !== 0) {
+      const error = (r.stderr?.trim() || r.error?.message || "").replace(/\s+/g, " ").slice(0, 500);
+      return { table: null, ok: false, ...(error ? { error } : {}) };
+    }
     return { table: parsePsTable(r.stdout ?? ""), ok: true };
-  } catch {
-    return { table: null, ok: false };
+  } catch (error) {
+    return { table: null, ok: false, error: String(error).replace(/\s+/g, " ").slice(0, 500) };
   }
 }
 

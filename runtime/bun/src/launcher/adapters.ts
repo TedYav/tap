@@ -161,7 +161,10 @@ export function buildHarnessInvocation(
   const env: Record<string, string> = {};
   // A native resume restores its own model where it can (resume-tuning.ts); re-passing the launch model would undo /model.
   // An id-less resume that starts fresh (opencode) keeps the launch model; a native picker still restores the pick's.
-  const model = (): string[] => action === "resume" && resumeReopensSession(record.harness, resumed) && restoredAxes(record.harness).includes("model")
+  // A `tap launch --resume` reopens a conversation too (the picker's pick, or the exact id), so the same rule applies.
+  const reopensNative = action === "resume" ? resumeReopensSession(record.harness, resumed)
+    : action === "new" && !!record.launch_resume && resumeReopensSession(record.harness, record.launch_resume === "exact" ? record.harness_session_id : null);
+  const model = (): string[] => reopensNative && restoredAxes(record.harness).includes("model")
     ? [] : modelArgv(record.harness, record.model);
 
   if (record.harness === "claude") {
@@ -169,7 +172,10 @@ export function buildHarnessInvocation(
     argv.push(...model());
     if (record.name) argv.push("--name", record.name);
     if (action === "new") {
-      if (record.harness_session_id) {
+      // `tap launch --resume`: the native picker (bare --resume) or an exact conversation; no minted id.
+      if (record.launch_resume === "picker") argv.push("--resume");
+      else if (record.launch_resume === "exact" && record.harness_session_id) argv.push("--resume", record.harness_session_id);
+      else if (record.harness_session_id) {
         argv.push("--session-id", record.harness_session_id);
       }
     } else if (source) {
@@ -189,10 +195,12 @@ export function buildHarnessInvocation(
     const argv = ["codex", ...isolationArgv("codex"), ...permissionArgv("codex", mode, environ)];
     if (mode === "auto") refuseAmbientCodexSockets(environ, launchWorkdir(record));
     Object.assign(env, hostBootEnv("codex", mode, environ));
-    if (action === "resume") argv.push("resume");
+    const pickerLaunch = action === "new" && !!record.launch_resume;
+    if (action === "resume" || pickerLaunch) argv.push("resume");
     else if (source) argv.push("fork");
     argv.push(...model());
     if (action === "resume" && resumed) argv.push(resumed);
+    else if (pickerLaunch && record.launch_resume === "exact" && record.harness_session_id) argv.push(record.harness_session_id);
     else if (source) argv.push(source);
     if (initialPrompt) argv.push(initialPrompt);
     return { argv, env };

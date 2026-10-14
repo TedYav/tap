@@ -116,7 +116,7 @@ export function entryGuard(cwd: string): void {
 /** launcher.py SessionRecord dataclass defaults, so the transaction sees asdict(). */
 export function withRecordDefaults(record: LaunchRecord): LaunchRecord {
   return {
-    tag: null, index: null, model: null, harness_session_id: null, transcript_path: null,
+    tag: null, index: null, model: null, harness_session_id: null, launch_resume: null, transcript_path: null,
     quarantined_harness_session_id: null, quarantined_transcript_path: null, identity_quarantine_reason: null,
     adopted_from_manual: false, harness_passthrough: [], passthrough_from_config: false, harness_env: {},
     harness_unset_env: [], harness_tail: [], preset: null, permissions: null, history: [], last_launched: null,

@@ -157,7 +157,31 @@ test("setup keeps going past a blocked harness and then reports it",()=>{
  const f=fixture(),other=join(f.root,"other");mkdirSync(other);process.env.HOME=join(f.root,"empty-home");
  process.env.TAP_HERMES_HOME=f.home;writeFileSync(join(f.directory,"tap-help"),"personal");
  process.env.TAP_OPENCODE_HOME=other;const lines:string[]=[];
+ const bin=join(f.root,"bin");mkdirSync(bin);for(const c of ["hermes","opencode"]){writeFileSync(join(bin,c),"#!/bin/sh\nexit 0\n");chmodSync(join(bin,c),0o755);}process.env.PATH=bin;
  expect(()=>installMachineSkills(f.repo,false,l=>lines.push(l))).toThrow("skill links not installed for: Hermes");
  expect(readlinkSync(join(other,"skills/tap"))).toBe(join(f.repo,"skills/tap"));
  expect(lines.filter(l=>l.includes("WARNING"))).toHaveLength(1);
+});
+// tap-gjwtw: a present home whose harness command is not on PATH (and which has no
+// hooks file) is not wired. Both writers share this eligibility: the installer's
+// per-harness link and setup's machine-wide reconcile, in both kit modes.
+function stubCommand(bin:string,command:string){
+ mkdirSync(bin,{recursive:true});writeFileSync(join(bin,command),"#!/bin/sh\nexit 0\n");chmodSync(join(bin,command),0o755);
+}
+test("setup links an installed flat host and leaves a bare leftover home entirely untouched, in both kit modes",()=>{
+ const f=fixture();process.env.HOME=join(f.root,"empty-home");
+ const eligible=join(f.root,"opencode-home"),bare=join(f.root,"hermes-home"),bin=join(f.root,"bin");
+ mkdirSync(eligible);mkdirSync(bare);process.env.TAP_OPENCODE_HOME=eligible;process.env.TAP_HERMES_HOME=bare;
+ stubCommand(bin,"opencode");process.env.PATH=bin;
+ for(const fullKit of [false,true]){
+  const lines:string[]=[];installMachineSkills(f.repo,fullKit,l=>lines.push(l));
+  expect(readdirSync(bare)).toEqual([]);
+  expect(readlinkSync(join(eligible,"skills/tap"))).toBe(join(f.repo,"skills/tap"));
+  expect(readdirSync(join(eligible,"skills")).length).toBe((fullKit?PUBLIC_SKILLS:CORE_SKILLS).length);
+  expect(lines.some(l=>l.includes("skipped Hermes — present, not wired: hermes not installed"))).toBe(true);
+ }
+ expect(installSkillLinks(f.repo,"Hermes",bare,false,()=>{})).toEqual({ok:true});
+ expect(readdirSync(bare)).toEqual([]);
+ stubCommand(bin,"hermes");installMachineSkills(f.repo,false,()=>{});
+ expect(readlinkSync(join(bare,"skills/tap"))).toBe(join(f.repo,"skills/tap"));
 });

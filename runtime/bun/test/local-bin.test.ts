@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setupMachine, uninstallMachine } from "../src/verbs/machine";
+import { stubHarnessCommands } from "./support/harness-stubs";
 
 const repo = resolve(import.meta.dir, "../../..");
 const original = {...process.env};
@@ -26,7 +27,7 @@ afterEach(() => restoreLogs?.());
 function fixture() {
   const root = mkdtempSync("/tmp/tap-local-bin-"); roots.push(root);
   const home = join(root,"home"); mkdirSync(home);
-  process.env = {...original, HOME:home, XDG_CONFIG_HOME:join(root,"config"), TAP_INDEX_HOME:join(root,"index"), TAP_INSTALL_HOOK:"0", TAP_INSTALL_FORCE_NONPRIMARY:"1", PATH:join(home,".local/bin")+":"+original.PATH};
+  process.env = {...original, HOME:home, XDG_CONFIG_HOME:join(root,"config"), TAP_INDEX_HOME:join(root,"index"), TAP_INSTALL_HOOK:"0", TAP_INSTALL_FORCE_NONPRIMARY:"1", PATH:join(home,".local/bin")+":"+stubHarnessCommands(join(root,"harness-bin"))+":"+original.PATH};
   delete process.env.TAP_INSTALL_BIN;
   delete process.env.TAP_INSTALL_MANIFEST;
   for (const name of ["CLAUDE","CODEX","HERMES","CURSOR","OPENCODE","GEMINI","CURSOR_AGENT","AGENTS"]) process.env[`TAP_${name}_HOME`] = join(root,name);
@@ -111,7 +112,7 @@ for(const kind of ["file","foreign-link"])test(`migration preserves a user-owned
 });
 test("explicit Scripts override keeps the old location and does not migrate",()=>{
   const f=fixture();mkdirSync(join(f.home,"Scripts"));symlinkSync(join(repo,"bin/tap"),f.legacy);
-  process.env.TAP_INSTALL_BIN=join(f.home,"Scripts");process.env.PATH=process.env.TAP_INSTALL_BIN+":"+original.PATH;
+  process.env.TAP_INSTALL_BIN=join(f.home,"Scripts");process.env.PATH=process.env.TAP_INSTALL_BIN+":"+stubHarnessCommands(join(f.home,"../harness-bin"))+":"+original.PATH;
   const result=install();expect(result.exitCode).toBe(0);
   expect(readlinkSync(f.legacy)).toBe(join(repo,"bin/tap"));expect(existsSync(f.current)).toBe(false);
   expect(result.stdout.toString()).not.toContain("moved tap");

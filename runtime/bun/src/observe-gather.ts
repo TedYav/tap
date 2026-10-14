@@ -15,7 +15,7 @@
  * is why `scope` is a parameter here rather than a fourth copy of the gather.
  */
 import {
-  spawnProcessTable, classifyHarness, harnessFamily, agentFamilies, observeRows,
+  spawnProcessTable, classifyHarness, harnessFamily, nativeClaudeCommand, agentFamilies, observeRows,
   observeHarnessPidFromTable, readProcessTableMemoized,
   parsePanes, parseSessions,
   type ObservePayload, type RowInput, type PaneRecord,
@@ -127,11 +127,12 @@ function snapshotServerEpoch(text: string, env: NodeJS.ProcessEnv): string {
  * way — so the choice costs one `ps` and cannot make a verdict more permissive.
  * Named rather than left inside a parity claim that covers only the other shape.
  */
-function needsProcessTable(panesRc: number, panesText: string, families: readonly string[]): boolean {
+function needsProcessTable(panesRc: number, panesText: string, families: readonly string[], env: NodeJS.ProcessEnv): boolean {
   if (panesRc !== 0 || !panesText) return true;
   for (const line of panesText.split("\n")) {
     if (!line) continue;
     const command = line.split("\t")[3] ?? "";
+    if (families.includes("claude") && nativeClaudeCommand(command, env)) continue;
     const klass = classifyHarness(harnessFamily(command, families), families);
     if (klass !== "agent" && klass !== "denylist") return true;
   }
@@ -212,7 +213,7 @@ export function gather(options: GatherOptions = {}): Gathered {
   const families = agentFamilies(env);
   let psRc = 1;
   let psText = "";
-  if (options.processTable !== false && needsProcessTable(panesRc, panesText, families)) {
+  if (options.processTable !== false && needsProcessTable(panesRc, panesText, families, env)) {
     const ps = options.ps ? options.ps(env) : spawnProcessTable(env, remaining?.());
     psRc = ps.status ?? 1;
     psText = ps.stdout ?? "";

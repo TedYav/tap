@@ -211,9 +211,15 @@ export function launchInvocation(
       ? resolvedResumeIdentity(record, env, receipts) : null;
   }
   const target = options.nativeQuery === undefined ? resume : options.nativeQuery;
-  const tuning = action === "resume" ? resumeTuning(record, target, env, options.typedTail) : undefined;
+  // `tap launch --resume` reopens a conversation under action "new": its tuning composes as a resume's does, so an
+  // axis the harness restores natively (the picked conversation's own model, Codex's effort) is not re-passed from
+  // the preset or the tail, and an exact Codex id names its resume directory like any other Codex resume.
+  const reopened: ResumeIdentity | undefined = action === "new" && record.launch_resume
+    ? (record.launch_resume === "exact" ? record.harness_session_id ?? null : null) : undefined;
+  const tuning = action === "resume" ? resumeTuning(record, target, env, options.typedTail)
+    : reopened !== undefined ? resumeTuning(record, reopened, env, options.typedTail) : undefined;
   const composed = composeInvocation(buildInvocation(action, record, notices, env, options.prompt,
     resume, options.nativeQuery, receipts), record, notices, env, options.notify ?? true, tuning);
-  return action === "resume" && record.harness === "codex" && typeof target === "string" && target
-    ? withCodexResumeDirectory(composed, record, target) : composed;
+  const codexResumeId = record.harness === "codex" ? (action === "resume" ? target : reopened) : null;
+  return typeof codexResumeId === "string" && codexResumeId ? withCodexResumeDirectory(composed, record, codexResumeId) : composed;
 }

@@ -1,7 +1,8 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, appendFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { atomicWrite } from "../fsatomic";
 import { readRun, recoveryRoot, runDirectory } from "./state";
+import { copyRedactedFile, safeFields } from "../debug-capture";
 
 export interface RecoveryArtifact {
   id: string; directory: string; payloads: Array<{ id: string; home: string }>;
@@ -44,10 +45,10 @@ export function collectRecoveryArtifacts(directory: string, env = process.env): 
     if (index[item.id] === signature) continue;
     const destination = join(directory, "artifacts", item.id);
     mkdirSync(destination, { recursive: true, mode: 0o700 });
-    for (const file of states) copyFileSync(file.path, join(destination, basename(file.path)));
-    appendFileSync(join(directory, "events.jsonl"), JSON.stringify({ schema: 1, timestamp: new Date().toISOString(),
+    for (const file of states) copyRedactedFile(file.path, join(destination, basename(file.path)), env);
+    appendFileSync(join(directory, "events.jsonl"), JSON.stringify(safeFields({ schema: 1, timestamp: new Date().toISOString(),
       capture_id: session.id, event: "tap.recovery", recovery_id: item.id, payloads: item.payloads,
-      artifact: destination, summary: item.summary, error: item.error }) + "\n", { mode: 0o600 });
+      artifact: destination, summary: item.summary, error: item.error }, env)) + "\n", { mode: 0o600 });
     index[item.id] = signature;
     copied++;
   }

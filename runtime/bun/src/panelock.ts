@@ -188,6 +188,27 @@ export function acquireObligationLock(
   return acquireKernelLock("obligation", id, timeoutMs, env);
 }
 
+/** One bounded acquisition and why it ended: a held lock, or null with the original failure (null failure = contention). */
+export interface LockAttempt { lock: PaneLock | null; failure: Error | null; path: string }
+
+/**
+ * `acquireObligationLock`, keeping the reason a bounded acquisition came back empty.
+ * A null lock with no failure is contention or timeout. A failure is what the
+ * acquisition itself raised (EACCES, EROFS, EISDIR, a non-retryable flock errno):
+ * waiting will not clear it, and the caller should say so instead of blaming
+ * another process. Unbounded waits and an unavailable flock still throw.
+ */
+export function attemptObligationLock(
+  id: string,
+  timeoutMs = 5000,
+  env: NodeJS.ProcessEnv = process.env,
+): LockAttempt {
+  let path = join(lockRoot(env), `obligation-${id.replace(/[^A-Za-z0-9_.-]/g, "_")}.lock`);
+  try { path = lockPath("obligation", id, env); } // also creates the lock directory
+  catch (error) { return { lock: null, failure: error as Error, path }; }
+  return attemptKernelLockAt(path, timeoutMs);
+}
+
 /** Serialize readers that must observe one coherent acting-registry snapshot. */
 export function acquireRegistryLock(
   registryPath: string,
@@ -258,6 +279,10 @@ function acquireKernelLockAt(
   _env: NodeJS.ProcessEnv,
   mode: LockMode = "exclusive",
 ): PaneLock | null {
+  return attemptKernelLockAt(path, timeoutMs, mode).lock;
+}
+
+function attemptKernelLockAt(path: string, timeoutMs: number, mode: LockMode = "exclusive"): LockAttempt {
   // HELD IN THIS PROCESS. The lock used to belong to a spawned `lockf`/`flock`
   // helper parked on `cat`, which cost two process spawns per lock (the grant,
   // then a `lockf ... true` fence to prove the release) plus 10 ms marker
@@ -273,14 +298,14 @@ function acquireKernelLockAt(
     held = acquireFlock(path, helperWaitMs(timeoutMs), false, UNSERIALIZED, mode);
   } catch (error) {
     // An unusable sidecar (EISDIR/ENOTDIR/EACCES): an unbounded wait fails
-    // HERE, promptly, as it always did; a bounded one is a refusal.
+    // HERE, promptly, as it always did; a bounded one is a refusal that keeps its cause.
     if ((error as Error).message === UNSERIALIZED || timeoutMs === Infinity) throw error;
-    return null;
+    return { lock: null, failure: error as Error, path };
   }
-  if (!held) return null;
+  if (!held) return { lock: null, failure: null, path };
   // Release is synchronous and complete: the hold has ended when it returns,
   // which is what the helper's post-release `lockf ... true` fence proved.
-  return { release: (_fenceTimeoutMs?: number) => held.release() };
+  return { lock: { release: (_fenceTimeoutMs?: number) => held.release() }, failure: null, path };
 }
 
 /** Same in-process flock as the synchronous API; yielding makes unbounded waits cancellable. */

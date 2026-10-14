@@ -529,7 +529,9 @@ function parsePaneDisplay(stdout: string): { paneId: string; session: string; pa
   const fields = record.split("\t");
   if (fields.length !== 5) return null;
   const [paneId, session, panePid, currentCommand, dead] = fields;
-  if (!paneId || !/^%[0-9]+$/.test(paneId) || !session || !panePid || !/^[0-9]+$/.test(panePid)) return null;
+  if (!paneId || !/^%[0-9]+$/.test(paneId) || !session || panePid === undefined) return null;
+  // tmux 3.8 omits the PID after exit; retained pane identity still owns cleanup.
+  if (!/^[0-9]+$/.test(panePid) && !(dead === "1" && panePid === "")) return null;
   if (dead !== "0" && dead !== "1") return null;
   return { paneId, session, panePid, currentCommand: currentCommand ?? "", dead: dead === "1" };
 }

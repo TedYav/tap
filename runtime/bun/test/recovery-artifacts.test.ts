@@ -5,6 +5,32 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createRun, releaseRun, runDirectory } from "../src/recovery/state";
 import { collectArtifacts } from "../src/debug";
+import { copyRedactedFile } from "../src/debug-capture";
+
+test("malformed JSON evidence is retained through the text sanitizer", () => {
+  const root = mkdtempSync(join(tmpdir(), "tap-malformed-artifact-"));
+  const source = join(root, "broken.json"), target = join(root, "safe.json");
+  const raw = '{"AUTH_COOKIE":"unknown-secret", "useful":"partial evidence"';
+  writeFileSync(source, raw);
+  try {
+    copyRedactedFile(source, target, {});
+    expect(readFileSync(source, "utf8")).toBe(raw);
+    expect(readFileSync(target, "utf8")).toContain("partial evidence");
+    expect(readFileSync(target, "utf8")).not.toContain("unknown-secret");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("streaming artifact publication reports progress before exposing the destination", () => {
+  const root = mkdtempSync(join(tmpdir(), "tap-artifact-progress-"));
+  const source = join(root, "tmux-server-123.log"), target = join(root, "safe.log");
+  writeFileSync(source, "100.001 TOKEN=secret\n".repeat(10000));
+  let progress = 0;
+  try {
+    copyRedactedFile(source, target, {}, () => { progress++; expect(existsSync(target)).toBe(false); });
+    expect(progress).toBeGreaterThan(1);
+    expect(readFileSync(target, "utf8")).not.toContain("secret");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test("tap debug finds recovery by either id and collector retains frames after release with recording off", async () => {
   const root = mkdtempSync(join(tmpdir(), "tap-recovery-artifacts-"));
@@ -16,7 +42,7 @@ test("tap debug finds recovery by either id and collector retains frames after r
       session: "test/peer", instance: "instance", harness: "codex" }, "aggressive", [{ home: join(root, "bus"), id: "payload-123" }],
       "%12", process.pid, env, { now: Date.now(), processAlive: () => true, paneAlive: () => true });
     const directory = runDirectory(run.id, env);
-    writeFileSync(join(directory, "effect.before.ansi"), "\x1b[31mSettings dialog\n", { mode: 0o600 });
+    writeFileSync(join(directory, "effect.before.ansi"), "\x1b[31mSettings dialog\nSERVICE_TOKEN=artifact-secret\n", { mode: 0o600 });
     writeFileSync(join(directory, "effect.after.ansi"), "› ready\n", { mode: 0o600 });
     writeFileSync(join(directory, "events.jsonl"), JSON.stringify({ recoveryId: run.id, before: "effect.before.ansi", after: "effect.after.ansi", outcome: "unverified" }) + "\n");
     releaseRun(run.id, "staged message submitted; processing unconfirmed", env);
@@ -68,6 +94,8 @@ test("tap debug finds recovery by either id and collector retains frames after r
     expect(existsSync(join(root, "global-registry.json"))).toBe(false);
     await collectArtifacts({ id: "debug-session", directory: journal, socket: "", config: { max_mb: 1024 } }, {}, new Set(), env);
     expect(readFileSync(join(journal, "artifacts", run.id, "effect.before.ansi"), "utf8")).toContain("Settings dialog");
+    expect(readFileSync(join(journal, "artifacts", run.id, "effect.before.ansi"), "utf8")).not.toContain("artifact-secret");
+    expect(readFileSync(join(directory, "effect.before.ansi"), "utf8")).toContain("artifact-secret");
     const events = readFileSync(join(journal, "events.jsonl"), "utf8");
     expect(events).toContain(run.id); expect(events).toContain("payload-123");
   } finally { rmSync(root, { recursive: true, force: true }); }

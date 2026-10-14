@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readManifestRecord, writeManifestAtomically, type ManifestEntry } from "./install-manifest";
+import { probeHarness, SKILL_LABEL_KEYS, wiresHome } from "./install-harness-state";
 import { aliasBody, aliasDirectory, canonicalSkillName, CORE_SKILLS, OPTIONAL_SKILLS, LEGACY_SKILL_NAMES, flatSkillName, REPO_LOCAL_SKILLS, RETIRED_SKILLS, SKILL_HOMES, savedFullKit, skillManifestPath } from "./skill-policy";
 import { installSkillPlugin, skillPluginReady } from "./install-skill-plugin";
 
@@ -91,6 +92,9 @@ export function installSkillLinks(repo: string, label: string, home: string, ful
   if (!existsSync(home) || !statSync(home).isDirectory()) {
     log(`install: skipped ${label} — ${home} does not exist (no ${label} install detected)`); return { ok: true };
   }
+  // A present home whose harness is not installed is left alone by every writer (tap-gjwtw).
+  const key = SKILL_LABEL_KEYS[label], probe = key ? probeHarness(key, home) : undefined;
+  if (probe && !wiresHome(probe)) { log(`install: skipped ${label} — present, not wired: ${probe.reason}`); return { ok: true }; }
   const manifestPath = skillManifestPath(), directory = join(home,"skills");
   const lines: string[] = [], undo: Array<() => void> = [];
   let current = directory, snapshotted = false;

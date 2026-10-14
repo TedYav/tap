@@ -47,7 +47,7 @@ const FLAGS: Record<string, string[]> = {
   "keybinding install": ["--key", "--tap", "--dry-run", "--json"],
   "keybinding remove": ["--dry-run", "--json"],
   "keybinding status": ["--json"],
-  "tmux-defaults install": ["--dry-run", "--json"],
+  "tmux-defaults install": ["--dry-run", "--status-bar", "--no-status-bar", "--json"],
   "tmux-defaults remove": ["--dry-run", "--json"],
   "tmux-defaults status": ["--json"],
 };

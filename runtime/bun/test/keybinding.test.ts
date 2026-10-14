@@ -52,7 +52,7 @@ test("install writes TAP's conf and exactly one marked source line; a rerun is a
   const first = run("install", "--tap", tap);
   expect(first.code, first.out).toBe(0);
   expect(readFileSync(userConf(), "utf8")).toBe(`set -g mouse on\n${SRC()}\n`);
-  expect(readFileSync(tapConfPath(), "utf8")).toBe(renderConf("@", tap));
+  expect(readFileSync(tapConfPath(), "utf8")).toBe(renderConf("C-g", tap));
   const again = run("install", "--tap", tap);
   expect(again.code).toBe(0);
   expect(again.out).toContain("already installed");
@@ -99,27 +99,27 @@ test("remove leaves a user-edited marker line and a user-edited TAP conf alone",
   expect(existsSync(tapConfPath())).toBe(true);
 });
 
-test("an existing prefix @ binding in the user's conf is shown and never replaced", () => {
-  writeFileSync(userConf(), "bind-key -N 'mine' @ display-message hi\n");
+test("an existing prefix C-g binding in the user's conf is shown and never replaced", () => {
+  writeFileSync(userConf(), "bind-key -N 'mine' C-g display-message hi\n");
   const r = run("install", "--tap", tap);
   expect(r.code).toBe(1);
   expect(r.error.errorClass).toBe("key_bound");
   expect(r.error.detail).toContain("display-message hi");
   expect(r.error.action).toContain("--key");
   expect(existsSync(tapConfPath())).toBe(false);
-  expect(readFileSync(userConf(), "utf8")).toBe("bind-key -N 'mine' @ display-message hi\n");
+  expect(readFileSync(userConf(), "utf8")).toBe("bind-key -N 'mine' C-g display-message hi\n");
 });
 
 test("a binding in a sourced file (literal, glob, relative) blocks install; root-table and other keys do not", () => {
   mkdirSync(join(home, "binds"), { recursive: true });
-  writeFileSync(join(home, "binds", "keys.conf"), "bind @ split-window\n");
+  writeFileSync(join(home, "binds", "keys.conf"), "bind C-g split-window\n");
   writeFileSync(userConf(), "source-file ~/binds/*.conf\n");
   expect(run("install", "--tap", tap).error?.errorClass).toBe("key_bound");
   writeFileSync(userConf(), "source -q binds/keys.conf\n");
   rmSync(join(home, ".tmux.conf"));
   writeFileSync(userConf(), `source-file -q "${join(home, "binds", "keys.conf")}"\n`);
   expect(run("install", "--tap", tap).error?.errorClass).toBe("key_bound");
-  writeFileSync(join(home, "binds", "keys.conf"), "bind -n @ split-window\nbind -T copy-mode @ send -X cancel\nbind g new-window\n");
+  writeFileSync(join(home, "binds", "keys.conf"), "bind -n C-g split-window\nbind -T copy-mode C-g send -X cancel\nbind g new-window\n");
   expect(run("install", "--tap", tap).code).toBe(0);
 });
 
@@ -130,13 +130,13 @@ test("a sourced path TAP cannot resolve refuses instead of guessing", () => {
 
 test("a binding already live in a running server blocks install; --key picks another", () => {
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
-  expect(T("bind-key", "@", "display-message", "live").status).toBe(0);
+  expect(T("bind-key", "C-g", "display-message", "live").status).toBe(0);
   const r = run("install", "--tap", tap);
   expect(r.error?.errorClass).toBe("key_bound");
   expect(r.error.detail).toContain("running tmux");
-  expect(run("install", "--tap", tap, "--key", "g").code).toBe(0);
-  expect(bound("g")).toContain("pick --pane");
-  expect(bound("@")).toContain("display-message live");
+  expect(run("install", "--tap", tap, "--key", "F6").code).toBe(0);
+  expect(bound("F6")).toContain("pick --pane");
+  expect(bound("C-g")).toContain("display-message live");
 });
 
 test("install loads the binding into a running server through tmux's own parser, with a space in the tap path", () => {
@@ -144,7 +144,7 @@ test("install loads the binding into a running server through tmux's own parser,
   const r = run("install", "--tap", tap);
   expect(r.code, r.out).toBe(0);
   expect(r.out).not.toContain("takes effect when tmux starts");
-  const listed = bound("@");
+  const listed = bound("C-g");
   expect(listed).toContain("run-shell -b");
   expect(listed).toContain("display-popup -c '#{client_name}' -E");
   expect(listed).toContain(tap);
@@ -152,15 +152,33 @@ test("install loads the binding into a running server through tmux's own parser,
   expect(run("status").code).toBe(0);
 });
 
+test("the new default preserves tmux's stock keys and existing TAP installations keep their key", () => {
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
+  const previous = bound("@");
+  expect(run("install", "--tap", tap).code).toBe(0);
+  expect(bound("C-g")).toContain("pick --pane");
+  expect(bound("@")).toBe(previous);
+  expect(run("remove").code).toBe(0);
+  writeFileSync(tapConfPath(), renderConf("@", tap));
+  writeFileSync(userConf(), `${SRC()}\n`);
+  expect(T("source-file", tapConfPath()).status).toBe(0);
+  expect(run("install", "--tap", tap).out).toContain("already installed");
+  expect(readFileSync(tapConfPath(), "utf8")).toBe(renderConf("@", tap));
+  expect(bound("C-g")).toBe("");
+  expect(bound("@")).toContain("pick --pane");
+  expect(run("remove").code).toBe(0);
+  expect(bound("@")).toBe("");
+});
+
 test("remove also unbinds the live binding, but only while it is still TAP's", () => {
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
   expect(run("install", "--tap", tap).code).toBe(0);
   expect(run("remove").code).toBe(0);
-  expect(bound("@")).toBe("");
+  expect(bound("C-g")).toBe("");
   expect(run("install", "--tap", tap).code).toBe(0);
-  expect(T("bind-key", "@", "display-message", "replaced").status).toBe(0);
+  expect(T("bind-key", "C-g", "display-message", "replaced").status).toBe(0);
   expect(run("remove").code).toBe(0);
-  expect(bound("@")).toContain("replaced");
+  expect(bound("C-g")).toContain("replaced");
 });
 
 test("unsafe or relative tap paths and bad keys are refused before any write", () => {
@@ -182,20 +200,20 @@ test("--dry-run changes nothing; status exits 0 reporting installed:false until 
   const parsed = JSON.parse(before.out);
   expect(parsed).toMatchObject({ ok: true, installed: false, key: null });
   expect(run("install", "--tap", tap).code).toBe(0);
-  expect(JSON.parse(run("status", "--json").out)).toMatchObject({ installed: true, key: "@", tap, source_line_present: true });
+  expect(JSON.parse(run("status", "--json").out)).toMatchObject({ installed: true, key: "C-g", tap, source_line_present: true });
   const dryRemove = run("remove", "--dry-run");
   expect(dryRemove.out).toContain("would remove");
   expect(existsSync(tapConfPath())).toBe(true);
 });
 
 test("boundKey reads only prefix-table binds", () => {
-  expect(boundKey("bind-key @ foo")).toBe("@");
-  expect(boundKey("bind -r -N 'a note' @ foo")).toBe("@");
-  expect(boundKey("bind -T prefix @ foo")).toBe("@");
-  expect(boundKey("bind -n @ foo")).toBeNull();
-  expect(boundKey("bind -T copy-mode-vi @ foo")).toBeNull();
+  expect(boundKey("bind-key C-g foo")).toBe("C-g");
+  expect(boundKey("bind -r -N 'a note' C-g foo")).toBe("C-g");
+  expect(boundKey("bind -T prefix C-g foo")).toBe("C-g");
+  expect(boundKey("bind -n C-g foo")).toBeNull();
+  expect(boundKey("bind -T copy-mode-vi C-g foo")).toBeNull();
   expect(boundKey("set -g prefix C-a")).toBeNull();
-  expect(boundKey("bind @ foo # comment")).toBe("@");
+  expect(boundKey("bind C-g foo # comment")).toBe("C-g");
 });
 
 test("an older tmux or a missing one is a clear refusal (fake tmux first on PATH)", () => {
@@ -261,24 +279,24 @@ test("reinstall never overwrites a TAP conf the user edited, and remove never de
 
 test("a live binding that merely mentions pick --pane is not TAP's: install refuses it and remove leaves it bound", () => {
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
-  expect(T("bind-key", "@", "display-message", "pick --pane lookalike").status).toBe(0);
+  expect(T("bind-key", "C-g", "display-message", "pick --pane lookalike").status).toBe(0);
   expect(run("install", "--tap", tap).error?.errorClass).toBe("key_bound");
-  expect(run("install", "--tap", tap, "--key", "g").code).toBe(0);
-  expect(T("bind-key", "g", "display-message", "pick --pane lookalike").status).toBe(0);   // user replaces TAP's g
+  expect(run("install", "--tap", tap, "--key", "F6").code).toBe(0);
+  expect(T("bind-key", "F6", "display-message", "pick --pane lookalike").status).toBe(0);   // user replaces TAP's F6
   expect(run("remove").code).toBe(0);
-  expect(bound("g")).toContain("lookalike");
+  expect(bound("F6")).toContain("lookalike");
 });
 
 test("quoted, escaped, chained and conditional bindings are decoded or refused, never assumed unbound", () => {
   const block = (conf: string) => { writeFileSync(userConf(), conf); const r = run("install", "--tap", tap); rmSync(userConf(), { force: true }); rmSync(tapConfPath(), { force: true }); return r; };
-  for (const conf of ["bind-key '@' display-message mine\n", 'bind-key "@" display-message mine\n', "bind-key -T 'prefix' @ display-message mine\n",
-    "set -g mouse on ; bind @ display-message mine\n", "bind-key \\\n  @ display-message mine\n", "bind \\@ display-message mine\n", "bind @ { display-message mine }\n"]) {
+  for (const conf of ["bind-key 'C-g' display-message mine\n", 'bind-key "C-g" display-message mine\n', "bind-key -T 'prefix' C-g display-message mine\n",
+    "set -g mouse on ; bind C-g display-message mine\n", "bind-key \\\n  C-g display-message mine\n", "bind \\C-g display-message mine\n", "bind C-g { display-message mine }\n"]) {
     expect(block(conf).error?.errorClass, conf).toBe("key_bound");
   }
-  for (const conf of ["if-shell 'true' 'bind @ display-message mine'\n", "run-shell \"tmux bind @ display-message x\"\n", "bind $KEY display-message x\n"]) {
+  for (const conf of ["if-shell 'true' 'bind C-g display-message mine'\n", "run-shell \"tmux bind C-g display-message x\"\n", "bind $KEY display-message x\n"]) {
     expect(block(conf).error?.errorClass, conf).toBe("config_unresolved");
   }
-  for (const conf of ["bind -n @ x\n", "bind -T copy-mode-vi '@' x\n", "# bind @ commented out\n", "set -g status-left '#(echo bind @)'\n"]) {
+  for (const conf of ["bind -n C-g x\n", "bind -T copy-mode-vi 'C-g' x\n", "# bind C-g commented out\n", "set -g status-left '#(echo bind C-g)'\n"]) {
     expect(block(conf).code, conf).toBe(0);
   }
 });
@@ -289,7 +307,7 @@ test("a refused reload is reported and the disk state stays for a retry; an unch
   expect(failed.error?.errorClass).toBe("reload_failed");
   expect(failed.error.detail).toContain("source-file refused");
   expect(readFileSync(userConf(), "utf8")).toBe(`${SRC()}\n`);
-  expect(readFileSync(tapConfPath(), "utf8")).toBe(renderConf("@", tap));
+  expect(readFileSync(tapConfPath(), "utf8")).toBe(renderConf("C-g", tap));
   const repaired = withPath(fakeTmux("empty"), () => run("install", "--tap", tap, "--json"));     // disk unchanged; server lacks the binding
   expect(JSON.parse(repaired.out)).toMatchObject({ changed: false, reloaded: true });
 });
@@ -326,7 +344,7 @@ test("tap uninstall removes the keybinding too: dry-run previews, --yes removes,
   expect(kept.out).toContain("kept");
   expect(readFileSync(tapConfPath(), "utf8")).toBe(edited);
   expect(readFileSync(userConf(), "utf8")).not.toContain(MARKER);
-  writeFileSync(tapConfPath(), renderConf("@", tap)); writeFileSync(userConf(), `${SRC()}\n`); manifest();
+  writeFileSync(tapConfPath(), renderConf("C-g", tap)); writeFileSync(userConf(), `${SRC()}\n`); manifest();
   const gone = await withPathAsync(fakeTmux("none"), () => quiet(["--yes"]));
   expect(gone.code).toBe(0);
   expect(existsSync(tapConfPath())).toBe(false);
@@ -338,7 +356,7 @@ async function withPathAsync<T>(bin: string, fn: () => Promise<T>): Promise<T> {
 }
 
 test("a conditional or run-time source is uncertain and refuses, even when the sourced file binds the key", () => {
-  const keys = join(home, "keys.conf"); writeFileSync(keys, "bind-key @ display-message mine\n");
+  const keys = join(home, "keys.conf"); writeFileSync(keys, "bind-key C-g display-message mine\n");
   for (const conf of [`if-shell -F 1 'source-file ${keys}'\n`, `run-shell "tmux source ${keys}"\n`, "if '[ -f ~/x ]' 'source ~/x'\n"]) {
     writeFileSync(userConf(), conf);
     expect(run("install", "--tap", tap).error?.errorClass, conf).toBe("config_unresolved");
@@ -358,10 +376,10 @@ test("changing the key unbinds the old live key first; a refused unbind rewrites
   chmodSync(join(bin, "tmux"), 0o755);
   const refused = withPath(bin, () => run("install", "--tap", tap, "--key", "F5"));
   expect(refused.error?.errorClass).toBe("unbind_failed");
-  expect(readFileSync(tapConfPath(), "utf8")).toBe(before);       // still names @, so remove can finish the job
+  expect(readFileSync(tapConfPath(), "utf8")).toBe(before);       // still names C-g, so remove can finish the job
   expect(bound("F5")).toBe("");
   expect(run("install", "--tap", tap, "--key", "F5").code).toBe(0);
-  expect(bound("@")).toBe("");
+  expect(bound("C-g")).toBe("");
   expect(bound("F5")).toContain("run-shell");
 });
 
@@ -406,7 +424,7 @@ test("uninstall stops before removing TAP when the keybinding cannot be unbound"
 
 test("a relative glob in a sourced config is expanded from the config's directory and the working directory", () => {
   mkdirSync(join(home, "conf.d"), { recursive: true });
-  writeFileSync(join(home, "conf.d", "keys.conf"), "bind @ display-message mine\n");
+  writeFileSync(join(home, "conf.d", "keys.conf"), "bind C-g display-message mine\n");
   writeFileSync(userConf(), "source-file conf.d/*.conf\n");
   expect(run("install", "--tap", tap).error?.errorClass).toBe("key_bound");
 });
@@ -491,7 +509,7 @@ test("every abbreviation tmux accepts for bind-key is still a bind", () => {
   for (const name of ["bi", "bin", "bind-", "bind-k", "bind-ke", "bind-key", "bind"]) {
     expect(T(name, "F9", "display-message", "mine").status, `real tmux: ${name}`).toBe(0);
     T("unbind-key", "F9");
-    writeFileSync(userConf(), `${name} @ split-window\n`);
+    writeFileSync(userConf(), `${name} C-g split-window\n`);
     expect(run("install", "--tap", tap).error?.errorClass, name).toBe("key_bound");
   }
 });
@@ -517,11 +535,11 @@ function unreadableTmux(): string {
 test("uninstall unbinds the loaded TAP key even when its conf was hand-edited, and keeps the edited file", async () => {
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
   expect(run("install", "--tap", tap).code).toBe(0);
-  expect(bound("@")).toContain("run-shell");
+  expect(bound("C-g")).toContain("run-shell");
   writeFileSync(tapConfPath(), `${readFileSync(tapConfPath(), "utf8")}# my harmless comment\n`);
   const done = await uninstallWith(null);
   expect(done.code, done.out).toBe(0);
-  expect(bound("@")).toBe("");                                   // the loaded binding is gone, not stranded
+  expect(bound("C-g")).toBe("");                                   // the loaded binding is gone, not stranded
   expect(existsSync(done.artifact)).toBe(false);                 // and TAP itself went
   expect(readFileSync(tapConfPath(), "utf8")).toContain("# my harmless comment");
   expect(readFileSync(userConf(), "utf8")).not.toContain(MARKER);
@@ -539,11 +557,11 @@ test("an edited conf whose live binding cannot be read stops uninstall before TA
 test("an edited conf's binding that is no longer TAP's exact command is left alone", async () => {
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
   expect(run("install", "--tap", tap).code).toBe(0);
-  expect(T("bind-key", "@", "display-message", "mine").status).toBe(0);   // the user rebound it by hand
+  expect(T("bind-key", "C-g", "display-message", "mine").status).toBe(0);   // the user rebound it by hand
   writeFileSync(tapConfPath(), `${readFileSync(tapConfPath(), "utf8")}# edited\n`);
   const done = await uninstallWith(null);
   expect(done.code, done.out).toBe(0);
-  expect(bound("@")).toContain("display-message");
+  expect(bound("C-g")).toContain("display-message");
 });
 
 test("uninstall finds and removes an earlier install made under a different XDG_CONFIG_HOME", async () => {
@@ -551,12 +569,12 @@ test("uninstall finds and removes an earlier install made under a different XDG_
   process.env.XDG_CONFIG_HOME = join(home, "xdg-old");
   expect(run("install", "--tap", tap).code).toBe(0);
   const oldConf = tapConfPath();
-  expect(bound("@")).toContain("run-shell");
+  expect(bound("C-g")).toContain("run-shell");
   process.env.XDG_CONFIG_HOME = join(home, "xdg-new");
   expect(keybindingInstalledNow()).toBe(true);                   // the marked line alone is enough to be found
   const done = await uninstallWith(null);
   expect(done.code, done.out).toBe(0);
-  expect(bound("@")).toBe("");
+  expect(bound("C-g")).toBe("");
   expect(existsSync(oldConf)).toBe(false);
   expect(readFileSync(userConf(), "utf8")).not.toContain(MARKER);
   expect(existsSync(done.artifact)).toBe(false);
@@ -575,11 +593,11 @@ test("a live TAP key whose config is out of reach (marker in the old XDG tmux.co
   expect(stopped.code, stopped.out).toBe(2);
   expect(stopped.out).toContain("came from a config this run cannot locate");
   expect(existsSync(stopped.artifact)).toBe(true);                // TAP is kept, so the key is not left broken
-  expect(bound("@")).toContain("run-shell");
+  expect(bound("C-g")).toContain("run-shell");
   const removed = run("remove");
   expect(removed.code, removed.out).toBe(0);
   expect(removed.out).toContain("delete its marked");
-  expect(bound("@")).toBe("");
+  expect(bound("C-g")).toBe("");
   const done = await uninstallWith(null);
   expect(done.code, done.out).toBe(0);
   expect(existsSync(done.artifact)).toBe(false);
@@ -607,27 +625,27 @@ test("an earlier XDG install that cannot be accounted for stops uninstall", asyn
 });
 
 // ---- Codex round 3 ---------------------------------------------------------------------------------------------------
-test("abbreviated source-file, conditional bi, and combined bind flags cannot hide a prefix @ binding", () => {
-  const keys = join(home, "keys.conf"); writeFileSync(keys, "bind-key @ display-message mine\n");
+test("abbreviated source-file, conditional bi, and combined bind flags cannot hide a prefix C-g binding", () => {
+  const keys = join(home, "keys.conf"); writeFileSync(keys, "bind-key C-g display-message mine\n");
   writeFileSync(userConf(), `source-f ${keys}\n`);
   expect(run("install", "--tap", tap).error?.errorClass, "source-f").toBe("key_bound");
-  writeFileSync(userConf(), "if-shell 'true' 'bi @ split-window'\n");
+  writeFileSync(userConf(), "if-shell 'true' 'bi C-g split-window'\n");
   expect(run("install", "--tap", tap).error?.errorClass, "if-shell bi").toBe("config_unresolved");
   writeFileSync(userConf(), "ru 'tmux source-file x'\n");
   expect(run("install", "--tap", tap).error?.errorClass, "ru").toBe("config_unresolved");
   writeFileSync(userConf(), "run-shell '/usr/local/bin/helper'\n");   // a path containing bin is not a command word
   expect(run("install", "--tap", tap).code).toBe(0);
-  for (const line of ["bind-key -rT prefix @ split-window", "bind -nrT root x split-window\nbind -rTprefix @ split-window", "bind-key -N note -T prefix @ split-window"]) {
-    expect(boundKey(line.split("\n").at(-1)!), line).toBe("@");
+  for (const line of ["bind-key -rT prefix C-g split-window", "bind -nrT root x split-window\nbind -rTprefix C-g split-window", "bind-key -N note -T prefix C-g split-window"]) {
+    expect(boundKey(line.split("\n").at(-1)!), line).toBe("C-g");
   }
-  expect(boundKey("bind-key -rT copy-mode @ split-window")).toBeNull();
+  expect(boundKey("bind-key -rT copy-mode C-g split-window")).toBeNull();
   // An attached operand is arbitrary text: -N"my note" and -Nmine-now are real tmux, and neither is the key.
   expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
   for (const attached of ["-Nmine-now", '-N"my note"', "-N'a; b'"]) {
     expect(T("bind-key", ...(attached.startsWith("-N\"") ? ["-Nmy note"] : attached.startsWith("-N'") ? ["-Na; b"] : [attached]), "-T", "prefix", "F9", "display-message", "mine").status, attached).toBe(0);
     T("unbind-key", "F9");
-    expect(boundKey(`bind-key ${attached} -T prefix @ display-message mine`), attached).toBe("@");
-    writeFileSync(userConf(), `bind-key ${attached} -T prefix @ display-message mine\n`);
+    expect(boundKey(`bind-key ${attached} -T prefix C-g display-message mine`), attached).toBe("C-g");
+    writeFileSync(userConf(), `bind-key ${attached} -T prefix C-g display-message mine\n`);
     expect(run("install", "--tap", tap).error?.errorClass, attached).toBe("key_bound");
   }
 });

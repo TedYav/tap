@@ -6,7 +6,8 @@ signed in. TAP supplies communication; the harnesses supply models and accounts.
 
 ## 1. Install once
 
-Start the installing agent outside the TAP clone and point it at
+Start the installing agent in the folder you want as your first project (it
+keeps the TAP clone elsewhere) and point it at
 [AGENT-SETUP](AGENT-SETUP.md). That runbook holds a paste-ready installation
 prompt and covers the permanent clone, prerequisites, permission choices and
 installation checks. It creates no presets. Return here after those steps.
@@ -121,7 +122,9 @@ The captured Codex 0.156.1 screen offers **Trust all and continue** and
 Labels can change between Codex versions. Trusting enables the hooks. Declining
 or skipping leaves TAP's shell-body guard and SessionStart hooks inactive in
 that seat until you trust them through Codex's hook review. Installation does
-not pre-trust them, and the agent must not choose trust on your behalf.
+not pre-trust them, and TAP's courier never answers a trust or permission
+dialog. An installing agent trusts these two hooks only when you approved that
+in its automatic-test list, and never chooses **Trust all**.
 
 After your choice, detach and return to the asking pane. Ask it to check the
 original question's status. A dismissed menu or a ready roster is still not the
@@ -201,41 +204,31 @@ before giving it more work.
 
 ## Bring an existing conversation into a named seat
 
-Use the same harness and project directory as the old conversation. First launch
-a new seat with the name you want; for example, a Claude Code seat named `writer`:
+Use the same harness and project directory as the old conversation, and launch
+the seat with the picker flag; for example, a Claude Code seat named `writer`:
 
 ```bash
-tap session launch claude writer
-tap attach writer
+tap launch claude writer --resume
 ```
 
-Inside the agent CLI, run its own `/resume` command and select the old
-conversation. Then reconnect that pane with `tap in`. For a simple TAP command,
-use your harness's shell shortcut, such as `!tap in`, instead of the skill form
-(`/tap in` or `/tap:in`): it uses fewer tokens and is simpler. Use the skill when
-you want the agent to manage a lifecycle or make decisions. This reconnects an
-existing conversation; newly TAP-launched seats are already registered. Ask the
-agent to run `tap whoami` and confirm it is `writer`. The conversation comes from the
-harness; the seat's name comes from TAP. Stop if the reported name differs, and
-have the agent resolve the mismatch before sending it work. The tmux session label
-may still show the launcher’s original name after resume; `tap whoami` reports
-the current TAP handle.
+The seat opens the harness's own conversation picker for this directory. Pick
+the old conversation; TAP binds it as the seat's identity when the harness's
+SessionStart runs (Codex: once its hooks are trusted). `tap whoami` then
+reports `writer`, and a later `tap session resume writer` reopens that
+conversation. If nothing binds, run `tap in` from the seat (the shell shortcut
+`!tap in` is cheaper than the skill form); it binds the same way.
 
-A matching name proves the handle, not the conversation. The seat can expect
-the new conversation it launched with (Claude Code seats always do), so `tap in`
-after a resume may print
-`Captured harness identity was not accepted` and a warning that the session id
-`did not match launcher expectation`. Messaging still works, but a later
-`tap session resume writer` would not reopen the conversation you resumed. To keep the one
-you resumed, and only for that warning, run `!tap in writer --accept-observed-identity`.
-Its `accepting observed <id>` line must name the conversation you picked; if it
-says `changed nothing`, names another id, or the warning stays, stop and ask the
-agent to report it. To know the id, have the agent print it before you leave
-the old conversation (`echo $CLAUDE_CODE_SESSION_ID` or `echo $CODEX_THREAD_ID`).
-No warning does not prove the binding either: the
-[installation runbook](AGENT-SETUP.md#relaunch-yourself-inside-tap) shows how to
-compare the seat's recorded id with yours. Without a matching id, treat a later
-`tap session resume writer` as unverified.
+`--resume=<id>` resumes a known conversation id directly instead of opening the
+picker. Claude Code and Codex have pickers; other harnesses refuse the flag:
+launch them fresh, run their own resume inside, then `tap in`. A seat launched
+without the flag that resumes a different conversation inside the app is
+quarantined until `tap in <seat> --accept-observed-identity`; prefer the flag.
+
+The conversation comes from the harness; the seat's name comes from TAP. Stop
+if `tap whoami` reports a different name, and have the agent resolve the
+mismatch before sending it work. The tmux session label may still show the
+launcher's original name after a resume; `tap whoami` reports the current TAP
+handle.
 
 ## Run without bypass mode
 
@@ -257,7 +250,10 @@ The flags per harness live in
   the tmux socket, so a seat could not send or read. TAP therefore also turns on
   Codex's network proxy with no allowed domains, allows only your tmux socket
   through it, and lets the sandbox write TAP's index folder (`~/.tap`, or
-  `TAP_INDEX_HOME`). Other network destinations stay blocked for commands the
+  `TAP_INDEX_HOME`) and the receipt folders of team buses enrolled when the seat
+  launches. Missing or symlinked receipt folders refuse launch; other cross-team writes,
+  such as parked-mail recovery, still need approved sandbox escalation. A later
+  enrollment may need escalation or a seat relaunch. Other network destinations stay blocked for commands the
   sandbox runs; Codex's own model traffic is not affected. This composes with your
   own Codex config: TAP's settings are what it guarantees.
 - **Cursor**: `--auto-review`. Safe calls run; the rest wait for you.
@@ -290,7 +286,7 @@ TAP runs every seat inside tmux. First-run setup can install two optional tmux
 integrations (never on a plain sync; both removable, and neither edits your
 own lines):
 
-- The lookup key: `prefix @` opens the teammate picker — `tap keybinding install`.
+- The lookup key: `prefix C-g` opens the teammate picker — `tap keybinding install`.
 - Managed tmux defaults so tmux behaves like a bare terminal — `tap tmux-defaults install`.
 
 The defaults are one TAP-owned file, `~/.config/tap/tmux-defaults.conf`, plus
@@ -300,7 +296,10 @@ settings — so anything you set yourself always wins. What they do: true color
 in both copy modes, middle click leaves copy mode, focus reporting on, 10,000
 lines of history, and a working clipboard: `pbcopy` on macOS, `wl-copy` or
 `xclip` on Linux, OSC 52 fallback over SSH — chosen at install time. TAP sets
-no escape-time and no extended-keys. `tap tmux-defaults status --json` reports
+no escape-time and no extended-keys. If you have no tmux config yet, the same file also
+holds a calm status bar (team/session, windows by name, the time); with a config of your
+own you get it only through `tap tmux-defaults install --status-bar`, and
+`--no-status-bar` leaves it out either way. `tap tmux-defaults status --json` reports
 what is installed and what the running server shows; `--dry-run` prints the
 exact lines first; `tap tmux-defaults remove` deletes the file and the marked
 line (options already loaded stay until tmux restarts).

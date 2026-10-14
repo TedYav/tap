@@ -65,6 +65,8 @@ for host in claude codex; do
   printf '#!/bin/sh\nexec "%s" "%s" "%s" "$@"\n' "$REAL_BUN" "$SRC/runtime/bun/test/fixtures/native-plugin-cli.ts" "$host" > "$TOOLS/$host"
   chmod 755 "$TOOLS/$host"
 done
+# The stranger has OpenCode installed too; the installer wires a home only when its command is on PATH.
+printf '#!/bin/sh\nexit 0\n' > "$TOOLS/opencode"; chmod 755 "$TOOLS/opencode"
 # The runner's tmux may be its namespace guard, which finds the real binary beside itself: exec it.
 printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v tmux)" > "$TOOLS/tmux"; chmod 755 "$TOOLS/tmux"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexec /usr/bin/git "$@"\n' "$GITLOG" > "$GITSHIM/git"

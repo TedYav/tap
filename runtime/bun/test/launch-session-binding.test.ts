@@ -67,6 +67,10 @@ for (;;) {
 if (mode === "fence") {
   writeFileSync(bus + "/reset.fence.json", "unreadable\\n");
   writeFileSync(heldFlag, "");
+} else if (mode === "late") {
+  // The launch has finished (launch_id promoted) with no bind: the picker sat open. Then the pick happens.
+  await Bun.sleep(1500);
+  writeFileSync(heldFlag, "");
 } else if (mode === "park") {
   // One authorized parked message for the new seat (tap-iee3x).
   const { mkdirSync } = await import("node:fs");
@@ -93,14 +97,18 @@ function fakeClaude(f: { root: string; bus: string; registry: string }, mode: st
   const held = join(f.root, "held");
   writeFileSync(join(f.root, "bin/claude"), `#!/bin/bash
 printf '%s\\n' "$@" > '${f.root}/argv'
-sid=""; prev=""
-for a in "$@"; do [ "$prev" = --session-id ] && sid="$a"; prev="$a"; done
+sid=""; prev=""; src=startup
+for a in "$@"; do [ "$prev" = --session-id ] && sid="$a"; [ "$a" = --resume ] && src=resume; prev="$a"; done
+# A picker launch passes no id: the picked conversation's own id is what SessionStart reports.
+[ -z "$sid" ] && sid="picked-$$"
+printf '%s\n' "$sid" > '${f.root}/picked'
+
 transcript='${f.root}/.claude/projects/fixture/'"$sid.jsonl"
 mkdir -p "$(dirname "$transcript")"; : > "$transcript"
 (
   ${mode === "now" ? `: > '${held}'` : `{ '${process.execPath}' '${f.root}/holder.ts' '${f.registry}' '${f.bus}' '${mode}' '${held}' 2>'${f.root}/holder.err'; echo $? > '${f.root}/holder.rc'; } &`}
   for _ in $(seq 1 300); do [ -e '${held}' ] && break; sleep 0.05; done
-  printf '{"hook_event_name":"SessionStart","source":"startup","session_id":"%s","transcript_path":"%s"}\\n' "$sid" "$transcript" \\
+  printf '{"hook_event_name":"SessionStart","source":"%s","session_id":"%s","transcript_path":"%s"}\\n' "$src" "$sid" "$transcript" \\
     | TAP_HOME= TAP_HARNESS_SESSION_ID=stale-generic CLAUDE_CODE_SESSION_ID=stale-native TAP_BUN_ROUTE_TRACE='${f.root}/route.trace' ${hookMode === "claude" ? `CLAUDE_PROJECT_DIR="$PWD" bun '${hook}' claude` : `bun '${hook}' context '${f.root}'`} >'${f.root}/hook.out' 2>'${f.root}/hook.err'
   echo $? > '${f.root}/hook.rc'
 ) &
@@ -270,3 +278,38 @@ echo $? > '${rc}'
   expect(readFileSync(index, "utf8")).toBe(before.index);
   expect(readFileSync(f.registry, "utf8")).toBe(before.registry);
 }, 60_000);
+
+// tap-14aa9: a `--resume` seat opens the harness's picker and mints no id. The launch
+// completes unbound after its 5 s start window; the pick (and so SessionStart) comes
+// later, and must still bind the picked conversation as this seat's identity through
+// the promoted launch witness, with nothing in between refusing the bind.
+test("a picker launch binds a SessionStart that arrives long after the launch's own bind window", async () => {
+  const f = fixture();
+  fakeClaude(f, "late");
+  const started = performance.now();
+  // Plain mode: the picker notice is prose, which --json suppresses with every other notice.
+  const launch = spawnSync("bash", [publicBin, "session", "launch", "testseat", "reviewer", "--resume"], {
+    cwd: f.root, env: process.env, encoding: "utf8", timeout: 30_000, killSignal: "SIGKILL" });
+  expect(launch.status, launch.stderr + launch.stdout).toBe(0);
+  expect(launch.stdout).toContain("pick the conversation in claude's picker");
+  const argv = readFileSync(join(f.root, "argv"), "utf8").split("\n");
+  expect(argv).toContain("--resume");
+  expect(argv).not.toContain("--session-id");
+  // The launch returned before the pick: the row is active and unbound, its witness promoted.
+  const before = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
+  expect(before.status).toBe("active");
+  expect(before.launch_id).toBeUndefined();
+  expect(before.harness_session_id).toBeUndefined();
+  expect(before.identity_capture).toEqual({ mode: "launcher_new" });
+  const deadline = Date.now() + 30_000;
+  while (!existsSync(join(f.root, "hook.rc")) && Date.now() < deadline) await Bun.sleep(100);
+  expect(readFileSync(join(f.root, "hook.rc"), "utf8").trim()).toBe("0");
+  const picked = readFileSync(join(f.root, "picked"), "utf8").trim();
+  const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
+  expect(row.harness_session_id).toBe(picked);
+  expect(row.identity_capture_result).toMatchObject({ decision: "accepted", mode: "launcher_new", observed_harness_session_id: picked });
+  expect(row.identity_capture).toBeUndefined();
+  expect(row.quarantined_harness_session_id).toBeUndefined();
+  expect(row.identity_quarantine_reason).toBeUndefined();
+  expect(performance.now() - started).toBeGreaterThan(5000);
+}, 40_000);

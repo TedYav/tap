@@ -3,7 +3,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { DefaultsSpec, MARKER, UPDATE_ENVIRONMENT, cmdTmuxDefaults, defaultsInstalled, defaultsOptions, defaultsPath, detectClipboardMode, detectSpec, firstCommandIndex, recordedMode, renderDefaults, sourceLine } from "../src/verbs/tmux-defaults";
+import { DefaultsSpec, MARKER, STATUS_LINES, UPDATE_ENVIRONMENT, cmdTmuxDefaults, defaultsInstalled, defaultsOptions, defaultsPath, detectClipboardMode, detectSpec, firstCommandIndex, humanHasTmuxConfig, recordedMode, renderDefaults, sourceLine } from "../src/verbs/tmux-defaults";
 
 // Every effect stays under a scratch HOME and a private tmux socket inside the runner's TMUX_TMPDIR.
 const root = realpathSync(mkdtempSync(join(tmpdir(), "td-")));
@@ -149,7 +149,7 @@ test("--dry-run --json is one parseable JSON value carrying the exact preview by
   const parsed = JSON.parse(dry.out);   // throws unless stdout is exactly one JSON value
   expect(parsed).toMatchObject({ ok: true, dry_run: true, changed: true, defaults_file: defaultsPath(), user_conf: userConf() });
   expect(parsed.preview.source_line).toBe(SRC());
-  expect(parsed.preview.defaults_file_content).toBe(renderDefaults({ mode: parsed.clipboard, terminal: parsed.terminal }));
+  expect(parsed.preview.defaults_file_content).toBe(renderDefaults({ mode: parsed.clipboard, terminal: parsed.terminal, status: parsed.status_bar }));
   expect(existsSync(defaultsPath())).toBe(false);
 });
 
@@ -249,10 +249,10 @@ test("stale SSH_CONNECTION is reported per session with its repair, and cleared 
 
 test("every clipboard mode renders owned bytes, and the recorded mode survives a platform change", () => {
   for (const mode of ["pbcopy", "wl-copy", "xclip", "osc52"] as const) {
-    const text = renderDefaults({ mode, terminal: "pin" });
+    const text = renderDefaults({ mode, terminal: "pin", status: false });
     expect(text.split("\n")[0]).toBe(MARKER);
     expect(recordedMode(text)).toBe(mode);
-    const options = defaultsOptions({ mode, terminal: "pin" });
+    const options = defaultsOptions({ mode, terminal: "pin", status: false });
     if (mode === "osc52") {
       expect(options["set-clipboard"]).toBe("on");
       expect(options["copy-command"]).toBeUndefined();
@@ -412,7 +412,7 @@ test("completion offers the subcommands and then its flags", async () => {
   const { completionCandidates } = await import("../src/completion");
   expect(completionCandidates(["tap", "tmux-defaults", ""], 3).map(c => c.value)).toEqual(["install", "remove", "status"]);
   expect(completionCandidates(["tap", "tmux-defaults", "i"], 3).map(c => c.value)).toEqual(["install"]);
-  expect(completionCandidates(["tap", "tmux-defaults", "install", "--"], 4).map(c => c.value)).toEqual(expect.arrayContaining(["--dry-run", "--json"]));
+  expect(completionCandidates(["tap", "tmux-defaults", "install", "--"], 4).map(c => c.value)).toEqual(expect.arrayContaining(["--dry-run", "--status-bar", "--no-status-bar", "--json"]));
   expect(completionCandidates(["tap", "tmux-defaults", "status", "--"], 4).map(c => c.value)).toEqual(["--json"]);
 });
 
@@ -467,7 +467,7 @@ test("tap uninstall keeps an edited defaults file and still removes the source l
 test("a recorded mode whose tool has vanished re-detects on install, so the reinstall advice is true", () => {
   process.env.SSH_CONNECTION = "1.2.3.4 5 6.7.8.9 22";       // install "over SSH": osc52 recorded, no tool
   expect(run("install").code).toBe(0);
-  expect(readFileSync(defaultsPath(), "utf8")).toBe(renderDefaults({ mode: "osc52", terminal: "pin" }));
+  expect(readFileSync(defaultsPath(), "utf8")).toBe(renderDefaults({ mode: "osc52", terminal: "pin", status: true }));
   delete process.env.SSH_CONNECTION;
   const bin = join(root, `pbdir${n++}`); mkdirSync(bin, { recursive: true });
   writeFileSync(join(bin, "pbcopy"), "#!/bin/sh\n"); chmodSync(join(bin, "pbcopy"), 0o755);
@@ -476,7 +476,7 @@ test("a recorded mode whose tool has vanished re-detects on install, so the rein
     const r = run("install", "--json");                        // the SSH reason is gone and a tool exists now
     expect(r.code, r.out).toBe(0);
     expect(JSON.parse(r.out)).toMatchObject({ clipboard: "pbcopy", changed: true });
-    expect(readFileSync(defaultsPath(), "utf8")).toBe(renderDefaults({ mode: "pbcopy", terminal: "pin" }));
+    expect(readFileSync(defaultsPath(), "utf8")).toBe(renderDefaults({ mode: "pbcopy", terminal: "pin", status: true }));
     expect(run("install").out).toContain("already installed"); // and it is idempotent at the new mode
   } finally { process.env.PATH = path; }
 });
@@ -524,3 +524,147 @@ function renderDefaultsToFile(): string {
   writeFileSync(file, renderDefaults(SPEC()));
   return file;
 }
+
+// ---- the status-bar section ---------------------------------------------------------------------------------------
+const statusJson = () => JSON.parse(run("status", "--json").out);
+const installed = () => readFileSync(defaultsPath(), "utf8");
+
+test("a file written before the status section existed is still TAP's: status off renders the legacy bytes", () => {
+  const spec: DefaultsSpec = { mode: "osc52", terminal: "pin", status: false };
+  const legacy = renderDefaults(spec);
+  expect(legacy).not.toContain("status");   // no header line, no option: byte-identical to the pre-section render
+  expect(legacy.split("\n").slice(0, 4)).toEqual([MARKER, "# clipboard=osc52", "# terminal=pin", "# Managed by `tap tmux-defaults`; `tap tmux-defaults remove` deletes this file."]);
+  mkdirSync(join(home, ".config", "tap"), { recursive: true });
+  writeFileSync(defaultsPath(), legacy);
+  writeFileSync(userConf(), `${SRC()}\nset -g mouse off\n`);
+  const st = statusJson();
+  expect(st.defaults_owned).toBe(true);
+  expect(st.status_bar).toBe(false);
+  expect(st.installed).toBe(true);
+  expect(run("remove").code).toBe(0);
+  expect(existsSync(defaultsPath())).toBe(false);
+});
+
+test("a first-timer with no tmux config gets the status bar by default and status --json reports it", () => {
+  const r = run("install");
+  expect(r.code, r.out).toBe(0);
+  expect(r.out).toContain("status bar");
+  expect(installed()).toBe(renderDefaults({ ...SPEC(), status: true }));
+  expect(installed().split("\n")[3]).toBe("# status=on");
+  const st = statusJson();
+  expect(st.status_bar).toBe(true);
+  expect(st.options["status-left"]).toContain("#S");
+});
+
+test("an existing tmux config, at either path, gets no status bar unless --status-bar; --no-status-bar opts out either way", () => {
+  writeFileSync(userConf(), "set -g history-limit 99999\n");
+  expect(run("install").code).toBe(0);
+  expect(installed()).not.toContain("status-style");
+  expect(statusJson().status_bar).toBe(false);
+  expect(run("remove").code).toBe(0);
+  mkdirSync(join(home, ".config", "tmux"), { recursive: true });
+  rmSync(userConf());
+  writeFileSync(join(home, ".config", "tmux", "tmux.conf"), "set -g mouse off\n");
+  expect(run("install").code).toBe(0);
+  expect(statusJson().status_bar).toBe(false);
+  expect(run("remove").code).toBe(0);
+  expect(run("install", "--status-bar").code).toBe(0);
+  expect(statusJson().status_bar).toBe(true);
+  expect(run("remove").code).toBe(0);
+  rmSync(join(home, ".config", "tmux", "tmux.conf"));
+  expect(run("install", "--no-status-bar").code).toBe(0);
+  expect(statusJson().status_bar).toBe(false);
+});
+
+test("TAP's own lines, a blank conf or a comment-only conf do not make a human tmux config", () => {
+  writeFileSync(userConf(), `# just a note\n\nsource-file -q "/x/tmux.conf" # tap-keybinding\n`);
+  expect(humanHasTmuxConfig()).toBe(false);
+  expect(run("install").code).toBe(0);
+  expect(statusJson().status_bar).toBe(true);
+  writeFileSync(userConf(), `${readFileSync(userConf(), "utf8")}set -g mouse off\n`);
+  expect(humanHasTmuxConfig()).toBe(true);
+});
+
+test("a rerun keeps the recorded status choice even though the first install created ~/.tmux.conf; a flag flips only the file", () => {
+  expect(run("install").code).toBe(0);
+  const confAfterFirst = readFileSync(userConf(), "utf8");
+  const again = run("install");
+  expect(again.out).toContain("already installed");
+  expect(statusJson().status_bar).toBe(true);
+  const off = run("install", "--no-status-bar");
+  expect(off.code, off.out).toBe(0);
+  expect(statusJson().status_bar).toBe(false);
+  expect(readFileSync(userConf(), "utf8")).toBe(confAfterFirst);
+  expect(run("install").out).toContain("already installed");   // the off choice is recorded too
+  expect(statusJson().status_bar).toBe(false);
+  expect(run("install", "--status-bar").code).toBe(0);
+  expect(statusJson().status_bar).toBe(true);
+});
+
+test("contradictory or misplaced status flags are usage errors", () => {
+  expect(run("install", "--status-bar", "--no-status-bar").error.code).toBe(1);
+  expect(run("remove", "--status-bar").error.code).toBe(1);
+  expect(run("status", "--no-status-bar").error.code).toBe(1);
+});
+
+test("--dry-run prints the exact status lines and writes nothing; --json carries them in the preview", () => {
+  const text = run("install", "--status-bar", "--dry-run");
+  expect(text.code).toBe(0);
+  for (const line of STATUS_LINES) expect(text.out).toContain(line);
+  expect(existsSync(defaultsPath())).toBe(false);
+  expect(existsSync(userConf())).toBe(false);
+  const json = JSON.parse(run("install", "--status-bar", "--dry-run", "--json").out);
+  expect(json.status_bar).toBe(true);
+  expect(json.preview.defaults_file_content).toContain("# status=on");
+});
+
+test("remove deletes a status-bar file; an edited one is kept", () => {
+  expect(run("install").code).toBe(0);
+  expect(run("remove").code).toBe(0);
+  expect(existsSync(defaultsPath())).toBe(false);
+  expect(readFileSync(userConf(), "utf8")).not.toContain(MARKER);
+  expect(run("install").code).toBe(0);
+  writeFileSync(defaultsPath(), `${installed()}# mine\n`);
+  expect(run("remove").code).toBe(0);
+  expect(existsSync(defaultsPath())).toBe(true);
+});
+
+test("the status section shows names, not indexes or hostname, and real tmux loads it with the user's own lines winning", () => {
+  const section = STATUS_LINES.join("\n");
+  expect(section).not.toMatch(/#I|#H|#h|#\{host/);
+  expect(section).toContain("#S");
+  expect(section).toContain("#W");
+  const file = join(root, `status${n++}.conf`);
+  writeFileSync(file, renderDefaults({ ...SPEC(), status: true }));
+  const user = join(root, `userstatus${n++}.conf`);
+  writeFileSync(user, `source-file -q "${file}"\nset -g status-right "mine"\n`);
+  expect(T("-f", user, "new-session", "-d", "-s", "team-seat").status).toBe(0);
+  expect(T("show", "-gv", "status-right").stdout.trim()).toBe("mine");
+  expect(T("show", "-gv", "status-left").stdout).toContain("#S");
+  expect(T("show", "-gv", "window-status-format").stdout).toBe(" #W \n");
+  expect(T("display-message", "-p", "-t", "team-seat", "#{T:status-left}").stdout).toContain("team-seat");
+});
+
+test("the running server's status values match the options byte for byte, edge spaces included", () => {
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "x").status).toBe(0);
+  expect(run("install").code).toBe(0);
+  const st = statusJson();
+  expect(st.live.server).toBe("up");
+  for (const key of ["status-left", "status-right", "window-status-format", "window-status-current-format"]) {
+    expect(st.live.values[key], key).toBe(st.options[key]);
+  }
+  for (const key of ["status-left", "status-right", "window-status-format"]) expect(st.options[key], key).toMatch(/^ | $/);   // the spaces the old trim() dropped
+});
+
+test("the status colours name the terminal's own colours, not tmux's surrounding-style default", () => {
+  const section = STATUS_LINES.join("\n");
+  expect(section).toContain("bg=terminal");
+  expect(section).not.toMatch(/[bf]g=default/);
+});
+
+test("opting out of the status bar on a loaded server says its styling stays until tmux restarts", () => {
+  expect(run("install").code).toBe(0);
+  const off = run("install", "--no-status-bar");
+  expect(off.out).toContain("status bar already loaded stays until tmux restarts");
+  expect(run("install", "--status-bar").out).not.toContain("stays until tmux restarts");
+});

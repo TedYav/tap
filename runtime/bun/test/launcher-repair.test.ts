@@ -123,6 +123,9 @@ test("seven-field observation carries its own epoch and preserves tabs in path",
   expect(parseRepairPane(facts(undefined, undefined, undefined, "800:90", "/with\ttab"))).toMatchObject({ epoch: "srv:800:90", path: "/with\ttab", pid: "777", dead: false });
   for (const bad of ["", "%7\trepo/scout\t777\tclaude", facts().replace("\t0\t777\t", "\t?\t777\t"), facts() + "\n" + facts()]) expect(parseRepairPane(bad)).toBeNull();
   expect(() => parseRepairPane(facts(undefined, "%bad"))).toThrow("identity_unverified");
+  expect(parseRepairPane(facts().replace("\t0\t777\t", "\t1\t\t"))).toMatchObject({ paneId: "%7", dead: true, pid: "" });
+  expect(parseRepairPane(facts().replace("\t0\t777\t", "\t0\t\t"))).toBeNull();
+  expect(parseRepairPane(facts().replace("\t0\t777\t", "\t1\tbad\t"))).toBeNull();
 });
 
 test("shared record projection keeps caller-specific integer lexemes and ordered Maps", () => {
@@ -133,6 +136,32 @@ test("shared record projection keeps caller-specific integer lexemes and ordered
 });
 
 describe("row reconciliation and reporting", () => {
+  test.each(["777", ""])("repair refuses retained dead panes without writing (pid=%s)", pid => {
+    for (const target of ["%7", "repo/scout:0.0", "repo/scout", "listed"]) {
+      for (const dry of [false, true]) {
+        const fx = fixture();
+        const dead = facts().replace("\t0\t777\t", `\t1\t${pid}\t`);
+        fx.row.boot_id = "boot:old";
+        fx.state.panes = target === "listed" ? {} : { [target]: dead };
+        fx.state.candidates = dead;
+        fx.save();
+        const before = registryBytes(fx);
+        expect(fx.worker(undefined, dry).status, `${target}, dry=${dry}`).toBe("not_live");
+        expect(registryBytes(fx)).toBe(before);
+      }
+    }
+  });
+
+  test("repair skips a retained dead active pane and listed candidate when recovering a live pane", () => {
+    const fx = fixture();
+    const dead = facts().replace("\t0\t777\t", "\t1\t\t");
+    fx.state.panes = { "repo/scout": dead };
+    fx.state.candidates = dead + "\n" + facts("repo/scout:1.0", "%8");
+    fx.save();
+    expect(fx.worker().status).toBe("repaired");
+    expect(savedRow(fx).pane_id).toBe("%8");
+  });
+
   test("current rows write nothing; dry-run stops before publication and instance minting", () => {
     const fx = fixture(), before = registryBytes(fx), mtime = statSync(fx.registry).mtimeMs;
     expect(jsonResult(fx).repaired[0].status).toBe("already_current");

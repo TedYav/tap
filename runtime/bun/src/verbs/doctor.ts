@@ -1423,8 +1423,8 @@ function scanCodexSeats(registryPath: string, findings: Finding[], env: NodeJS.P
           name: "codex_seat_node_unresolvable",
           attention: true,
           detail: { handle, pane_id: paneId, pid },
-          problem: `attention: codex seat '${handle}' (pid ${pid}) has no 'node' on PATH — plugin hooks will exit 127`,
-          next: "restart codex from a login shell, or add node's bin dir to the seat's PATH",
+          problem: `attention: codex seat '${handle}' (pid ${pid}) has no 'node' on PATH — third-party Codex plugin hooks that run bare 'node' will exit 127 (TAP's own hooks use bun and bash and are unaffected)`,
+          next: "the seat's PATH comes from the shell tmux started it in, and nvm-style node loads only in a login shell: restart codex from a login shell, or add node's bin dir to that PATH",
         });
       }
     } catch (e) {

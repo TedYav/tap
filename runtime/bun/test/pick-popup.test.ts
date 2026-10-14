@@ -9,7 +9,7 @@ import type { PickerTeam } from "../src/attach-picker";
 import { fixtureFzf } from "./support/fzf-fixture";
 
 // A real tmux server on a private socket, a real pty client, the real generated binding:
-// prefix @ -> display-popup -> picker -> send-keys into the pane that was active at the keypress.
+// prefix C-g -> display-popup -> picker -> send-keys into the pane that was active at the keypress.
 const root = realpathSync(mkdtempSync(join(tmpdir(), "popup-")));
 const socket = `popup-${process.pid}`;
 const saved = { ...process.env };
@@ -169,7 +169,7 @@ finally:
 interface Outcome { origin: string[]; other: string[]; hist: number; log: string }
 const lines = (pane: string) => T("capture-pane", "-p", "-J", "-t", pane).stdout.split("\n").map(l => l.trimEnd()).filter(Boolean);
 
-/** Start a fresh server, bind prefix @ through `tap keybinding install`, drive the popup from a pty client. */
+/** Start a fresh server, bind prefix C-g through `tap keybinding install`, drive the popup from a pty client. */
 function scenario(steps: [string, string][], env: Record<string, string> = {}): Outcome {
   T("kill-server"); rmSync(join(root, "popup.log"), { force: true });
   const shell = `env PS1='${prompt}' bash --norc --noprofile`;
@@ -188,12 +188,12 @@ function scenario(steps: [string, string][], env: Record<string, string> = {}): 
   return { origin: lines(originId), other: lines(otherId), hist: Number(T("display-message", "-p", "-t", originId, "#{history_size}").stdout),
     log: existsSync(join(root, "popup.log")) ? readFileSync(join(root, "popup.log"), "utf8") : "no popup.log" };
 }
-const select: [string, string][] = [["READY>", "\x02@"], ["Teammate >", "sol"], ["1/2", "\r"]];
+const select: [string, string][] = [["READY>", "\x02\x07"], ["Teammate >", "sol"], ["1/2", "\r"]];
 const selectAndContinue: [string, string][] = [...select, ["READY> beta/sol", "x"]];
 /** The invariants the feature promises, as one predicate so mutants can be shown to trip it. */
 const typedOnly = (o: Outcome, typed: string) => o.origin.length === 1 && o.origin[0] === `${prompt}${typed}` && o.other.length === 1 && o.other[0] === prompt.trimEnd();
 
-test("prefix @ opens the popup; selection types a trailing space for continued typing, without Enter", () => {
+test("prefix C-g opens the popup; selection types a trailing space for continued typing, without Enter", () => {
   const o = scenario(selectAndContinue);
   expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol x`]);
   expect(typedOnly(o, "beta/sol x")).toBe(true);
@@ -201,12 +201,12 @@ test("prefix @ opens the popup; selection types a trailing space for continued t
 
 // fzf's default smart-case would read "Sol" as case-sensitive and match nothing ("0/2").
 test("a capital in the query still finds a lowercase handle", () => {
-  const o = scenario([["READY>", "\x02@"], ["Teammate >", "Sol"], ["1/2", "\r"]]);
+  const o = scenario([["READY>", "\x02\x07"], ["Teammate >", "Sol"], ["1/2", "\r"]]);
   expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
 }, 60_000);
 
 test("Esc closes the popup and types nothing", () => {
-  const o = scenario([["READY>", "\x02@"], ["Teammate >", "\x1b"]]);
+  const o = scenario([["READY>", "\x02\x07"], ["Teammate >", "\x1b"]]);
   expect(o.origin).toEqual([prompt.trimEnd()]);
   expect(o.other).toEqual([prompt.trimEnd()]);
 }, 60_000);
@@ -214,12 +214,12 @@ test("Esc closes the popup and types nothing", () => {
 test("the built-in list works without fzf: type to narrow, Enter picks, and Esc cancels at once", () => {
   const o = scenario(select.map(s => s[0] === "1/2" ? ["sol", "\r"] as [string, string] : s), { LOOKUP_CHOOSER: "list" });
   expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
-  const e = scenario([["READY>", "\x02@"], ["Teammate >", "\x1b"]], { LOOKUP_CHOOSER: "list" });
+  const e = scenario([["READY>", "\x02\x07"], ["Teammate >", "\x1b"]], { LOOKUP_CHOOSER: "list" });
   expect(e.origin).toEqual([prompt.trimEnd()]);
 }, 90_000);
 
 test("the built-in list takes a whole chunk at once: 'sol' and Enter arriving together still select", () => {
-  const o = scenario([["READY>", "\x02@"], ["Teammate >", "sol\r"]], { LOOKUP_CHOOSER: "list" });
+  const o = scenario([["READY>", "\x02\x07"], ["Teammate >", "sol\r"]], { LOOKUP_CHOOSER: "list" });
   expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}beta/sol`]);
 }, 60_000);
 
@@ -250,7 +250,7 @@ test("RED mutant: typing into the other pane instead of the captured origin is c
 // ("beta/sol  codex (crew)" beats "zeta-team/sol  codex (crew)"), so only the index tiebreak picks zeta-team.
 const tie = [...teams.slice(0, 2), { name: "zeta-team", state: "ok", detail: "", seats: [{ handle: "sol", harness: "codex", session: "zeta-team/sol", crew: true }] }];
 const tieEnv = { LOOKUP_TEAMS: JSON.stringify(tie), LOOKUP_CURRENT: "zeta-team" };
-const tieSelect: [string, string][] = [["READY>", "\x02@"], ["Teammate >", "sol"], ["2/3", "\r"]];
+const tieSelect: [string, string][] = [["READY>", "\x02\x07"], ["Teammate >", "sol"], ["2/3", "\r"]];
 test("the same handle on two teams: Enter types the current team's seat", () => {
   const o = scenario(tieSelect, tieEnv);
   expect(o.origin, JSON.stringify(o)).toEqual([`${prompt}zeta-team/sol`]);

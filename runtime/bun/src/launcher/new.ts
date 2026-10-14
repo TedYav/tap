@@ -22,7 +22,7 @@ import { timestamp } from "./repair";
 import { resolveLaunchPresetArgs } from "./resolve-target";
 import { allocatedIndex, attachTailInProcess, baseAlias, cmdSessionResume, findRecordByKey, occupiedSessionNames,
   receipt, registryEntry, unexpiredSeats } from "./resume";
-import { resolvedResumeIdentity, seatReviveTier } from "./resume-identity";
+import { claudeChildStoreRoot, claudeSessionTranscriptExists, codexSessionExists, resolvedResumeIdentity, seatReviveTier, seatStoreEnv } from "./resume-identity";
 import { attachableState, classifySession, crewPanesIn, entryObservedDead, verifiedSession } from "./observation";
 import { NOT_A_SEAT, type ForkUnavailable, describeSessionState, printOffRosterTmuxExists, printSessionExists, printStoppedSession, promptNewCollision, promptOffRosterTmuxCollision,
   promptSessionExists, recordHasResumeArtifact, relativeAge, sessionAttached, tmuxSessionCreatedLabel, type Choose } from "./collision";
@@ -35,7 +35,9 @@ import { resolveCliTuning, type ResolvedTuning } from "./tuning";
 import { freshLaunchSessionId, HERMES_BIN } from "./adapters";
 import { HARNESSES } from "./catalog";
 import { FORKABLE_HARNESSES, forkSourceFingerprint, storedForkConflict } from "../harness-families";
-import { LauncherError } from "./types";
+import { LauncherError, type SessionRecord } from "./types";
+import type { PyInt } from "../spool-publication";
+import { duplicateHarnessSessionOwner, duplicateRegistrySessionOwner, identityHandle, type IdentityRecord } from "./identity-owner";
 import { TapError } from "../context";
 import { renderRefusals } from "../error-line";
 
@@ -57,7 +59,112 @@ export interface NewArgs {
   attach: boolean;
   dry_run: boolean;
   json: boolean;
+  /** `--resume`: open the harness's native conversation picker in the new seat; `--resume=<id>` resumes that id. */
+  resume: boolean;
+  resume_id: string | null;
   harness_passthrough: string[];
+}
+
+/** Harnesses whose CLI opens a conversation picker from a bare resume flag. Cursor's bare picker emission was
+ *  removed on purpose (tap-we6b), OpenCode has none, AGY's --continue is "latest" rather than a choice, Hermes has none. */
+export const RESUME_PICKER_HARNESSES: readonly string[] = ["claude", "codex"];
+
+/** A conversation id as the harnesses spell them (UUIDs, thread ids): never option-shaped, never blank or spaced. */
+export const RESUME_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+
+/** The seat a launch names, resolved read-only the way makeNewRecord will: an exact `--unique` name, or the
+ * tag from `--tag`, the seat-name operand or the preset, normalized, with the session name that handle takes.
+ * `tag: null` is the unnamed launch, which allocates a fresh name and so can be no seat's own incarnation. The
+ * collision ladder's "n" choice can still move a named target, so the launch rechecks the record it reserves. */
+export type NamedTarget = { harness: string; base: string; tag: string | null; name: string | null; index: number | null; presetDerived: boolean; tagIsLiteral: boolean };
+export function intendedTarget(args: Pick<Resolved, "harness" | "unique" | "tag" | "label" | "preset_resolution">, state: RegistryState, cwd: string): NamedTarget {
+  const base = baseAlias(state, cwd);
+  if (args.unique) {
+    const name = validateExactName(args.unique);
+    return { harness: args.harness, base, tag: slashHandle(name, base), name, index: null, presetDerived: false, tagIsLiteral: false };
+  }
+  let tag = args.tag || args.label;
+  // presetDerived records that the tag came from re-inferring the preset name rather than from an explicit
+  // --tag/--label; several behaviors branch on it (the RESERVED_HANDLES refusal, the literal-tag path, the
+  // create-intent "n"/collision arms in the seat transaction), and a fixture cannot tell the two apart from the
+  // resulting tag, so the origin is carried as this flag instead of recomputed.
+  let presetDerived = false;
+  if (!tag && args.preset_resolution !== null) {
+    tag = args.preset_resolution.provenance.name;
+    presetDerived = true;
+  }
+  if (presetDerived && reservedSeatName(tag!)) {
+    throw new LauncherError(`handle '${tag}' ${reservedSeatName(tag!)} and cannot name a seat; pass an explicit seat name, or rename the preset`);
+  }
+  let tagIsLiteral = false;
+  if (tag) {
+    tagIsLiteral = presetDerived || validToken(tag);
+    tag = normalizeTag(args.harness, tagIsLiteral ? tag : sanitizeComponent(tag));
+  }
+  if (!tag) return { harness: args.harness, base, tag: null, name: null, index: null, presetDerived, tagIsLiteral };
+  return { harness: args.harness, base, tag, name: tagIsLiteral ? sessionNameForHandle(base, tag) : namedSessionName(base, tag), index: 1, presetDerived, tagIsLiteral };
+}
+
+/** The handle a target registers under, or null for an unnamed launch (a fresh allocation owns nothing yet).
+ * The naming function needs the harness too: a `--unique` name outside the team base has no tag and no base
+ * prefix, so its handle is the harness name (`manual` registers as `claude`). */
+type ResumeTarget = Pick<LaunchRecord, "harness" | "base"> & { name: string | null; tag?: string | null; index?: number | bigint | PyInt | null };
+const targetHandle = (target: ResumeTarget): string | null => target.name === null ? null
+  : launchHandle({ name: target.name, harness: target.harness, base: target.base, tag: target.tag ?? null, index: target.index ?? null } as LaunchRecord);
+
+/**
+ * `--resume=<id>`: an id another seat already holds refuses, under the same uniqueness contract seat-up and
+ * relaunch apply: this cohort first, then every enrolled registry. The seat's own incarnation is not another
+ * owner: `tap launch claude writer --fresh --resume=<id>` may reopen the conversation the incumbent `writer`
+ * holds, matched by the handle the target registers under at this root, never by a probe's spelling. Called
+ * before any effect with the intended target, and again on the record the transaction will reserve, since the
+ * collision ladder can move a named target. The register-time duplicate-owner quarantine remains the backstop
+ * for a conversation picked in the picker.
+ */
+export function assertUniqueResumeIdForLaunch(id: string | null, target: ResumeTarget, state: RegistryState, root: string): void {
+  if (id === null) return;
+  const { harness } = target;
+  const self = targetHandle(target);
+  const probe: IdentityRecord = { name: target.name ?? "", harness, cwd: root, base: target.base, tag: target.tag ?? "", index: target.index ?? null, harness_session_id: id };
+  const cohort = self === null ? state.sessions : state.sessions.filter(record => launchHandle(record) !== self);
+  const inCohort = duplicateHarnessSessionOwner(cohort, probe, id);
+  const registryPath = registryAuthority(root).path;
+  // Both paths name the owner as team/handle, as the registry scan does.
+  const owner = inCohort !== null ? `${String(state.team.name ?? target.base)}/${identityHandle(inCohort)}`
+    : duplicateRegistrySessionOwner(probe, registryPath ? { root, registryPath, handle: self ?? "" } : undefined);
+  if (owner === null) return;
+  throw new TapError(2, "launch_resume_identity_owned", "resume that seat instead (tap session resume <seat>), or pick another conversation",
+    `tap launch --resume: refusing resume for ${self === null ? "a new seat" : `seat ${self}`}: native ${harness} session id ${id} already belongs to expected seat ${owner}`, "tap launch");
+}
+
+/**
+ * `--resume=<id>`: the conversation must exist in the harness's own store before anything is reserved or
+ * replaced, so a mistyped id under `--fresh` cannot stop the incumbent and then fail when the harness starts.
+ * The store is probed as the seat child will read it (its declared and unset env, its own root spelling or the
+ * default under its HOME, never TAP's alias); a policy that refuses or degrades is left to the launch's own handling.
+ */
+export function refuseMissingExactConversation(args: { harness: string; resume_id: string | null; env: string[] | null; unset_env: string[] | null;
+  preset_resolution: { env: Record<string, string> } | null }, cwd: string, env: NodeJS.ProcessEnv = process.env): void {
+  const id = args.resume_id;
+  if (id === null || !["claude", "codex"].includes(args.harness)) return;
+  const probe: SessionRecord = { name: "probe", harness: args.harness, cwd, base: "", harness_session_id: id,
+    harness_env: { ...(args.preset_resolution?.env ?? {}), ...parseEnvAssignments(args.env ?? []) }, harness_unset_env: args.unset_env ?? [] };
+  // The store the CHILD reads: its declared and unset env applied, and TAP's alias roots left out, since the
+  // launcher never passes them to the child (its own CLAUDE_CONFIG_DIR / CODEX_HOME, else the default under HOME).
+  const seat = seatStoreEnv(probe, env);
+  if (seat === null) return;
+  const exists = args.harness === "claude" ? claudeSessionTranscriptExists(id, seat, claudeChildStoreRoot(seat)) : codexSessionExists(id, seat);
+  if (exists) return;
+  throw new TapError(2, "no_exact_resume_identity", "check the id against the harness's own session list, or omit =<id> to choose in the picker",
+    `--resume=${id}: no ${args.harness} conversation with that id is in this machine's store; nothing was launched or replaced`, "tap launch");
+}
+
+/** The refusal a `--resume` launch earns before any effect when the harness has no picker. */
+export function refuseResumeWithoutPicker(args: { resume: boolean; resume_id: string | null }, harness: string): void {
+  if (!args.resume && args.resume_id === null) return;
+  if (RESUME_PICKER_HARNESSES.includes(harness)) return;
+  throw new TapError(2, "launch_resume_unsupported", "tap launch --help",
+    `--resume opens the native conversation picker for ${RESUME_PICKER_HARNESSES.join(" and ")} only; ${harness} has none. Launch it fresh, or bring a conversation in with tap in after the harness's own resume`, "tap launch");
 }
 
 const VALUE_FLAGS: Record<string, keyof NewArgs> = {
@@ -89,7 +196,7 @@ export function parseNew(argv: string[], warn: (message: string) => void = () =>
     throw error;
   }
   const args: NewArgs = { harness: null, label: null, preset: null, tag: null, workdir: null, unique: null, model: null, effort: null,
-    env: null, unset_env: null, fresh: false, new: false, attach: false, dry_run: false, json: false, harness_passthrough: passthrough };
+    env: null, unset_env: null, fresh: false, new: false, attach: false, dry_run: false, json: false, resume: false, resume_id: null, harness_passthrough: passthrough };
   const positionals: string[] = [];
   const expectedOne = (flag: string): never => syntaxRefusal(`${flag} requires a value`);
   for (let i = 1; i < own.length; i++) {
@@ -104,6 +211,14 @@ export function parseNew(argv: string[], warn: (message: string) => void = () =>
       else (args as unknown as Record<string, string>)[VALUE_FLAGS[flag]!] = value;
     } else if (Object.hasOwn(BOOL_FLAGS, flag) && inline === undefined) {
       args[BOOL_FLAGS[flag]!] = true;
+    } else if (flag === "--resume") {
+      // Optional value in the = form only: `--resume <id>` would take the seat name as the id.
+      if (inline === undefined) args.resume = true;
+      else if (inline === "") syntaxRefusal("--resume= needs a conversation id, or omit the = to open the picker");
+      // The id becomes a bare operand in the harness argv (`codex resume <id>`), so an option-looking or
+      // malformed value would change what the harness does: refuse it here, before any effect.
+      else if (!RESUME_ID.test(inline)) syntaxRefusal("--resume=<id> takes a conversation id (letters, digits, '.', '_', ':' or '-', not starting with '-'); omit the = to open the picker");
+      else args.resume_id = inline;
     } else if (!token.startsWith("-") || token === "-") {
       positionals.push(token);
     } else syntaxRefusal("unrecognized launch option");
@@ -137,13 +252,15 @@ function resolveNewPresetArgs(args: NewArgs, notices: Notices): Resolved {
 const newLabelRequestsResume = (args: Resolved): boolean => !!args.label && !args.tag && !args.unique && /^\d+$/.test(args.label);
 
 /** refuse_tuning_on_resume_delegation: tuning describes a NEW seat; resume replays the record (and a fork its source's). */
-function refuseTuningOnResumeDelegation(args: NewArgs, door: string, replays = "a resume replays the stored record"): void {
+export function refuseTuningOnResumeDelegation(args: NewArgs, door: string, replays = "a resume replays the stored record"): void {
   const supplied = ([["--workdir", args.workdir], ["--model", args.model], ["--effort", args.effort], ["--unset-env", args.unset_env], ["--env", args.env]] as const)
     .filter(([, value]) => value !== null).map(([flag]) => flag as string);
   if (args.harness_passthrough.length) {
     const leading = args.harness_passthrough.find(token => token.startsWith("-"));
     supplied.push(leading ? `harness passthrough (${leading})` : "harness passthrough");
   }
+  // A picker or exact `--resume` describes a NEW seat too; a delegated resume would drop it silently.
+  if (args.resume || args.resume_id !== null) supplied.push(args.resume_id !== null ? `--resume=${args.resume_id}` : "--resume");
   if (!supplied.length) return;
   const joined = supplied.join(" and ");
   throw new LauncherError(`launch_tuning_not_resumable: ${joined} cannot apply to ${door}: ${replays}`,
@@ -466,7 +583,8 @@ const stamp = (value: unknown): string | null => typeof value === "string" && va
 /** make_new_record: name, collision decision and tuning for a fresh seat. */
 export async function makeNewRecord(args: Resolved, state: RegistryState, cwd: string, deps: LaunchDeps): Promise<LaunchRecord> {
   if (args.unique && args.fresh) throw new LauncherError("--fresh is not supported with --unique exact session names");
-  const base = baseAlias(state, cwd);
+  const intended = intendedTarget(args, state, cwd);
+  const { base, presetDerived } = intended;
   const root = rootForCwd(cwd);
   const liveSessions = tmuxSessionsForNamespace();
   let name: string, tag: string | null, index: number | null;
@@ -474,33 +592,13 @@ export async function makeNewRecord(args: Resolved, state: RegistryState, cwd: s
   let replacement: Replacement | null = null;
   const receipts: string[] = [];
   if (args.unique) {
-    name = validateExactName(args.unique);
-    tag = slashHandle(name, base);
+    name = intended.name!;
+    tag = intended.tag;
     index = null;
   } else {
-    tag = args.tag || args.label;
-    // presetDerived records that the tag came from re-inferring the preset name
-    // rather than from an explicit --tag/--label, and several behaviors branch on
-    // it, among them the RESERVED_HANDLES refusal just below, the literal-tag path
-    // (tagIsLiteral), and the create-intent "n"/collision arms in the seat
-    // transaction (the entryDead automatic suffixing and the shell-reseat guard).
-    // A fixture cannot tell an explicit flag from re-inference by looking at the
-    // resulting tag, so the origin is carried as this flag instead of recomputed.
-    let presetDerived = false;
-    if (!tag && args.preset_resolution !== null) {
-      tag = args.preset_resolution.provenance.name;
-      presetDerived = true;
-    }
-    if (presetDerived && reservedSeatName(tag!)) {
-      throw new LauncherError(`handle '${tag}' ${reservedSeatName(tag!)} and cannot name a seat; pass an explicit seat name, or rename the preset`);
-    }
-    let tagIsLiteral = false;
+    tag = intended.tag;
     if (tag) {
-      tagIsLiteral = presetDerived || validToken(tag);
-      tag = normalizeTag(args.harness, tagIsLiteral ? tag : sanitizeComponent(tag));
-    }
-    if (tag) {
-      const requestedName = tagIsLiteral ? sessionNameForHandle(base, tag) : namedSessionName(base, tag);
+      const requestedName = intended.name!;
       name = requestedName;
       index = 1;
       existingRecord = findRecordByKey(state.sessions, cwd, tag);
@@ -537,7 +635,11 @@ export async function makeNewRecord(args: Resolved, state: RegistryState, cwd: s
   const record = withRecordDefaults({
     name, harness: args.harness, cwd, base, tag, index, model,
     harness_passthrough: harnessPassthrough, passthrough_from_config: passthroughFromConfig, harness_env: harnessEnv,
-    preset, harness_session_id: freshLaunchSessionId(args.harness), ensure_action: "new", ensure_receipts: receipts,
+    preset, ensure_action: "new", ensure_receipts: receipts,
+    // A picker launch mints no id: the picked conversation's SessionStart supplies it. An exact one carries the given id.
+    ...(args.resume ? { harness_session_id: null, launch_resume: "picker" as const }
+      : args.resume_id !== null ? { harness_session_id: args.resume_id, launch_resume: "exact" as const }
+      : { harness_session_id: freshLaunchSessionId(args.harness) }),
     ...(replacement ?? {}),
   } as LaunchRecord);
   return { ...record, ...applyOverrides({ harness_env: record.harness_env, harness_unset_env: record.harness_unset_env,
@@ -555,6 +657,15 @@ async function cmdNew(args: NewArgs, cwd: string, notices: Notices, deps: Launch
     return cmdSessionResume([...(resolved.dry_run ? ["--dry-run"] : []), ...(resolved.json ? ["--json"] : []), "--", resolved.harness, resolved.label!], deps.scriptDir);
   }
   // Everything argv alone decides is decided before the first effect (launcher.py cmd_new).
+  refuseResumeWithoutPicker(resolved, resolved.harness);
+  // Read-only: an exact id another seat holds refuses before the lifecycle journal, before any bootstrap
+  // of an unenrolled root, and before the record. An unenrolled root reads as an empty cohort here; the
+  // enrolled registries are still scanned through the global index.
+  if (resolved.resume_id !== null) {
+    const seen = registryState(cwd, true);
+    assertUniqueResumeIdForLaunch(resolved.resume_id, intendedTarget(resolved, seen, cwd), seen, rootForCwd(cwd));
+    refuseMissingExactConversation(resolved, rootForCwd(cwd));
+  }
   resolveAdhocTuning(resolved);
   applyOverrides({}, overridesOf(resolved));
   const workdir = resolved.workdir === null ? undefined : validateLaunchWorkdir(rootForCwd(cwd), resolved.workdir);
@@ -569,6 +680,9 @@ async function cmdNew(args: NewArgs, cwd: string, notices: Notices, deps: Launch
   const state = registryState(cwd, true);
   if (previewTeam) state.team = { ...state.team, name: previewTeam };
   const record = { ...(await makeNewRecord(resolved, state, cwd, deps)), last_launched: timestamp(), ...(workdir === undefined ? {} : { launch_workdir: workdir }) };
+  // The ladder may have moved a named target ("n" takes the next free name): the id is rechecked against the
+  // seat the transaction will actually reserve, before reservation.
+  if (record.launch_resume === "exact") assertUniqueResumeIdForLaunch(record.harness_session_id ?? null, record, state, rootForCwd(cwd));
   return executeFreshLaunch(record, resolved, deps);
 }
 
@@ -587,6 +701,8 @@ async function executeFreshLaunch(record: LaunchRecord, args: NewArgs, deps: Lau
   }
   launchPhasesDone();
   for (const line of record.ensure_receipts ?? []) receipt(line);
+  // A notice, so --json (one object, no prose) suppresses it like every other notice.
+  if (record.launch_resume === "picker" && !args.json && process.env.TAP_JSON !== "1") receipt(`${record.name}: pick the conversation in ${record.harness}'s picker; TAP binds it as this seat's identity when the harness's SessionStart runs${record.harness === "codex" ? " (Codex: once its hooks are trusted)" : ""}; tap whoami then shows the handle, and the seat's harness_session_id in .tap/team-registry.json is the picked conversation; if nothing binds, run tap in from that seat`);
   if (!attach) { receipt(detachedReceipt(record.name, "no controlling terminal", `${record.base}/${launchHandle(record)}`)); return 0; }
   return attachTailInProcess("launch", record);
 }

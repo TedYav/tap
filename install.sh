@@ -41,17 +41,30 @@ set -euo pipefail
 SYNC=0
 SETUP=0
 VERBOSE=0
+REPORT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --sync) SYNC=1; shift ;;
     --setup) SETUP=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
+    --report) REPORT=1; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./install.sh [--sync] [--setup] [--verbose]
+Usage: ./install.sh [--sync] [--setup] [--verbose] [--report]
 
   --verbose  Show each successful link and absent optional integration.
              The install manifest also records owned artifacts.
+
+  --report   Read-only: print what this install would do for each harness
+             (Claude, Codex, Cursor, OpenCode, Antigravity, Hermes), then
+             exit without writing anything. Example: ./install.sh --report
+             Every install prints the same report before it writes any harness
+             home or link (a --sync prints it after updating the checkout).
+             A harness home is wired only when its command is on PATH
+             or its hooks file already exists. Per harness the report says
+             one of: will wire, already wired, present but not wired (with the
+             reason), absent. After installing a missing harness, run
+             ./install.sh --sync once to wire it.
 
   default  Relink tap + skills from THIS checkout. Real/default targets are
            refused from a linked worktree (run from the persistent primary).
@@ -113,6 +126,11 @@ EOF
       ;;
   esac
 done
+
+if [ "$REPORT" = 1 ] && [ "$SYNC$SETUP" != 00 ]; then
+  echo "install: --report is read-only and cannot be combined with --sync or --setup; next: ./install.sh --report" >&2
+  exit 1
+fi
 
 # Inventory details are opt-in; warnings and next steps keep their normal streams.
 install_detail() { if [ "$VERBOSE" = 1 ]; then echo "$@"; fi; }
@@ -215,6 +233,83 @@ for target_spec in "${INSTALL_TARGET_SPECS[@]}"; do
   printf -v "$target_var" '%s' "${!target_env:-$target_default}"
 done
 unset target_spec target_var target_env_and_default target_env target_default
+
+# --- Which harness homes to wire (tap-gjwtw) -----------------------------------
+# A harness home is wired only when its command is on PATH or its hooks file
+# already exists (an existing file means someone set that harness up). A bare
+# home directory with neither is reported and left untouched, so a leftover
+# ~/.cursor never grows a hooks.json for a tool the person does not have. The
+# same rule governs every harness and every run, --sync included: installing the
+# harness later and running ./install.sh --sync wires it.
+#
+# The probe itself lives in runtime/bun/src/install-harness-state.ts, one source
+# for this script, the skill linker and setup's machine-wide reconcile. States:
+# absent (no home), present-not-wired, will-wire, already-wired. HSTATE_<key> and
+# HREASON_<key> hold each answer; the wiring blocks read them through
+# tap_install_harness_wired so the report and the writes cannot differ.
+HARNESS_KEYS=()
+HARNESS_LABELS=()
+tap_install_harness_probe_all() {
+  local out key label state reason
+  HARNESS_KEYS=(); HARNESS_LABELS=()
+  out="$(tap_bun "$REPO/runtime/bun/src/install-harness-state.ts" \
+    "claude=$CLAUDE_HOME" "codex=$CODEX_HOME" "cursor=$CURSOR_HOME" "opencode=$OPENCODE_HOME" \
+    "gemini=$GEMINI_HOME" "hermes=$HERMES_HOME" "cursoragent=$CURSOR_AGENT_HOME")" \
+    || { echo "install: could not determine which harnesses are installed (install-harness-state failed)" >&2; exit 1; }
+  while IFS=$'\t' read -r key label state reason; do
+    [ -n "$key" ] || continue
+    printf -v "HSTATE_$key" '%s' "$state"
+    printf -v "HREASON_$key" '%s' "$reason"
+    HARNESS_KEYS+=("$key"); HARNESS_LABELS+=("$label")
+  done <<< "$out"
+}
+
+tap_install_harness_wired() {
+  local state="HSTATE_$1"
+  case "${!state:-}" in will-wire|already-wired) return 0 ;; esac
+  return 1
+}
+
+# True only for a home that exists and is deliberately left alone.
+tap_install_harness_skipped() {
+  local state="HSTATE_$1"
+  [ "${!state:-}" = present-not-wired ]
+}
+
+tap_install_harness_report() {
+  local i key state reason text
+  tap_install_harness_probe_all
+  echo "install: harnesses:"
+  for i in "${!HARNESS_KEYS[@]}"; do
+    key="${HARNESS_KEYS[$i]}"
+    state="HSTATE_$key"; reason="HREASON_$key"
+    case "${!state}" in
+      will-wire) text="will wire (${!reason})" ;;
+      already-wired) text="already wired" ;;
+      present-not-wired) text="present, not wired: ${!reason}" ;;
+      *) text="absent (${!reason})" ;;
+    esac
+    case "${!state}" in
+      will-wire|already-wired)
+        # TAP_INSTALL_HOOK=0 skips each family's own hook or plugin writer. Skill links
+        # (and the Claude/Codex native skill plugin) are not behind that switch.
+        if [ "${TAP_INSTALL_HOOK:-1}" != 1 ]; then
+          case "$key" in
+            claude|codex) text="$text; hook wiring skipped (TAP_INSTALL_HOOK=0); skills and native plugin still managed" ;;
+            cursor) text="$text; hook wiring skipped (TAP_INSTALL_HOOK=0)" ;;
+            opencode) text="$text; session plugin wiring skipped (TAP_INSTALL_HOOK=0); skill links still managed" ;;
+            gemini) text="$text; hook wiring skipped (TAP_INSTALL_HOOK=0); skill links still managed" ;;
+          esac
+        fi ;;
+    esac
+    echo "install:   ${HARNESS_LABELS[$i]}: $text"
+  done
+}
+
+if [ "$REPORT" = 1 ]; then
+  tap_install_harness_report
+  exit 0
+fi
 
 tap_install_primary_root() {
   local common_git_dir
@@ -952,6 +1047,7 @@ tap_install_record() {
 # the home lock; only the target side is handled here.
 INGEST_DIR="$INDEX_HOME/ingest"
 INGEST_CONTRACT_TARGET="$INGEST_DIR/README.md"
+tap_install_harness_report
 # Release the install locks (if this run holds them) after the manifest is recorded.
 trap 'tap_install_record; tap_install_home_lock_release; tap_install_sync_lock_release' EXIT
 trap 'exit 130' INT
@@ -1019,6 +1115,8 @@ link_user_skills() {
         "install: linked $1 skill "*)
           SKILL_LINK_COUNT=$((SKILL_LINK_COUNT + 1)); linked=1
           install_detail "$line" ;;
+        "install: skipped $1 — present, not wired: "*)
+          install_detail "$line" ;;
         "install: skipped $1 — "*"does not exist (no $1 install detected)")
           ABSENT_SKILL_HOMES+=("$1"); install_detail "$line" ;;
         "") ;;
@@ -1063,7 +1161,7 @@ tap_install_record
 
 # --- Claude: user-level skills (discovered globally by every session) ----------
 link_user_skills Claude "$CLAUDE_HOME"
-if [ -d "$CLAUDE_HOME" ]; then
+if tap_install_harness_wired claude; then
   # Claude hooks: the SessionStart advisory self-silences outside TAP projects;
   # the PreToolUse guard blocks shell-expanded inline TAP bodies. Merged
   # idempotently; opt out with TAP_INSTALL_HOOK=0.
@@ -1083,7 +1181,7 @@ link_user_skills Hermes "$HERMES_HOME"
 
 # --- Codex: user-level skills + global AGENTS.md section -----------------------
 link_user_skills Codex "$CODEX_HOME"
-if [ -d "$CODEX_HOME" ]; then
+if tap_install_harness_wired codex; then
   tap_bun "$REPO/runtime/bun/src/install-hooks.ts" agents "$CODEX_HOME/AGENTS.md"
   if grep -q '<!-- tap:begin -->' "$CODEX_HOME/AGENTS.md" 2>/dev/null; then
     export TAP_RECORD_AGENTS_DONE=1
@@ -1108,7 +1206,7 @@ if [ -d "$CODEX_HOME" ]; then
     tap_bun "$REPO/runtime/bun/src/install-hooks.ts" codex-legacy "$CODEX_HOME/hooks.json"
     fi
   fi
-else
+elif ! tap_install_harness_skipped codex; then
   install_detail "install: skipped Codex — $CODEX_HOME does not exist (no Codex install detected)"
 fi
 
@@ -1117,7 +1215,7 @@ fi
 # TAP command path in place; never removes or rewrites claude-mem (or any other)
 # entries. Cursor hook schema is flat {command} under camelCase sessionStart
 # (not Codex's matcher/hooks nesting). Self-silences outside TAP repos.
-if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && [ -d "$CURSOR_HOME" ]; then
+if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && tap_install_harness_wired cursor; then
   tap_bun "$REPO/runtime/bun/src/install-hooks.ts" cursor "$CURSOR_HOME/hooks.json" "$REPO/hooks/tap-cursor-session-start.sh" "$TAP_SHELL_BODY_GUARD"
   # DE-WIRE what an earlier release added here. Cursor's beforeSubmitPrompt has no
   # context-injection field (only sessionStart and postToolUse accept
@@ -1127,7 +1225,7 @@ if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && [ -d "$CURSOR_HOME" ]; then
   # to remove. Logic lives in its own script so a smoke test can drive it
   # without running this installer.
   tap_bun "$REPO/runtime/bun/src/install-roster-hook-cleanup.ts" cursor "$CURSOR_HOME/hooks.json"
-elif [ "${TAP_INSTALL_HOOK:-1}" = 1 ]; then
+elif [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && ! tap_install_harness_skipped cursor; then
   install_detail "install: skipped Cursor hooks — $CURSOR_HOME does not exist"
 fi
 
@@ -1238,7 +1336,7 @@ EOF
   chmod +x "$stage/tap" || return 1
 }
 
-if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && [ -d "$OPENCODE_HOME" ]; then
+if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && tap_install_harness_wired opencode; then
   OPENCODE_FAIL_TARGET="" OPENCODE_REMEDY="" OPENCODE_PARTIAL=0
   if tap_install_opencode_plugins; then
     echo "install: installed OpenCode plugins at $OPENCODE_HOME/plugins/ (session-env + session-start + tmux-guard + helpers)"
@@ -1247,7 +1345,7 @@ if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && [ -d "$OPENCODE_HOME" ]; then
   else
     echo "install: WARNING: skipped OpenCode session plugins — could not write $OPENCODE_FAIL_TARGET; next: $OPENCODE_REMEDY (OpenCode integration NOT installed; the rest of the install continues)" >&2
   fi
-elif [ "${TAP_INSTALL_HOOK:-1}" = 1 ]; then
+elif [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && ! tap_install_harness_skipped opencode; then
   install_detail "install: skipped OpenCode session plugins — $OPENCODE_HOME does not exist"
 fi
 
@@ -1261,7 +1359,7 @@ link_user_skills OpenCode "$OPENCODE_HOME"
 # applies unchanged (tap-luae). agy also offers a native `agy plugin import claude`;
 # we deliberately do NOT use it — one install mechanism, symmetric with every harness.
 link_user_skills Antigravity "$GEMINI_HOME"
-if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && [ -d "$GEMINI_HOME" ]; then
+if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && tap_install_harness_wired gemini; then
   mkdir -p "$GEMINI_HOME/config"
   tap_bun "$REPO/runtime/bun/src/install-hooks.ts" gemini "$GEMINI_HOME/config/hooks.json" "$TAP_SHELL_BODY_GUARD"
 fi
@@ -1344,14 +1442,14 @@ if [ "$SETUP" = 1 ] || { [ "$SYNC" = 0 ] && [ "${TAP_INSTALL_SYNC_REEXEC:-0}" !=
   if bash "$REPO/bin/tap" setup --machine; then SETUP_RAN=1; else SETUP_RAN=2; echo "install: setup incomplete: rerun tap setup --machine" >&2; fi
   # Offered with the same first-run setup, never on an ordinary sync; one source line in tmux.conf, removable with `tap keybinding remove`.
   if [ -t 0 ] && [ -t 1 ] && command -v tmux >/dev/null 2>&1; then
-    printf 'Install the TAP agent lookup keybinding (prefix @)? [Y/n] '
+    printf 'Install the TAP agent lookup keybinding (prefix C-g)? [Y/n] '
     read -r _kb_answer || _kb_answer=n
     case "${_kb_answer:-Y}" in
       [Yy]*) bash "$REPO/bin/tap" keybinding install --tap "$BIN_DIR/tap" || echo "install: keybinding not installed; retry: tap keybinding install" >&2 ;;
       *) echo "install: skipped; later: tap keybinding install" ;;
     esac
     # Same first-run-only contract: TAP-managed defaults file, one marked source line BEFORE the user's own lines so their settings win; removable with `tap tmux-defaults remove`.
-    printf 'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] '
+    printf 'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard; plus a status bar if you have no tmux config yet)? [Y/n] '
     read -r _td_answer || _td_answer=n
     case "${_td_answer:-Y}" in
       [Yy]*) bash "$REPO/bin/tap" tmux-defaults install || echo "install: tmux defaults not installed; retry: tap tmux-defaults install" >&2 ;;
@@ -1362,8 +1460,8 @@ else
   if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "install: interactive machine setup skipped (no terminal). next: tap setup --machine --answers <file> (see docs/EASY-MODE.md); use --dry-run to preview."
     echo "install: presets are optional; bare launch: tap session launch <harness> <name>"
-    echo "install: optional tmux lookup key (prefix @ fuzzy-picks a teammate): tap keybinding install"
-    echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard): tap tmux-defaults install"
+    echo "install: optional tmux lookup key (prefix C-g fuzzy-picks a teammate): tap keybinding install"
+    echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard, and a status bar if you have no tmux config): tap tmux-defaults install"
   else
     echo "install: next: tap setup --machine (configure this machine interactively)"
   fi

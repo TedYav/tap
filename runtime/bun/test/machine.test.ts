@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { applyEffort, historyPaths, installSourceAdvice, removeEntry, serializeToml, setupMachine, uninstallMachine } from "../src/verbs/machine";
 import { archiveHistory, writeTarGz } from "../src/install-history";
 import { fakePluginClis } from "./support/native-plugins";
+import { stubHarnessCommands } from "./support/harness-stubs";
 const repo = resolve(import.meta.dir,"../../..");
 const original = {...process.env};
 const roots: string[] = [];
@@ -31,6 +32,10 @@ function fixture() {
   process.env.TAP_INDEX_HOME=join(root,"index");
   process.env.XDG_CONFIG_HOME=join(root,"config");
   process.env.SHELL="/bin/zsh";
+  // A harness home is linked only when its command is on PATH: stub them so the machine's own CLIs never decide.
+  // Outside the fixture root, which the uninstall tests assert is left empty.
+  const stubs=mkdtempSync("/tmp/tap-harness-bin-"); roots.push(stubs);
+  process.env.PATH=stubHarnessCommands(stubs)+":"+process.env.PATH;
   for(const p of [process.env.HOME,process.env.TAP_INDEX_HOME,process.env.XDG_CONFIG_HOME])mkdirSync(p!,{recursive:true});
   return root;
 }
@@ -216,7 +221,7 @@ mode:0o755});
   cpSync(join(repo,"vendor"),join(clone,"vendor"),{recursive:true});
   cpSync(join(repo,"skills"),join(clone,"skills"),{recursive:true});
   for(const path of ["plugins",".claude-plugin"])cpSync(join(repo,path),join(clone,path),{recursive:true});
-  for(const f of ["config-file","config-error","skill-policy","install-skill-links","install-skill-plugin","install-roster-hook-cleanup","install-manifest","codex-fence","install-fzf","fzf-tool","install-hooks","install-history","watch-detect","lossless-json","pyint","spool-publication","fsatomic","panelock","remind-lock","unicode-decimal"])writeFileSync(join(clone,"runtime/bun/src",f+".ts"),readFileSync(join(repo,"runtime/bun/src",f+".ts")));
+  for(const f of ["config-file","config-error","skill-policy","install-harness-state","install-skill-links","install-skill-plugin","install-roster-hook-cleanup","install-manifest","codex-fence","install-fzf","fzf-tool","install-hooks","install-history","watch-detect","lossless-json","pyint","spool-publication","fsatomic","panelock","remind-lock","unicode-decimal"])writeFileSync(join(clone,"runtime/bun/src",f+".ts"),readFileSync(join(repo,"runtime/bun/src",f+".ts")));
   Bun.spawnSync(["git","init","-q",clone]);
   // install.sh arms only TRACKED tap-hooks files; the index is enough, no commit needed.
   Bun.spawnSync(["git","-C",clone,"add","githooks"]);
@@ -699,7 +704,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'y\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix C-g)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard; plus a status bar if you have no tmux config yet)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output
@@ -747,7 +752,7 @@ def until(needle):
             if harness not in skipped and prompt in output:
                 os.write(master,b'skip\n');skipped.add(harness)
 try:
-    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix @)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard)? [Y/n] ',b'n\n')]
+    prompts=[(b'The first time TAP is used',b'\n'),(b"How should agents' messages reach you",b'\n'),(b'codex: keep it simple',b'simple\n'),(b'Default effort',b'high\n'),(b'Permission mode [',b'\n'),(b'Install the optional full',b'y\n'),(b'Notifier [',b'\n'),(b'Add shell aliases?',b'\n'),(b'Install ponytail for codex?',b'n\n'),(b'Install compound-engineering for codex?',b'n\n'),(b'Install superpowers for codex?',b'n\n'),(b'Install the TAP agent lookup keybinding (prefix C-g)? [Y/n] ',b'n\n'),(b'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard; plus a status bar if you have no tmux config yet)? [Y/n] ',b'n\n')]
     for prompt,answer in prompts: until(prompt);os.write(master,answer)
     until(b'run in this terminal: export PATH=')
     assert p.wait(timeout=5)==0,output
@@ -761,7 +766,7 @@ finally:
  expect(output).toContain("[Y/n]");
  expect(output).toContain("Wrote the TAP shell block to");
  expect(output).toContain("3 preset aliases");
- expect(readFileSync(shell,"utf8")).toContain("# >>> tap aliases >>>");
+ expect(readFileSync(shell,"utf8")).toContain("# >>> tap shell integration >>>");
 },20000);
 
 test("relative XDG root refuses before questions or config writes",async()=>{

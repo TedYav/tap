@@ -37,6 +37,7 @@ import { humanLine } from "../native-error";
 import { ensureSeatInstance, currentInstance, resolveHandleByPane, supersedeForwardingAliases, type RegistryDoc } from "../registry";
 import { acquireRegistryLock, lockRoot } from "../panelock";
 import { agentFamilies, harnessFallbackHandle } from "../observe";
+import { pidHasAncestor } from "../process-ancestry";
 import { isPaneId } from "../lifecycle-target";
 import { SEAT_ALIVE, SEAT_PANE_GONE, SEAT_PANE_RECYCLED, SEAT_UNOBSERVABLE, isLaunchReservation, samePaneIdentity, seatVerdict, type ChooserObservation } from "../seat-verdict";
 import { MAX_ADOPTED_HANDLES, frontmatter } from "../seat-adopt";
@@ -172,20 +173,6 @@ function currentSeats(doc: JsonMap, path: string, create = false): JsonMap {
   const empty = new Map<string, JsonValue>();
   doc.set("seats", empty);
   return empty;
-}
-
-/** tap_pid_has_ancestor: fail-closed process-ancestry walk. */
-function pidHasAncestor(pid: number, ancestor: string): boolean {
-  if (!/^\d+$/.test(ancestor)) return false;
-  let current = pid;
-  for (let i = 0; i < 64; i++) {
-    if (String(current) === ancestor) return true;
-    const r = spawnSync("ps", ["-o", "ppid=", "-p", String(current)], { encoding: "utf8" });
-    const ppid = parseInt((r.stdout ?? "").trim(), 10);
-    if (r.status !== 0 || !Number.isInteger(ppid) || ppid <= 1) return false;
-    current = ppid;
-  }
-  return false;
 }
 
 // --- form (verbatim port of the M2 U1 dispatcher walk) ---------------------------
@@ -613,7 +600,7 @@ export function callerUnderPane(pane: string, env: Env, knownPanePid = ""): bool
     pid = (r.stdout ?? "").trim();
     if (r.code !== 0 || pid === "") return false;
   }
-  return pidHasAncestor(process.pid, pid);
+  return pidHasAncestor(process.pid, pid, env);
 }
 
 // --- main flow -------------------------------------------------------------------

@@ -36,6 +36,8 @@ export function applyOverrides(recipe: OverrideRecipe, overrides: Overrides): Re
 
 const valueFlags = new Set(["--tag", "--workdir", "--unique", "--model", "--preset", "--effort", "--env", "--unset-env"]);
 const boolFlags = new Set(["--teams", "--fresh", "--new", "--attach", "--dry-run", "--json"]);
+/** Flags that take an optional `=value` only: `--resume` (picker) and `--resume=<id>` (exact); `--resume <id>` would eat the seat name. */
+const optionalValueFlags = new Set(["--resume"]);
 
 /** argparse treats dash-led values as options, except negative numbers and '-'. */
 export const looksLikeOption = (token: string): boolean => token.startsWith("-") && token !== "-" && !/^-\d+$|^-\d*\.\d+$/.test(token);
@@ -51,7 +53,7 @@ export function launchHelpRequested(argv: readonly string[]): boolean {
       continue;
     }
     if (arg === "-h" || arg === "--help") return true;
-    if (valueFlags.has(arg.split("=")[0]!) || boolFlags.has(arg)) continue;
+    if (valueFlags.has(arg.split("=")[0]!) || boolFlags.has(arg) || optionalValueFlags.has(arg.split("=")[0]!)) continue;
     // The first unknown option starts the implicit harness tail too.
     if (arg.startsWith("-") && arg !== "-") return false;
   }
@@ -73,7 +75,7 @@ export function splitLaunchPassthrough(argv: string[], warn: (message: string) =
     if (valueFlags.has(arg)) {
       own.push(arg);
       if (i + 1 < argv.length) own.push(argv[++i]!);
-    } else if (valueFlags.has(arg.split("=")[0]!) || boolFlags.has(arg)) own.push(arg);
+    } else if (valueFlags.has(arg.split("=")[0]!) || boolFlags.has(arg) || optionalValueFlags.has(arg.split("=")[0]!)) own.push(arg);
     else if (arg.startsWith("-") && arg !== "-") {
       const flag = arg.split("=")[0]!;
       warn(`tap session launch: warning: ${flag} is not a TAP launch option; it and following arguments are forwarded to the harness. Use -- before intentional harness arguments.${flag === "--cwd" ? " Use --workdir <path> to start in a linked worktree of the enrolled team." : ""}`);

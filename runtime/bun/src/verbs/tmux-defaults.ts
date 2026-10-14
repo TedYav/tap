@@ -1,8 +1,9 @@
 // `tap tmux-defaults install|remove|status [--dry-run] [--json]`
 //
 // Owns one TAP-managed tmux defaults file (~/.config/tap/tmux-defaults.conf):
-// truecolor, mouse, wheel scrolling, clipboard, focus events, history and an
-// update-environment without SSH_CONNECTION. The user's tmux.conf gets exactly
+// truecolor, mouse, wheel scrolling, clipboard, focus events, history, an
+// update-environment without SSH_CONNECTION and, optionally, a calm status bar
+// (team/session, windows by seat name, time). The user's tmux.conf gets exactly
 // one marked `source-file` line, INSERTED BEFORE their own lines, because tmux
 // is last-write-wins and their settings must beat TAP's defaults; remove
 // deletes that line and nothing else. A defaults file that is not byte-for-byte
@@ -58,7 +59,38 @@ const COPY_COMMAND: Record<Exclude<ClipboardMode, "osc52">, string> = {
  * host without the terminfo entry keeps its own terminal and gets everything
  * else, so pane programs never break on TAP's account.
  */
-export interface DefaultsSpec { mode: ClipboardMode; terminal: "pin" | "inherit" }
+export interface DefaultsSpec { mode: ClipboardMode; terminal: "pin" | "inherit"; status: boolean }
+
+/**
+ * The optional status-bar section. Muted: bg=terminal is the terminal's own
+ * background and the labels take its foreground (tmux's "default" would mean
+ * the surrounding style, which is grey here), so the bar reads in light and dark. Session name on the left, windows by name (no
+ * index, no hostname), time on the right.
+ */
+export const STATUS_LINES: readonly string[] = [
+  "# Status bar: team/session, windows by seat name, time. Muted; reads in light and dark terminals.",
+  `set -g status-style "bg=terminal,fg=colour243"`,
+  `set -g status-left-length 40`,
+  `set -g status-left "#[fg=terminal,bold] #S #[default] "`,
+  `set -g status-right-length 20`,
+  `set -g status-right "#[fg=colour243]%H:%M "`,
+  `set -g window-status-separator ""`,
+  `set -g window-status-format " #W "`,
+  `set -g window-status-current-format "#[fg=terminal,bold] #W #[default]"`,
+  `set -g status-interval 30`,
+];
+/** The status options the section sets, as `set -g` reports them. */
+const STATUS_OPTIONS: Record<string, string> = {
+  "status-style": "bg=terminal,fg=colour243",
+  "status-left-length": "40",
+  "status-left": "#[fg=terminal,bold] #S #[default] ",
+  "status-right-length": "20",
+  "status-right": "#[fg=colour243]%H:%M ",
+  "window-status-separator": "",
+  "window-status-format": " #W ",
+  "window-status-current-format": "#[fg=terminal,bold] #W #[default]",
+  "status-interval": "30",
+};
 
 /** The option settings the managed file sets, exactly as tmux reports them. */
 export function defaultsOptions(spec: DefaultsSpec): Record<string, string> {
@@ -74,6 +106,7 @@ export function defaultsOptions(spec: DefaultsSpec): Record<string, string> {
   };
   if (spec.terminal === "pin") options["default-terminal"] = "tmux-256color";
   if (spec.mode !== "osc52") options["copy-command"] = COPY_COMMAND[spec.mode];
+  if (spec.status) Object.assign(options, STATUS_OPTIONS);
   return options;
 }
 
@@ -83,6 +116,8 @@ export function renderDefaults(spec: DefaultsSpec): string {
     MARKER,
     `# clipboard=${spec.mode}`,
     `# terminal=${spec.terminal}`,
+    // Absent when off, so a file written before the status section existed stays byte-for-byte owned.
+    ...(spec.status ? ["# status=on"] : []),
     "# Managed by `tap tmux-defaults`; `tap tmux-defaults remove` deletes this file.",
     "# TAP's source line sits before your own tmux.conf lines, so your settings win.",
     ...(spec.terminal === "pin" ? [`set -g default-terminal "tmux-256color"`] : []),
@@ -94,6 +129,7 @@ export function renderDefaults(spec: DefaultsSpec): string {
     `set -g update-environment "${UPDATE_ENVIRONMENT}"`,
     `set -g set-clipboard ${spec.mode === "osc52" ? "on" : "off"}`,
     ...(spec.mode === "osc52" ? [] : [`set -g copy-command "${COPY_COMMAND[spec.mode]}"`]),
+    ...(spec.status ? STATUS_LINES : []),
     "# Wheel: 10 lines per notch in both copy modes (vanilla scrolls 5).",
     `bind-key -T copy-mode WheelUpPane select-pane \\; send-keys -X -N 10 scroll-up`,
     `bind-key -T copy-mode WheelDownPane select-pane \\; send-keys -X -N 10 scroll-down`,
@@ -119,10 +155,13 @@ function recordedTerminal(text: string | null): "pin" | "inherit" | null {
   return m && (m[1] === "pin" || m[1] === "inherit") ? m[1] : null;
 }
 
+/** Whether the file records the status section (line 4); files from before it existed record nothing, meaning off. */
+const recordedStatus = (text: string | null): boolean => !!text && text.split("\n")[3] === "# status=on";
+
 /** Ours means byte-for-byte what renderDefaults writes for the spec the file itself records. */
 function ownedDefaults(text: string | null): DefaultsSpec | null {
   const mode = recordedMode(text), terminal = recordedTerminal(text);
-  const spec = mode && terminal ? { mode, terminal } : null;
+  const spec = mode && terminal ? { mode, terminal, status: recordedStatus(text) } : null;
   return spec && text === renderDefaults(spec) ? spec : null;
 }
 
@@ -133,9 +172,25 @@ function hostPinsTerminal(env: NodeJS.ProcessEnv): boolean {
   } catch { return false; }
 }
 
-/** What this environment would render for: clipboard mode plus the terminal-pin choice. */
-export function detectSpec(env: NodeJS.ProcessEnv = process.env): DefaultsSpec {
-  return { mode: detectClipboardMode(env), terminal: hostPinsTerminal(env) ? "pin" : "inherit" };
+/**
+ * Whether the human has tmux configuration of their own: either tmux.conf
+ * holds a command line that is not a TAP marked source line. TAP's own lines
+ * (the keybinding step runs first and creates ~/.tmux.conf) and a blank or
+ * comment-only file do not count, so a first-timer is still a first-timer
+ * after TAP's other steps ran.
+ */
+export function humanHasTmuxConfig(env: NodeJS.ProcessEnv = process.env): boolean {
+  const roots = configRoots(env);
+  const tapLine = /^source-file -q "[^"\n]+" # tap-(tmux-defaults|keybinding)$/;
+  return [join(roots.home, ".tmux.conf"), join(roots.config, "tmux", "tmux.conf")].some(path => {
+    const text = readFileIfPresent(path, true);
+    return text !== null && text.split("\n").some(l => l.trim() !== "" && !l.trim().startsWith("#") && !tapLine.test(l));
+  });
+}
+
+/** What this environment would render for: clipboard mode, the terminal-pin choice and, by default, the status bar only for a human with no tmux config. */
+export function detectSpec(env: NodeJS.ProcessEnv = process.env, status: boolean = !humanHasTmuxConfig(env)): DefaultsSpec {
+  return { mode: detectClipboardMode(env), terminal: hostPinsTerminal(env) ? "pin" : "inherit", status };
 }
 
 const executable = (path: string, env: NodeJS.ProcessEnv): boolean => {
@@ -217,7 +272,7 @@ function liveState(options: Record<string, string>, env: NodeJS.ProcessEnv): Liv
     for (const option of Object.keys(options)) {
       const r = tmux(["show", "-gv", option], env);
       if (r.code !== 0) return { server: NO_SERVER_ON.test(r.stderr.trim()) ? "none" : "unobservable", values: {}, ssh_sessions: [], global_ssh_connection: false };
-      values[option] = r.stdout.replace(/\n+/g, " ").trim();
+      values[option] = r.stdout.replace(/\n$/, "").replace(/\n/g, " ");   // only the terminator goes: formats carry meaningful edge spaces
     }
   } catch { return { server: "unobservable", values: {}, ssh_sessions: [], global_ssh_connection: false }; }
   const setSomewhere = (args: string[]): boolean => {
@@ -244,6 +299,8 @@ export interface DefaultsStatus {
   clipboard: ClipboardMode;
   /** The owned file's recorded terminal choice, else what this host would choose. */
   terminal: "pin" | "inherit";
+  /** Whether the owned file carries the status-bar section; false when TAP's file is absent or edited. */
+  status_bar: boolean;
   copy_tool_present: boolean | null;
   stale_installs: string[];
   tmux_version: string | null;
@@ -262,7 +319,7 @@ export function status(env: NodeJS.ProcessEnv = process.env, withLive = true): D
   const marked = lines.map((l, i) => l === sourceLine(defaultsFile) ? i : -1).filter(i => i >= 0);
   // Insertion puts the marked line exactly at the first command position, so "before" admits equality.
   const beforeSettings = marked.length ? marked.every(i => i <= firstCommandIndex(lines)) : null;
-  const spec = owned ?? detectSpec(env);
+  const spec = owned ?? detectSpec(env, false);
   const version = tmuxVersion();
   return {
     schema: 1,
@@ -275,6 +332,7 @@ export function status(env: NodeJS.ProcessEnv = process.env, withLive = true): D
     source_line_before_settings: beforeSettings,
     clipboard: spec.mode,
     terminal: spec.terminal,
+    status_bar: !!owned?.status,
     copy_tool_present: copyToolPresent(spec.mode, env),
     stale_installs: [...new Set([userConf, join(roots.home, ".tmux.conf"), join(roots.config, "tmux", "tmux.conf")].flatMap(p => markedConfs(readFileIfPresent(p) ?? "")))].filter(p => p !== defaultsFile),
     tmux_version: version?.text ?? null,
@@ -357,10 +415,14 @@ export function cmdTmuxDefaults(argv: string[]): number {
   if (!sub || !["install", "remove", "status"].includes(sub)) {
     throw new TapError(1, "usage_error", "tap help tmux-defaults", sub ? `unknown subcommand '${displayText(sub)}'` : "needs install, remove or status");
   }
-  let dry = false, json = process.env.TAP_JSON === "1";
+  let dry = false, json = process.env.TAP_JSON === "1", statusFlag: boolean | null = null;
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--dry-run" && sub !== "status") dry = true;
+    else if ((a === "--status-bar" || a === "--no-status-bar") && sub === "install") {
+      if (statusFlag !== null && statusFlag !== (a === "--status-bar")) throw new TapError(1, "usage_error", "tap help tmux-defaults", "--status-bar and --no-status-bar contradict each other");
+      statusFlag = a === "--status-bar";
+    }
     else if (a === "--json") { json = true; process.env.TAP_JSON = "1"; }
     else throw new TapError(1, "usage_error", "tap help tmux-defaults", `unexpected '${displayText(a)}' for ${sub}`);
   }
@@ -380,6 +442,7 @@ export function cmdTmuxDefaults(argv: string[]): number {
       `tmux: ${st.tmux_version ?? "not found"}${st.tmux_ok ? "" : " (TAP needs 3.2+)"}`,
       `defaults file: ${st.defaults_file} (${st.defaults_present ? (st.defaults_owned ? "present" : "present, edited or not TAP's") : "absent"})`,
       `user conf: ${st.user_conf} (${st.source_line_present ? `source line present${st.source_line_before_settings ? ", before your settings" : ", NOT before your settings"}` : "no source line"})`,
+      `status bar: ${st.status_bar ? "on" : "off"}`,
       `clipboard: ${st.clipboard}${st.copy_tool_present === null ? "" : st.copy_tool_present ? " (tool present)" : " (tool MISSING; reinstall to choose another mode)"}`,
       `live: ${st.live.server}${st.live.server === "up" ? liveValues : ""}${notes.length ? "\n" + notes.join("\n") : ""}`].join("\n");
     emit(json, { ...st }, human);
@@ -409,7 +472,10 @@ export function cmdTmuxDefaults(argv: string[]): number {
   // The recorded spec stands while its clipboard mode is still usable; a
   // vanished tool or a changed display makes install re-choose for this
   // environment — that is what "reinstall to choose another mode" promises.
-  const spec = owned && copyToolPresent(owned.mode, env) ? owned : detectSpec(env);
+  // The status section: an explicit flag wins, then what an owned file already records (so a rerun never
+  // flips it just because an earlier step created ~/.tmux.conf), then the first-timer default.
+  const wantStatus = statusFlag ?? owned?.status ?? !humanHasTmuxConfig(env);
+  const spec = owned && copyToolPresent(owned.mode, env) ? { ...owned, status: wantStatus } : detectSpec(env, wantStatus);
   const conf = renderDefaults(spec), line = sourceLine(st.defaults_file);
   const lines = userText ? userText.split("\n") : [];
   const marked = lines.map((l, i) => l === line ? i : -1).filter(i => i >= 0);
@@ -452,10 +518,11 @@ export function cmdTmuxDefaults(argv: string[]): number {
       reloaded = true;
     }
   }
-  emit(json, { dry_run: dry, clipboard: spec.mode, terminal: spec.terminal, defaults_file: st.defaults_file, user_conf: st.user_conf, changed: !unchanged, reloaded,
+  emit(json, { dry_run: dry, clipboard: spec.mode, terminal: spec.terminal, status_bar: spec.status, defaults_file: st.defaults_file, user_conf: st.user_conf, changed: !unchanged, reloaded,
     ...(dry ? { preview: { defaults_file_content: conf, source_line: line } } : {}) },
-    `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: tmux defaults (clipboard=${spec.mode}${spec.terminal === "inherit" ? ", your default-terminal kept" : ""}) in ${st.defaults_file}, source line in ${st.user_conf}` +
+    `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: tmux defaults (clipboard=${spec.mode}${spec.terminal === "inherit" ? ", your default-terminal kept" : ""}${spec.status ? ", status bar" : ""}) in ${st.defaults_file}, source line in ${st.user_conf}` +
     `${normalizeLine ? " (source line moved back before your settings)" : ""}` +
-    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + st.defaults_file : ""}`);
+    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + st.defaults_file : ""}` +
+    `${!dry && !unchanged && owned?.status && !spec.status ? "; the status bar already loaded stays until tmux restarts" : ""}`);
   return 0;
 }

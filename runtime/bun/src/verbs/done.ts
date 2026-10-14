@@ -15,7 +15,7 @@ import { recipientInstance, settlingInstance, unresolvedRecipient } from "../rec
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { TapError, callingPane, resolveContext, resolveSelf } from "../context";
+import { TapError, callerObservationReason, observeCallingPane, resolveContext, resolveSelf } from "../context";
 import { envelopeField, validateEnvelope } from "../envelope";
 import { atomicWrite, jsonObj } from "../fsatomic";
 import { utcStamp, validId, validToken } from "../ids";
@@ -313,12 +313,13 @@ function addressedTo(ctx: Context, id: string, actor: string): boolean {
   }
 }
 
-export function resolveActor(ctx: Context, explicit: string): string {
+/** `retry` is the verb's own `--by` spelling for the no_actor next step (reply is the live caller; `tap done` is a retired tombstone). */
+export function resolveActor(ctx: Context, explicit: string, retry = "tap reply <id> --by <handle> -f <file>"): string {
   if (explicit) return explicit;
   if (process.env.TAP_SELF) return process.env.TAP_SELF;
-  const pane = callingPane();
-  if (pane?.status === "ok") return resolveSelf(ctx, pane, 1).handle;
-  if (pane?.status === "unverifiable") {
+  const seen = observeCallingPane();
+  if (seen.state === "inside") return resolveSelf(ctx, { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch }, 1).handle;
+  if (seen.state === "unobservable" && seen.unverifiable) {
     throw new TapError(1, "generation_unverifiable",
       "wait for tmux to answer and retry, or pass --by <handle>",
       "refusing settlement because the tmux server generation is unavailable and the caller identity cannot be verified");
@@ -326,9 +327,11 @@ export function resolveActor(ctx: Context, explicit: string): string {
   // Unanchored cwd exits 1 here, not 2 — measured against the incumbent, not
   // reasoned from the class. I first picked 2 by analogy with whoami and the
   // differential arm caught it.
+  // The next step names --by, and the detail carries why the pane could not
+  // be observed (whoami's pattern) instead of one fixed reason.
   throw new TapError(1, "no_actor",
-    "pass --by <handle> (or run 'tap register' to join this team)",
-    "only the addressee settles (caller pane observation: tmux pane inventory is unavailable)");
+    `${retry}   OR   tap register   (join this team)`,
+    `only the addressee settles (caller pane observation: ${callerObservationReason(seen)})`);
 }
 
 export function cmdDone(argv: string[]): number {
@@ -354,7 +357,7 @@ export function cmdDone(argv: string[]): number {
   const ctx = resolveContext();
   assertResetUnfenced(ctx.bus.home, "tap done");
   ctx.bus.ensureDirs();
-  const resolvedActor = resolveActor(ctx, actor);
+  const resolvedActor = resolveActor(ctx, actor, `tap done ${id} --by <handle>`);
   if (resolvedActor) {
     const successor = adoptedInto(ctx.registryPath, resolvedActor);
     if (successor) {

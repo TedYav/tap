@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
-import { recordCommand, recordDebug } from "../src/debug-capture";
+import { recordCommand, recordDebug, safeFields } from "../src/debug-capture";
 import { acquirePathLock } from "../src/panelock";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -11,6 +11,16 @@ const leaf = join(repo, "runtime/bun/src/debug-capture.ts");
 const entry = join(repo, "bin/tap");
 const bashEntry = join(repo, "scripts/tap.sh");
 const frameArgs = ["_frame", "first", "codex", "%7", "wire", "last-observed"];
+
+test("journal fields redact credential-named values even when absent from the collector environment", () => {
+  for (const key of ["CLAUDE_CODE_MESSAGING_TOKEN", "SERVICE_SECRET", "SSH_KEY", "DB_PASSWORD", "AUTH_COOKIE"]) {
+    expect(safeFields({ nested: { [key]: "unseen value with spaces", session_id: "kept" } }, {}))
+      .toEqual({ nested: { [key]: "<redacted>", session_id: "kept" } });
+    expect(safeFields(`IDENTIFY_ENVIRON ${key}=unseen value with spaces`, {}))
+      .toBe(`IDENTIFY_ENVIRON ${key}=<redacted>`);
+    expect(safeFields(`{"${key}":"unseen value with spaces"}`, {})).not.toContain("unseen value");
+  }
+});
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(process.env.TMUX_TMPDIR!, "dw-")));

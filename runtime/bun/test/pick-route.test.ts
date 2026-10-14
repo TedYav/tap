@@ -71,7 +71,7 @@ test("tap keybinding status/install/remove ride the shipped door and touch only 
   const install = tap(env, "keybinding", "install", "--tap", fakeTap);
   expect(install.status, install.stderr).toBe(0);
   expect(readFileSync(join(f.home, ".tmux.conf"), "utf8")).toContain("# tap-keybinding");
-  expect(JSON.parse(tap(env, "keybinding", "status", "--json").stdout)).toMatchObject({ installed: true, key: "@" });
+  expect(JSON.parse(tap(env, "keybinding", "status", "--json").stdout)).toMatchObject({ installed: true, key: "C-g" });
   expect(tap(env, "keybinding", "remove").status).toBe(0);
   expect(readFileSync(join(f.home, ".tmux.conf"), "utf8")).toBe("");
   expect(readFileSync(f.trace, "utf8").split("\n").filter(Boolean).every(l => l === "native keybinding")).toBe(true);

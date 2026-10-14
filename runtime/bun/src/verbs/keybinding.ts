@@ -1,6 +1,6 @@
 // `tap keybinding install|remove|status [--key <k>] [--tap <path>] [--dry-run] [--json]`
 //
-// Owns one tmux binding (default prefix + @) that opens `tap pick` in a popup.
+// Owns one tmux binding (default prefix + C-g) that opens `tap pick` in a popup.
 // TAP writes ~/.config/tap/tmux.conf; the user's tmux.conf gets exactly one
 // marked `source-file` line, so remove deletes that line and nothing else. An
 // existing binding on the key is shown and never replaced.
@@ -350,7 +350,7 @@ export function cmdKeybinding(argv: string[]): number {
   if (!sub || !["install", "remove", "status"].includes(sub)) {
     throw new TapError(1, "usage_error", "tap help keybinding", sub ? `unknown subcommand '${displayText(sub)}'` : "needs install, remove or status");
   }
-  let key = "@", tap = "", dry = false, json = process.env.TAP_JSON === "1", keyGiven = false;
+  let key = "C-g", tap = "", dry = false, json = process.env.TAP_JSON === "1", keyGiven = false;
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--key" && sub === "install") { key = argv[++i] ?? ""; keyGiven = true; if (!KEY.test(key)) throw new TapError(1, "usage_error", "tap help keybinding", "--key needs one key such as @, g, C-g or F5"); }

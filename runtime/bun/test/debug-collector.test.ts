@@ -230,6 +230,96 @@ test("external logging refuses before any toggle or file replacement", async () 
   finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
+for (const location of ["raw", "artifact"]) test(`a pre-existing ${location} tmux log is preserved and never claimed for a new trace`, async () => {
+  const f = fixture("existing-log"); let signals = 0;
+  const path = join(location === "raw" ? f.root : f.trace, "tmux-server-123.log");
+  writeFileSync(path, "prior evidence");
+  const io: CollectorEffects = { ...effects, logPath: async () => ({ cwd: f.root, path: null }), toggle: async () => { signals++; } };
+  try {
+    await expect(startLog(f.run, f.identity, f.trace, { identity: f.identity, owned: false }, io)).rejects.toThrow();
+    expect(signals).toBe(0);
+    expect(readFileSync(path, "utf8")).toBe("prior evidence");
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("closed native traces publish redacted artifacts and remove their private raw capture", async () => {
+  const f = fixture("redacted-trace");
+  const oldKey = process.env.TAP_TEST_API_KEY;
+  process.env.TAP_TEST_API_KEY = "trace"; // A credential value also occurs in operational IDs and paths.
+  let logging = false, raw = "", finished = false;
+  const secrets = ["token-value", "secret-value", "key-value", "password with spaces", "auth-value"];
+  const io: CollectorEffects = { ...effects, server: async () => f.identity, teamBuses: () => ({}), collectArtifacts: async () => {},
+    logPath: async () => ({ cwd: f.root, path: logging ? raw || join(f.root, "tmux-server-123.log") : null }),
+    toggle: async () => {
+      logging = !logging;
+      if (logging) appendFileSync(join(f.root, "tmux-server-123.log"), [
+        "100.001 " + "x".repeat(65520) + " IDENTIFY_ENVIRON CLAUDE_CODE_MESSAGING_TOKEN=token-value",
+        "100.002 IDENTIFY_ENVIRON SERVICE_SECRET=secret-value",
+        "100.003 IDENTIFY_ENVIRON SSH_KEY=key-value",
+        "100.004 IDENTIFY_ENVIRON DB_PASSWORD=password with spaces",
+        "100.005 IDENTIFY_ENVIRON AUTH_COOKIE=auth-value\ncontinued-private-value",
+        "100.006 IDENTIFY_ENVIRON CODEX_SESSION_ID=session-kept", "",
+      ].join("\n"));
+    },
+    rename: (from, to) => { renameSync(from, to); raw = String(to); },
+    appendEvent: (run, event, fields) => {
+      if (event === "trace.started") {
+        expect(raw.startsWith(f.directory + "/")).toBe(false);
+        expect(read(join(f.root, ".raw", f.run.id, "owner.json"))).toEqual({ id: f.run.id, pid: process.pid });
+        expect(statSync(raw).mode & 0o777).toBe(0o600);
+        expect(existsSync(join(f.trace, "tmux-server-123.log"))).toBe(false);
+      }
+      if (event === "trace.finished") {
+        expect(read(join(f.directory, "status.json"))).toMatchObject({ recording: true, trace: { stopping: "duration_elapsed" } });
+        const artifact = join(f.trace, "tmux-server-123.log");
+        const content = readFileSync(artifact, "utf8");
+        for (const secret of secrets) expect(content).not.toContain(secret);
+        expect(content).not.toContain("continued-private-value");
+        expect(content).toContain("CODEX_SESSION_ID=session-kept");
+        expect(content.match(/<redacted>/g)).toHaveLength(5);
+        expect(existsSync(raw)).toBe(false);
+        expect(statSync(artifact).mode & 0o777).toBe(0o600);
+        finished = true; f.stop();
+      }
+      effects.appendEvent(run, event, fields);
+    },
+  };
+  try {
+    await collect(f.run, io, f.env); expect(finished).toBe(true);
+    expect(read(join(f.trace, "status.json"))).toMatchObject({ id: f.run.id, directory: f.trace });
+  } finally {
+    if (oldKey === undefined) delete process.env.TAP_TEST_API_KEY; else process.env.TAP_TEST_API_KEY = oldKey;
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("status claims redaction only for a capture started with the sanitizer", async () => {
+  const f = fixture("legacy-output"), output: string[] = [];
+  writeFileSync(join(f.directory, "status.json"), JSON.stringify({ trace: { active: true, directory: f.trace, deadline_epoch: 0 } }));
+  const log = console.log;
+  console.log = (...args) => { output.push(args.join(" ")); };
+  try {
+    await main(["status"], f.env);
+    expect(output.join("\n")).toContain("Credential redaction is unverified for this legacy capture");
+    expect(output.join("\n")).not.toContain("Credential-named environment values redacted");
+    expect(output.join("\n")).not.toContain("the redacted artifact is published");
+    writeFileSync(join(f.root, "debug/enabled.json"), JSON.stringify({ ...f.run, redaction: "credentials-v1" }));
+    output.length = 0;
+    await main(["status"], f.env);
+    expect(output.join("\n")).toContain("Credential-named environment values redacted");
+  } finally { console.log = log; rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("every basic journal event redacts credential-named fields before append", () => {
+  const f = fixture("event-redaction");
+  try {
+    effects.appendEvent(f.run, "sample", { nested: { AUTH_COOKIE: "hidden" }, detail: "API_TOKEN=also hidden" });
+    const event = read(join(f.directory, "events.jsonl"));
+    expect(event.nested.AUTH_COOKIE).toBe("<redacted>");
+    expect(event.detail).toBe("API_TOKEN=<redacted>");
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
 test("control.lock excludes Python and native contenders and retains its inode after release", async () => {
   const root = mkdtempSync(join(tmpdir(), "tap-control-")); let release!: () => void, entered!: () => void;
   const ready = new Promise<void>(r => { entered = r; }), hold = new Promise<void>(r => { release = r; });
