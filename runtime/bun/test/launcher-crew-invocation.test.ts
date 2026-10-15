@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlink
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { removeScratchTree } from "./support/scratch";
+import { enrollScratchRoot } from "./support/enroll-scratch";
 import { INHERITED_IDENTITY_ENV } from "../src/session-store";
 
 const root = realpathSync(mkdtempSync(join(process.env.TMUX_TMPDIR ?? tmpdir(), "crew-inv.")));
@@ -54,6 +55,18 @@ for (const harness of ["claude", "codex", "opencode", "cursor", "agy", "hermes"]
     }
   });
 }
+
+test.each(["0", "1"])("missing receipt preview follows crew notice suppression (TAP_JSON=%s)", json => {
+  const f = fixture();
+  const index = join(f.cwd, "index");
+  enrollScratchRoot(f.cwd, index);
+  Object.assign(f.env, { TAP_INDEX_HOME: index, TAP_JSON: json });
+  const r = run(f);
+  expect(r.status).toBe(0);
+  expect(existsSync(join(f.cwd, ".tap/bus/receipts"))).toBe(false);
+  if (json === "1") expect(r.stderr).toBe("");
+  else expect(r.stderr.match(/will be created/g)).toHaveLength(1);
+});
 
 test("model/env validation preserves suppliedness, ordering and flag-specific actions", () => {
   const f = fixture();

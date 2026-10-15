@@ -4,7 +4,7 @@ import { afterEach, expect, test } from "bun:test";
 // a controlling tty; scripts and agents call the same door piped. Both shapes
 // drive the public door over a fixture tmux, so the assert is the whole exit
 // contract — the process ends by itself, within the bound, holding a receipt.
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -66,6 +66,21 @@ function fixture() {
   const effects = () => { try { return readFileSync(effect, "utf8"); } catch { return ""; } };
   return { root, effects };
 }
+
+test.each(["flag", "env", "human"])("Codex relaunch receipt preview keeps JSON quiet (%s)", mode => {
+  const f = fixture();
+  const run = spawnSync(TAP, ["session", "relaunch", "alice", "--dry-run", ...(mode === "flag" ? ["--json"] : [])],
+    { cwd: f.root, env: { ...process.env, TAP_JSON: mode === "env" ? "1" : "0" }, encoding: "utf8", timeout: 10000 });
+  expect(run.status, run.stdout + run.stderr).toBe(0);
+  expect(existsSync(join(f.root, ".tap/elsewhere/receipts"))).toBe(false);
+  expect(f.effects()).toBe("");
+  if (mode === "human") expect((run.stdout + run.stderr).match(/will be created/g)).toHaveLength(1);
+  else {
+    expect(run.stderr).toBe("");
+    expect(JSON.parse(run.stdout).ok).toBe(true);
+    expect(run.stdout).not.toContain("will be created");
+  }
+});
 
 test("public Codex relaunch exits from a controlling terminal outside tmux", () => {
   const f = fixture();

@@ -36,6 +36,8 @@ function world(seats: Record<string, unknown> = SEATS, live: string[] = Object.k
   writeFileSync(join(claude, "projects", "p", `${CLAUDE_ID}.jsonl`), "{}\n");
   const f = fixture({ registry: { schema: "0.20", team: { name: "repo" }, seats },
     tmux: [{ match: "*list-sessions*", stdout: live.join("\n") }], env: { TAP_CLAUDE_HOME: claude } });
+  // `tap init` creates the bus receipts folder; the Codex fork argv now composes under the auto default, which requires it.
+  mkdirSync(join(f.root, ".tap", "bus", "receipts"), { recursive: true });
   return { ...f, registryText: () => readFileSync(join(f.root, ".tap", "bus", "registry.json"), "utf8") };
 }
 

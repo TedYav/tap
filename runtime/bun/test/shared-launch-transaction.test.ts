@@ -19,7 +19,12 @@ function fixture(harness: string, binary = "/bin/sleep") {
   const root = realpathSync(mkdtempSync(join(original.TAP_INDEX_HOME!, "shared-")));
   const registry = join(root, ".tap/team-registry.json"), socket = join(original.TMUX_TMPDIR!, `shared-${process.pid}-${sockets.length}`);
   sockets.push(socket);
-  for (const d of ["index", "bin", "real", ".tap/bus", "config"]) mkdirSync(join(root, d), { recursive: true });
+  // `.tap/bus/receipts` as `tap init` creates it; Codex auto needs every enrolled receipts folder.
+  for (const d of ["index", "bin", "real", ".tap/bus/receipts", "config/tap"]) mkdirSync(join(root, d), { recursive: true });
+  // The pinned pre-cut rows were recorded when an unsaved choice fell back to
+  // bypass; the fixture saves bypass so those oracles stay their subject. The
+  // auto default is pinned in launcher-permissions.test.ts.
+  writeFileSync(join(root, "config/tap/config.toml"), "version = 3\n" + ["claude", "codex", "cursor", "agy"].map(h => `[harness.${h}]\npermissions = "bypass"\n`).join(""));
   writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "fixture", worktree_root: root }, seats: {} }));
   writeFileSync(join(root, "index/global-registry.json"), JSON.stringify({ schema: "0.20", teams: { fixture: { root, registry_location: registry } } }));
   const env: NodeJS.ProcessEnv = { ...original, HOME: root, XDG_CONFIG_HOME: join(root, "config"), TAP_INDEX_HOME: join(root, "index"), TAP_HOME: join(root, ".tap/bus"),
@@ -31,12 +36,48 @@ function fixture(harness: string, binary = "/bin/sleep") {
   const executable = harness === "cursor" ? "cursor-agent" : harness;
   const real = join(root, "real", executable);
   if (process.platform === "linux") copyFileSync(binary, real); else symlinkSync(binary, real);
-  writeFileSync(join(root, "bin", executable), `#!/bin/sh\nif [ "$1" = create-chat ]; then echo 550e8400-e29b-41d4-a716-446655440000; exit 0; fi\nprintf '%s\\n' "$@" > '${root}/argv'\nprintf '%s\\n' "$FEATURE" > '${root}/env'\nexec '${real}' ${binary === "/bin/sleep" ? "600" : ""}\n`);
+  writeFileSync(join(root, "bin", executable), `#!/bin/sh\nif [ "$1" = create-chat ]; then echo create-chat >> '${root}/create-chat-calls'; echo 550e8400-e29b-41d4-a716-446655440000; exit 0; fi\nprintf '%s\\n' "$@" > '${root}/argv'\nprintf '%s\\n' "$FEATURE" > '${root}/env'\nexec '${real}' ${binary === "/bin/sleep" ? "600" : ""}\n`);
   chmodSync(join(root, "bin", executable), 0o755);
   const record: LaunchRecord = { name: "fixture/seat", harness, cwd: root, base: "fixture", tag: "seat", index: 1, ensure_action: "new",
     harness_env: { FEATURE: "literal $HOME" }, harness_tail: ["literal $(touch SHOULD_NOT_EXIST)"], harness_passthrough: [], harness_unset_env: [] };
   return { root, registry, socket, env, record };
 }
+
+test("a permission conflict refuses a new Cursor launch before its chat is minted", async () => {
+  // The composed invocation is validated before mintLaunchSessionId: a legacy
+  // config (bypass flag in params, no permissions key) meets the auto default
+  // as a conflict, and the refusal must come before cursor-agent create-chat
+  // runs, before the reservation and before any pane effect (review, round 3).
+  const f = fixture("cursor");
+  Object.assign(process.env, f.env);
+  writeFileSync(join(f.root, "config", "tap", "config.toml"), "version = 3\n[harness.cursor.params]\nyolo = true\n");
+  await expect(launchTransaction({ kind: "new", record: f.record }, f.env)).rejects.toThrow("default permission mode, auto");
+  // The mint assigns the chat id onto the record; a refusal before it leaves none.
+  expect(f.record.harness_session_id).toBeUndefined();
+  // The fixture's fake cursor-agent records every create-chat call (and would answer with a valid id).
+  expect(existsSync(join(f.root, "create-chat-calls"))).toBe(false);
+  expect(JSON.parse(readFileSync(f.registry, "utf8")).seats).toEqual({});
+  expect(existsSync(join(f.root, "argv"))).toBe(false);
+  expect(existsSync(join(f.root, ".tap/backup"))).toBe(false);
+});
+
+test("a permission conflict refuses a fork before its reservation is written", async () => {
+  // A fork is a new launch with ensure_action "fork": the composed-invocation
+  // preflight covers it by its actual action, so a legacy config (bypass flag in
+  // params, no permissions key) refuses before the registry holds a reservation
+  // (review, round 3).
+  const f = fixture("claude");
+  Object.assign(process.env, f.env);
+  writeFileSync(join(f.root, "config", "tap", "config.toml"), "version = 3\n[harness.claude.params]\ndangerously-skip-permissions = true\n");
+  Object.assign(f.record, { ensure_action: "fork", fork_source_session_id: "source-id", harness_session_id: "fork-minted-id" });
+  const before = readFileSync(f.registry, "utf8");
+  await expect(launchTransaction({ kind: "new", record: f.record }, f.env)).rejects.toThrow("default permission mode, auto");
+  // A reservation written and rolled back would rewrite the registry; a preflight refusal never opens it.
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+  expect(JSON.parse(before).seats).toEqual({});
+  expect(existsSync(join(f.root, "argv"))).toBe(false);
+  expect(existsSync(join(f.root, ".tap/backup"))).toBe(false);
+});
 
 test.each(["claude", "codex", "opencode", "cursor", "agy", "hermes"])("shared fresh transaction launches %s natively", async harness => {
   const f = fixture(harness);

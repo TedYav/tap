@@ -1,5 +1,6 @@
 import { reservedSeatName } from "../ids";
 import { launchWorkdir, validateLaunchWorkdir } from "./workdir";
+import { defaultPermissions, prepareCodexAutoReceipts } from "./permissions";
 import { paneEnrollmentRefusal } from "../pane-enrollment";
 // One session-creation transaction; callers retain selection, cohorts and attach.
 import { randomBytes, randomUUID } from "node:crypto";
@@ -16,7 +17,7 @@ import { bootId, legacyBootId } from "../tmux";
 import { launcherFenceRefusal, markResetGenerationReused } from "../reset";
 import { startupTrace, startupTransition } from "../startup-trace";
 import { Notices } from "./catalog-notices";
-import { HARNESSES } from "./catalog";
+import { HARNESSES, resolveHarnessPolicy } from "./catalog";
 import { buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
 import { type SessionRecord, type Invocation, type ResumeIdentity, UNBOUND_RESUME_IDENTITY } from "./types";
 import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, type StartupObservation } from "./readiness";
@@ -194,7 +195,7 @@ export function durableRecord(record: LaunchRecord): Row {
 }
 
 export function storeRecipe(row: Row, record: LaunchRecord): void {
-  record.permissions ??= "bypass";
+  record.permissions ??= defaultPermissions(record.harness);
   if (record.launch_tuning) row.launch_tuning = clone(record.launch_tuning); else delete row.launch_tuning;
   if (record.launch_workdir !== undefined) row.launch_workdir = record.launch_workdir; else delete row.launch_workdir;
   Object.assign(row, { permissions: record.permissions, session: record.name, harness: record.harness, base: record.base,
@@ -654,7 +655,7 @@ export async function bindTransaction(evidence: FailureEvidence, facts: PaneFact
       socket: socket.code === 0 && `srv:${rawEpoch}` === facts.server_epoch ? socketPath ?? "" : "" },
       evidence.selection.rootReal, env.TAP_INDEX_HOME);
     if (enrollment) throw new TransactionError(enrollment.detail, undefined, enrollment.errorClass, enrollment.action);
-    Object.assign(row, { delivery: "pane", permissions: evidence.record.permissions || "bypass", status: "active",
+    Object.assign(row, { delivery: "pane", permissions: evidence.record.permissions || defaultPermissions(evidence.record.harness), status: "active",
       status_reason: ready ? "" : "launching", harness: evidence.record.harness, session: evidence.record.name,
       pane: facts.pane, pane_id: facts.pane_id, pane_current_command: facts.command,
       registered_from_worktree: evidence.selection.rootReal, registered_at: now() });
@@ -1078,10 +1079,17 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   record.last_launched ||= now();
   if (request.kind === "restart" && request.incumbent_live) record.replaces_session = record.name;
   const action = request.kind === "new" ? record.ensure_action ?? "new" : "resume";
-  if (action === "new") {
-    refusePreexistingIdOnNewMint(record);
-    if (!request.dry_run) Object.assign(record, await mintLaunchSessionId(record, env, signal));
-  }
+  if (action === "new") refusePreexistingIdOnNewMint(record);
+  // Validate the FULL composed invocation first, read-only, for every new launch
+  // by its actual action (new or fork): permission conflicts (a bypass flag in
+  // params or the tail against auto, saved or defaulted) are enforced by
+  // composeInvocation, and the launch must refuse them before the native chat
+  // mint below, before the reservation and before suspendAndStop ends an
+  // incumbent (review, round 3: a legacy params-only config refused only after
+  // the working seat had been killed and its row suspended, a Cursor launch had
+  // already minted a chat, and a fork had already written its reservation).
+  if (request.kind === "new") launchInvocation(action, record, notices, { env, nativeQuery: undefined, resume: UNBOUND_RESUME_IDENTITY, notify: false, receipts: discardReceipts });
+  if (action === "new" && !request.dry_run) Object.assign(record, await mintLaunchSessionId(record, env, signal));
   // tap-we6b rework: seat-up used to bind the RAW stored id here, bypassing
   // the resume resolver — a cursor id whose chat store never appeared came
   // back as `--resume <stale-id>`. Bind through the same gate the resume door
@@ -1090,7 +1098,6 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   const invocationOptions: { env: NodeJS.ProcessEnv; nativeQuery?: string | null; resume: ResumeIdentity } = { env, nativeQuery: request.kind === "adopted" ? request.native_query ?? null : undefined,
     resume: action === "resume" ? record.revive_vessel === "window" ? exactRevivalIdentity(record, env) : resumeIdentityBinding(request.kind, record, env) : UNBOUND_RESUME_IDENTITY };
   if (request.kind === "restart" && !request.preflight_done) launchInvocation("resume", record, notices, { ...invocationOptions, notify: false, receipts: discardReceipts });
-  if (request.kind === "new") buildInvocation(action, record, notices, env, null, UNBOUND_RESUME_IDENTITY, undefined, discardReceipts);
   const expectedReceipt = () => {
     if (action === "resume" && request.kind !== "adopted" && request.kind !== "seat-up") {
       process.stderr.write(`tap session: resuming ${record.name}; expected seat ${launchHandle(record)}\n`);
@@ -1116,6 +1123,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
       : `tap session: would launch ${record.name} (${record.harness}) in ${launchWorkdir(record)}\n`);
     return { code: 0, record, adopted_shell: false, backup: { status: "not-needed" } };
   }
+  if (record.harness === "codex") prepareCodexAutoReceipts(record.harness, resolveHarnessPolicy(record.harness, env, notices).permissions, env);
   launchPhase(`Reserving ${launchHandle(record)} on team ${selection.team}`, true);
   await fenceBarrier("pre-mutation", env, signal);
   // SHARED since tap-7t3ag: a launch is a registry mutation, not a structural

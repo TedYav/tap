@@ -65,6 +65,9 @@ function freezeHomes(): { claude: string; tap: string } {
   const tap = mkdtempSync(join(tmpdir(), "tap-g4-home."));
   scratch.push(tap);
   mkdirSync(join(tap, "xdg", "tap"), { recursive: true });
+  // Match the frozen Python oracle's explicit policy, independent of today's default.
+  writeFileSync(join(tap, "xdg/tap/config.toml"), ["version = 3", ...["claude", "codex", "cursor", "agy"]
+    .map(harness => `[harness.${harness}]\npermissions = "bypass"`)].join("\n"));
   mkdirSync(join(tap, "home"), { recursive: true });
   mkdirSync(join(tap, "index"), { recursive: true });
   return { claude, tap };

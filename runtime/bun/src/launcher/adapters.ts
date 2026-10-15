@@ -155,6 +155,7 @@ export function buildHarnessInvocation(
   // incumbent. One launch says each once because a validation-only build passes
   // `discardReceipts` (tap-2qrt); the real invocation build is the one speaker.
   receipts: (line: string) => void = line => { process.stderr.write(`${line}\n`); },
+  notice: (line: string) => void = () => {},
 ): Invocation {
   const source = action === "fork" ? forkSource(record) : null;
   const resumed = boundResume(action, record, resumeIdentity, environ, receipts);
@@ -192,7 +193,7 @@ export function buildHarnessInvocation(
 
   if (record.harness === "codex") {
     const mode = permissions ?? resolveCatalog(undefined, "codex", environ, () => {}).permissions;
-    const argv = ["codex", ...isolationArgv("codex"), ...permissionArgv("codex", mode, environ)];
+    const argv = ["codex", ...isolationArgv("codex"), ...permissionArgv("codex", mode, environ, notice)];
     if (mode === "auto") refuseAmbientCodexSockets(environ, launchWorkdir(record));
     Object.assign(env, hostBootEnv("codex", mode, environ));
     const pickerLaunch = action === "new" && !!record.launch_resume;

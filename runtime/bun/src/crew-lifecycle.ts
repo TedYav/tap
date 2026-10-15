@@ -17,6 +17,7 @@ import { crewRecipeInvocation } from "./launcher/crew-invocation";
 import { LaunchInterrupted } from "./launcher/transaction";
 import { launchTmux } from "./launcher/process";
 import { LauncherError } from "./launcher/types";
+import { prepareCodexAutoReceipts } from "./launcher/permissions";
 import { crewLifetimeBinding, rearmCrewLifetime, rearmReplacedCrewLifetime, stopCrewLifetimeHelper } from "./crew-lifetime";
 
 const HELP = "tap help crew";
@@ -301,6 +302,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     const early = paneRefusal();
     if (early) throw early;
     if (opts.dryRun) return paneId;
+    prepareCodexAutoReceipts(str(row.harness), row.permissions);
     // Preserve the original parent generation when replacing a supervised child.
     const lifetime = crewLifetimeBinding(paneId);
     if (lifetime) await rearmCrewLifetime(ctx, handle);

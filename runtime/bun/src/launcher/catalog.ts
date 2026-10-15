@@ -1,7 +1,7 @@
 import { configDirectory, readSecureBytes, hasUtf8Bom, readCatalog, table, refuse, isRegularFile, type Table, type CatalogSource, type SecureFaultPhase } from "../config-file";
 export { configDirectory, readSecureBytes, hasUtf8Bom, readCatalog, table, refuse, isRegularFile, type Table, type CatalogSource, type SecureFaultPhase } from "../config-file";
 import { join } from "node:path";
-import { permissionMode, type PermissionMode } from "./permissions";
+import { defaultPermissions, permissionMode, type PermissionMode } from "./permissions";
 import { LauncherError } from "./types";
 import { pyBlank } from "./catalog-metadata";
 import type { Notices } from "./catalog-notices";
@@ -282,7 +282,7 @@ export function resolveCatalog(
       `no harness environment policy is being applied for ${harness}`);
   }
   const policy = table(requestedTable) ? requestedTable as Table : {};
-  return { preset, permissions: permissionMode(policy.permissions),
+  return { preset, permissions: permissionMode(policy.permissions, harness),
            policyEnv: environment(policy.env, "harness_env_forbidden",
              // Only a NAMED harness has a `[harness.<name>.env]` table to quote in a
              // refusal. With no harness the policy is `{}`, so `environment` returns
@@ -351,6 +351,8 @@ export type HarnessPolicyResolution = {
   notices: string[];
   params: Params;
   permissions: PermissionMode;
+  /** True when no `permissions` key was saved and the harness default applied. */
+  permissionsDefaulted: boolean;
 };
 
 /**
@@ -384,7 +386,7 @@ export function resolveHarnessPolicy(
   read: (path: string) => { bytes: Buffer; resolvedPath: string; digest: string } = readSecureBytes,
 ): HarnessPolicyResolution {
   const empty: HarnessPolicyResolution =
-    { env: {}, notices: [], params: Object.create(null), permissions: "bypass" };
+    { env: {}, notices: [], params: Object.create(null), permissions: defaultPermissions(harness), permissionsDefaulted: true };
   let dir: string;
   try {
     dir = configDirectory(env);
@@ -419,12 +421,13 @@ export function resolveHarnessPolicy(
   const envOut = environment(rawTable.env, "harness_env_forbidden",
                              harnessEnvRefusals(harness, source));
   const params = pyParams(rawTable.params, `[harness.${harness}]`, source);
-  const permissions = rawTable.permissions === undefined ? "bypass" : rawTable.permissions;
+  const permissionsDefaulted = rawTable.permissions === undefined;
+  const permissions = permissionsDefaulted ? defaultPermissions(harness) : rawTable.permissions;
   if (typeof permissions !== "string" || (permissions !== "bypass" && permissions !== "auto")) {
     refuse("preset_config_invalid",
            `invalid preset config ${source}: [harness.${harness}] permissions must be ` +
            '"bypass" or "auto"',
            `fix ${source}`);
   }
-  return { env: envOut, notices: returned, params, permissions };
+  return { env: envOut, notices: returned, params, permissions, permissionsDefaulted };
 }

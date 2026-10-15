@@ -149,10 +149,10 @@ test("reference starter choices and policy extensions remain launchable", () => 
   writeFileSync(join(idx, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: { presets: { root: wt, registry_location: registry, state: "registered" } } }));
   const grok = Bun.spawnSync(["bun", join(root, "runtime/bun/src/launcher/new.ts"), "--dry-run", "--json", "grok"], {env: {...process.env, XDG_CONFIG_HOME: dir, TAP_INDEX_HOME: idx}, cwd: wt, stdin: "ignore"});
   expect({code: grok.exitCode, stderr: grok.stderr.toString()}).toEqual({code: 0, stderr: expect.any(String)});
-  // The launcher owns Cursor bypass (tap-6c1me); the reference no longer spells it as params.yolo.
-  expect(JSON.parse(grok.stdout.toString()).argv.slice(1, 4)).toEqual(["--force", "--sandbox", "disabled"]);
+  // The launcher owns Cursor permissions (tap-6c1me); the reference saves auto, the default, never params.yolo.
+  expect(JSON.parse(grok.stdout.toString()).argv.slice(1, 2)).toEqual(["--auto-review"]);
   for (const harness of ["agy", "claude", "codex", "cursor"]) {
-    expect(config.harness[harness].permissions).toBe("bypass");
+    expect(config.harness[harness].permissions).toBe("auto");
   }
   for (const name of names) {
     const preset = config.presets[name];

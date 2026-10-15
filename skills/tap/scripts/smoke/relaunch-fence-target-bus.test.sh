@@ -110,7 +110,7 @@ A="$W/teamA"; B="$W/teamB"
 ABUS="$A/.tap/bus"; BBUS="$B/.tap/bus"
 mkdir -p "$ABUS/payloads" "$ABUS/receipts" "$ABUS/spool" "$ABUS/clear-fence" \
          "$BBUS/payloads" "$BBUS/receipts" "$BBUS/spool" "$BBUS/clear-fence" \
-         "$W/index" "$W/bin" "$W/faketmux"
+         "$W/index" "$W/bin" "$W/faketmux" "$W/config/tap"
 for d in "$A" "$B"; do git -C "$d" init -q; done
 
 # The relaunch caller is provably OUTSIDE tmux, which is what the suite runner
@@ -118,9 +118,16 @@ for d in "$A" "$B"; do git -C "$d" init -q; done
 # pane the self-relaunch guard refuses — correctly — and this fixture would be
 # testing that guard instead of the fence.
 unset TMUX TMUX_PANE
-export TAP_INDEX_HOME="$W/index" TAP_BOOT_ID="boot:424242"
+export TAP_INDEX_HOME="$W/index" TAP_BOOT_ID="boot:424242" XDG_CONFIG_HOME="$W/config"
 export PATH="$W/bin:$PATH"
 export FAKE_TMUX_STATE="$W/faketmux"
+
+# Relaunch records the current policy; this fixture exercises bypass interrupt refusal.
+cat > "$W/config/tap/config.toml" <<'TOML'
+version = 3
+[harness.codex]
+permissions = "bypass"
+TOML
 
 cat > "$W/index/global-registry.json" <<JSON
 {"schema":"0.20","migrated":{"at":"2026-08-28T00:00:00Z","backups":{}},

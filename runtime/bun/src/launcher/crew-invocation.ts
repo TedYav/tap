@@ -17,7 +17,7 @@ import { loadPresetCatalog, requirePreset } from "./catalog-listing";
 import { pyBlank } from "./catalog-metadata";
 import { Notices } from "./catalog-notices";
 import { parseEnvAssignments } from "./overrides";
-import { enforcePermissions, PERMISSION_HARNESSES, type PermissionMode } from "./permissions";
+import { defaultPermissions, enforcePermissions, PERMISSION_HARNESSES, prepareCodexAutoReceipts, type PermissionMode } from "./permissions";
 import { applyLaunchEnv } from "./plan";
 import { LauncherError } from "./types";
 import { teamRegistryRefusal } from "../register-authority";
@@ -78,9 +78,10 @@ function renderArgv(harness: string, name: string, cwd: string, model: string, s
   passthrough: string[], presetFloor: boolean, env: NodeJS.ProcessEnv, notices: Notices, recordedPermissions?: PermissionMode): { argv: string[]; permissions: string; launchEnv: Record<string, string> } {
   // Crew has no conversation id. Bind permissions once for argv, checks and persistence.
   const policy = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
-  const permissions = recordedPermissions ?? (PERMISSION_HARNESSES.includes(harness) ? policy.permissions : "bypass");
+  const permissions = recordedPermissions ?? (PERMISSION_HARNESSES.includes(harness) ? policy.permissions : defaultPermissions(harness));
+  const defaulted = recordedPermissions === undefined && policy.permissionsDefaulted;
   const record = { name, harness, cwd, base: name.split("/", 1)[0]!, model, harness_env: seatEnv };
-  const invocation = applyLaunchEnv(buildHarnessInvocation("new", record, null, null, env, permissions), record, env, notices.sink, () => {
+  const invocation = applyLaunchEnv(buildHarnessInvocation("new", record, null, null, env, permissions, undefined, notices.sink), record, env, notices.sink, () => {
     const current = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
     for (const notice of current.notices) notices.emit(notice);
     return current.env;
@@ -88,7 +89,7 @@ function renderArgv(harness: string, name: string, cwd: string, model: string, s
   let argv = passthrough.length
     ? spliceTokensIfAbsent(invocation.argv, passthrough, { floor: presetFloor, configKeys: harness === "codex" }) : invocation.argv;
   const params = resolveHarnessPolicy(harness, env, notices, facadeSecureRead).params;
-  for (const source of [passthrough, paramsToArgv(params), argv.slice(1)]) enforcePermissions(harness, permissions, source, env);
+  for (const source of [passthrough, paramsToArgv(params), argv.slice(1)]) enforcePermissions(harness, permissions, source, env, defaulted);
   argv = withoutNoDaemonForRemote(harness, spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }));
   if (harness === "opencode") {
     const clean: string[] = [];
@@ -160,6 +161,7 @@ export function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.
   if (pane) {
     const path = values["record-registry"];
     if (!path) throw new LauncherError("crew recipe persistence requires its acting registry");
+    prepareCodexAutoReceipts(harness, permissions, env);
     const handle = name.slice(name.indexOf("/") + 1);
     // Match flock(LOCK_EX), including contention beyond the native five-second default.
     const lock = acquireRegistryLock(path, Infinity, env);

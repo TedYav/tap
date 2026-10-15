@@ -15,22 +15,23 @@
 
 version = 3
 
-# Claude/Codex/Cursor/AGY permission mode: "bypass" (also the absent-key default) or "auto".
+# Claude/Codex/Cursor/AGY permission mode: "auto" (also the absent-key default) or "bypass".
+# A bypass flag left in params refuses an auto launch; set permissions = "bypass" to keep it.
 # Their launcher owns permission flags; OpenCode and Hermes keep theirs in params.
 # Harness policy is read fresh on launch and resume.
 
 [harness.agy]
-permissions = "bypass"
+permissions = "auto"
 
 [harness.claude]
-permissions = "bypass"
+permissions = "auto"
 
 [harness.codex]
-permissions = "bypass"
+permissions = "auto"
 env.PONYTAIL_DEFAULT_MODE = "off"
 
 [harness.cursor]
-permissions = "bypass"
+permissions = "auto"
 
 [harness.hermes]
 

@@ -6,7 +6,7 @@ import { facadeSecureRead } from "../slices/preset-api";
 import { Notices } from "./catalog-notices";
 import { applyLaunchEnv } from "./plan";
 import { paramsToArgv, spliceTokensIfAbsent } from "./argv-splice";
-import { enforcePermissions, permissionArgv, PERMISSION_HARNESSES, refuseAmbientCodexSockets } from "./permissions";
+import { defaultPermissions, enforcePermissions, permissionArgv, PERMISSION_HARNESSES, refuseAmbientCodexSockets } from "./permissions";
 import { claudeSessionTranscriptExists, resolveResumeTarget, resolvedResumeIdentity, emitResumeTargetReceipts } from "./resume-identity";
 import { assignments } from "./config-args";
 import { launchWorkdir } from "./workdir";
@@ -78,14 +78,14 @@ export function buildInvocation(
     resume = action === "resume" ? resolvedResumeIdentity(record, env, receipts) : null;
   }
   const permissions = PERMISSION_HARNESSES.includes(record.harness)
-    ? resolveHarnessPolicy(record.harness, env, notices, facadeSecureRead).permissions : "bypass";
+    ? resolveHarnessPolicy(record.harness, env, notices, facadeSecureRead).permissions : defaultPermissions(record.harness);
   if (PERMISSION_HARNESSES.includes(record.harness)) record.permissions = permissions;
   if (nativeQuery === undefined || !["claude", "codex", "agy"].includes(record.harness)) {
-    return buildHarnessInvocation(action, record, prompt, resume, env, permissions, receipts);
+    return buildHarnessInvocation(action, record, prompt, resume, env, permissions, receipts, notices.sink);
   }
   const argv = [record.harness, ...isolationArgv(record.harness)];
   if (record.harness === "codex" && permissions === "auto") refuseAmbientCodexSockets(env, launchWorkdir(record));
-  argv.push(...permissionArgv(record.harness, permissions, env));
+  argv.push(...permissionArgv(record.harness, permissions, env, notices.sink));
   if (record.harness === "codex") argv.push("resume");
   if (!resumeReopensSession(record.harness, nativeQuery) || !restoredAxes(record.harness).includes("model")) argv.push(...modelArgv(record.harness, record.model));
   if (record.harness === "claude") {
@@ -162,10 +162,12 @@ export function composeInvocation(
   });
   const policy = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
   const params = stripTuningAxes(harness, paramsToArgv(policy.params), strip);
-  record.permissions ??= PERMISSION_HARNESSES.includes(harness) ? policy.permissions : "bypass";
+  record.permissions ??= PERMISSION_HARNESSES.includes(harness) ? policy.permissions : defaultPermissions(harness);
+  // The refusal names the unsaved default when that is what the mode came from.
+  const defaulted = policy.permissionsDefaulted && record.permissions === policy.permissions;
   try {
     for (const source of [passthrough, params, argv.slice(1), replayedTail]) {
-      enforcePermissions(harness, record.permissions, source, env);
+      enforcePermissions(harness, record.permissions, source, env, defaulted);
     }
   } catch (error) {
     if (error instanceof LauncherError) throw new InvocationError(error.message);

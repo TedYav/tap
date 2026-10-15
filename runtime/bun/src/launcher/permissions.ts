@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { lockRoot } from "../panelock";
@@ -8,8 +8,17 @@ import { busHomeForRegistry, loadGlobalRegistry, resolveTeamFromDoc } from "../i
 import { LauncherError } from "./types";
 
 export type PermissionMode = "bypass" | "auto";
-export function permissionMode(value: unknown): PermissionMode {
-  if (value === undefined) return "bypass";
+/**
+ * The mode a harness launches with when no `permissions` choice is saved: auto
+ * for every harness whose permissions TAP owns, so the wizard default, the
+ * guides and the launcher agree; OpenCode and Hermes carry their own flags in
+ * params and keep the bypass label their rows always had.
+ */
+export function defaultPermissions(harness: string | null | undefined): PermissionMode {
+  return harness !== null && harness !== undefined && PERMISSION_HARNESSES.includes(harness) ? "auto" : "bypass";
+}
+export function permissionMode(value: unknown, harness?: string | null): PermissionMode {
+  if (value === undefined) return defaultPermissions(harness);
   if (value === "bypass" || value === "auto") return value;
   throw new LauncherError('harness_permissions_invalid: permissions must be "bypass" or "auto"', "harness_permissions_invalid");
 }
@@ -41,12 +50,9 @@ const PROFILE_NAME = /^tap_launcher_auto_[0-9a-f]{12}$/;
 export function codexAutoProfileName(): string {
   return `${CODEX_AUTO_PROFILE}_${randomBytes(6).toString("hex")}`;
 }
-export function codexAutoProfileArgv(env: NodeJS.ProcessEnv, name: string = codexAutoProfileName()): string[] {
-  const socket = physicalSocketPath(env);
+function codexReceiptRoots(env: NodeJS.ProcessEnv, create: boolean, notice: (line: string) => void = () => {}): string[] {
   const indexHome = env.TAP_INDEX_HOME || join(env.HOME || homedir(), ".tap");
-  // Index home holds what a send/read/reply writes (locks/, runtime-cache/, send-refusals.log); a pinned lock dir may live elsewhere.
-  const locks = lockRoot(env);
-  const writable = locks === indexHome || locks.startsWith(`${indexHome}/`) ? [indexHome] : [indexHome, locks];
+  const roots: string[] = [];
   // Cross-team reads and replies write receipts on the sender's bus.
   const index = loadGlobalRegistry(indexHome);
   if (index.marker === "live" && index.doc) {
@@ -55,11 +61,31 @@ export function codexAutoProfileArgv(env: NodeJS.ProcessEnv, name: string = code
       if (resolved.status !== "ok") continue;
       const bus = busHomeForRegistry(resolved.registryLocation);
       if (!bus) continue;
-      const receipts = join(bus, "receipts"), kind = lstatSync(receipts, { throwIfNoEntry: false });
-      if (!kind?.isDirectory()) throw new LauncherError(`harness_permissions_conflict: ${receipts} receipts must be a real directory, not missing, a symlink or a file`, "harness_permissions_conflict");
-      if (!writable.includes(receipts)) writable.push(receipts);
+      const receipts = join(bus, "receipts");
+      let kind = lstatSync(receipts, { throwIfNoEntry: false });
+      if (!kind && create) {
+        mkdirSync(receipts, { recursive: true });
+        kind = lstatSync(receipts);
+      }
+      if (kind && !kind.isDirectory()) throw new LauncherError(`harness_permissions_conflict: ${receipts} receipts must be a real directory, not a symlink or a file`, "harness_permissions_conflict");
+      if (!kind) notice(`tap: receipt folder ${receipts} will be created before launch`);
+      if (!roots.includes(receipts)) roots.push(receipts);
     }
   }
+  return roots;
+}
+
+/** Run only at the real launch boundary; planning and permission validation stay read-only. */
+export function prepareCodexAutoReceipts(harness: string, permissions: unknown, env: NodeJS.ProcessEnv = process.env): void {
+  if (harness === "codex" && permissions === "auto") codexReceiptRoots(env, true);
+}
+
+export function codexAutoProfileArgv(env: NodeJS.ProcessEnv, name: string = codexAutoProfileName(), notice: (line: string) => void = () => {}): string[] {
+  const socket = physicalSocketPath(env);
+  const indexHome = env.TAP_INDEX_HOME || join(env.HOME || homedir(), ".tap");
+  // Index home holds what a send/read/reply writes (locks/, runtime-cache/, send-refusals.log); a pinned lock dir may live elsewhere.
+  const locks = lockRoot(env);
+  const writable = [...new Set([indexHome, ...(locks === indexHome || locks.startsWith(`${indexHome}/`) ? [] : [locks]), ...codexReceiptRoots(env, false, notice)])];
   const p = `permissions.${name}`;
   return [
     "-c", `default_permissions=${JSON.stringify(name)}`,
@@ -110,10 +136,10 @@ export function refuseAmbientCodexSockets(env: NodeJS.ProcessEnv, workdir?: stri
   }
 }
 
-export function permissionArgv(harness: string, mode: PermissionMode, env: NodeJS.ProcessEnv = process.env): string[] {
+export function permissionArgv(harness: string, mode: PermissionMode, env: NodeJS.ProcessEnv = process.env, notice: (line: string) => void = () => {}): string[] {
   const argv = PERMISSION_ARGV[harness];
   if (!argv) throw new LauncherError(`harness_permissions_unsupported: TAP does not own permissions for ${harness}`, "harness_permissions_unsupported");
-  return [...argv[mode], ...(harness === "codex" && mode === "auto" ? codexAutoProfileArgv(env) : [])];
+  return [...argv[mode], ...(harness === "codex" && mode === "auto" ? codexAutoProfileArgv(env, undefined, notice) : [])];
 }
 
 /** Cursor bundles short booleans (-pf); a value-taking short option ends the bundle and keeps the rest as its value. */
@@ -160,9 +186,17 @@ function overlapsOwnedKey(path: string[]): boolean {
   return path.length > 0 && CODEX_OWNED_KEYS.some(owned => owned.every((part, i) => i >= path.length || path[i] === part));
 }
 
-/** Check each source before composition can hide an option behind a builder default. */
-export function enforcePermissions(harness: string, mode: PermissionMode, args: string[], env: NodeJS.ProcessEnv = process.env): void {
+/**
+ * Check each source before composition can hide an option behind a builder default.
+ * `defaulted` says the auto came from the unsaved default rather than a saved
+ * choice, so the refusal names the default and both remedies instead of a
+ * `permissions = "auto"` line the operator never wrote.
+ */
+export function enforcePermissions(harness: string, mode: PermissionMode, args: string[], env: NodeJS.ProcessEnv = process.env, defaulted = false): void {
   if (mode !== "auto" || !PERMISSION_HARNESSES.includes(harness)) return;
+  const against = (key: string) => defaulted
+    ? `${key} conflicts with the default permission mode, auto, which applies because [harness.${harness}] saves no permissions choice; set [harness.${harness}] permissions = "bypass" to keep ${key}, or remove it`
+    : `${key} contradicts [harness.${harness}] permissions = "auto"`;
   // TAP's own Codex profile is the one `-c` set allowed through; any other value for those keys conflicts.
   // The owned set is the one regenerated for the profile name this argv selects.
   const selected = harness === "codex" ? args.map(arg => /^default_permissions="(tap_launcher_auto_[0-9a-f]{12})"$/.exec(arg.trim())?.[1]).find(Boolean) : undefined;
@@ -189,8 +223,8 @@ export function enforcePermissions(harness: string, mode: PermissionMode, args: 
           ? ["--force", "-f"].includes(key) || (key === "--sandbox" && value !== "enabled") || cursorShortCluster(token).includes("f")
           : false;
     if (harness === "codex" && ["--profile", "-p"].includes(key)) {
-      throw new LauncherError(`harness_permissions_conflict: ${key} contradicts [harness.codex] permissions = "auto": AUTO uses TAP's own Codex profile; drop ${key} or use bypass`, "harness_permissions_conflict");
+      throw new LauncherError(`harness_permissions_conflict: ${against(key)}: AUTO uses TAP's own Codex profile; drop ${key} or use bypass`, "harness_permissions_conflict");
     }
-    if (bypass || conflict) throw new LauncherError(`harness_permissions_conflict: ${key} contradicts [harness.${harness}] permissions = "auto"`, "harness_permissions_conflict");
+    if (bypass || conflict) throw new LauncherError(`harness_permissions_conflict: ${against(key)}`, "harness_permissions_conflict");
   }
 }

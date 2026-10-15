@@ -29,6 +29,7 @@ import type { JsonMap } from "../watch-detect";
 import { freshLaunchSessionId } from "./adapters";
 import { HARNESSES } from "./catalog";
 import { Notices } from "./catalog-notices";
+import { prepareCodexAutoReceipts } from "./permissions";
 import { observeGeneration, staleSeatGeneration, type Observation } from "./generation";
 import { InvocationError, invocationShellCommand, launchInvocation } from "./invocation";
 import { currentEpoch, entrySession, paneSession } from "./observation";
@@ -412,6 +413,7 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
   const { verb, handle } = opts, env = opts.env ?? process.env;
   const { target, record, nonce, ceiling } = plan, paneId = target.paneId;
   if (record.launch_workdir !== undefined) record.launch_workdir = validateLaunchWorkdir(scope.root, record.launch_workdir);
+  prepareCodexAutoReceipts(record.harness, record.permissions, env);
   const fence = acquireClearFence(scope.busHome, handle, nonce, record.harness, ceiling);
   if (!fence) {
     let holder = "unknown", since = "unknown";

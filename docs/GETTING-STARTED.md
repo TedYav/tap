@@ -55,8 +55,8 @@ that agent. From an agent or without a terminal, launch leaves it running in
 the background; visit it from your terminal with `tap attach claude` or
 `tap attach codex`. `tap team` lists the seat names.
 
-Launch uses your saved permission choice, or bypass mode by default.
-[Choose auto mode](#run-without-bypass-mode) before launching if you prefer it.
+Launch uses your saved permission choice, or auto mode by default.
+[Choose bypass mode](#choose-bypass-mode) before launching if you prefer it.
 First starts can ask for trust, one seat at a time:
 
 - **Claude** shows its folder-trust prompt in a new directory. Trust the folder
@@ -230,17 +230,20 @@ mismatch before sending it work. The tmux session label may still show the
 launcher's original name after a resume; `tap whoami` reports the current TAP
 handle.
 
-## Run without bypass mode
+## Choose bypass mode
 
-Seats that TAP launches use each harness's bypass flag unless you choose
-otherwise. To use the harness's permission checks instead of TAP's bypass flag,
-set its permissions to `auto`; the next launch picks it up:
+Seats that TAP launches use each harness's own permission checks (auto) unless
+you choose otherwise. Bypass lets the agent run commands and edit files without
+asking, with your own permissions. To choose it, set the harness's permissions
+to `bypass`; the next launch picks it up:
 
 ```bash
-tap config set harness.cursor.permissions auto
+tap config set harness.cursor.permissions bypass
 ```
 
-The flags per harness live in
+A bypass flag left in that harness's `params` refuses an auto launch until the
+key says `bypass` or the flag is removed. What auto means per harness, with the
+flags in
 [`launcher/permissions.ts`](../runtime/bun/src/launcher/permissions.ts):
 
 - **Claude**: `--permission-mode auto`. Its classifier approves routine actions
@@ -257,7 +260,8 @@ The flags per harness live in
   sandbox runs; Codex's own model traffic is not affected. This composes with your
   own Codex config: TAP's settings are what it guarantees.
 - **Cursor**: `--auto-review`. Safe calls run; the rest wait for you.
-- **Antigravity**: has no automatic mode, so it asks about every tool call.
+- **Antigravity**: has no automatic approval mode, so auto stops the seat on
+  every permission request until you answer it in the attached session.
 - **OpenCode and Hermes**: TAP does not set their permissions. Use OpenCode's
   `permission` setting and Hermes's `approvals.mode`.
 

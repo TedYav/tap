@@ -1,8 +1,10 @@
 // G1 dark argv differential: Bun planner vs frozen Python build_harness_invocation.
 // Captured before the Python bridge was retired; mutation controls remain below.
-import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { removeScratchTree } from "./support/scratch";
 
 import { AGENT_FAMILIES } from "../src/verbs/team";
 import {
@@ -100,7 +102,20 @@ function expectedArgv(row: OracleRow): string[] | undefined {
 }
 
 describe("G1 adapters argv differential", () => {
+  const originalConfigHome = process.env.XDG_CONFIG_HOME;
+  let configHome: string;
+  beforeEach(() => {
+    configHome = mkdtempSync(join(tmpdir(), "tap-g1-policy-"));
+    mkdirSync(join(configHome, "tap"));
+    // These frozen Python cells used bypass; default-auto coverage lives in launcher-permissions.
+    writeFileSync(join(configHome, "tap/config.toml"), ["version = 3", ...["claude", "codex", "cursor", "agy"]
+      .map(harness => `[harness.${harness}]\npermissions = "bypass"`)].join("\n"));
+    process.env.XDG_CONFIG_HOME = configHome;
+  });
   afterEach(() => {
+    if (originalConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalConfigHome;
+    removeScratchTree(configHome);
     setCursorResumeIdFirst(true);
     setCursorTrustAuthorizedWorktree(true);
   });

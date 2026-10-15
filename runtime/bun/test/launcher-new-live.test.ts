@@ -19,6 +19,15 @@ const native = ["bun", join(repo, "runtime/bun/src/launcher/new.ts")];
 const GOLDEN = join(import.meta.dir, "fixtures/launch-new-live-oracle.json");
 const roots: string[] = [], sockets: string[] = [];
 
+function expectedLaunch() {
+  const expected = JSON.parse(readFileSync(GOLDEN, "utf8")).cases["launch testseat reviewer"];
+  // The frozen Python launch predates the auto default and the foreground attach guidance.
+  expected.harnessArgv.splice(0, 1, "--permission-mode", "auto");
+  expected.row.permissions = "auto";
+  expected.stdout = expected.stdout.replace("next: tmux attach -t ", "next: from a foreground terminal, run tap attach ");
+  return expected;
+}
+
 afterEach(() => {
   for (const socket of sockets.splice(0)) spawnSync(realTmux, ["-L", socket, "kill-server"], { stdio: "ignore" });
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -101,12 +110,11 @@ test("launch binds the seat by its own SessionStart, as the incumbent did", asyn
   const sid = launched.raw.harnessArgv[launched.raw.harnessArgv.indexOf("--session-id") + 1];
   expect(launched.raw.row.harness_session_id).toBe(sid);
   expect(launched.raw.row.status).toBe("active");
-  const golden = JSON.parse(readFileSync(GOLDEN, "utf8").replaceAll("next: tmux attach -t ", "next: from a foreground terminal, run tap attach ")).cases as Record<string, unknown>;
   // launch_tuning and launch_witness (the launcher-minted bind evidence) postdate the incumbent's row.
   const { launch_tuning, launch_witness, ...row } = (launched.masked as any).row;
   expect(launch_tuning).toEqual({ model: null, effort: null, qualifiers: {}, environment: {} });
   expect(launch_witness).toBe("<uuid>");
-  expect({ ...(launched.masked as any), row }).toEqual(golden["launch testseat reviewer"]);
+  expect({ ...(launched.masked as any), row }).toEqual(expectedLaunch());
 }, 120_000);
 
 test("verbose diagnostics capture a native launch's commands without changing its result", async () => {
@@ -114,12 +122,11 @@ test("verbose diagnostics capture a native launch's commands without changing it
   expect(launched.raw.hookRc).toBe("0");
   // The [diagnostics] table changes only the config file's digest.
   const withoutDigest = (value: unknown) => JSON.parse(JSON.stringify(value).replace(/"config_digest":"sha256:[0-9a-f]+"/, '"config_digest":"<digest>"'));
-  const golden = JSON.parse(readFileSync(GOLDEN, "utf8").replaceAll("next: tmux attach -t ", "next: from a foreground terminal, run tap attach ")).cases as Record<string, unknown>;
   // launch_tuning and launch_witness (the launcher-minted bind evidence) postdate the incumbent's row.
   const { launch_tuning, launch_witness, ...row } = (launched.masked as any).row;
   expect(launch_tuning).toEqual({ model: null, effort: null, qualifiers: {}, environment: {} });
   expect(launch_witness).toBe("<uuid>");
-  expect(withoutDigest({ ...(launched.masked as any), row })).toEqual(withoutDigest(golden["launch testseat reviewer"]));
+  expect(withoutDigest({ ...(launched.masked as any), row })).toEqual(withoutDigest(expectedLaunch()));
   const debug = launched.logs("launch-debug.jsonl");
   expect(debug[0]).toMatchObject({ event: "diagnostics_start", console: false, tmux_trace: false });
   const commands = debug.filter(row => row.event === "command").length;

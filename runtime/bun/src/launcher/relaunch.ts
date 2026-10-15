@@ -188,7 +188,7 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
     const errorLine = result.stderr?.trim().split("\n").findLast(line => line.startsWith("tap session relaunch:"));
     const reason = code === 0 ? "" : short(result.reason || errorLine || result.stderr || `exit ${code}; inspect the pane`, Infinity);
     if (!options.json) {
-      for (const warning of (result.stderr ?? "").split("\n").filter(line => line.includes(": WARNING:"))) {
+      for (const warning of (result.stderr ?? "").split("\n").filter(line => line.includes(": WARNING:") || line.startsWith("tap: receipt folder "))) {
         deps.write(`  ${short(member.team)}/${short(member.handle)}: ${short(warning, Infinity)}\n`);
       }
       const dot = deps.color && process.env.NO_COLOR === undefined && !options.dryRun ? `\x1b[${code === 0 ? 32 : 31}m●\x1b[0m` : "●";

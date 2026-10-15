@@ -49,6 +49,16 @@ JSON
 
 cd "$REPO"
 
+# (0) With no saved permission choice the launch uses auto, which for AGY is no
+#     flag at all (it has no automatic-approval mode).
+out="$(TMUX_FIXTURE=none "$TAP" session launch agy fresh --dry-run --json 2>&1 | tail -1)"
+[[ "$out" == *'"argv":["agy"'* && "$out" != *'--dangerously-skip-permissions'* ]] || { echo "agy-launcher: (0) unsaved choice must launch without the yolo flag: $out" >&2; exit 1; }
+echo "agy-launcher: (0) unsaved permission choice launches auto (no flag): ok"
+
+# The remaining arms save bypass: the yolo flag mapping is their subject.
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tap"; mkdir -p "$CONFIG_DIR"
+printf 'version = 3\n[harness.agy]\npermissions = "bypass"\n' > "$CONFIG_DIR/config.toml"
+
 # (1) launch: the yolo flag is present. Bare launch (no --model) emits none.
 out="$(TMUX_FIXTURE=none "$TAP" session launch agy fresh --dry-run --json 2>&1 | tail -1)"
 [[ "$out" == *'"agy","--dangerously-skip-permissions"'* ]] || { echo "agy-launcher: (1) launch missing yolo flag: $out" >&2; exit 1; }

@@ -53,8 +53,8 @@ downloadable assets are not published yet.
    `tap attach claude` or `tap attach codex` to visit it.
    Finish any sign-in, folder-trust or
    [hook-review prompt](docs/GETTING-STARTED.md#when-codex-asks-to-review-hooks)
-   yourself. Launch uses your saved permission choice, or bypass mode by
-   default; [choose auto mode](docs/GETTING-STARTED.md#run-without-bypass-mode)
+   yourself. Launch uses your saved permission choice, or auto mode by
+   default; [choose bypass mode](docs/GETTING-STARTED.md#choose-bypass-mode)
    before launching if you prefer it.
 
 4. **Ask one to talk to the other:**

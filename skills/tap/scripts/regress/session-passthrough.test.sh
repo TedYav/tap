@@ -35,11 +35,24 @@ chmod +x "$FAKE_BIN/tmux"
 
 cd "$REPO"
 
+# (1a) With no saved permission choice the launch uses auto: the passthrough
+#      still forwards, and no bypass flag appears.
+out="$("$TAP" session launch codex worker --dry-run --json -c reasoning_effort=high 2>/dev/null | tail -1)"
+[[ "$out" == *'"--approve-for-me"'* && "$out" == *'"-c","reasoning_effort=high"'* && "$out" != *'--dangerously-bypass-approvals-and-sandbox'* ]] \
+  || { echo "session-passthrough: (1a) unsaved choice must launch auto with the passthrough: $out" >&2; exit 1; }
+echo "session-passthrough: (1a) unsaved permission choice launches auto: ok"
+
+# The remaining arms save bypass so the permission argv is one deterministic
+# token (Codex auto adds a per-launch profile) and splice order stays legible.
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tap"; mkdir -p "$CONFIG_DIR"
+printf 'version = 3\n[harness.codex]\npermissions = "bypass"\n' > "$CONFIG_DIR/config.toml"
+
 # (1) launch: -c forwards verbatim, spliced right after the codex binary.
 out="$("$TAP" session launch codex worker --dry-run --json -c reasoning_effort=high 2>/dev/null | tail -1)"
-# A fresh launch puts the configured permission mode (default bypass) first;
+# A fresh launch puts the saved permission mode first;
 # resume (4) below still splices passthrough right after codex.
-[[ "$out" == *'"codex","--dangerously-bypass-approvals-and-sandbox","-c","reasoning_effort=high"'* ]] || { echo "session-passthrough: (1) -c not spliced harness-global: $out" >&2; exit 1; }
+# Every local Codex launch also passes --no-daemon first (tap-21bdj).
+[[ "$out" == *'"codex","--no-daemon","--dangerously-bypass-approvals-and-sandbox","-c","reasoning_effort=high"'* ]] || { echo "session-passthrough: (1) -c not spliced harness-global: $out" >&2; exit 1; }
 echo "session-passthrough: (1) unknown flag forwards verbatim, harness-global: ok"
 
 # (2) own-flags-before-passthrough: --dry-run stays tap's (a real launch would not

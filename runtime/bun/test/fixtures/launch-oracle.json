@@ -337,7 +337,7 @@
   },
   "preset --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "preset with label": {
@@ -347,7 +347,7 @@
   },
   "preset with label --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/second\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/second\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "--preset": {
@@ -357,7 +357,7 @@
   },
   "--preset --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "preset with env and effort": {
@@ -367,7 +367,7 @@
   },
   "preset with env and effort --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"claude\",\"--effort\",\"high\",\"--dangerously-skip-permissions\",\"--model\",\"opus\",\"--name\",\"fixture/deep\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_DISABLE_AGENT_VIEW\":\"1\",\"CLAUDE_CODE_NO_FLICKER\":\"1\",\"CLAUDE_CODE_SCROLL_SPEED\":\"4\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\",\"DEEP_MODE\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/deep\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"deep\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"claude\",\"--effort\",\"high\",\"--dangerously-skip-permissions\",\"--model\",\"opus\",\"--name\",\"fixture/deep\",\"--session-id\",\"<uuid>\"],\"cwd\":\"<root>/repo\",\"env\":{\"CLAUDE_CODE_DISABLE_AGENT_VIEW\":\"1\",\"CLAUDE_CODE_NO_FLICKER\":\"1\",\"CLAUDE_CODE_SCROLL_SPEED\":\"4\",\"CLAUDE_CODE_TMUX_TRUECOLOR\":\"1\",\"DEEP_MODE\":\"1\"},\"harness\":\"claude\",\"name\":\"fixture/deep\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"deep\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "preset plus --model": {
@@ -397,7 +397,7 @@
   },
   "preset with passthrough --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\",\"-c\",\"x=y\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\",\"-c\",\"x=y\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "--preset smuggled after --": {
@@ -607,7 +607,7 @@
   },
   "collision: a gone preset row suffixes automatically --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev-2\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev-2\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "collision: a gone preset row with --fresh reseats": {
@@ -617,7 +617,7 @@
   },
   "collision: a gone preset row with --fresh reseats --json": {
    "status": 0,
-   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:3c288cab3fd1f565dfd72ce7d08af5abc0450e53c0f9c8ff3b80d0506bd7b1ac\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
+   "stdout": "{\"argv\":[\"codex\",\"--dangerously-bypass-approvals-and-sandbox\",\"--model\",\"gpt-x\"],\"cwd\":\"<root>/repo\",\"env\":{},\"harness\":\"codex\",\"name\":\"fixture/rev\",\"preset\":{\"config_digest\":\"sha256:ad769f2969e9c3e0431a7cb7bd30c077bd4c81b788e0dcd5a346060c9455e836\",\"name\":\"rev\",\"source_path\":\"<root>/user/.config/tap/config.toml\"}}\n",
    "stderr": ""
   },
   "collision: an unattended shell is reseated fresh": {

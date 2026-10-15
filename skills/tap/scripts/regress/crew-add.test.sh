@@ -381,6 +381,9 @@ mkdir -p "$CREW_XDG/tap"
 cat > "$CREW_XDG/tap/config.toml" <<'TOML'
 version = 2
 
+[harness.codex]
+permissions = "bypass"
+
 [presets.sol-max]
 description = "Fixture preset for the crew arms"
 harness = "codex"
@@ -512,8 +515,12 @@ index_home = re.escape(sys.argv[2])
 # value the launcher no longer originates.
 # The launcher forwards its own TAP_INDEX_HOME after login startup
 # so the crew pane selects the launcher's registry sandbox; sorted rendering
-# places it after the CREW_* pairs and before the binary. Pin the forwarded
-# value to this fixture's index rather than tolerating any TAP_* there.
+# places it after the CREW_* pairs and the host boot id (TAP_BOOT_ID) and
+# before the binary. Pin the forwarded value to this fixture's index rather
+# than tolerating any TAP_* there. This arm runs under the sandbox's empty
+# config dir, so the crew seat launches with the unsaved default, auto: Codex
+# gets --no-daemon, --approve-for-me and the launcher's per-launch profile
+# (-c pairs) before the model; no bypass flag appears.
 # The child's env is first scrubbed with `env -u VAR` for the
 # identity and launch-evidence variables the parent holds, so the assignments
 # follow a run of -u pairs. Pin that the launch evidence (root and id) is among
@@ -522,10 +529,11 @@ assert re.search(r"/usr/bin/env (?:-u \S+ )+CREW_SMOKE_FLAG", sent), sent
 assert "-u TAP_LAUNCH_ROOT -u TAP_LAUNCH_ID " in sent, sent
 assert re.search(
     r"exec env \S+ -lic 'exec \"\$0\" \"\$@\"' /usr/bin/env (?:-u \S+ )+"
-    r"CREW_SMOKE_FLAG=on CREW_SMOKE_SECOND=two TAP_INDEX_HOME=" + index_home + r" codex "
-    r"--dangerously-bypass-approvals-and-sandbox --model gpt-5\.6-sol",
+    r"CREW_SMOKE_FLAG=on CREW_SMOKE_SECOND=two TAP_BOOT_ID=\S+ TAP_INDEX_HOME=" + index_home + r" codex "
+    r"--no-daemon --approve-for-me (?:-c \S+ )+--model gpt-5\.6-sol",
     sent,
 ), sent
+assert "--dangerously-bypass-approvals-and-sandbox" not in sent, sent
 PY
 # This arm covers a SAME-TEAM cwd only: inside the bound worktree, so no
 # override is passed and no override warning may appear. It does not cover the

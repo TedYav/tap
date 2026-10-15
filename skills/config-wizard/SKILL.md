@@ -116,13 +116,13 @@ catalog's tuning.
 
 ### 4. Permissions
 
-For each selected harness, explain the bypass flag's actual effect from the knob
-library, then ask once. On a first installation recommend bypass and say its
-consequence in one sentence: bypass lets the agent run commands and edit files
-without asking, with the person's own permissions; auto keeps the harness's
-approval checks. Claude, Codex, Cursor and Antigravity record `"auto"` or
-`"bypass"`; a new Claude/Codex config needs an explicit answer, and bypass
-records the person's consent. Codex auto keeps Codex's file sandbox and its automatic approval review, not a
+For each selected harness, explain auto and the bypass flag's actual effect
+from the knob library, then ask once. Recommend auto, the default, and name
+bypass as the alternative with its consequence in one sentence: bypass lets the
+agent run commands and edit files without asking, with the person's own
+permissions; auto keeps the harness's approval checks. Claude, Codex, Cursor
+and Antigravity record `"auto"` or `"bypass"`; a new Claude/Codex config needs
+an explicit answer, and bypass records the person's consent. Codex auto keeps Codex's file sandbox and its automatic approval review, not a
 human approval dialog, and TAP turns on Codex's network proxy with no allowed domains so seats can reach the tmux socket (other destinations stay blocked for commands the sandbox runs); Cursor auto uses `--auto-review`, which still prompts for
 calls its classifier will not run. Antigravity has no automatic mode: auto stops
 the seat on every permission request, which TAP shows as blocked. In a new
@@ -228,7 +228,7 @@ refuse before effects.
 |---|---|
 | `harnesses` | Map of `claude`, `codex`, `cursor`, `opencode`, `agy`, `hermes` to decisions |
 | `harnesses.<name>.presets` | `"skip"`, `"simple"`, or an array of names: shipped catalog presets to add, or presets already saved for that harness (selected for aliases, never rewritten) |
-| `harnesses.<name>.permissions` | `"auto"` or `"bypass"` for Claude, Codex, Cursor and AGY only; required for a selected Claude/Codex without a saved valid choice (omitted Cursor/AGY keep bypass); bypass records explicit human consent |
+| `harnesses.<name>.permissions` | `"auto"` or `"bypass"` for Claude, Codex, Cursor and AGY only; required for a selected Claude/Codex without a saved valid choice (omitted Cursor/AGY save nothing and launch with auto, the default); bypass records explicit human consent |
 | `starterEffort` | `"default"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; required for newly added simple Claude/Codex starters and applied to a starter named explicitly; `default` pins no effort; other named presets keep catalog tuning |
 | `write` | `"apply"` or `"candidate"`, required when config bytes change |
 | `replaceCandidate` | `true` to replace an existing inactive candidate |
@@ -281,8 +281,9 @@ contract. Use the edit procedure below only for those.
    for a particular change authorizes it; do not ask for the same choice again.
    Ask for missing preferences, and ask once per harness before enabling bypass
    when not already authorized. Explain effective behavior, including that a
-   harness without a `permissions` key launches with bypass. Do not claim an
-   unsupported opt-out works.
+   harness without a `permissions` key launches with auto, and that a bypass
+   flag left in its `params` then refuses the launch until the key says
+   `bypass` or the flag is removed. Do not claim an unsupported opt-out works.
    Validate a proposed preset name against `[A-Za-z0-9][A-Za-z0-9._-]*` before
    writing; choose a distinct non-harness name. Quote the TOML key when it
    contains a dot (for example `[presets."review.high"]`) so it stays one name.

@@ -38,38 +38,41 @@ Detect installed executables: `claude`, `codex`, `opencode`, `agy`,
 `cursor-agent` (TAP calls this harness `cursor`), and `hermes`. Another
 harness is unsupported today; it can be requested at
 <https://github.com/TedYav/tap/issues>.
-Before asking, explain the bypass flag and the alternative for this harness
+Before asking, explain auto, the default, and the bypass flag for this harness
 from the list below. In particular, Codex automatic review can approve a tool
-without asking the human; declining bypass does not mean approving every command.
+without asking the human; choosing auto does not mean approving every command.
 Confirm the pair, then ask once per selected harness, retaining any answer already given during this
 walkthrough:
 
-> Use this harness's bypass mode?
-> Recommended for this walkthrough: yes. Bypass lets the agent run commands and
-> edit files without asking, with your own permissions; auto keeps the
-> harness's approval checks. This changes future TAP launches and can be
-> changed later; it does not undo actions an agent has already taken.
+> Which permission mode for this harness: auto or bypass?
+> Recommended for this walkthrough: auto, the default. It keeps the harness's
+> approval checks. The alternative, bypass, lets the agent run commands and
+> edit files without asking, with your own permissions. This changes future
+> TAP launches and can be changed later; it does not undo actions an agent has
+> already taken.
 
 Explain the flag's actual effect from the knob library. A recommendation or an
 unanswered default is not consent. Apply the recorded answer:
 
-- **Claude and Codex:** set `harness.<name>.permissions` to `bypass` for yes,
-  `auto` for no. The launcher owns the corresponding flags; do not duplicate them
-  in `params`. Codex auto mode uses automatic review, not a human approval dialog.
+- **Claude and Codex:** set `harness.<name>.permissions` to `auto` or `bypass`
+  as answered. The launcher owns the corresponding flags; do not duplicate them
+  in `params`: a bypass flag left in `params` refuses a launch whose mode is
+  auto. Codex auto mode uses automatic review, not a human approval dialog, and
+  its first reply may need one retry with sandbox escalation.
 - **OpenCode and Hermes:** set `harness.opencode.params.auto` or
   `harness.hermes.params.yolo` to `true` when accepted and `false` when declined,
   clearing any previously saved bypass choice through the backed-up edit
   procedure. Inspect the CLI's own permission settings before claiming that
   prompts are enabled; removing TAP's bypass flag leaves those settings in force.
-- **Cursor and Antigravity:** set `harness.<name>.permissions` to `bypass` for
-  yes, `auto` for no, exactly as for Claude and Codex. Cursor auto uses its
+- **Cursor and Antigravity:** set `harness.<name>.permissions` to `auto` or
+  `bypass` as answered, exactly as for Claude and Codex. Cursor auto uses its
   automatic review (`--auto-review`): safe tool calls run and the rest wait for
   the human in the attached session. Antigravity has no automatic-approval mode,
   so auto launches without `--dangerously-skip-permissions` and the seat stops on
   **every** permission request until someone answers it. Tell the human that
   before they choose. In a new folder, Claude, Codex and Antigravity auto seats
   first ask the human to trust it. TAP shows a seat waiting on either prompt as
-  blocked (`needs you`). Declining bypass alone does not turn on a sandbox; each
+  blocked (`needs you`). Choosing auto alone does not turn on a sandbox; each
   harness's own settings stay in force.
 
 Record the selected permission choices in an answers file. This example assumes

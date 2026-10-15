@@ -109,7 +109,7 @@ test("get reads scalars: booleans, dotted-in-table keys, and the reference catal
 
   const reference = fixture(readFileSync(join(root, "skills/tap/config/config.v3.toml"), "utf8"));
   expect(run(["get", "sentinel.preview"], reference).stdout.toString()).toBe("false\n");
-  expect(run(["get", "harness.agy.permissions"], reference).stdout.toString()).toBe('"bypass"\n');
+  expect(run(["get", "harness.agy.permissions"], reference).stdout.toString()).toBe('"auto"\n');
 });
 
 test("set replaces only the target line: comments, spacing, and unrelated tables survive byte-for-byte", () => {

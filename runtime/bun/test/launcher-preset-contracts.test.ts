@@ -168,7 +168,7 @@ test("catalog and policy share notice lifetime without suppressing returned poli
 test("policy validates only the requested harness and keeps params, permissions and declared env", () => {
   const f = fixture('version=3\n[harness.codex.env]\nPATH="/forbidden"\n[harness.claude]\npermissions="auto"\nparams.model="policy"\nenv.SAFE="declared"');
   expect(() => f.policy("codex")).toThrow("harness_env_forbidden");
-  expect(f.policy()).toEqual({ env: { SAFE: "declared" }, params: { model: "policy" }, permissions: "auto", notices: [] });
+  expect(f.policy()).toEqual({ env: { SAFE: "declared" }, params: { model: "policy" }, permissions: "auto", permissionsDefaulted: false, notices: [] });
   expect(f.lines).toEqual([]);
   expect(() => configDirectory({ XDG_CONFIG_HOME: "relative" })).toThrow("XDG_CONFIG_HOME must be absolute");
 });

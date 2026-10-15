@@ -218,12 +218,13 @@ If the terminal wizard opens, relay each prompt and wait for the human's
 answer; it asks the same questions as the walkthrough below. Preset selection
 defaults to **skip**. Claude, Codex, Cursor and Antigravity keep their existing
 permission choice; a new choice needs an explicit answer, and the wizard's own
-default is **auto**. Recommend **bypass** for the first exchange, with its
-consequence in one sentence: bypass lets the agent run commands and edit files
-without asking, with the human's own permissions; auto keeps the harness's
-approval checks, and with auto the first Codex reply may need one retry with
-sandbox escalation, which the test in step 3 handles. Fresh Codex configs keep
-Ponytail off until requested.
+default is **auto**. Recommend **auto**, and name **bypass** as the alternative
+with its consequence in one sentence: bypass lets the agent run commands and
+edit files without asking, with the human's own permissions; auto keeps the
+harness's approval checks. With auto the first Codex reply may need one retry
+with sandbox escalation, which the test in step 3 handles, and Antigravity auto
+stops the seat on every permission request. Fresh Codex configs keep Ponytail
+off until requested.
 
 The wizard preserves existing presets, comments and unrelated settings. An
 accepted config update keeps a backup; declining it writes an inactive candidate
@@ -266,14 +267,16 @@ question at a time and retain choices already accepted in the terminal wizard:
    default effort, or a pinned level. The presets arrive with basic calibration
    and role notes, including a pronoun for each model's seat, that they can
    edit later.
-4. **Ask each permission choice.** Recommend bypass for the first exchange
-   with its one-sentence consequence (above); ask once before enabling bypass
-   unless already authorized. Codex auto keeps Codex's file sandbox and its automatic
+4. **Ask each permission choice.** Recommend auto, the default, and name
+   bypass as the alternative with its one-sentence consequence (above); ask
+   once before enabling bypass unless already authorized. A harness with no
+   saved choice launches with auto. Codex auto keeps Codex's file sandbox and its automatic
    approval review, not a human approval dialog, and TAP turns on Codex's
    network proxy with no allowed domains so seats can reach the tmux socket
    (other destinations stay blocked for commands the sandbox runs). Relay review refusals exactly.
-   Cursor and Antigravity take the same auto/bypass choice; Antigravity auto
-   stops the seat on every permission request, which the wizard explains.
+   Cursor and Antigravity take the same auto/bypass choice; Antigravity has no
+   automatic approval mode, so auto stops the seat on every permission request,
+   which the wizard explains; say so when Antigravity is chosen.
 5. **Ask the two new-user questions:** whether TAP asks before setting up a team
    in a new project, and whether arriving messages interrupt a draft or wait.
 6. **Offer shell aliases last**, when they chose presets: typing `opus`,

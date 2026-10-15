@@ -91,7 +91,7 @@
    "passthrough_from_config": true,
    "permissions": "bypass",
    "preset": {
-    "config_digest": "sha256:6e5db05db47ddf8f2aec0bcf169f337494767daf574c3864c5086e924ab8b651",
+    "config_digest": "sha256:f42b45bf4f2a138eb5f4d554b2bbe847aeb8dda21f61a8a080d4f7daf85fbb98",
     "name": "testseat",
     "source_path": "<root>/.config/tap/config.toml"
    },
@@ -153,7 +153,7 @@
    "passthrough_from_config": true,
    "permissions": "bypass",
    "preset": {
-    "config_digest": "sha256:6e5db05db47ddf8f2aec0bcf169f337494767daf574c3864c5086e924ab8b651",
+    "config_digest": "sha256:f42b45bf4f2a138eb5f4d554b2bbe847aeb8dda21f61a8a080d4f7daf85fbb98",
     "name": "testseat",
     "source_path": "<root>/.config/tap/config.toml"
    },

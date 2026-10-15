@@ -27,7 +27,7 @@ tap launch codex
 TAP starts and registers each seat. From a foreground terminal, launch opens
 the agent; otherwise use `tap attach claude` or `tap attach codex` to visit it.
 Finish trust and sign-in prompts yourself. Launch uses your saved permission
-choice, or bypass mode by default; [choose auto mode](GETTING-STARTED.md#run-without-bypass-mode)
+choice, or auto mode by default; [choose bypass mode](GETTING-STARTED.md#choose-bypass-mode)
 before launching if you prefer it.
 
 Ask either agent:

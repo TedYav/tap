@@ -1492,7 +1492,7 @@ test.each([
       const { Notices } = await import("../src/launcher/catalog-notices");
       const record = { ...row, name: "repo/scout", base: "repo", cwd: f.repo, harness, harness_session_id: String(row.harness_session_id) };
       expect(buildInvocation("resume", record, new Notices(() => {}), f.env(), null, null, null).argv)
-        .toEqual(["agy", "--dangerously-skip-permissions", "--conversation", "live-native"]);
+        .toEqual(["agy", "--conversation", "live-native"]);
     }
   } finally { removeScratchTree(f.root); }
 });

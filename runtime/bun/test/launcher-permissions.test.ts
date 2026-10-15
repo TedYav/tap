@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { enrollScratchRoot } from "./support/enroll-scratch";
 import { spawnSync as spawnPlan } from "node:child_process";
 import { buildHarnessInvocation, withoutNoDaemonForRemote } from "../src/launcher/adapters";
-import { codexAutoProfileArgv, codexAutoProfileName, enforcePermissions, refuseAmbientCodexSockets } from "../src/launcher/permissions";
+import { codexAutoProfileArgv, codexAutoProfileName, enforcePermissions, prepareCodexAutoReceipts, refuseAmbientCodexSockets } from "../src/launcher/permissions";
 import { bootId } from "../src/tmux";
 
 const roots: string[] = [];
@@ -17,14 +17,14 @@ function fixture(harness: string, mode?: string, extra = "") {
 }
 // The native launch's dry-run plan from an enrolled scratch git root (writes nothing).
 const newTs = resolve(import.meta.dir, "../src/launcher/new.ts");
-function plan(args: string[], env: { HOME: string; XDG_CONFIG_HOME: string }) {
+function plan(args: string[], env: { HOME: string; XDG_CONFIG_HOME: string }, json = true) {
   spawnPlan("git", ["init", "-q", env.HOME]);
   enrollScratchRoot(env.HOME, join(env.HOME, "index"));
-  mkdirSync(join(env.HOME, ".tap/bus/receipts"), { recursive: true });
   const merged = Object.fromEntries(Object.entries({ ...process.env, ...env, TAP_INDEX_HOME: join(env.HOME, "index"), TAP_HOME: undefined, TAP_JSON: undefined })
     .filter(([, value]) => value !== undefined)) as Record<string, string>;
-  const result = spawnPlan(process.execPath, [newTs, "--dry-run", "--json", ...args], { cwd: env.HOME, env: merged, encoding: "utf8" });
-  return { status: result.status, output: result.stdout + result.stderr, argv: result.status === 0 ? JSON.parse(result.stdout).argv as string[] : [] };
+  const result = spawnPlan(process.execPath, [newTs, "--dry-run", ...(json ? ["--json"] : []), ...args], { cwd: env.HOME, env: merged, encoding: "utf8" });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, output: result.stdout + result.stderr,
+    argv: result.status === 0 && json ? JSON.parse(result.stdout).argv as string[] : [] };
 }
 const refusesPermissions = (result: ReturnType<typeof plan>) => {
   expect(result.status).toBe(2);
@@ -68,33 +68,59 @@ test("Codex auto can write enrolled receipt folders without granting acting regi
   }
 });
 
-test("Codex auto refuses a receipts symlink that would expose the foreign acting registry", () => {
+test.each(["symlink", "file"])("Codex auto refuses a receipts %s instead of granting it write access", kind => {
   const env = fixture("codex", '"auto"');
   const root = realpathSync(env.HOME), index = join(root, "index"), peer = join(root, "peer");
   mkdirSync(peer);
   enrollScratchRoot(peer, index, "peer");
   const bus = join(peer, ".tap/bus");
-  symlinkSync(bus, join(bus, "receipts"));
+  if (kind === "symlink") symlinkSync(bus, join(bus, "receipts"));
+  else writeFileSync(join(bus, "receipts"), "not a directory");
   expect(() => codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index })).toThrow("receipts must be a real directory");
+  expect(() => prepareCodexAutoReceipts("codex", "auto", { ...env, TAP_INDEX_HOME: index })).toThrow("receipts must be a real directory");
 });
 
-test("Codex auto refuses a missing receipt root instead of granting its creation", () => {
+test.each([true, false])("Codex dry-run previews missing receipt creation without writing it (json=%s)", json => {
+  const env = fixture("codex", '"auto"');
+  const result = plan(["codex", "seat"], env, json);
+  expect(result.status).toBe(0);
+  expect(existsSync(join(env.HOME, ".tap/bus/receipts"))).toBe(false);
+  if (json) {
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout).harness).toBe("codex");
+  } else {
+    expect(result.stderr.match(/will be created/g)).toHaveLength(1);
+  }
+});
+
+test("Codex auto creates a missing receipt directory without granting its parent bus", () => {
   const env = fixture("codex", '"auto"');
   const root = realpathSync(env.HOME), index = join(root, "index"), peer = join(root, "peer");
   mkdirSync(peer);
   enrollScratchRoot(peer, index, "peer");
-  expect(() => codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index })).toThrow("receipts must be a real directory");
+  const bus = join(peer, ".tap/bus"), receipts = join(bus, "receipts");
+  prepareCodexAutoReceipts("codex", "auto", { ...env, TAP_INDEX_HOME: index });
+  const argv = codexAutoProfileArgv({ ...env, TAP_INDEX_HOME: index }, "tap_launcher_auto_0123456789ab");
+  const config = Bun.TOML.parse(argv.filter((_, i) => i % 2 === 1).join("\n")) as any;
+  const filesystem = config.permissions.tap_launcher_auto_0123456789ab.filesystem;
+  expect(lstatSync(receipts).isDirectory()).toBe(true);
+  expect(filesystem[receipts]).toBe("write");
+  const grants = Object.keys(filesystem);
+  for (const protectedPath of [bus, join(bus, "registry.json"), join(bus, "locks")]) {
+    expect(grants.some(path => protectedPath === path || protectedPath.startsWith(path + "/"))).toBe(false);
+  }
 });
 
 for (const harness of ["claude", "codex"]) {
   const bypass = harness === "claude" ? "--dangerously-skip-permissions" : "--dangerously-bypass-approvals-and-sandbox";
   const auto = harness === "claude" ? ["--permission-mode", "auto"] : ["--approve-for-me"];
   for (const action of ["new", "resume"]) for (const mode of [undefined, '"bypass"', '"auto"']) {
-    test(`${harness} ${action} base argv follows ${mode ?? "absent"} policy`, () => {
+    test(`${harness} ${action} base argv follows ${mode ?? "absent (auto)"} policy`, () => {
+      // An absent choice is the auto default, so only a saved bypass yields the bypass flag.
       const env = fixture(harness, mode);
       const argv = buildHarnessInvocation(action, { name: "seat", harness, cwd: env.HOME, base: "team" }, null, null, env).argv;
-      expect(argv).toEqual([harness, ...(harness === "codex" ? ["--no-daemon"] : []), ...(mode === '"auto"' ? auto : [bypass]),
-        ...(harness === "codex" && mode === '"auto"' ? codexAutoProfileArgv(env, selectedProfile(argv)) : []),
+      expect(argv).toEqual([harness, ...(harness === "codex" ? ["--no-daemon"] : []), ...(mode === '"bypass"' ? [bypass] : auto),
+        ...(harness === "codex" && mode !== '"bypass"' ? codexAutoProfileArgv(env, selectedProfile(argv)) : []),
         ...(harness === "claude" ? ["--name", "seat"] : []),
         ...(action === "resume" ? [harness === "claude" ? "--resume" : "resume"] : [])]);
     });
@@ -213,7 +239,8 @@ for (const [harness, spec] of Object.entries(OPT_IN)) {
     test(`${harness} ${action} base argv follows ${mode ?? "absent"} policy`, () => {
       const env = fixture(harness, mode);
       const argv = buildHarnessInvocation(action, { name: "seat", harness, cwd: env.HOME, base: "team", harness_session_id: "abc" }, null, null, env).argv;
-      if (mode === '"auto"') {
+      // An absent choice is the auto default, so only a saved bypass yields the bypass flags.
+      if (mode !== '"bypass"') {
         for (const token of spec.bypass.filter(t => t.startsWith("-"))) expect(argv).not.toContain(token);
         for (const token of spec.auto) expect(argv).toContain(token);
       } else {
@@ -249,11 +276,13 @@ for (const [harness, spec] of Object.entries(OPT_IN)) {
       for (const token of spec.auto) expect(out.argv).toContain(token);
       for (const token of spec.bypass.filter(t => t.startsWith("-"))) expect(out.argv).not.toContain(token);
     });
-    test(`Native ${harness} ${action} default keeps bypass`, () => {
+    test(`Native ${harness} ${action} default is auto`, () => {
       const out = nativeInvocation(fixture(harness), { harness, action });
       expect(out.refusal).toBeUndefined();
-      expect(out.permissions).toBe("bypass");
-      expect(contiguous(out.argv ?? [], spec.bypass)).toBe(true);
+      expect(out.permissions).toBe("auto");
+      expect(out.stored_permissions).toBe("auto");
+      for (const token of spec.bypass.filter(t => t.startsWith("-"))) expect(out.argv).not.toContain(token);
+      for (const token of spec.auto) expect(out.argv).toContain(token);
     });
   }
   test(`${harness} effective launch argv uses auto`, () => {
@@ -275,11 +304,13 @@ test("permissionArgv refuses a harness TAP does not own instead of borrowing Cod
 for (const harness of ["cursor", "agy"]) {
   const spec = OPT_IN[harness]!;
   // Migration control: a row written before tap-6c1me has no permissions field.
-  for (const action of ["resume", "native"]) test(`legacy ${harness} row without permissions ${action}s with bypass`, () => {
+  // Policy is re-read on every resume and the unsaved default is auto, so such
+  // a row resumes with auto; a saved bypass choice is what keeps bypass.
+  for (const action of ["resume", "native"]) test(`legacy ${harness} row without permissions ${action}s with the auto default`, () => {
     const out = nativeInvocation(fixture(harness), { harness, action });
     expect(out.refusal).toBeUndefined();
-    expect(contiguous(out.argv ?? [], spec.bypass)).toBe(true);
-    expect(out.stored_permissions).toBe("bypass");
+    for (const token of spec.bypass.filter(t => t.startsWith("-"))) expect(out.argv).not.toContain(token);
+    expect(out.stored_permissions).toBe("auto");
   });
   test(`${harness} auto refuses a bypass flag in the replayed harness tail`, () => {
     const record: LaunchRecord = { name: "seat", harness, cwd: "/tmp/wt", base: "team", harness_tail: [spec.bypass[0]!] };
@@ -445,4 +476,55 @@ for (const args of [["--profile", "work"], ["--profile=work"], ["-p", "work"], [
   expect(() => enforcePermissions("codex", "auto", args, env)).toThrow("AUTO uses TAP's own Codex profile");
   expect(() => enforcePermissions("codex", "bypass", args, env)).not.toThrow();
   refusesPermissions(plan(["codex", "seat", "--", ...args], fixture("codex", '"auto"')));
+});
+
+// The unsaved default is auto for every harness TAP owns, and a bypass flag left
+// in params without a saved bypass choice is a conflict whose refusal names the
+// default and both remedies: the shape a config carries when it predates the
+// permissions key (an operator machine config on 2026-10-15 had exactly this for
+// all four harnesses).
+const LEGACY_PARAM: Record<string, string> = {
+  claude: "dangerously-skip-permissions", codex: "dangerously-bypass-approvals-and-sandbox",
+  cursor: "yolo", agy: "dangerously-skip-permissions",
+};
+for (const harness of ["claude", "codex", "cursor", "agy"]) {
+  test(`${harness} with no config file at all launches with auto`, () => {
+    const env = fixture(harness);
+    const out = nativeInvocation({ HOME: env.HOME, XDG_CONFIG_HOME: join(env.HOME, "absent") }, { harness, action: "new" });
+    expect(out.refusal).toBeUndefined();
+    expect(out.permissions).toBe("auto");
+    expect(out.stored_permissions).toBe("auto");
+  });
+  test(`${harness} bypass param without a saved choice refuses naming the auto default and both remedies`, () => {
+    const env = fixture(harness, undefined, `[harness.${harness}.params]\n${LEGACY_PARAM[harness]} = true\n`);
+    for (const action of ["new", "resume", "native"]) {
+      const out = nativeInvocation(env, { harness, action });
+      expect(out.refusal).toContain("harness_permissions_conflict");
+      expect(out.refusal).toContain("default permission mode, auto");
+      expect(out.refusal).toContain(`[harness.${harness}] permissions = "bypass"`);
+      expect(out.refusal).toContain(`--${LEGACY_PARAM[harness]}`);
+    }
+    const { output } = plan([harness, "seat"], env);
+    expect(output).toContain("default permission mode, auto");
+  });
+  test(`${harness} bypass param with a saved bypass choice launches with bypass`, () => {
+    const env = fixture(harness, '"bypass"', `[harness.${harness}.params]\n${LEGACY_PARAM[harness]} = true\n`);
+    const out = nativeInvocation(env, { harness, action: "new" });
+    expect(out.refusal).toBeUndefined();
+    expect(out.permissions).toBe("bypass");
+  });
+  test(`${harness} bypass param with a saved auto choice keeps the saved-choice wording`, () => {
+    const env = fixture(harness, '"auto"', `[harness.${harness}.params]\n${LEGACY_PARAM[harness]} = true\n`);
+    const out = nativeInvocation(env, { harness, action: "new" });
+    expect(out.refusal).toContain(`contradicts [harness.${harness}] permissions = "auto"`);
+    expect(out.refusal).not.toContain("default permission mode");
+  });
+}
+
+for (const harness of ["claude", "codex", "cursor", "agy"]) test(`${harness} public dry-run with no saved choice launches with auto`, () => {
+  const { argv, output } = plan([harness, "seat"], fixture(harness));
+  expect(argv.length, output).toBeGreaterThan(0);
+  const auto = harness === "claude" ? ["--permission-mode", "auto"] : harness === "codex" ? ["--approve-for-me"] : harness === "cursor" ? ["--auto-review"] : [];
+  for (const token of auto) expect(argv).toContain(token);
+  for (const token of ["--dangerously-skip-permissions", "--dangerously-bypass-approvals-and-sandbox", "--force", "--yolo"]) expect(argv).not.toContain(token);
 });

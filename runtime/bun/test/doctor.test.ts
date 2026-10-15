@@ -614,7 +614,7 @@ esac
   for (const [metadata, command] of [
     [{}, "tap crew add claude scout --model <model>"],
     [{ model: "claude-sonnet-4-5" }, "tap crew add claude scout --model claude-sonnet-4-5"],
-    [{ preset: { name: "reviewer" }, model: "claude-sonnet-4-5", harness_env: { PRESET_VALUE: "private-preset-value" }, passthrough: ["--effort", "high"], passthrough_from_config: true, permissions: "bypass" }, "tap crew add reviewer scout"],
+    [{ preset: { name: "reviewer" }, model: "claude-sonnet-4-5", harness_env: { PRESET_VALUE: "private-preset-value" }, passthrough: ["--effort", "high"], passthrough_from_config: true, permissions: "auto" }, "tap crew add reviewer scout"],
   ] as const) {
     test(`gone crew recovery preserves the crew lifecycle: ${command}`, () => {
       const tmuxSh = absentSeatTmux.replace('case "$1" in', 'case "$*" in *"#{socket_path}"*) exit 1 ;; esac\ncase "$1" in');
@@ -629,6 +629,16 @@ esac
       expect(stateDigest(fx)).toBe(before);
     });
   }
+
+  test("gone crew with stored bypass preserves its recipe when the current default is auto", () => {
+    const fx = fixture({ tmuxSh: absentSeatTmux, registry: {
+      schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" },
+      seats: { scout: { ...activeSeat, crew: true, preset: { name: "reviewer" }, permissions: "bypass" } },
+    } });
+    const next = String(jsonRun(fx).find("seat_unavailable")[0]?.detail.next);
+    expect(next).toContain("preserve the stored launch recipe");
+    expect(next).not.toContain("tap team refresh");
+  });
 
   test("crew launch context is preserved before any cleanup advice", () => {
     const tmuxSh = absentSeatTmux.replace('case "$1" in', 'case "$*" in *"#{socket_path}"*) exit 1 ;; esac\ncase "$1" in');

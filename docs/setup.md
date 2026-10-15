@@ -21,8 +21,8 @@ changing TAP itself, not for installing it.
 The human stays in control of:
 
 - Account sign-in. Do not sign in for them.
-- Permission mode. Recommend bypass for the first exchange, say in one sentence
-  what it grants, and apply it only after they say yes.
+- Permission mode. Recommend auto, the default; name bypass as the alternative
+  and say in one sentence what it grants; apply bypass only after they say yes.
 - Their existing config and shell startup files. Preserve them; show any change
   as a preview in its own message and apply it only after they say yes.
 - Trust and permission dialogs. Answer one for them only when it is on the list

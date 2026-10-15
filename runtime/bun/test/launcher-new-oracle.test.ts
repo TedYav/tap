@@ -34,6 +34,11 @@ beforeAll(() => {
     "[presets.deep]", 'harness = "claude"', "[presets.deep.params]", 'model = "opus"', 'effort = "high"',
     "[presets.deep.env]", 'DEEP_MODE = "1"',
     "[presets.help]", 'harness = "claude"',
+    // The golden was recorded when an unsaved choice fell back to bypass; the
+    // fixture saves bypass so the oracle stays its subject (the auto default is
+    // pinned in launcher-permissions.test.ts).
+    '[harness.claude]', 'permissions = "bypass"', '[harness.codex]', 'permissions = "bypass"',
+    '[harness.cursor]', 'permissions = "bypass"', '[harness.agy]', 'permissions = "bypass"',
     "",
   ].join("\n"));
   env = { PATH: process.env.PATH, HOME: join(root, "user"), XDG_CONFIG_HOME: join(root, "user/.config"), TAP_INDEX_HOME: index,

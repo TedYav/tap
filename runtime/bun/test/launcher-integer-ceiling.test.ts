@@ -89,7 +89,8 @@ test("a genuine syntax error still resolves policy empty and launches", () => {
   const root = machine(`version = = =\n${POLICY}`);
   const notices: string[] = [];
   const got = resolveCatalog(undefined, "claude", { XDG_CONFIG_HOME: root }, m => notices.push(m));
-  expect(got.permissions).toBe("bypass");
+  // Empty policy means no saved choice, and the unsaved default is auto.
+  expect(got.permissions).toBe("auto");
   expect(notices.some(n => n.includes(DEGRADED))).toBe(true);
 });
 

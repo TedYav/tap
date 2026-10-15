@@ -194,7 +194,8 @@ export function prepareSetup(snapshot: SetupSnapshot, input: unknown, catalog: S
   for (const h of Object.keys(choices.harnesses ?? {}).sort()) {
     if (!PERMISSION_HARNESSES.includes(h)) continue;
     const mode = choices.harnesses![h]!.permissions ?? previous.harness?.[h]?.permissions;
-    // Cursor and AGY joined the policy later: an answers file that omits them keeps their bypass default.
+    // Cursor and AGY joined the policy later: an answers file that omits them keeps a saved choice
+    // (the fallback above) and otherwise writes no key, so the launcher's unsaved default (auto) applies.
     if (mode === undefined && !["claude", "codex"].includes(h)) continue;
     if (!["auto", "bypass"].includes(mode)) choiceError(`harnesses.${h}.permissions`, "required: auto or bypass (no saved valid choice)");
     permissions[h] = mode;

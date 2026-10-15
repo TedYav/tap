@@ -52,7 +52,7 @@ function fixture(harness = "claude") {
   for (const key of ["TMUX", "TMUX_PANE", "TAP_SELF", "TAP_TMUX_SOCKET_PATH", "TAP_SERVER_EPOCH", "TAP_BOOT_ID", "TAP_LOCK_DIR"]) delete process.env[key];
   writeFileSync(join(root, ".bash_profile"), `export PATH='${process.env.PATH}'\n`);
   const config = join(root, ".config/tap/config.toml");
-  writeFileSync(config, `version = 3\n[unknown]\nfuture = true\n[presets.testseat]\nharness = "claude"\n[presets.testseat.params]\nmodel = "model-test"\nappend-system-prompt = "literal $(touch SHOULD_NOT_EXIST)"\n[presets.testseat.env]\nFEATURE_ENABLED = "yes"\n[harness.claude.params]\nverbose = true\n[harness.claude.env]\nPOLICY_LEVEL = "machine"\n`.replaceAll("claude", harness));
+  writeFileSync(config, `version = 3\n[unknown]\nfuture = true\n[presets.testseat]\nharness = "claude"\n[presets.testseat.params]\nmodel = "model-test"\nappend-system-prompt = "literal $(touch SHOULD_NOT_EXIST)"\n[presets.testseat.env]\nFEATURE_ENABLED = "yes"\n[harness.claude]\npermissions = "bypass"\n[harness.claude.params]\nverbose = true\n[harness.claude.env]\nPOLICY_LEVEL = "machine"\n`.replaceAll("claude", harness));
   return { root, config, registry, socket };
 }
 
@@ -585,6 +585,8 @@ harness = "codex"
 params.model = "gpt-6-astra"
 params.config = ["model_reasoning_effort=high", "service_tier=default", "features.keep=true"]
 params.verbose = true
+[harness.codex]
+permissions = "bypass"
 [harness.codex.params]
 config = ["service_tier=default", "model_reasoning_effort=low", "features.policy=true"]
 `);
@@ -613,6 +615,8 @@ harness = "codex"
 params.model = "gpt-6-astra"
 params.config = ["model_reasoning_effort=high", "service_tier=default", "features.keep=true"]
 params.verbose = true
+[harness.codex]
+permissions = "bypass"
 [harness.codex.params]
 config = ["service_tier=default", "model_reasoning_effort=low", "features.policy=true"]
 `);
@@ -777,6 +781,31 @@ const seatRow = (f: { registry: string }) => JSON.parse(readFileSync(f.registry,
 const backups = (root: string) => {
   try { return readdirSync(join(root, ".tap/backup/session-kill")); } catch { return []; }
 };
+
+test("a permission conflict refuses --fresh before the live seat or its row is touched", () => {
+  // The composed invocation is validated before the reservation and before
+  // suspendAndStop: a legacy config (bypass flag in params, no permissions key)
+  // meets the auto default as a conflict, and that refusal must leave the
+  // incumbent session running and its row untouched (review, round 3).
+  const f = fixture();
+  fakeHarness(f);
+  expect(run(f.root, ["claude", "reviewer", "--json"], true).status).toBe(0);
+  const before = seatRow(f);
+  expect(before.status).toBe("active");
+  const argvBefore = readFileSync(join(f.root, "argv"), "utf8");
+  writeFileSync(f.config, "version = 3\n[harness.claude.params]\ndangerously-skip-permissions = true\n");
+  const refused = run(f.root, ["claude", "reviewer", "--fresh", "--json"], true);
+  expect(refused.status, refused.diagnostic).not.toBe(0);
+  expect(refused.diagnostic).toContain("harness_permissions_conflict");
+  expect(refused.diagnostic).toContain("default permission mode, auto");
+  expect(refused.diagnostic).toContain('[harness.claude] permissions = "bypass"');
+  const after = seatRow(f);
+  expect(after).toEqual(before);
+  expect(backups(f.root)).toEqual([]);
+  expect(spawnSync(realTmux, ["-L", f.socket, "has-session", "-t", "=fixture/reviewer"], { env: process.env }).status).toBe(0);
+  // The fake harness writes its argv on every start; a refused replacement starts nothing.
+  expect(readFileSync(join(f.root, "argv"), "utf8")).toBe(argvBefore);
+}, 60_000);
 
 test("--fresh over a live seated seat replaces it with backup and history, as the incumbent does", async () => {
   const seeded = new Map<string, string>();
