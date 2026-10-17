@@ -57,7 +57,7 @@ export async function cmdSessionDoor(door: SessionDoor, argv: string[], scripts 
   }
   const args = [...(options.all ? ["--all"] : []), ...(options.dryRun ? ["--dry-run"] : []), ...(options.json ? ["--json"] : []),
     ...(options.key || options.legacyName !== null ? ["--", options.key, ...(options.legacyName !== null ? [options.legacyName] : [])] : [])];
-  return options.all ? cmdSessionResumeAll(args, scripts, lifecycle, root, bound, observer) : cmdSessionResume(args, scripts);
+  return options.all ? cmdSessionResumeAll(args, scripts, lifecycle, root, bound, observer) : cmdSessionResume(args, scripts, argv);
 }
 
 if (import.meta.main) {

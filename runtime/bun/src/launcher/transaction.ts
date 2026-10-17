@@ -58,6 +58,7 @@ export type TransactionRequest = {
   approved_instance?: string;
   output_path?: string; notice_state?: { suppressed: boolean; said: string[] };
   preflight_done?: boolean; terminal?: { stderr_tty: boolean };
+  rerun_command?: string;
   /** With dry_run: run every read-only validation the launch takes, then return without printing a launch receipt. */
   validate_only?: boolean;
   script_dir?: string; worker_bun?: string;
@@ -99,7 +100,14 @@ export class RestartResumeFailure extends Error {
       detail };
   }
 }
-class RespawnFailure extends TransactionError {}
+class RespawnFailure extends TransactionError {
+  readonly forkRefused: boolean;
+  constructor(error: unknown) {
+    super(error instanceof LaunchCommandError ? error.result.stderr.trim() || error.message : (error as Error).message);
+    this.forkRefused = error instanceof LaunchCommandError && error.result.code === 1 &&
+      error.result.stderr.trim() === "respawn pane failed: fork failed: Device not configured";
+  }
+}
 class StartupDialog extends TransactionError {}
 
 const string = (v: unknown): string => typeof v === "string" ? v : "";
@@ -577,7 +585,10 @@ export async function rollbackOwned(evidence: FailureEvidence, reason: string | 
       // A revived seat's window is all it owns: its session still holds the crews.
       const cleaned = await ownedEffect(evidence.vessel, evidence.record.revive_vessel === "window"
         ? ["kill-window", "-t", evidence.vessel.window] : ["kill-session", "-t", evidence.vessel.session], env);
-      if (!cleaned) process.stderr.write(`tap session: cleanup retained residue for ${evidence.record.name}; created vessel identity changed or is gone\n`);
+      if (!cleaned) {
+        process.stderr.write(`tap session: cleanup retained residue for ${evidence.record.name}; created vessel identity changed or is gone\n`);
+        return false;
+      }
     }
     // No exit-hook/registration observation while their registry lock is held.
     return true;
@@ -780,22 +791,9 @@ function assertReset(selection: Selection, operation: string, env: NodeJS.Proces
 export async function respawnInitialPane(evidence: FailureEvidence, command: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
   const vessel = evidence.vessel!;
   startupTrace("respawn_pane", { session: evidence.record.name, pane: vessel.pane });
-  try {
-    if (!await ownedEffect(vessel, ["respawn-pane", "-k", "-t", vessel.pane, "-c", launchWorkdir(evidence.record), command], env, signal)) {
-      throw new TransactionError("creation identity changed before respawn");
-    }
-  } catch (error) {
-    if (!(error instanceof LaunchCommandError) || error.result.code !== 1 ||
-        error.result.stderr.trim() !== "respawn pane failed: fork failed: Device not configured") throw error;
-    const after = await launchTmux(["display-message", "-p", "-t", vessel.pane, VESSEL_FORMAT], env, signal);
-    if (!sameVessel(vessel, parseVessel(after.stdout)) || after.stdout.trim().split("\t")[4] !== "-1") throw error;
-    process.stderr.write(`tap session: fork refused for ${evidence.record.name}; retrying once in 1s\n`);
-    await Bun.sleep(1000); signal?.throwIfAborted();
-    const predicate = `#{&&:${vesselPredicate(vessel)},#{==:#{pane_pid},-1}}`;
-    const retry = await launchCommand(["tmux", "-S", vessel.socket, "if-shell", "-F", "-t", vessel.pane, predicate,
-      ["respawn-pane", "-t", vessel.pane, "-c", launchWorkdir(evidence.record), command].map(shlexQuote).join(" "), "display-message -p TAP_LAUNCH_IDENTITY_MOVED"], { env, signal });
-    if (retry.code) throw new LaunchCommandError(["tmux", "respawn-pane"], retry);
-    if (retry.stdout.includes("TAP_LAUNCH_IDENTITY_MOVED")) throw new TransactionError("respawn ownership changed; no further effect");
+  // A failed fork leaves older tmux panes unsafe to respawn again.
+  if (!await ownedEffect(vessel, ["respawn-pane", "-k", "-t", vessel.pane, "-c", launchWorkdir(evidence.record), command], env, signal)) {
+    throw new TransactionError("creation identity changed before respawn");
   }
 }
 
@@ -966,7 +964,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       await respawnInitialPane(evidence, invocationShellCommand(launched, env), env, signal);
     } catch (error) {
       if (signal?.aborted) throw error;
-      throw new RespawnFailure(error instanceof LaunchCommandError ? error.result.stderr.trim() || error.message : (error as Error).message);
+      throw new RespawnFailure(error);
     }
     // The startup screen (and pane title) is captured once per poll and shared
     // by the Codex blocker regexes and the composer signal; Claude reads the
@@ -1164,7 +1162,8 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
         if (!unknownCreation) {
           let rolledBack = false;
           try {
-            const reason = !stop.killed && (request.kind === "restart" || record.replaces_session) ? null : evidence.reason;
+            const reason = !stop.killed && (error instanceof RespawnFailure && error.forkRefused || request.kind === "restart" || record.replaces_session)
+              ? null : evidence.reason;
             rolledBack = await rollbackOwned(evidence, reason, env, evidence.vessel !== null);
           } catch (rollback) {
             const recovery = await recoveryError(evidence, rollback);
@@ -1172,6 +1171,10 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
             else throw recovery;
           } finally {
             if (error instanceof RespawnFailure) await reportRespawnResidue(evidence, error, rolledBack, env);
+          }
+          if (!signal?.aborted && error instanceof RespawnFailure && error.forkRefused && rolledBack && request.rerun_command && !stop.killed) {
+            throw new TransactionError(`tmux refused to start the program (${error.message}); cleanup completed; safe to rerun`,
+              undefined, "session_error", request.rerun_command);
           }
         }
       }

@@ -24,6 +24,7 @@ import { tmuxSessionNamespace } from "../tmux";
 import { resolvedResumeIdentity, reviveTier } from "./resume-identity";
 import { cloneRecord, commandSummary, compact, errorLine, refuseIfFlipAuthority, refuseIfResetFenced, registryState, render, SCRIPTS } from "./resume-prelude";
 import { LaunchCommandError } from "./process";
+import { shlexQuote } from "./invocation";
 import { launchHandle, launchTransaction, recordFromRow, withLaunchSignals, type LaunchRecord } from "./transaction";
 import { LauncherError } from "./types";
 import { FORK_HELP, FORK_USAGE as USAGE } from "../help";
@@ -195,6 +196,7 @@ export async function cmdSessionFork(argv: string[], scriptDir = SCRIPTS, overri
   const run = (record: LaunchRecord) => withLaunchSignals(async signal => {
     // Pin authority to the caller's (the source's) team: the source's worktree may sit outside its root.
     const result = await launchTransaction({ kind: "new", record: cloneRecord(record), root: rootForCwd(cwd), dry_run: options.dryRun, json: options.json,
+      rerun_command: `cd ${shlexQuote(cwd)} && ${["tap", "session", "fork", ...argv].map(shlexQuote).join(" ")}`,
       output_path: callerTty(), terminal: { stderr_tty: stderrTty && !options.json }, script_dir: scriptDir }, process.env, signal, notices);
     Object.assign(record, result.record);
     return result.code;

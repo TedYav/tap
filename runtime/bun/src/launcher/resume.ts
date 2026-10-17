@@ -669,7 +669,7 @@ function popTraceContext(): TraceContext | null | undefined {
 }
 
 /** scriptDir: the installed scripts tree, which a compiled router passes (its SCRIPTS is the bundle's). */
-export async function cmdSessionResume(argv: string[], scriptDir = SCRIPTS): Promise<number> {
+export async function cmdSessionResume(argv: string[], scriptDir = SCRIPTS, originalArgv = argv): Promise<number> {
   const context = popTraceContext();
   const jsonRequested = process.env.TAP_JSON === "1" || argv.includes("--json");
   let options: Options;
@@ -683,6 +683,7 @@ export async function cmdSessionResume(argv: string[], scriptDir = SCRIPTS): Pro
   // Each transaction works on a copy, as the bridge's serialized packet did.
   const run: ResumeDeps["run"] = async (kind, record, extra = {}) => withLaunchSignals(async signal => {
     const result = await launchTransaction({ kind, record: cloneRecord(record), dry_run: options.dryRun, json: options.json,
+      rerun_command: `cd ${shlexQuote(cwd)} && ${["tap", "session", "resume", ...originalArgv].map(shlexQuote).join(" ")}`,
       output_path: callerTty(), terminal: { stderr_tty: stderrTty }, script_dir: scriptDir, ...extra }, process.env, signal, notices);
     Object.assign(record, result.record);
     return { code: result.code, adopted_shell: result.adopted_shell };

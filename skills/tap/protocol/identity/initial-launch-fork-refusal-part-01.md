@@ -6,9 +6,11 @@
 <!-- TAP_SOURCE_BYTES_BEGIN -->
 ## Initial-launch fork refusal
 
-The shared native launch owner preserves the legacy entry points' initial placeholder respawn retry: once after one second, only for the exact nonzero ENXIO fork-refusal diagnostic, with the same observed server/session/window/pane identity and pane pid -1. The retry checks that identity and pid atomically in tmux and omits `-k`. A started child, readiness timeout, missing observation, or identity change never earns a retry. Terminal respawn failure performs owned cleanup and token-bound registry rollback, and prints residue, scoped recovery and measured load/pty census. Unavailable observations remain unknown.
+The shared native launch owner respawns its placeholder once. Fork refusal ends the attempt: older tmux can crash on another respawn. Failure performs owned session/window cleanup and token-bound registry rollback, with residue and load/pty diagnostics. Missing observations stay unknown; a device census does not prove exhaustion.
 
-The decision table's full reasoning is preserved in the internal launcher-respawn-retry artifact. The narrow native new-launch entry retains its existing bounded waits and no-retry behavior. Generic tmux operations and live-harness clear are outside this retry rule. The shared native launch transaction that now backs these entry points is documented in [part 2](initial-launch-fork-refusal-part-02.md#shared-launch-transaction).
+On exact ENXIO, owned rollback restores the prior registry row unchanged if no incumbent was killed; a new seat leaves no row. Conversations remain intact. After verified cleanup, launch, fork and single-seat resume print the refusal and a safe rerun command with the original arguments, shell quoting and cwd. A rerun gets a fresh pane. Incomplete cleanup keeps inspect/doctor guidance without a rerun command; a killed incumbent keeps its existing recovery path.
+
+The internal launcher-respawn-retry artifact preserves the superseded decision. Generic tmux operations and live-harness clear keep their recovery contracts. See the [shared launch transaction](initial-launch-fork-refusal-part-02.md#shared-launch-transaction).
 
 ### Native readers (U3)
 

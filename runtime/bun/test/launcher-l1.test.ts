@@ -390,6 +390,85 @@ test("respawn failure cleans both its row and created pane", async () => {
   expect(sessions.stdout.trim()).toBe("");
 });
 
+test.each([
+  ["new", "complete", false], ["resume", "complete", false], ["new", "complete", true],
+  ["new", "identity-moved", false], ["new", "refused", false],
+] as const)("fork refusal during %s with cleanup %s (json=%s) reports only verified recovery", (kind, cleanup, json) => {
+  const f = fixture();
+  fakeHarness(f);
+  tmuxEffect(["new-session", "-d", "-s", "keeper", "exec /bin/sleep 600"], process.env);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const transcript = join(f.root, `.claude/projects/p/${id}.jsonl`);
+  if (kind === "resume") {
+    mkdirSync(join(f.root, ".claude/projects/p"), { recursive: true });
+    writeFileSync(transcript, "{}\n");
+    const doc = JSON.parse(readFileSync(f.registry, "utf8"));
+    doc.seats.reviewer = { status: "suspended", status_reason: "session_stopped", delivery: "pane",
+      session: "fixture/reviewer", harness: "claude", harness_session_id: id, transcript_path: transcript,
+      base: "fixture", tag: "reviewer", index: 1, registered_from_worktree: f.root, permissions: "bypass", future: { keep: true } };
+    writeFileSync(f.registry, JSON.stringify(doc));
+  }
+  const initial = JSON.parse(readFileSync(f.registry, "utf8"));
+  const shim = join(f.root, "bin/tmux");
+  writeFileSync(shim, `#!/bin/sh
+case "$*" in
+  *respawn-pane*)
+    echo respawn >> '${f.root}/respawns'
+    if [ ! -f '${f.root}/refused-once' ]; then
+      touch '${f.root}/refused-once'
+      echo 'respawn pane failed: fork failed: Device not configured' >&2
+      exit 1
+    fi ;;
+  *kill-session*)
+    ${cleanup === "identity-moved" ? "echo TAP_LAUNCH_IDENTITY_MOVED; exit 0" : cleanup === "refused" ? "echo cleanup-refused >&2; exit 24" : ":"} ;;
+esac
+exec '${realTmux}' "$@"
+`);
+  chmodSync(shim, 0o755);
+  const args = kind === "new" ? ["session", "launch", "testseat", "reviewer", "--env", "FEATURE_ENABLED=literal $HOME"]
+    : ["session", "resume", "reviewer"];
+  if (json) args.push("--json");
+  const invoke = () => spawnSync("bash", [publicBin, ...args], {
+    cwd: f.root, env: process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000,
+  });
+  const first = invoke();
+  expect(first.status, first.stderr + first.stdout).toBe(2);
+  expect(readFileSync(join(f.root, "respawns"), "utf8").trim().split("\n")).toHaveLength(1);
+  expect(JSON.parse(readFileSync(f.registry, "utf8"))).toEqual(initial);
+  expect(tmuxEffect(["has-session", "-t", "=keeper"], process.env)).toBe("");
+  if (cleanup !== "complete") {
+    expect(first.stderr).not.toContain("safe to rerun");
+    expect(first.stderr).not.toContain("owned rollback completed");
+    expect(first.stderr).toContain("tap doctor");
+    expect(tmuxEffect(["has-session", "-t", "=fixture/reviewer"], process.env)).toBe("");
+    return;
+  }
+  const command = kind === "new" ? "tap session launch testseat reviewer --env 'FEATURE_ENABLED=literal $HOME'"
+    : "tap session resume reviewer";
+  if (json) {
+    const error = JSON.parse(first.stdout);
+    expect(error.error_class).toBe("session_error");
+    expect(error.detail).toContain("tmux refused to start the program");
+    expect(error.detail).toContain("cleanup completed; safe to rerun");
+    expect(error.action).toBe(`cd ${f.root} && ${command} --json`);
+  } else {
+    expect(first.stderr).toContain("tmux refused to start the program");
+    expect(first.stderr).toContain(`cleanup completed; safe to rerun; next: cd ${f.root} && ${command}`);
+  }
+  expect(spawnSync(realTmux, ["-L", f.socket, "has-session", "-t", "=fixture/reviewer"], { env: process.env }).status).toBe(1);
+  const second = invoke();
+  expect(second.status, second.stderr + second.stdout).toBe(0);
+  expect(readFileSync(join(f.root, "respawns"), "utf8").trim().split("\n")).toHaveLength(2);
+  const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
+  expect(row.status).toBe("active");
+  expect(row.launch_id).toBeUndefined();
+  if (kind === "resume") {
+    expect(row.harness_session_id).toBe(id);
+    expect(readFileSync(transcript, "utf8")).toBe("{}\n");
+    expect(readFileSync(join(f.root, "argv"), "utf8")).toContain(id);
+  }
+}, 45_000);
+
 test("unusable creation identity retains the pending reservation instead of losing ownership", async () => {
   const f = fixture();
   fakeHarness(f);

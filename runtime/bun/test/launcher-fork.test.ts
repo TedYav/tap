@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseVessel, respawnInitialPane, type FailureEvidence } from "../src/launcher/transaction";
+import { LaunchCommandError } from "../src/launcher/process";
 
 test("an empty PID preserves physical vessel identity but a malformed record does not", () => {
   expect(parseVessel("123:456\t$1\t@1\t%7\t\t/private/fork-test.sock")).toEqual({
@@ -11,36 +12,27 @@ test("an empty PID preserves physical vessel identity but a malformed record doe
   expect(parseVessel("123:456\t$1\t@1\t%7\t/private/fork-test.sock")).toBeNull();
 });
 
-// Only the rare kernel fork-refusal observation is simulated. Assertions are
-// against the actual owner argv/predicate; real stopped-child behavior and
-// tmux identity-bound cleanup are covered by the transaction fixtures.
-test.each(["success", "repeat", "positive-pid", "empty-pid", "missing", "drift", "other-error", "startup-exit"])("initial respawn %s obeys the bounded no-effect retry table", async mode => {
+// The shim records every effect: a refused fork must never respawn that pane again.
+test.each(["fork-refused", "empty-pid", "other-error", "startup-exit", "ownership-moved"])("initial respawn %s attempts the owned pane once", async mode => {
   const root=mkdtempSync(join(process.env.TAP_INDEX_HOME!,"fork-"));
   mkdirSync(join(root,"bin"));
-  const log=join(root,"calls.jsonl"), state=join(root,"state");
+  const log=join(root,"calls.jsonl");
   const script=String.raw`
 import json,pathlib,sys
 args=sys.argv[1:]; root=pathlib.Path(__file__).resolve().parents[1]
 mode=MODE
-log=root/"calls.jsonl"; state=root/"state"
+log=root/"calls.jsonl"
 with log.open("a") as stream: stream.write(json.dumps(args)+"\n")
-count=int(state.read_text()) if state.exists() else 0
 if "display-message" in args:
-    if mode=="missing": raise SystemExit(1)
-    print("123:456\t$1\t@1\t%7\t"+("43" if mode=="positive-pid" else "" if mode=="empty-pid" else "-1")+"\t/private/fork-test.sock")
+    print("123:456\t$1\t@1\t%7\t"+("" if mode=="empty-pid" else "-1")+"\t/private/fork-test.sock")
     raise SystemExit(0)
 assert "if-shell" in args and "-F" in args,args
 predicate=args[-3]; command=args[-2]
 for term in ("#{pid}:#{start_time}","#{session_id}","#{window_id}","#{pane_id}"):
     assert term in predicate,(term,args)
 assert command.startswith("respawn-pane"),command
-if count:
-    assert "#{==:#{pane_pid},-1}" in predicate,predicate
-    assert " -k " not in command,command
-    if mode=="drift": print("TAP_LAUNCH_IDENTITY_MOVED"); raise SystemExit(0)
-else: assert " -k " in command,command
-state.write_text(str(count+1))
-if mode=="startup-exit" or (count and mode=="success"): raise SystemExit(0)
+if mode=="ownership-moved": print("TAP_LAUNCH_IDENTITY_MOVED"); raise SystemExit(0)
+if mode=="startup-exit": raise SystemExit(0)
 print("other failure" if mode=="other-error" else "respawn pane failed: fork failed: Device not configured",file=sys.stderr)
 raise SystemExit(1)
 `.replace("MODE",JSON.stringify(mode));
@@ -48,9 +40,15 @@ raise SystemExit(1)
   writeFileSync(join(root,"bin/tmux"),`#!/usr/bin/env ${python}\n${script}`,{mode:0o755});
   const evidence={record:{name:"fixture/seat",cwd:root},vessel:{server:"123:456",session:"$1",window:"@1",pane:"%7",socket:"/private/fork-test.sock"}} as FailureEvidence;
   const action=respawnInitialPane(evidence,"exec fake-harness",{...process.env,PATH:`${root}/bin:${process.env.PATH}`});
-  if (["success","startup-exit"].includes(mode)) await action; else await expect(action).rejects.toThrow();
+  if (mode === "startup-exit") await action;
+  else if (mode === "ownership-moved") await expect(action).rejects.toThrow("creation identity changed before respawn");
+  else {
+    const error = await action.catch(error => error);
+    expect(error).toBeInstanceOf(LaunchCommandError);
+    expect(error.result.stderr.trim()).toBe(mode === "other-error" ? "other failure" : "respawn pane failed: fork failed: Device not configured");
+  }
   const calls:string[][]=readFileSync(log,"utf8").trim().split("\n").map(line=>JSON.parse(line));
   const attempts=calls.filter(argv=>argv.includes("if-shell"));
-  expect(attempts.length).toBe(["success","repeat","drift"].includes(mode)?2:1);
-  if(mode==="drift") expect(readFileSync(state,"utf8")).toBe("1");
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0]!.at(-2)).toContain(" -k ");
 },10000);

@@ -13,6 +13,7 @@ import { beginLifecycleOperation } from "../lifecycle-diagnostics";
 import { tmuxSessionNamespace } from "../tmux";
 import { detachedReceipt } from "./attach-policy";
 import { Notices } from "./catalog-notices";
+import { shlexQuote } from "./invocation";
 import { currentBootId } from "./generation";
 import { allocateName, namedSessionName, sanitizeComponent, sessionNameForHandle } from "./naming";
 import { applyOverrides, looksLikeOption, parseEnvAssignments, resolveRecordTuning, splitLaunchPassthrough } from "./overrides";
@@ -735,6 +736,7 @@ export async function cmdSessionLaunch(argv: string[], scriptDir = SCRIPTS, over
   try { stderrTty = process.stderr.isTTY === true; } catch { /* no terminal */ }
   const run: Runner = record => withLaunchSignals(async signal => {
     const result = await launchTransaction({ kind: "new", record: cloneRecord(record), dry_run: args.dry_run, json: args.json,
+      rerun_command: `cd ${shlexQuote(cwd)} && ${["tap", "session", "launch", ...argv].map(shlexQuote).join(" ")}`,
       output_path: callerTty(), terminal: { stderr_tty: stderrTty }, script_dir: scriptDir }, process.env, signal, notices);
     Object.assign(record, result.record);
     return result.code;
