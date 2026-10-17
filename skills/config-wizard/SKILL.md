@@ -17,9 +17,13 @@ spelling and still means it; this is a skill, not a `tap config wizard` verb.
 
 Three things hold throughout:
 
-- **The answers are theirs.** Ask one small question at a time and skip what
-  they already told you. A recommendation or an unanswered default is not
-  consent. Never answer a preference for them.
+- **The answers are theirs.** Ask one small question per preference and skip
+  what they already told you. In structured dialogs, group independent questions
+  up to the harness's question limit and split the rest into later dialogs.
+  Give each question its own answer and put its recommended option first.
+  Without a structured dialog, ask one question per turn. Wait for an answer
+  before asking a question that depends on it. A recommendation or an unanswered
+  default is not consent. Never answer a preference for them.
 - **One writer.** Every choice the table below represents goes through
   `tap setup --machine --answers`: collect the decisions, preview them with
   `--dry-run`, show the preview, then apply the identical object. Do not script

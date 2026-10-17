@@ -136,7 +136,8 @@ test("setup --yes outside git forwards consent, so init is born live", () => {
   const f = fixture(false, "project");
   const accepted = run(f, ["--yes"]);
   expect(accepted.code).toBe(0);
-  expect(accepted.err).toContain("is not a git repository; initializing TAP here anyway (--yes)");
+  expect(accepted.err).toContain("is not a git repository; initializing TAP here (--yes)");
+  expect(accepted.err).not.toContain("warning:");
   expect(accepted.err).not.toContain("run tap init --yes");
   expect(accepted.out).toContain("tap setup: ready");
   expect(existsSync(join(f.root, "index/global-registry.json"))).toBe(true);

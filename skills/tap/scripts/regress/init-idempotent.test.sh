@@ -223,8 +223,8 @@ grep -q "next: run tap init --yes in " <<<"$out" \
 [ ! -e "$NONGIT/.tap" ] || { echo "init-idempotent: (4) refused non-git init wrote .tap" >&2; exit 1; }
 out="$(cd "$NONGIT" && env -u TAP_HOME "$TAP" init --yes --no-trust-folders 2>&1)" || {
   echo "init-idempotent: (4) non-git init --yes failed" >&2; echo "$out" >&2; exit 1; }
-grep -q "is not a git repository; initializing TAP here anyway" <<<"$out" \
-  || { echo "init-idempotent: (4) missing non-git warning" >&2; echo "$out" >&2; exit 1; }
+grep -q "is not a git repository; initializing TAP here (--yes)" <<<"$out" \
+  || { echo "init-idempotent: (4) missing non-git information" >&2; echo "$out" >&2; exit 1; }
 [ -d "$NONGIT/.tap/bus/payloads" ] || { echo "init-idempotent: (4) non-git bus missing" >&2; exit 1; }
 [ -f "$NONGIT/.tap/team-registry.json" ] || { echo "init-idempotent: (4) non-git team registry missing" >&2; exit 1; }
 echo "init-idempotent: 4/4 - non-git init needs consent, then anchors to pwd: ok"

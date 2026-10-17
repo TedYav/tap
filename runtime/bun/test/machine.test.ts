@@ -853,22 +853,25 @@ test("wizard exit 2 still prints the final PATH remedy and leaves install nonzer
 });
 
 for (const harness of ["claude", "codex"]) for (const json of [false, true]) {
- test(`wizard auto note follows the choice for ${harness}, json=${json}`, async () => {
+ test(`wizard explains Claude auto before the permission choice for ${harness}, json=${json}`, async () => {
   fixture();
   const output: string[] = [], diagnostics: string[] = [];
   const stdout = spyOn(console, "log").mockImplementation((value) => { output.push(String(value)); });
   const stderr = spyOn(console, "error").mockImplementation((value) => { diagnostics.push(String(value)); });
-  const note = "Note: Claude auto may require attention for the first TAP message; run `tap init` in the project first.";
+  const note = "Claude auto may pause on the first TAP message: run `tap init` in your project, then check the attached Claude session and approve any permission prompt.";
   try {
    const reply = answers(["", "", "simple", "high", "auto", "n", "n", "n", "n"]);
    expect(await setupMachine(async question => {
-    if (harness === "claude" && question.startsWith("Add shell aliases")) expect((json ? diagnostics : output)).toContain(note);
+    if (question.includes("Permission mode")) {
+      if (harness === "claude") expect(question).toContain(note);
+      else expect(question).not.toContain(note);
+    }
     return reply(question);
    }, [harness], json)).toBe(0);
    if (json) {
     expect(output).toHaveLength(1);
-    expect(JSON.parse(output[0]!)).toEqual({exit_code: 0, notes: harness === "claude" ? [note] : []});
-   } else expect(output.filter(line => line === note)).toHaveLength(harness === "claude" ? 1 : 0);
+    expect(JSON.parse(output[0]!)).toEqual({exit_code: 0, notes: []});
+   } else expect(output.filter(line => line === note)).toHaveLength(0);
   } finally { stdout.mockRestore(); stderr.mockRestore(); }
  });
 }

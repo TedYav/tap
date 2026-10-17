@@ -61,7 +61,7 @@ function interactive(opts: InitOptions): boolean {
 function confirmNonGit(root: string, opts: InitOptions): void {
   const retry = opts.forLaunch ? "then rerun tap session launch" : "or cd into a git repository";
   if (opts.yes) {
-    process.stderr.write(`tap init: warning: ${root} is not a git repository; initializing TAP here anyway (--yes)\n`);
+    process.stderr.write(`tap init: ${root} is not a git repository; initializing TAP here (--yes)\n`);
     return;
   }
   if (interactive(opts)) {

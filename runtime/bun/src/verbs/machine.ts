@@ -134,9 +134,11 @@ function setupSnapshot(): SetupSnapshot {
   }
 }
 
+const CLAUDE_AUTO_NOTE = "Claude auto may pause on the first TAP message: run `tap init` in your project, then check the attached Claude session and approve any permission prompt.";
+
 function permissionNotes(plan: SetupPlan, notes: string[], log: Log) {
   if (plan.permissions.claude === "auto") {
-    const note = "Note: Claude auto may require attention for the first TAP message; run `tap init` in the project first.";
+    const note = CLAUDE_AUTO_NOTE;
     notes.push(note); log(note);
   }
 }
@@ -216,7 +218,7 @@ async function collectSetupChoices(ask: Prompt, snapshot: SetupSnapshot, found: 
     const saved = snapshot.previous.harness?.[h]?.permissions;
     const savedValid = ["auto","bypass"].includes(saved);
     const fallback = savedValid ? saved : "auto";
-    let answer = (await ask(`${h}: Permission mode [${savedValid ? `keep ${fallback}` : "auto"}] (auto/bypass): `)).trim();
+    let answer = (await ask(`${h}: Permission mode [${savedValid ? `keep ${fallback}` : "auto"}] (auto/bypass)${h === "claude" ? `. ${CLAUDE_AUTO_NOTE}` : ""}: `)).trim();
     while (answer && !["auto","bypass"].includes(answer)) answer = (await ask(`${h}: choose auto or bypass, or leave empty to keep the displayed default: `)).trim();
     choices.harnesses![h]!.permissions = (answer || fallback) as "auto" | "bypass";
   }
@@ -234,7 +236,6 @@ async function collectSetupChoices(ask: Prompt, snapshot: SetupSnapshot, found: 
     }
   }
   const preview = prepareSetup(snapshot,choices,reference);
-  permissionNotes(preview,notes,log);
   if (preview.changed && snapshot.existed && !(await confirm(ask,`Update existing ${snapshot.config} (keep a backup)?`,"n"))) choices.write = "candidate";
   const target = join(configDir(),"config.candidate.toml");
   if (preview.changed && choices.write === "candidate" && lstatSync(target,{throwIfNoEntry:false})) {
@@ -455,7 +456,9 @@ async function applySetup(snapshot: SetupSnapshot, plan: SetupPlan, json: boolea
       }
       const key = keyOf(change.path);
       if (change.before !== undefined) lines.push(`- ${key} = ${JSON.stringify(change.before)}`);
-      lines.push(`+ ${key} = ${JSON.stringify(change.after)}`);
+      const annotation = key === "harness.codex.env.PONYTAIL_DEFAULT_MODE" && change.before === undefined
+        ? " # default: Ponytail is an optional third-party plugin that makes the agent favor the simplest solution; off has no effect when it is not installed" : "";
+      lines.push(`+ ${key} = ${JSON.stringify(change.after)}${annotation}`);
     }
     if (changed && choices.write === "apply" && existed) lines.push("Would back up the original config before applying.");
     if (candidate !== undefined) lines.push("Would replace the existing inactive candidate.");

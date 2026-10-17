@@ -3,6 +3,7 @@ import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
 import { assertResetUnfenced } from "../reset";
 import { outstanding } from "../slices/outstanding";
+import { exchangeSelf } from "../exchange-self";
 
 export function cmdOutstanding(argv: string[]): number {
   let me = process.env.TAP_SELF || "", positional = false, machine = false, stale = "", team = "";
@@ -21,7 +22,6 @@ export function cmdOutstanding(argv: string[]): number {
       me = a; positional = true;
     }
   }
-  if (!me) throw new TapError(1, "usage_error", "tap help outstanding", "agent name required (pass one or set TAP_SELF)");
   if (stale && !/^\d+$/.test(stale)) throw new TapError(1, "usage_error", "tap help outstanding", `--stale must be a positive integer (seconds), got '${stale}'`);
   // Bash arithmetic caps at its signed integer maximum; the bound is checked
   // in BigInt because Number loses precision above 2^53 and the incumbent sh
@@ -42,6 +42,7 @@ export function cmdOutstanding(argv: string[]): number {
     const ctx = resolveSelection(callerPin, team);
     if (ctx.busRule !== "env") requireActingRegistry(ctx, 4);
     assertResetUnfenced(ctx.bus.home, "tap outstanding");
+    if (!me) me = exchangeSelf(ctx, "outstanding");
     ctx.bus.ensureDirs();
     // A live flip marker means this machine is the sending instance; older
     // sender instances' payloads are then another instance's obligations.

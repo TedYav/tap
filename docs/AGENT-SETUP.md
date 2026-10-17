@@ -29,13 +29,17 @@ A human who wants another agent to start this install copies the prompt from the
 - Do not answer preference questions for the human. Do not install optional
   plugins, replace existing config or launch agents on assumed choices. An
   explicit yes to the named list in step 3 is not an assumed choice.
-- Preview before you apply. Every configuration change you make for the human
-  is shown to them as a dry run first and applied only after they say yes. Put
-  anything they must read in a message of its own that ends your turn, and ask
-  in plain text there or in the next turn; a question dialog hides the text
-  above it in the same turn. Ask one question per turn. The
-  terminal wizard is the human answering for themselves: it applies their
-  answers when it finishes, after showing any startup-file change and asking
+- Preview before you apply. The installer's `--report` output previews harness
+  wiring; the pasted installation prompt is consent to that install. Machine
+  configuration and shell-integration changes still need a dry run and a yes.
+  Put anything the human must read in a message of its own that ends your turn;
+  a question dialog can hide text above it in the same turn. Configuration
+  preferences each need a separate question and answer, with the recommended
+  option first. Group independent questions in structured dialogs up to the
+  harness's question limit, splitting the rest into later dialogs. Without a
+  structured dialog, ask one question per turn. The terminal wizard is the human
+  answering for themselves: it applies their answers when it finishes, after
+  showing any startup-file change and asking
   before it replaces an existing config.
 
 ## 1. Choose the install source and check requirements
@@ -129,6 +133,9 @@ question. After each human step, re-run the checks, and run `hash -r` (or open a
 new terminal) so `env bash` finds Bash 5 rather than the old one it cached.
 macOS's bundled Bash is too old.
 
+Install missing requirements before running `./install.sh --report`. The report
+needs those tools too; without them it prints install commands and exits 127.
+
 When tmux was missing and the human has no tmux configuration (no
 `~/.tmux.conf`, no `~/.config/tmux/tmux.conf`), add one sentence to that same
 message: after TAP is installed you will offer TAP's recommended tmux settings
@@ -148,6 +155,11 @@ For the clone route, also install Bun:
 ```bash
 brew install oven-sh/bun/bun
 ```
+
+Homebrew may print unrelated caveats about Xcode Command Line Tools or suggest
+`sudo rm -rf` cleanup commands. If the package install succeeded, explain that
+these are harmless for TAP setup; do not run the suggested cleanup commands.
+If the install failed, report the failure instead.
 
 If Homebrew is missing, the human installs it (it needs a TTY and `sudo`):
 
@@ -192,10 +204,10 @@ download directory, with the archive path and trusted digest selected in step 1:
 /bin/bash tap-bootstrap.sh --archive "$TAP_ARCHIVE" --sha256 "$TAP_SHA256"
 ```
 
-For a clone:
+For a clone, after the requirements are installed, preview harness wiring:
 
 ```bash
-(cd "$tap_root" && ./install.sh)
+(cd "$tap_root" && ./install.sh --report)
 ```
 
 The installer links into the permanent clone or the archive's stable `current`
@@ -203,13 +215,21 @@ path. It also wires TAP's hooks and plugins into each supported harness home
 (`~/.claude`, `~/.codex`, `~/.cursor`, `~/.config/opencode`, the Gemini home)
 only when that harness's command is on PATH or its hooks file already exists.
 A bare home directory with neither is left untouched, and a missing directory
-is skipped. Run `./install.sh --report` first: it writes nothing and names, per
-harness, one of *will wire*, *already wired*, *present, not wired* (with the
-reason) or *absent*. Tell the human what it reported and what will be written,
-as a statement rather than a question: the pasted prompt is their consent to
-install, and nothing should be a surprise. A harness they install later is
-wired by one more `./install.sh --sync`. A first interactive install
-without a machine config opens `tap setup --machine`. A non-TTY agent runner
+is skipped. The report writes nothing and names, per harness, one of *will wire*,
+*already wired*, *present, not wired* (with the
+reason) or *absent*. Show its output in a message of its own and name every
+harness it will wire, including any the human never mentioned. Explain what
+will be written as a statement: the report is the preview, and the pasted prompt
+is consent to install this harness wiring. Machine configuration still gets
+its own dry run and a yes below. Then install the clone:
+
+```bash
+(cd "$tap_root" && ./install.sh)
+```
+
+A harness they install later is wired by one more `./install.sh --sync`.
+A first interactive install without a machine config opens `tap setup --machine`.
+A non-TTY agent runner
 skips the wizard and prints a next step; the wizard itself requires a TTY.
 Use `tap setup --machine --answers <file>` from a non-TTY runner. Do not pipe
 default answers into the wizard or treat the skipped wizard as an error.
@@ -221,10 +241,14 @@ permission choice; a new choice needs an explicit answer, and the wizard's own
 default is **auto**. Recommend **auto**, and name **bypass** as the alternative
 with its consequence in one sentence: bypass lets the agent run commands and
 edit files without asking, with the human's own permissions; auto keeps the
-harness's approval checks. With auto the first Codex reply may need one retry
-with sandbox escalation, which the test in step 3 handles, and Antigravity auto
+harness's approval checks. Before the human picks, say: Claude auto may pause
+on the first TAP message; run `tap init` in the project, then check the attached
+Claude session and approve any permission prompt. With auto the first Codex reply
+may need one retry with sandbox escalation, which the test in step 3 handles,
+and Antigravity auto
 stops the seat on every permission request. Fresh Codex configs keep Ponytail
-off until requested.
+off until requested. Ponytail is an optional third-party plugin that makes the
+agent favor the simplest solution; off has no effect when it is not installed.
 
 The wizard preserves existing presets, comments and unrelated settings. An
 accepted config update keeps a backup; declining it writes an inactive candidate
@@ -251,8 +275,12 @@ terminal finds `tap`.
 When a non-TTY runner skipped the wizard, or settings remain, read
 `skills/config-wizard/SKILL.md` under `tap_root` and follow its
 [walkthrough](../skills/config-wizard/SKILL.md#walkthrough). It owns every
-knob and the answers format; this runbook only fixes the order. Ask one
-question at a time and retain choices already accepted in the terminal wizard:
+knob and the answers format; this runbook fixes their order. Follow its batching
+rule: group independent preference questions up to the harness's structured-dialog
+limit, each with its own answer and recommended option first; split the rest into
+later dialogs. Otherwise ask one question per turn. Wait for an answer before
+asking a question that depends on it. Retain choices already accepted in the
+terminal wizard:
 
 1. **Find the harnesses.** Check for the six supported executables and tell the
    human which you found: `claude`, `codex`, `cursor-agent`, `agy`
@@ -270,8 +298,11 @@ question at a time and retain choices already accepted in the terminal wizard:
 4. **Ask each permission choice.** Recommend auto, the default, and name
    bypass as the alternative with its one-sentence consequence (above); ask
    once before enabling bypass unless already authorized. A harness with no
-   saved choice launches with auto. Codex auto keeps Codex's file sandbox and its automatic
-   approval review, not a human approval dialog, and TAP turns on Codex's
+   saved choice launches with auto. Before the Claude choice, explain that auto
+   may pause on the first TAP message: run `tap init` in the project, then check
+   the attached Claude session and approve any permission prompt. Codex auto
+   keeps Codex's file sandbox and its automatic approval review, not a human
+   approval dialog, and TAP turns on Codex's
    network proxy with no allowed domains so seats can reach the tmux socket
    (other destinations stay blocked for commands the sandbox runs). Relay review refusals exactly.
    Cursor and Antigravity take the same auto/bypass choice; Antigravity has no
@@ -362,7 +393,7 @@ When the partner is Codex, watch its pane: on **Hooks need review** choose
 and `hooks/tap-shell-body-guard.ts` under the permanent clone, and trust each one
 individually, never **Trust all**; any other entry, or a path elsewhere, stops
 the test, and you show the human the screen. When you are Codex, the review
-appears in your own relaunched seat before the human's `/resume`: include that
+appears in your own relaunched seat before the conversation picker: include that
 in the relaunch steps, naming the two hooks, since their yes already covers it.
 Then ask the partner a question with `tap send partner --ask -f <file>`, wait
 for its reply, and show the answer text verbatim. If the human chose another
@@ -386,6 +417,9 @@ roster name. TAP's courier never answers a trust or permission dialog; the
 the human what to expect. Inspect the receiving pane before resending if no
 answer returns. Leave the seats available unless the human asks to stop them.
 
+A seat's model shows `?` in `tap team` until its SessionStart hook has run;
+trusting hooks after startup delays that display.
+
 For configuration questions, use `tap config path` and
 `tap config get sentinel.preview`. Change a preference only when requested:
 `tap config set sentinel.preview true` (or `false`) takes effect on the next
@@ -406,19 +440,30 @@ project is elsewhere, say so and use two fresh seats instead.
 
 1. Before the human exits you, tell them your harness, your conversation's id
    (`echo $CLAUDE_CODE_SESSION_ID` in Claude Code, `echo $CODEX_THREAD_ID` in
-   Codex) and a phrase from this conversation to find it in the picker. Write
+   Codex) and this conversation's first message to find it in the picker. Write
    the id down in your reply; the check below compares against it. If the
    variable is empty, say so: the relaunch still works, but nothing can later
    confirm which conversation TAP recorded.
-2. The human exits you with `/exit`, then, from the project directory, launches
-   a seat for your harness with a fresh name and the picker flag:
-   `tap launch claude installer --resume` or `tap launch codex installer --resume`.
-   Use the bare form here: an alias written this session is not in the shell
-   that returns after `/exit`. The seat opens the harness's own conversation
-   picker, and the human picks this conversation. Do not use a "most recent"
-   shortcut such as `codex resume --last`: the seat's own empty conversation
-   would be the newest one. For Codex, the picked conversation binds once its
-   hooks are trusted, so the human may meet the hook review first.
+2. Before `/exit`, tell the human: "This chat will disappear, then return inside
+   tmux. A status bar at the bottom is expected." Give them this plain script
+   in one message, substituting your harness (`claude` or `codex`) and the first
+   message and id recorded above. Show only their harness's command:
+
+   > 1. Type `/exit`.
+   > 2. In the same folder, run `tap launch <harness> installer --resume`.
+   > 3. A list of past conversations opens. Pick this conversation, matching its
+   >    first message and id: `<first message>` — `<id>`.
+   > 4. Say "I'm back" to the agent.
+
+   Use the bare harness command: an alias written this session is not in the
+   shell that returns after `/exit`. For both Claude and Codex,
+   `tap launch --resume` opens the native picker without creating a conversation.
+   For Codex, include the two-hook review instructions above: it may appear
+   before the picker, and SessionStart binds the choice once hooks are trusted.
+
+   If you resume by hand instead of through `tap launch --resume`, avoid
+   `codex resume --last` from an already-started seat: that seat's empty
+   conversation may be the newest one. Select the recorded conversation instead.
 3. Back in this conversation, run `tap whoami`. The handle must be the seat's
    name, `installer`. TAP bound the picked conversation when the harness's
    SessionStart ran; if `tap whoami` cannot resolve the seat, run `tap in` once

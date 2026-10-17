@@ -30,6 +30,7 @@ import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
 import { ensureAscii } from "../fsatomic";
 import { assertResetUnfenced } from "../reset";
+import { exchangeSelf } from "../exchange-self";
 
 export function cmdPoll(argv: string[]): number {
   let me = process.env.TAP_SELF || "";
@@ -55,7 +56,6 @@ export function cmdPoll(argv: string[]): number {
         positionalSeen = true;
       }
     }
-    if (!me) throw new TapError(1, "usage_error", "tap help poll", "agent name required (pass one or set TAP_SELF)");
 
     // Caller pin > --team > cwd walk, in ONE place for both gates (rule 56:
     // the identical source edit at a second gate is not a control for it).
@@ -87,6 +87,7 @@ export function cmdPoll(argv: string[]): number {
         `cwd-derived bus has no acting registry and the caller pane is not observable (${reason})`);
     }
     assertResetUnfenced(ctx.bus.home, "tap poll");
+    if (!me) me = exchangeSelf(ctx, "poll");
     ctx.bus.ensureDirs();
 
     let quarantined = 0;

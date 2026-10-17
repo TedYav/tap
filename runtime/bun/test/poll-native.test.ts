@@ -38,15 +38,53 @@ function fixture(enrolled = true) {
     if (parked) writeFileSync(join(source, "spool", `${id}.meta.json`), JSON.stringify({ target: envelope.to, reason: "pending-input", first_spooled_epoch: 1 }));
     return path;
   };
-  const run = (args: string[] = ["me", "--json"], door: Door = "native", overrides: NodeJS.ProcessEnv = {}, at = cwd) => {
+  const run = (args: string[] = ["me", "--json"], door: Door = "native", overrides: NodeJS.ProcessEnv = {}, at = cwd, verb = "poll") => {
     const command = door === "handler"
       ? [process.execPath, "--eval", `import {cmdPoll} from ${JSON.stringify(join(repo, "runtime/bun/src/verbs/poll.ts"))}; import {runNative} from ${JSON.stringify(join(repo, "runtime/bun/main.ts"))}; process.exitCode=runNative("poll",cmdPoll,${JSON.stringify(args)});`]
-      : ["bash", join(repo, door === "root-shim" ? "scripts/tap.sh" : "bin/tap"), "poll", ...args];
+      : ["bash", join(repo, door === "root-shim" ? "scripts/tap.sh" : "bin/tap"), verb, ...args];
     const r = Bun.spawnSync(command, { cwd: at, env: { ...env, ...overrides }, stdout: "pipe", stderr: "pipe", timeout: 15000 });
     return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() };
   };
   return { root, index, home, cwd, bus, registry, foreign, foreignRegistry, doc, env, seed, run };
 }
+
+for (const verb of ["poll", "outstanding"]) test(`${verb}: omitted handle resolves the bound pane and refuses unverifiable identity`, () => {
+  const f = fixture(), fake = join(f.root, "bin");
+  mkdirSync(fake);
+  writeFileSync(join(fake, "ps"), '#!/bin/sh\nprintf "1 ttypoll\\n"\n', { mode: 0o755 });
+  writeFileSync(join(fake, "tmux"), '#!/bin/sh\ncase "$*" in\n*list-panes*) printf "%s\\t%s\\n" "%700" "/dev/ttypoll" ;;\n*display-message*) printf "%s\\n" "$POLL_RECORD" ;;\n*) exit 1 ;;\nesac\n', { mode: 0o755 });
+  Object.assign(f.doc.seats.me, { status: "active", pane_id: "%700", pane: "recipient/me:0.0", session: "recipient/me", server_epoch: "srv:123:456" });
+  writeFileSync(f.registry, JSON.stringify(f.doc));
+  const env = { PATH: `${fake}:${process.env.PATH}`, TAP_SERVER_EPOCH: undefined,
+    POLL_RECORD: "%700\t/dev/ttypoll\trecipient/me\t123:456", TAP_TMUX_SOCKET_PATH: join(f.root, "socket") };
+  f.seed("mine", { from: "me", sender_instance: "me|new" });
+  const run = (args: string[], overrides: NodeJS.ProcessEnv = {}) => f.run(args, "native", { ...env, ...overrides }, f.cwd, verb);
+  const implicit = run(["--json"]), explicit = run(["me", "--json"]);
+  expect(implicit.code, implicit.err || implicit.out).toBe(0);
+  expect(JSON.parse(implicit.out)).toEqual(JSON.parse(explicit.out));
+  expect(JSON.parse(implicit.out).agent).toBe("me");
+  expect(implicit.out).toContain("mine");
+  expect(run([]).out).toContain("mine");
+  expect(JSON.parse(run(["--json"], { TAP_HOME: undefined }).out)).toEqual(JSON.parse(implicit.out));
+  expect(JSON.parse(run(["--team", "recipient", "--json"], { TAP_HOME: undefined }).out)).toEqual(JSON.parse(implicit.out));
+  // Explicit selection and TAP_SELF retain precedence over pane discovery.
+  expect(JSON.parse(run(["other", "--json"]).out).agent).toBe("other");
+  expect(JSON.parse(run(["--json"], { TAP_SELF: "other" }).out).agent).toBe("other");
+  // Missing or stale generation must never confer the registered handle.
+  for (const record of ["%700\t/dev/ttypoll\trecipient/me\t", "%700\t/dev/ttypoll\trecipient/me\t999:999", "%700\t/dev/different\trecipient/me\t123:456"]) {
+    const refused = run(["--json"], { POLL_RECORD: record });
+    expect(refused.code).toBe(1);
+    expect(JSON.parse(refused.out).ok).toBe(false);
+  }
+  const unavailable = run(["--json"], { POLL_RECORD: "" });
+  expect(unavailable.code).toBe(1);
+  expect(JSON.parse(unavailable.out).action).toContain(`tap ${verb} <handle>`);
+  Object.assign(f.doc.seats.me, { pane_id: "%701" });
+  writeFileSync(f.registry, JSON.stringify(f.doc));
+  const unregistered = run(["--json"]);
+  expect(unregistered.code).toBe(1);
+  expect(JSON.parse(unregistered.out).error_class).toBe("unregistered");
+});
 
 for (const door of doors) test(`${door}: pending and empty both exit 0 and differ by output; quiet, JSON and usage are native terminal outcomes`, () => {
   const f = fixture();

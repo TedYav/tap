@@ -102,7 +102,18 @@ test("non-TTY zero-preset apply saves independent permissions and leaves effects
   const config=Bun.TOML.parse(readFileSync(f.config,"utf8")) as any;
   expect(config.presets).toBeUndefined();expect(config.harness.claude.permissions).toBe("auto");expect(config.harness.codex.permissions).toBe("bypass");
   expect(config.harness.codex.env.PONYTAIL_DEFAULT_MODE).toBe("off");
+  expect(receipt(result).notes.join(" ")).toContain("run `tap init` in your project, then check the attached Claude session and approve any permission prompt");
   expect(existsSync(join(f.home,".zshrc"))).toBe(false);expect(existsSync(f.trace)).toBe(false);
+});
+
+test("fresh Codex preview explains the unchosen optional-plugin default without applying it",()=>{
+  const f=fixture();
+  const choices={harnesses:{codex:{presets:"skip",permissions:"auto"}},write:"apply"};
+  const result=Bun.spawnSync([join(repo,"bin/tap"),"setup","--machine","--answers","-","--dry-run","--json"],{env:f.env,stdin:Buffer.from(JSON.stringify(choices)),timeout:5000});
+  expect(result.exitCode).toBe(0);
+  const notes=receipt(result).notes.join(" ");
+  expect(notes).toContain('+ harness.codex.env.PONYTAIL_DEFAULT_MODE = "off" # default: Ponytail is an optional third-party plugin that makes the agent favor the simplest solution; off has no effect when it is not installed');
+  expect(existsSync(f.config)).toBe(false);
 });
 
 test("onboarding and injection answers write their config keys and omission preserves them",()=>{

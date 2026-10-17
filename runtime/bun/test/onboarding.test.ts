@@ -497,7 +497,7 @@ test("fresh machine: non-git init needs consent, then enrolls that folder and re
   const human = f.run(["init"]); expect(human.status).toBe(1); expect(human.stderr).toContain("next: run tap init --yes in");
   const r = f.run(["init", "--json", "--yes"]); expect(r.status, r.stderr).toBe(0);
   expect(JSON.parse(r.stdout)).toMatchObject({ ok: true, in_git: false, team: { name: "repo", root: f.cwd } });
-  expect(r.stderr).toContain("is not a git repository; initializing TAP here anyway");
+  expect(r.stderr).toContain("is not a git repository; initializing TAP here (--yes)");
   expect(index(f).teams.repo.root).toBe(f.cwd); expect(currentTeam(f.cwd)).toBe("repo");
   // The stranger is not stranded: registration binds the enrolled folder.
   const reg = f.run(["register", "alice", "--delivery", "poll"]); expect(reg.status, reg.stdout + reg.stderr).toBe(0);

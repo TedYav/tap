@@ -114,7 +114,10 @@ or grant trust.
 Choose **Review hooks** and inspect the commands. TAP installs its SessionStart
 command, `hooks/tap-codex-session-start.sh`, and its shell-body guard,
 `hooks/tap-shell-body-guard.ts`, from your permanent TAP clone. Check that the
-paths point to that clone, and trust only hooks you intend to trust. Hook commands
+paths for both commands point to that clone, then review and trust each TAP hook
+individually. This is the safe choice: **Trust all and continue** can also trust
+unrelated hooks. If another entry appears or either path points elsewhere, stop
+and check it before granting trust. Hook commands
 can run outside Codex's sandbox after you trust them.
 
 The captured Codex 0.156.1 screen offers **Trust all and continue** and
