@@ -88,8 +88,8 @@ one of them was a place a port could silently answer a different question:
   falsy; `1.0` equals `1`, so a merge that assigns `1` over a stored `1.0` is not a change. A
   non-canonical float source (`1E5`) prints as written where Python prints `100000.0` — a declared
   deviation, observable only on a hand-edited record, since every float the writers emit is canonical.
-- **Archiving the record's home removes only a real directory at the destination.** `tap team reset`'s
-  `reap` replaces `<archive>/goalie` when a directory is there; a plain file, a symlink or anything
+- **Archiving the record's home removes only a real directory at the destination.** The legacy goalie
+  `reap` helper replaces `<archive>/goalie` when a directory is there; a plain file, a symlink or anything
   else at that path is PRESERVED and the reap refuses, leaving the source home in place. Deleting a
   non-directory destination would destroy unrelated archive content the predecessor declined to touch.
 

@@ -62,9 +62,21 @@ case "${1:-}" in
     esac
     ;;
 esac
+if [ "${TAP_REGISTER_CREW_CAPTURE_ONLY:-}" = 1 ] && [ -n "${CREW_CAPTURE_KILL_PARENT_PID:-}" ]; then
+  kill -TERM "$CREW_CAPTURE_KILL_PARENT_PID" 2>/dev/null || true
+fi
 exec "$CREW_REAL_BUN" "$@"
 BUN
 chmod +x "$WORK/bin/bun"
+# Preparation stays hermetic; only the selected fixture model is available.
+export OPENCODE_FIXTURE="$ROOT/runtime/bun/test/support/opencode-cli.ts"
+export TAP_TEST_OPENCODE_MODEL="zai-coding-plan/glm-5.3" TAP_TEST_OPENCODE_LOG="$WORK/opencode-sessions"
+cat > "$WORK/bin/opencode" <<'OPENCODE'
+#!/bin/sh
+case "$1" in --version|api) exec "${TAP_SMOKE_BUN:?}" "$OPENCODE_FIXTURE" "$@" ;; esac
+exit 99
+OPENCODE
+chmod +x "$WORK/bin/opencode"
 export PATH="$WORK/bin:$PATH"
 cat > "$WORK/config/tap/config.toml" <<'TOML'
 version = 2
@@ -148,6 +160,10 @@ import json,pathlib,subprocess,os,sys
 w=pathlib.Path(sys.argv[1]);handle,preset,cwd=sys.argv[2:]
 reg=json.loads((w/'CrewRegistry/.tap/team-registry.json').read_text());row=reg['seats'][handle]
 assert row['crew'] is True,row
+assert row['crew_owner']=='driver' and row['crew_owner_instance']=='driver|fixture',row
+assert row['crew_identity_capture']['decision']=='unavailable',row
+assert row['crew_identity_capture']['reason'],row
+assert not row.get('harness_session_id'),row
 harness={'glm53':'opencode','claude-test':'claude','codex-test':'codex'}[preset]
 assert row['harness']==harness,row
 assert row['preset']['name']==preset,row
@@ -220,9 +236,8 @@ u4_refuse u4-preset crew add naked no-model-preset
 # The receipt and the registry row are claims; the captured child launch
 # command is what the seat will actually run. Snapshot the capture, run the
 # add, then isolate the new exec line (the `send-keys -l -- exec env ...`
-# invocation, never the trailing Enter) and require the exact model token as a
-# whitespace-delimited value — a substring match would let a prefixed token
-# (gpt-5.6-sol-corrupt) pass.
+# invocation, never the trailing Enter). Codex carries the exact model token;
+# OpenCode 2 carries the session whose native model was prepared before launch.
 u4_launch() { # label model-token args...
   local label="$1" model_token="$2"; shift 2
   local before_lines exec_line
@@ -233,6 +248,18 @@ u4_launch() { # label model-token args...
   [ "$(wc -l < "$CREW_CAPTURE")" -eq "$((before_lines + 2))" ] || { echo 'crew launch must send one literal line and one Enter'; exit 1; }
   exec_line="$(tail -n +"$((before_lines + 1))" "$CREW_CAPTURE" | grep 'exec env' || true)"
   [ "$(printf '%s\n' "$exec_line" | grep -c 'exec env')" = 1 ] || { echo "u4: $label did not produce exactly one captured launch line"; tail -n +"$((before_lines + 1))" "$CREW_CAPTURE"; exit 1; }
+  if [ "$label" = u4-preset ]; then
+    python3 - "$exec_line" "$TAP_TEST_OPENCODE_LOG" "$model_token" <<'PY_MODEL'
+import json, pathlib, shlex, sys
+argv = shlex.split(sys.argv[1])
+sessions = [json.loads(line) for line in pathlib.Path(sys.argv[2]).read_text().splitlines()]
+assert "opencode" in argv and "--standalone" in argv and "--model" not in argv, argv
+native_id = argv[argv.index("--session") + 1]
+prepared = next(row for row in sessions if row["id"] == native_id)
+assert prepared["model"] == dict(zip(("providerID", "id"), sys.argv[3].split("/", 1))), prepared
+PY_MODEL
+    return
+  fi
   case "$exec_line" in
     "--model $model_token" | "--model $model_token "* | *" --model $model_token" | *" --model $model_token "*) ;;
     *) echo "u4: $label child argv does not carry --model $model_token"; printf '%s\n' "$exec_line"; exit 1 ;;
@@ -395,3 +422,18 @@ legacy_rc=0
 bash "$ROOT/scripts/tap.sh" crew add codex-test legacy-default >"$WORK/legacy.log" 2>&1 || legacy_rc=$?
 [ "$legacy_rc" != 0 ] || { echo 'crew add must refuse an agents-only store'; cat "$WORK/legacy.log"; exit 1; }
 grep -q 'is an old TAP registry format' "$WORK/legacy.log" || { echo 'crew add on legacy store did not name the old-store refusal'; cat "$WORK/legacy.log"; exit 1; }
+
+# Restore the current fixture store, then end the parent during post-add capture.
+# The helper owns child cleanup; the caller must not emit a success receipt.
+python3 - "$WORK/CrewRegistry/.tap/team-registry.json" <<'PY'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]);r=json.loads(p.read_text());r['seats']=r.pop('agents');r['schema']='0.20';p.write_text(json.dumps(r))
+PY
+capture_parent_pid="$("$REAL_TMUX" -S "$SOCKET" display-message -p -t "$TMUX_PANE" '#{pane_pid}')"
+capture_exit=0
+CREW_CAPTURE_KILL_PARENT_PID="$capture_parent_pid" \
+  bash "$ROOT/scripts/tap.sh" crew add codex-test parent-exits-during-capture > "$WORK/parent-exits-capture.log" 2>&1 || capture_exit=$?
+[ "$capture_exit" != 0 ] || { echo 'crew add succeeded after its parent exited during capture'; cat "$WORK/parent-exits-capture.log"; exit 1; }
+grep -q 'during native identity capture' "$WORK/parent-exits-capture.log" || { cat "$WORK/parent-exits-capture.log"; exit 1; }
+if grep -q 'tap crew add: started' "$WORK/parent-exits-capture.log"; then cat "$WORK/parent-exits-capture.log"; exit 1; fi
+echo 'crew native door: parent exit during capture refuses success'

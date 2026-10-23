@@ -332,7 +332,7 @@ describe("reset custody on send and reply", () => {
       expect(fenced).toBeInstanceOf(TapError);
       expect((fenced as TapError).errorClass).toBe("team_reset_fenced");
       expect((fenced as TapError).action).toBe(
-        "wait for the reset owner (or until identity is readable), then: tap team reset",
+        "wait for the reset owner (or until identity is readable)",
       );
       expect((fenced as TapError).detail).toContain("could not obtain reset mutation custody");
     } finally {

@@ -24,11 +24,11 @@ export function proofFixture(root: string, mode: ProofMode, since = 1000) {
     } else {
       const db = new Database(path);
       try {
-        const parent = `parent-${n}`, id = `summary-${n++}`;
-        db.query("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(parent, session, at, at, JSON.stringify({ role: "user", time: { created: at } }));
-        if (request) db.query("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)").run(`part-${parent}`, parent, session, at, at, JSON.stringify({ type: "compaction" }));
-        db.query("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(id, session, at, at, JSON.stringify({ role: "assistant", summary: true,
-          parentID: parent, finish: "stop", time: { created: at, completed: at + 1 }, ...overrides }));
+        const id = `compaction-${n++}`;
+        const { type = "compaction", ...data } = { type: "compaction", status: request ? "completed" : "running",
+          reason: "manual", summary: "compacted", time: { created: at }, ...overrides };
+        db.query("INSERT INTO session_message (id,session_id,type,seq,time_created,time_updated,data) VALUES (?,?,?,?,?,?,?)")
+          .run(id, session, type, n, at, at + 1, JSON.stringify(data));
       } finally { db.close(); }
     }
   };

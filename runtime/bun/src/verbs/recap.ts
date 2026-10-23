@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 import { readFileSync, statSync } from "node:fs";
 import { callingPane, resolveSelf, TapError } from "../context";
 import { ensureAscii } from "../fsatomic";
@@ -55,7 +56,7 @@ export function cmdRecap(argv: string[]): number {
   const callerPin = process.env.TAP_HOME || "";
   applyTeamOverride(teamFlag);
   const ctx = resolveSelection(callerPin, teamFlag);
-  handle ||= process.env.TAP_SELF || "";
+  handle ||= inheritedActor();
   if (!handle) {
     const pane = callingPane();
     let unverifiable = pane?.status === "unverifiable";

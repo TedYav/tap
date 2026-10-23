@@ -1920,3 +1920,27 @@ test("the direct tap.sh admin door pins the transpiler cache off (fresh HOME zer
   expect(r.status, r.stderr).toBe(0);
   expect(f.snapshotTree()).toEqual(before);
 }, 30000);
+
+test("admin refresh preserves missing launch reservations and panes visible in another session", () => {
+  const f = fixture();
+  f.active("shared", 1); f.active("other", 7);
+  const identity = { status: "active", session: "shared", pane: "shared:9.9", server_epoch: "srv:1:1", boot_id: "boot:1", harness: "codex" };
+  const { reg } = f.team("t", {
+    launching: { ...identity, pane_id: "%99", status_reason: "launching", launch_id: "pending|1" },
+    moved: { ...identity, pane_id: "%7" },
+    gone: { ...identity, pane_id: "%8" },
+  });
+  f.saveSnapshot();
+  const before = f.snapshotTree();
+  const dashboard = f.run(["dashboard", "--json"]);
+  expect(dashboard.status, dashboard.stdout + dashboard.stderr).toBe(0);
+  const attention = JSON.parse(dashboard.stdout).attention;
+  expect(attention.find((row: any) => row.handle === "moved")?.why).toContain("pane_session_conflict");
+  expect(attention.find((row: any) => row.handle === "gone")?.why).toContain("pane dead while registry status is still active");
+  expect(attention.some((row: any) => row.handle === "launching")).toBe(false);
+  expect(f.snapshotTree()).toEqual(before);
+  const result = f.run(["refresh", "--json"]);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  const seats = JSON.parse(readFileSync(reg, "utf8")).seats;
+  expect(Object.keys(seats).sort()).toEqual(["launching", "moved"]);
+});

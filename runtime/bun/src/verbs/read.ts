@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 import {completeHarnessQueued, firstObservationNonAuthoritative, recordAuthorizedRead, terminalCancelMarker} from "../harness-queue";
 import { interruptNotice } from "../submit-phase";
 // Native recipient view. Read owns first-observation receipts, unlike done's
@@ -7,7 +8,7 @@ import { existsSync, closeSync, fsyncSync, linkSync, mkdirSync, openSync, readFi
 import { dirname, join } from "node:path";
 import { addresseeGrant, historyDirForBus, type GrantResult } from "../addressee-grant";
 import { settlingInstance } from "../recipient-instance";
-import { callerObservationReason, observeCallingPane, resolveSelf, TapError, type ResolvedContext } from "../context";
+import { callerObservationReason, observeCallerIdentity, resolveSelf, TapError, type ResolvedContext } from "../context";
 import { envelopeField, validateEnvelope } from "../envelope";
 import { jsonObj } from "../fsatomic";
 import { ageNowEpoch, idAgeSeconds, utcStamp, validToken } from "../ids";
@@ -151,10 +152,10 @@ function readVerb(argv: string[]): number {
   applyTeamOverride(team);
   const ctx=resolveSelection(callerPin,team);
   assertResetUnfenced(ctx.bus.home,"tap read");
-  let actor=by || (process.env.TAP_SELF ?? ""), identity="declared", pane="";
+  let actor=by || inheritedActor(), identity="declared", pane="";
   if(!actor) {
-    const seen=observeCallingPane();
-    if(seen.state === "inside") { const self=resolveSelf(ctx,{status:"ok",paneId:seen.paneId,session:seen.session,serverEpoch:seen.serverEpoch},1); actor=self.handle; pane=self.paneId; identity="pane"; }
+    const seen=observeCallerIdentity();
+    if(seen.state === "inside") { const self=resolveSelf(ctx,{status:"ok",...seen},1); actor=self.handle; pane=self.paneId; identity="pane"; }
     else {
       // The next step is --by. --force alone fails on this same refusal: it
       // widens WHOSE mail may be read, not WHO is reading. The detail carries

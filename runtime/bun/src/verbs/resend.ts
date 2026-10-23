@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // `tap resend <id>`: the sender's explicit same-id retry (delivery decision-v1,
 // L1-L7). It re-rings the SAME canonical message: no successor id, no withdrawal,
 // no age reset, one obligation. The canonical is re-parked into the spool as a
@@ -9,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { TapError, observeCallingPane, resolveSelf, type ResolvedContext } from "../context";
+import { TapError, observeCallerIdentity, resolveSelf, type ResolvedContext } from "../context";
 import { ensureAscii } from "../fsatomic";
 import { validId, validToken } from "../ids";
 import { lockRoot, acquireObligationLock, type PaneLock } from "../panelock";
@@ -197,7 +198,7 @@ function retryUnderLocks(ctx: ResolvedContext, id: string, actor: string, script
 }
 
 function implicitActor(ctx: ResolvedContext): string {
-  const seen = observeCallingPane();
+  const seen = observeCallerIdentity();
   if (seen.state === "inside") {
     try { return resolveSelf(ctx, { status: "ok", ...seen }, 1).handle; } catch { /* incumbent resolves softly, then emits no_actor */ }
     const other = enrolledSeatForObservedPane(seen.paneId, seen.session, seen.serverEpoch, process.env.TAP_INDEX_HOME);
@@ -208,7 +209,7 @@ function implicitActor(ctx: ResolvedContext): string {
     `resend requires the original sender${seen.state === "unobservable" ? ` (caller pane observation: ${seen.refusal})` : ""}`);
 }
 export function cmdResend(argv: string[], scriptsDir: string): number {
-  let id = "", team = "", actor = process.env.TAP_SELF || "", json = false;
+  let id = "", team = "", actor = "", json = false;
   try {
     for (let i = 0; i < argv.length; i++) {
       const arg = argv[i]!;
@@ -225,7 +226,7 @@ export function cmdResend(argv: string[], scriptsDir: string): number {
     const pin = process.env.TAP_HOME ?? "";
     applyTeamOverride(team);
     const ctx = resolveSelection(pin, team);
-    if (!actor) actor = implicitActor(ctx);
+    if (!actor) actor = inheritedActor() || implicitActor(ctx);
     if (!validToken(actor)) throw new TapError(1, "usage_error", "tap help resend", "invalid sender");
     let verdict: Verdict;
     const reset = acquireResetMutationLock(ctx.bus.home, "tap resend", undefined, "shared");

@@ -15,6 +15,25 @@ export type Libc = { pidinfo: (pid: number, flavor: number, arg: bigint, buf: Re
   devname: (dev: number, type: number, buf: ReturnType<typeof ptr>, len: number) => unknown };
 let libc: Libc | null | undefined;
 
+/** Executable/parent/birth from the same proc_bsdinfo record as the tty fallback.
+ * Layout: Apple XNU bsd/sys/proc_info.h, struct proc_bsdinfo. Birth is rounded
+ * to seconds to agree with ps lstart and existing persisted fingerprints. */
+export function libprocIdentity(pid: number): { pid: number; ppid: number; start: number; command: string } | null {
+  const lib = process.platform === "darwin" ? load() : null;
+  if (!lib) return null;
+  try {
+    const info = new Uint8Array(BSDINFO_SIZE);
+    if (lib.pidinfo(pid, PROC_PIDTBSDINFO, 0n, ptr(info), BSDINFO_SIZE) !== BSDINFO_SIZE) return null;
+    const view = new DataView(info.buffer);
+    if (view.getUint32(12, true) !== pid) return null;
+    const name = info.subarray(48, 64), end = name.indexOf(0);
+    const command = new TextDecoder().decode(name.subarray(0, end < 0 ? name.length : end));
+    const start = Number(view.getBigUint64(120, true)) * 1000;
+    if (!command || !Number.isSafeInteger(start) || start <= 0) return null;
+    return { pid, ppid: view.getUint32(16, true), start, command };
+  } catch { return null; }
+}
+
 function load(): Libc | null {
   if (libc !== undefined) return libc;
   try {

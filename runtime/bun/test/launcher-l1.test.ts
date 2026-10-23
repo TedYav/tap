@@ -1122,7 +1122,9 @@ function opencodeFixture(f: ReturnType<typeof fixture>, life: string, prePaint =
   mkdirSync(join(f.root, "real"));
   if (process.platform === "linux") copyFileSync("/bin/sleep", join(f.root, "real/opencode"));
   else symlinkSync("/bin/sleep", join(f.root, "real/opencode"));
-  writeFileSync(join(f.root, "bin/opencode"), `#!/bin/bash\n${prePaint}${paint}exec '${f.root}/real/opencode' ${life}\n`, { mode: 0o755 });
+  // These arms own composer readiness when preparation is unavailable. A prepared
+  // private session instead waits for its plugin bind before the composer paints.
+  writeFileSync(join(f.root, "bin/opencode"), `#!/bin/bash\ncase "$1" in --version) exec '${process.execPath}' '${join(import.meta.dir, "support/opencode-cli.ts")}' "$@" ;; api) exit 1 ;; esac\n${prePaint}${paint}exec '${f.root}/real/opencode' ${life}\n`, { mode: 0o755 });
 }
 
 test("an opencode that paints its idle composer and stays alive returns well before the full window", () => {
@@ -1131,6 +1133,7 @@ test("an opencode that paints its idle composer and stays alive returns well bef
   const result = run(f.root, ["opencode", "reviewer"], true);
   expect(result.status, result.diagnostic).toBe(0);
   expect(result.stdout).toContain("running detached");
+  expect(result.diagnostic).toContain("launching without a prepared session");
   expectEndedOnSignal(f, "opencode_idle");
 }, 25_000);
 
@@ -1145,10 +1148,7 @@ test("an opencode that paints its idle composer and exits inside the settle fail
 
 test("an opencode that never paints its idle composer takes the full window and succeeds", () => {
   const f = fixture("opencode");
-  mkdirSync(join(f.root, "real"));
-  if (process.platform === "linux") copyFileSync("/bin/sleep", join(f.root, "real/opencode"));
-  else symlinkSync("/bin/sleep", join(f.root, "real/opencode"));
-  writeFileSync(join(f.root, "bin/opencode"), `#!/bin/bash\nexec '${f.root}/real/opencode' 600\n`, { mode: 0o755 });
+  opencodeFixture(f, "600", "", "");
   const result = run(f.root, ["opencode", "reviewer"], true);
   expect(result.status, result.diagnostic).toBe(0);
   expect(result.stdout).toContain("running detached");
@@ -1170,5 +1170,6 @@ test("an opencode that paints its idle composer as a wrapped band still signals"
   const result = run(f.root, ["opencode", "reviewer"], true);
   expect(result.status, result.diagnostic).toBe(0);
   expect(result.stdout).toContain("running detached");
+  expect(result.diagnostic).toContain("launching without a prepared session");
   expectEndedOnSignal(f, "opencode_idle");
 }, 25_000);

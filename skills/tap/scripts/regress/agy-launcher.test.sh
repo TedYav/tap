@@ -3,7 +3,7 @@
 # Fixture-realism (no fantasy tmux): a scriptable fake tmux + registry rows drive
 # the launcher's harness plumbing. Proves, at the CLI level:
 #   1. launch -> agy --dangerously-skip-permissions (the load-bearing yolo flag);
-#   2. bare-family resume -> --continue (agy's latest tier);
+#   2. bare-family resume starts empty (no --continue guess) and points at agy's /resume;
 #   3. a gone roster row with an explicit native id enters the three-door picker;
 #   4. an inferred-only id is ignored and gets the same picker, never adoption.
 set -euo pipefail
@@ -80,10 +80,12 @@ set -e
 [[ "$out" != *"--effort\",\"max"* ]] || { echo "agy-launcher: (1c) must not pass max through: $out" >&2; exit 1; }
 echo "agy-launcher: (1c) --effort max refuses with domain: ok"
 
-# (2) bare-family resume -> --continue (latest tier).
-out="$("$TAP" session resume agy --dry-run --json 2>&1 | tail -1)"
-[[ "$out" == *'"--dangerously-skip-permissions","--continue"'* ]] || { echo "agy-launcher: (2) bare resume should --continue: $out" >&2; exit 1; }
-echo "agy-launcher: (2) bare-family resume -> --continue: ok"
+# (2) bare-family resume starts empty: agy's picker is in-app only (/resume).
+out="$("$TAP" session resume agy --dry-run --json 2>&1)"
+[[ "$out" == *'"--dangerously-skip-permissions"'* ]] || { echo "agy-launcher: (2) bare resume should launch agy: $out" >&2; exit 1; }
+[[ "$out" != *'--continue'* ]] || { echo "agy-launcher: (2) bare resume must not --continue: $out" >&2; exit 1; }
+[[ "$out" == *"agy's /resume picker"* ]] || { echo "agy-launcher: (2) bare resume should name /resume: $out" >&2; exit 1; }
+echo "agy-launcher: (2) bare-family resume starts empty and names /resume: ok"
 
 # (3) A GONE roster row is not silently replaced. Without a terminal the launch
 # refuses: human output names the resume, different-handle and

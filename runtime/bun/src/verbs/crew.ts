@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { isFile } from "../watch-lease";
-import { observeCallingPane, TapError } from "../context";
+import { observeCallerIdentity, TapError } from "../context";
 import { validToken } from "../ids";
 import { checkCrewRegistry } from "../crew-registry";
 import { resolveSelection } from "../team-selection";
@@ -13,10 +13,13 @@ import { cmdCrewRelaunch, cmdCrewShutdown, teamContext } from "../crew-lifecycle
 import { armNewCrew, rearmCrewLifetime, validateCrewLifetimeBinding } from "../crew-lifetime";
 import { verbArgv } from "../courier-argv";
 import { artifactBun } from "../scripts-dir";
+import { captureNewCrewIdentity } from "../crew-capture";
+import { CREW_HELP } from "../help";
 
 export const CREW_SUBCOMMANDS = ["list", "add", "shutdown", "relaunch", "rearm", "remove"] as const;
 
 const ID_CHARSET = "^[A-Za-z0-9][A-Za-z0-9._-]*$";
+const CREW_ADD_USAGE = "tap crew add <preset|harness> [name] [--preset <name>] [--model <m>] [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-arguments...]";
 
 function tmux(args: string[], opts: { stdio?: "ignore" | "inherit" } = {}): number {
   const result = runTmux(args);
@@ -74,7 +77,7 @@ export function cmdCrew(argv: string[], scriptsDir: string): number | Promise<nu
     throw new TapError(1, "retired_verb", sub === "up" ? "tap crew add <preset|harness> [name]" : "tap crew shutdown [<crew>|--owner <handle>]",
       `tap crew ${sub} does not exist: crew rows exist only while live, so there is nothing to bring ${sub}`);
   }
-  if (sub === "") throw new TapError(1, "usage_error", "tap help crew", "usage: tap crew add <preset|harness> [name] [--preset <name>] [--model <m>] [--env KEY=VALUE] [--cwd <path>] | tap crew shutdown [<crew>|<owner>|--owner <handle|team/handle>] | tap crew relaunch <crew> | tap crew rearm <crew> | tap crew list");
+  if (sub === "") throw new TapError(1, "usage_error", "tap help crew", `usage: ${CREW_ADD_USAGE} | tap crew shutdown [<crew>|<owner>|--owner <handle|team/handle>] | tap crew relaunch <crew> | tap crew rearm <crew> | tap crew list`);
   if (sub.startsWith("--")) throw new TapError(1, "unknown_option", "tap help crew", `unknown option '${sub}'`);
   throw new TapError(1, "unknown_subcommand", "tap help crew", `unknown subcommand '${sub}' (usage: tap crew [add|shutdown|relaunch|rearm|remove|list])`);
 }
@@ -102,28 +105,35 @@ function actingContext(): ResolvedContext {
 
 // --- add --------------------------------------------------------------------
 async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
-  const usage = "usage: tap crew add <preset|harness> [name] [--preset <name>] [--model <m>] [--env KEY=VALUE] [--cwd <path>]";
+  const usage = `usage: ${CREW_ADD_USAGE}`;
   let model = "", modelSupplied = false, crewCwd = process.cwd(), preset = "", presetSupplied = false;
-  const positionals: string[] = [], crewEnv: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
+  // Everything after the first bare `--` goes literally to the harness, as with tap session launch.
+  const dash = argv.indexOf("--");
+  const own = dash < 0 ? argv : argv.slice(0, dash), tail = dash < 0 ? [] : argv.slice(dash + 1);
+  // Overrides reach the preparation child as inline tokens: its parser rejects a dash-led separate value.
+  const positionals: string[] = [], overrides: string[] = tail.map(token => `--harness-arg=${token}`);
+  for (let i = 0; i < own.length; i++) {
+    const arg = own[i]!;
     if (arg === "--harness") {
-      throw new TapError(1, "retired_flag", `tap crew add ${argv[i + 1] || "<h>"} [name]`, "--harness is retired; the harness is now the first positional, the same grammar tap session launch and tap ask take");
+      throw new TapError(1, "retired_flag", `tap crew add ${own[i + 1] || "<h>"} [name]`, "--harness is retired; the harness is now the first positional, the same grammar tap session launch and tap ask take");
     }
     if (arg.startsWith("--harness=")) {
       throw new TapError(1, "retired_flag", `tap crew add ${arg.slice("--harness=".length)} [name]`, "--harness is retired; the harness is now the first positional, the same grammar tap session launch and tap ask take");
     }
-    if (arg === "--model" || arg === "--preset" || arg === "--env" || arg === "--cwd") {
-      const value = argv[++i];
-      if (value === undefined) throw new TapError(1, "usage_error", "tap help crew", `${arg} requires ${arg === "--env" ? "a KEY=VALUE" : "a value"}`);
-      if (arg === "--model") { model = value; modelSupplied = true; }
-      else if (arg === "--preset") { preset = value; presetSupplied = true; }
-      else if (arg === "--env") crewEnv.push("--env", value);
+    const at = arg.indexOf("=");
+    const flag = arg.startsWith("--") && at > 0 ? arg.slice(0, at) : arg;
+    if (["--model", "--preset", "--env", "--unset-env", "--cwd"].includes(flag)) {
+      const value = flag === arg ? own[++i] : arg.slice(at + 1);
+      if (value === undefined) throw new TapError(1, "usage_error", "tap help crew", `${flag} requires ${flag === "--env" ? "a KEY=VALUE" : flag === "--unset-env" ? "a KEY" : "a value"}`);
+      if (flag === "--model") { model = value; modelSupplied = true; }
+      else if (flag === "--preset") { preset = value; presetSupplied = true; }
+      else if (flag === "--env" || flag === "--unset-env") overrides.push(`${flag}=${value}`);
       else crewCwd = value;
       continue;
     }
-    if (arg.startsWith("--")) throw new TapError(1, "unknown_option", "tap help crew", `unknown option '${arg}'`);
-    if (positionals.length >= 2) throw new TapError(1, "usage_error", "tap help crew", `unexpected arg '${arg}' (crew add takes at most <preset|harness> and a name)`);
+    if (arg === "-h" || arg === "--help") { process.stdout.write(CREW_HELP); return 0; }
+    if (arg.startsWith("--")) throw new TapError(1, "unknown_option", "put harness arguments after --, e.g. tap crew add <preset|harness> [name] -- <harness-args>; see tap help crew", `unknown option '${arg}'`);
+    if (positionals.length >= 2) throw new TapError(1, "usage_error", "tap help crew", `unexpected arg '${arg}' (crew add takes at most <preset|harness> and a name; put harness arguments after --)`);
     positionals.push(arg);
   }
   if (argv.length === 0) throw new TapError(1, "usage_error", "tap help crew", usage);
@@ -169,7 +179,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   // abort early; any other nonzero falls through so the ordinary rollback path
   // still runs (a preflight that failed on any nonzero would pre-empt that
   // tested recovery path).
-  const preflightArgs = [harness, "preflight/preflight", "--cwd", crewCwd, ...presetArgs, ...digestArgs, ...modelArgs, ...crewEnv];
+  const preflightArgs = [harness, "preflight/preflight", "--cwd", crewCwd, ...presetArgs, ...digestArgs, ...modelArgs, ...overrides];
   const preflight = spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...preflightArgs], { env: { ...process.env, TAP_JSON: "1" }, stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" });
   if ((preflight.status ?? 1) !== 0) {
     const payload = preflight.stdout ?? "";
@@ -183,7 +193,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   try { checkCrewRegistry(crewCwd, ctx.registryPath); } catch (error) {
     throw new TapError(1, "crew_registry_mismatch", "use --cwd within the launcher's team or launch from the intended team", error instanceof Error ? error.message : String(error), "tap crew add");
   }
-  const observed = observeCallingPane();
+  const observed = observeCallerIdentity();
   if (observed.state !== "inside") {
     throw new TapError(1, "not_in_tmux", "run tap crew add from the driver tmux session", `caller tmux pane is not observable (${observed.state === "unobservable" ? observed.refusal : observed.detail})`);
   }
@@ -205,7 +215,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
 
   const [regCmd, ...regArgs] = verbArgv(scriptsDir, ["register", handle, "--pane", pane, "--crew", "--json", ...(override ? ["--override-worktree"] : [])]);
   const registration = spawnSync(regCmd!, regArgs, {
-    env: { ...process.env, TAP_REGISTER_EXPECTED_HARNESS: harness, TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE: "1" },
+    env: { ...process.env, TAP_REGISTER_EXPECTED_HARNESS: harness, TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE: "1", TAP_REGISTER_CREW_OWNER_PANE: callerPane },
     stdio: ["ignore", "pipe", "inherit"],
     encoding: "utf8",
   });
@@ -248,7 +258,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
     rollback(scriptsDir, newPane, chosenHandle);
     throw new TapError(1, "registry_unreachable", "tap doctor", "acting registry could not be re-resolved after crew registration");
   }
-  const invocationArgs = [harness, `${chosenTeam}/${chosenHandle}`, "--cwd", crewCwd, "--record-pane", newPane, "--record-registry", fresh.registryPath, ...presetArgs, ...digestArgs, ...modelArgs, ...crewEnv];
+  const invocationArgs = [harness, `${chosenTeam}/${chosenHandle}`, "--cwd", crewCwd, "--record-pane", newPane, "--record-registry", fresh.registryPath, ...presetArgs, ...digestArgs, ...modelArgs, ...overrides];
   const invocation = spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...invocationArgs], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
   if (invocation.stderr) process.stderr.write(invocation.stderr);
   if ((invocation.status ?? 1) !== 0) {
@@ -281,6 +291,14 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   if (!validateCrewLifetimeBinding(lifetime)) {
     rollback(scriptsDir, newPane, chosenHandle);
     throw new TapError(1, "crew_parent_exited", "retry from a live parent harness", "parent or helper generation changed while starting the crew");
+  }
+  try { await captureNewCrewIdentity(fresh, scriptsDir, chosenHandle, newPane, lifetime.crewInstance, harness); }
+  catch (error) {
+    process.stderr.write(`tap crew add: native identity capture could not be recorded: ${error instanceof Error ? error.message : String(error)}; next: tap team doctor\n`);
+  }
+  if (!validateCrewLifetimeBinding(lifetime)) {
+    throw new TapError(1, "crew_parent_exited", "inspect tap crew list; remove any stopped residue explicitly",
+      "parent, crew or helper generation changed during native identity capture; the row is retained for explicit cleanup");
   }
   process.stdout.write(`tap crew add: started ${chosenTeam}/${chosenHandle} (${harness}, model=${selectedModel}) in ${pane}\n`);
   return 0;

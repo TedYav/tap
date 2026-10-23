@@ -22,7 +22,7 @@ if [ "$(id -u)" = 0 ]; then
   exit 1
 fi
 
-PLUGINS=(tap-opencode-session-env.ts tap-opencode-session-start.ts tap-opencode-tmux-guard.ts
+PLUGINS=(tap-opencode-session-start.ts tap-opencode-tmux-guard.ts
   tap-shell-body-guard tap-opencode-session-id tap-resolve-session-root tap-session-context tap)
 fail() { echo "install-opencode-plugin-writes: $1" >&2; [ -z "${2:-}" ] || sed 's/^/  | /' "$2" >&2; exit 1; }
 
@@ -31,6 +31,8 @@ scratch() {
   local arm="$1"
   S="$WORK/$arm"
   mkdir -p "$S/opencode/plugins" "$S/bin" "$S/shims"
+  printf '#!/bin/sh\necho 1.18.0\n' >"$S/shims/opencode"
+  chmod +x "$S/shims/opencode"
   OUT="$S/out"
   ERR="$S/err"
 }
@@ -129,23 +131,25 @@ assert_no_residue rename
 
 # --- Arm 4: a directory squatting on a plugin name is refused, not misfiled -----
 scratch squatter
-mkdir "$S/opencode/plugins/tap-opencode-session-env.ts"
+mkdir "$S/opencode/plugins/tap-opencode-session-start.ts"
 run_install
 assert_continued squatter
-grep -q "install: WARNING: skipped OpenCode session plugins — .*tap-opencode-session-env.ts (a directory is in the way)" "$ERR" \
+grep -q "install: WARNING: skipped OpenCode session plugins — .*tap-opencode-session-start.ts (a directory is in the way)" "$ERR" \
   || fail "squatter: warning does not name the directory" "$ERR"
-grep -q "next: move $S/opencode/plugins/tap-opencode-session-env.ts aside and rerun ./install.sh" "$ERR" \
+grep -q "next: move $S/opencode/plugins/tap-opencode-session-start.ts aside and rerun ./install.sh" "$ERR" \
   || fail "squatter: remedy does not tell the user to move the directory aside" "$ERR"
 if grep -q "writable" "$ERR"; then fail "squatter: a directory in the way was blamed on permissions" "$ERR"; fi
-[ -z "$(ls -A "$S/opencode/plugins/tap-opencode-session-env.ts")" ] || fail "squatter: a plugin was moved into the directory"
+[ -z "$(ls -A "$S/opencode/plugins/tap-opencode-session-start.ts")" ] || fail "squatter: a plugin was moved into the directory"
 [ ! -e "$S/opencode/plugins/tap" ] || fail "squatter: partial set published"
 
 # --- Arm 5: the writable path is unchanged ------------------------------------
 scratch control
 printf '%s\n' foreign >"$S/opencode/plugins/foreign.ts"
+printf '%s\n' 'export default async () => ({})' >"$S/opencode/plugins/tap-opencode-session-env.ts"
 run_install
 [ "$RC" = 0 ] || fail "control: install failed ($RC)" "$ERR"
 grep -q "install: installed OpenCode plugins at $S/opencode/plugins/" "$OUT" || fail "control: no installed line" "$OUT"
+grep -q "TAP requires OpenCode 2.x" "$ERR" || fail "control: old OpenCode received no upgrade warning" "$ERR"
 if grep -q 'OpenCode session plugins' "$ERR"; then fail "control: spurious OpenCode warning" "$ERR"; fi
 for name in "${PLUGINS[@]}"; do
   [ -f "$S/opencode/plugins/$name" ] || fail "control: missing $name"
@@ -161,6 +165,7 @@ exec bun "$ROOT/hooks/tap-shell-body-guard.ts" "\$@"
 EOF
 cmp -s "$S/want-guard-shim" "$S/opencode/plugins/tap-shell-body-guard" || fail "control: guard shim bytes changed"
 [ -f "$S/opencode/plugins/foreign.ts" ] || fail "control: a foreign plugin was removed"
+[ ! -e "$S/opencode/plugins/tap-opencode-session-env.ts" ] || fail "control: retired v1 environment plugin remains loadable"
 assert_no_residue control
 
 echo "install-opencode-plugin-writes: OpenCode write failures warn with target + remedy, never leave a partial set, and the install continues"

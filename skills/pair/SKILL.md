@@ -31,8 +31,8 @@ that is the report contract — commands and output, RED/GREEN observations, sta
 file — the partner's review consumes. The partner does not load the driver's loop: those mechanics
 are not the partner's to carry.
 
-**If the question is *what should we do* rather than *is this right*, use `tap help skill discuss`:** symmetric
-adversaries converging until a ledger drains. Pairing sustains production, and its deliverable is the
+**If the question is *what should we do* rather than *is this right*, use `tap help skill discuss`:** a driver and
+its peers converging until a ledger drains. Pairing sustains production, and its deliverable is the
 artifact rather than the agreement.
 
 ## One writer

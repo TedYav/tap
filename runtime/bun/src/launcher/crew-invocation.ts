@@ -16,11 +16,17 @@ import { configDirectory, environment, HARNESSES, isRegularFile, refuse, resolve
 import { loadPresetCatalog, requirePreset } from "./catalog-listing";
 import { pyBlank } from "./catalog-metadata";
 import { Notices } from "./catalog-notices";
-import { parseEnvAssignments } from "./overrides";
+import { applyOverrides, parseEnvAssignments, type Overrides } from "./overrides";
 import { defaultPermissions, enforcePermissions, PERMISSION_HARNESSES, prepareCodexAutoReceipts, type PermissionMode } from "./permissions";
 import { applyLaunchEnv } from "./plan";
-import { LauncherError } from "./types";
+import { LauncherError, type SessionRecord } from "./types";
+import { pinOpenCodeSession } from "./invocation";
+import { launchTuning } from "./tuning";
+import { stripTuningAxes } from "./resume-tuning";
+import { prepareOpenCodeSession } from "./opencode-prepare";
+import { openCodeServerMode } from "./opencode-mode";
 import { teamRegistryRefusal } from "../register-authority";
+import { forkConflictingFlag } from "../harness-families";
 import { artifactBun, runtimeModule } from "../scripts-dir";
 
 const quote = (s: string): string => /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'"'"'`)}'`;
@@ -73,14 +79,35 @@ function supersede(doc: JsonMap, seats: JsonMap, env: NodeJS.ProcessEnv): void {
   doc.set("seat_forwardings", result.get("seat_forwardings")!);
 }
 
+/** Conversation selectors a crew tail may not carry, beyond Claude's fork-owned flags. OpenCode's are dropped instead. */
+const CREW_SELECTOR_FLAGS: Record<string, string[]> = { cursor: ["--resume", "--continue"], agy: ["--conversation", "--continue"] };
+function conversationSelector(harness: string, tail: string[]): string | null {
+  const flags = CREW_SELECTOR_FLAGS[harness] ?? [];
+  return forkConflictingFlag(harness, tail)
+    ?? flags.find(flag => tail.some(token => token.split("=", 1)[0] === flag))
+    // Codex selects a stored conversation with a subcommand, not a flag.
+    ?? (harness === "codex" ? tail.find(token => token === "resume" || token === "fork") ?? null : null);
+}
+
 /** Fresh argv for a crew seat: the "new" invocation, never a resume, with no session id. */
-function renderArgv(harness: string, name: string, cwd: string, model: string, seatEnv: Record<string, string>,
-  passthrough: string[], presetFloor: boolean, env: NodeJS.ProcessEnv, notices: Notices, recordedPermissions?: PermissionMode): { argv: string[]; permissions: string; launchEnv: Record<string, string> } {
+async function renderArgv(harness: string, name: string, cwd: string, model: string, seatEnv: Record<string, string>,
+  passthrough: string[], presetFloor: boolean, env: NodeJS.ProcessEnv, notices: Notices, overrides: CrewOverrides,
+  recordedPermissions?: PermissionMode, prepare = false, signal?: AbortSignal, recordedMode?: "private" | "shared"): Promise<{ argv: string[]; permissions: string; launchEnv: Record<string, string> }> {
+  // A crew seat always starts a fresh conversation, and relaunch replays the tail.
+  const owned = conversationSelector(harness, overrides.tail);
+  if (owned) refuse("launch_arg_invalid", `${owned} selects a conversation; a crew seat always starts a fresh one`,
+    `drop ${owned} from the harness arguments, or use tap session launch for a seat that resumes`);
   // Crew has no conversation id. Bind permissions once for argv, checks and persistence.
   const policy = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
   const permissions = recordedPermissions ?? (PERMISSION_HARNESSES.includes(harness) ? policy.permissions : defaultPermissions(harness));
   const defaulted = recordedPermissions === undefined && policy.permissionsDefaulted;
-  const record = { name, harness, cwd, base: name.split("/", 1)[0]!, model, harness_env: seatEnv };
+  const record: SessionRecord = { name, harness, cwd, base: name.split("/", 1)[0]!, model, harness_env: seatEnv,
+    harness_unset_env: overrides.unset };
+  if (harness === "opencode") {
+    record.opencode_server_mode = recordedMode;
+    if (openCodeServerMode(record, env) === "shared") refuse("opencode_shared_crew_unsupported",
+      "shared OpenCode crews are not available yet", "use a durable shared seat, or set experimental.opencode_shared_server=false to launch a private crew");
+  }
   const invocation = applyLaunchEnv(buildHarnessInvocation("new", record, null, null, env, permissions, undefined, notices.sink), record, env, notices.sink, () => {
     const current = resolveHarnessPolicy(harness, env, notices, facadeSecureRead);
     for (const notice of current.notices) notices.emit(notice);
@@ -89,38 +116,47 @@ function renderArgv(harness: string, name: string, cwd: string, model: string, s
   let argv = passthrough.length
     ? spliceTokensIfAbsent(invocation.argv, passthrough, { floor: presetFloor, configKeys: harness === "codex" }) : invocation.argv;
   const params = resolveHarnessPolicy(harness, env, notices, facadeSecureRead).params;
-  for (const source of [passthrough, paramsToArgv(params), argv.slice(1)]) enforcePermissions(harness, permissions, source, env, defaulted);
-  argv = withoutNoDaemonForRemote(harness, spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }));
+  for (const source of [passthrough, paramsToArgv(params), argv.slice(1), overrides.tail]) enforcePermissions(harness, permissions, source, env, defaulted);
+  // Typed harness arguments append last, as tap session launch's `--` tail does.
+  argv = withoutNoDaemonForRemote(harness, [...spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }), ...overrides.tail]);
+  // Apply the same environment to preparation and to the eventual TUI.
+  const launchEnv = { ...invocation.env };
+  for (const key of overrides.unset) delete launchEnv[key];
   if (harness === "opencode") {
-    const clean: string[] = [];
-    for (let i = 0; i < argv.length; i++) {
-      const token = argv[i]!, key = token.split("=", 1)[0]!;
-      if (key === "--session" || key === "-s") {
-        if (!token.includes("=") && i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
-      } else if (key !== "--continue" && key !== "-c") clean.push(token);
+    record.launch_tuning = launchTuning(harness, argv.slice(1), launchEnv);
+    argv = pinOpenCodeSession(stripTuningAxes(harness, argv, ["model", "effort"]), null);
+    if (prepare) {
+      const childEnv = { ...env, ...launchEnv };
+      for (const key of overrides.unset) delete childEnv[key];
+      argv = pinOpenCodeSession(argv, await prepareOpenCodeSession(record, childEnv, signal, notices));
     }
-    argv = clean;
   }
 
-  return { argv, permissions, launchEnv: invocation.env };
+  return { argv, permissions, launchEnv };
 }
 
-export function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.env): string {
+/** Typed `--unset-env` keys and `--` harness arguments: persisted beside the base recipe, replayed by relaunch. */
+interface CrewOverrides { unset: string[]; tail: string[] }
+
+export async function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     cwd: { type: "string" }, model: { type: "string" }, preset: { type: "string" },
     "preset-digest": { type: "string" }, env: { type: "string", multiple: true },
+    "unset-env": { type: "string", multiple: true }, "harness-arg": { type: "string", multiple: true },
     "record-pane": { type: "string" }, "record-registry": { type: "string" },
   } });
   const [harness, name] = positionals;
   if (positionals.length !== 2 || !harness || !HARNESSES.includes(harness) || name === undefined || values.cwd === undefined) {
-    throw new LauncherError("usage: crew-invocation <harness> <name> --cwd <path> [--preset <name> | --model <model>]");
+    throw new LauncherError("usage: crew-invocation <harness> <name> --cwd <path> [--preset <name> | --model <model>] [--env=KEY=VALUE] [--unset-env=KEY] [--harness-arg=<token>]");
   }
   const notices = new Notices();
   notices.suppress(env.TAP_JSON === "1");
   let model: string | null = values.model ?? null;
-  let seatEnv: Record<string, string> = {};
+  let baseEnv: Record<string, string> = {};
   let passthrough: string[] = [];
   let preset: { name: string; source_path: string; config_digest: string } | null = null;
+  // Parsing precedes model validation; model precedes the environment fence.
+  const rawEnv = parseEnvAssignments(values.env);
   if (values.preset !== undefined) {
     const catalog = loadPresetCatalog(env, notices.sink, facadeSecureRead, configDirectory(env), isRegularFile);
     const selected = requirePreset(catalog, values.preset);
@@ -128,34 +164,40 @@ export function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.
       refuse("preset_config_changed", `preset '${values.preset}' resolved against a different catalog than this launch was planned with (config digest changed mid-launch)`,
         "re-run the command; the catalog changed while this seat was starting");
     }
-    const combined = [values.model !== undefined ? "--model" : "", values.env !== undefined ? "--env" : ""].filter(Boolean);
-    if (combined.length) refuse("preset_not_composable", `preset '${values.preset}' is complete; ${combined.join(" and ")} cannot override it`,
-      `drop ${combined.join(" and ")}, or add the crew without --preset and pass tuning by flag`);
+    // Tuning stays preset-owned; --env, --unset-env and -- still apply, as with tap session launch.
+    if (values.model !== undefined) refuse("preset_not_composable", `preset '${values.preset}' is complete; --model cannot override it`,
+      "drop --model, or add the crew without --preset and pass tuning by flag");
     if (harness !== selected.harness) refuse("preset_harness_mismatch", `preset '${values.preset}' uses harness '${selected.harness}', not requested harness '${harness}'`,
       `use --harness ${selected.harness}, or choose a preset whose harness is '${harness}'`);
     model = selected.model;
-    seatEnv = selected.env;
+    baseEnv = selected.env;
     passthrough = selected.harness_passthrough;
     preset = selected.provenance;
-  } else {
-    // Parsing precedes model validation; model precedes the environment fence.
-    const rawEnv = parseEnvAssignments(values.env);
-    if (model !== null) {
-      if (pyBlank(model)) refuse("launch_arg_invalid", "--model must be a non-empty string", "fix the --model value");
-      if (/[\x00-\x1f\x7f]/.test(model)) refuse("launch_arg_invalid", "--model contains a control character", "fix the --model value");
-    }
-    seatEnv = environment(rawEnv, "launch_env_forbidden", {
-      notTable: () => refuse("launch_arg_invalid", "--env values must be supplied as KEY=VALUE pairs", "pass environment as --env KEY=VALUE"),
-      keyInvalid: key => refuse("launch_arg_invalid", `--env key '${key}' is not a valid environment variable name`, `fix the --env key '${key}'`),
-      forbidden: key => refuse("launch_env_forbidden", `--env key '${key}' crosses the identity, transport, process, credential, or policy fence`, `remove --env ${key}=... from the command`),
-      fieldError: (field, problem) => refuse("launch_arg_invalid", `--env ${field.slice(4)} ${problem}`, `fix the --env ${field.slice(4)} value`),
-    });
+  } else if (model !== null) {
+    if (pyBlank(model)) refuse("launch_arg_invalid", "--model must be a non-empty string", "fix the --model value");
+    if (/[\x00-\x1f\x7f]/.test(model)) refuse("launch_arg_invalid", "--model contains a control character", "fix the --model value");
   }
+  const fence = (flag: string) => ({
+    notTable: () => refuse("launch_arg_invalid", "--env values must be supplied as KEY=VALUE pairs", "pass environment as --env KEY=VALUE"),
+    keyInvalid: (key: string) => refuse("launch_arg_invalid", `${flag} key '${key}' is not a valid environment variable name`, `fix the ${flag} key '${key}'`),
+    forbidden: (key: string) => refuse("launch_env_forbidden", `${flag} key '${key}' crosses the identity, transport, process, credential, or policy fence`,
+      `remove ${flag} ${key}${flag === "--env" ? "=..." : ""} from the command`),
+    fieldError: (field: string, problem: string) => refuse("launch_arg_invalid", `${flag} ${field.slice(4)} ${problem}`, `fix the ${flag} ${field.slice(4)} value`),
+  });
+  const typedEnv = environment(rawEnv, "launch_env_forbidden", fence("--env"));
+  const unset = [...new Set(values["unset-env"] ?? [])].sort();
+  environment(Object.fromEntries(unset.map(key => [key, "1"])), "launch_env_forbidden", fence("--unset-env"));
+  const both = unset.find(key => Object.hasOwn(typedEnv, key));
+  if (both) refuse("launch_arg_invalid", `both --env and --unset-env name ${both}`, `keep one of --env ${both}=... or --unset-env ${both}`);
+  const tail = values["harness-arg"] ?? [];
+  const seatEnv: Record<string, string> = { ...baseEnv, ...typedEnv };
+  for (const key of unset) delete seatEnv[key];
+  const overrides: CrewOverrides = { unset, tail };
   if (model === null) refuse("launch_arg_invalid", "crew add requires an explicit validated launch model; harness defaults cannot establish model identity",
     "use a preset with params.model, or pass --model <model>");
 
   const cwd = realpathLenient(values.cwd);
-  const { argv, permissions, launchEnv } = renderArgv(harness, name, cwd, model, seatEnv, passthrough, preset !== null, env, notices);
+  const { argv, permissions, launchEnv } = await renderArgv(harness, name, cwd, model, seatEnv, passthrough, preset !== null, env, notices, overrides, undefined, !!values["record-pane"]);
 
   const pane = values["record-pane"];
   if (pane) {
@@ -178,14 +220,30 @@ export function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.
       if (!isMap(row) || !pyTruthy(row.get("crew")) || row.get("pane_id") !== pane || row.get("harness") !== harness) {
         throw new LauncherError(`crew launch row changed before recipe persistence for ${handle}; expected crew pane ${pane} with harness ${harness}`);
       }
+      // harness_env_set names typed --env keys (never values) so doctor knows a preset re-add would drop them.
       for (const [key, value] of Object.entries({ model, permissions, harness_env: seatEnv, passthrough, cwd,
-        passthrough_from_config: preset !== null, preset })) row.set(key, loads(JSON.stringify(value)));
+        passthrough_from_config: preset !== null, preset, harness_env_set: Object.keys(typedEnv).sort(),
+        harness_unset_env: unset, harness_tail: tail })) row.set(key, loads(JSON.stringify(value)));
       supersede(doc, rows, env);
       verbose("state_write", { path }, env);
       atomicWrite(path, `${pyDumpIndent(doc, 0)}\n`);
     } finally { lock.release(); }
   }
-  return shellCommand(argv, launchEnv, env);
+  return shellCommand(argv, launchEnv, env, unset);
+}
+
+/**
+ * A relaunch's --env, --unset-env and -- folded into a crew row's recipe with tap session launch's
+ * semantics. A malformed stored field is left for crewRecipeInvocation to refuse.
+ */
+export function crewRecipeWithOverrides(row: Record<string, unknown>, overrides: Overrides): Record<string, unknown> | null {
+  const { harness_env: env, harness_unset_env: unset = [], harness_tail: tail = [], harness_env_set: typed = [] } = row;
+  const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === "string");
+  if (!env || typeof env !== "object" || Array.isArray(env) || !strings(unset) || !strings(tail)) return null;
+  const merged = applyOverrides({ harness_env: env as Record<string, string>, harness_unset_env: unset, harness_tail: tail }, overrides);
+  const set = new Set([...strings(typed) ? typed : [], ...Object.keys(parseEnvAssignments(overrides.env))]);
+  for (const key of merged.harness_unset_env) set.delete(key);
+  return { ...merged, harness_env_set: [...set].sort() };
 }
 
 /**
@@ -193,8 +251,10 @@ export function crewInvocation(args: string[], env: NodeJS.ProcessEnv = process.
  * preset read, no session or conversation id. A missing or malformed recipe
  * refuses rather than guessing (tap-odt1d.1).
  */
-export function crewRecipeInvocation(team: string, handle: string, row: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env): { command: string; cwd: string } {
+export async function crewRecipeInvocation(team: string, handle: string, row: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, prepare = false, signal?: AbortSignal): Promise<{ command: string; cwd: string }> {
   const { harness, model, harness_env: seatEnv, passthrough, cwd, permissions } = row;
+  // Rows written before crew took launch overrides carry neither field.
+  const unset = row.harness_unset_env ?? [], tail = row.harness_tail ?? [];
   const missing = (field: string) => refuse("crew_recipe_missing", `crew '${team}/${handle}' has no usable launch recipe (${field})`,
     `tap crew shutdown ${team}/${handle}, then tap crew add a fresh seat`);
   if (typeof harness !== "string" || !HARNESSES.includes(harness)) return missing("harness");
@@ -203,14 +263,17 @@ export function crewRecipeInvocation(team: string, handle: string, row: Record<s
   if (!seatEnv || typeof seatEnv !== "object" || Array.isArray(seatEnv) || Object.values(seatEnv).some(v => typeof v !== "string")) return missing("harness_env");
   if (!Array.isArray(passthrough) || passthrough.some(v => typeof v !== "string")) return missing("passthrough");
   if (permissions !== "bypass" && permissions !== "auto") return missing("permissions");
+  if (!Array.isArray(unset) || unset.some(v => typeof v !== "string")) return missing("harness_unset_env");
+  if (!Array.isArray(tail) || tail.some(v => typeof v !== "string")) return missing("harness_tail");
   const notices = new Notices();
   notices.suppress(true);
-  const { argv, launchEnv } = renderArgv(harness, `${team}/${handle}`, cwd, model, seatEnv as Record<string, string>,
-    passthrough as string[], row.passthrough_from_config === true, env, notices, permissions);
+  const { argv, launchEnv } = await renderArgv(harness, `${team}/${handle}`, cwd, model, seatEnv as Record<string, string>,
+    passthrough as string[], row.passthrough_from_config === true, env, notices, { unset: unset as string[], tail: tail as string[] }, permissions, prepare, signal,
+    (row.opencode_server_mode ?? "private") as "private" | "shared");
   // The fresh seat binds through its cwd, never an inherited bus pin (odt1d #8):
   // unset it in the child, since the tmux server environment may carry one.
   const { TAP_HOME: _pin, ...unpinned } = env;
-  return { command: shellCommand(argv, launchEnv, unpinned, ["TAP_HOME"]), cwd };
+  return { command: shellCommand(argv, launchEnv, unpinned, ["TAP_HOME", ...unset as string[]]), cwd };
 }
 
 function shellCommand(argv: string[], launchEnv: Record<string, string>, env: NodeJS.ProcessEnv, unset: string[] = []): string {
@@ -225,8 +288,8 @@ function shellCommand(argv: string[], launchEnv: Record<string, string>, env: No
   return [loginShell(env), "-lic", 'exec "$0" "$@"', ...command].map(quote).join(" ");
 }
 
-export function crewInvocationCli(args: string[]): number {
-  try { process.stdout.write(`${crewInvocation(args)}\n`); return 0; }
+export async function crewInvocationCli(args: string[]): Promise<number> {
+  try { process.stdout.write(`${await crewInvocation(args)}\n`); return 0; }
   catch (error) {
     if (error instanceof ChildFailure) { process.stderr.write(`tap session: ${error.message}\n`); return error.status; }
     if (!(error instanceof LauncherError) && (error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -245,4 +308,4 @@ export function crewInvocationCli(args: string[]): number {
   }
 }
 
-if (import.meta.main) process.exitCode = crewInvocationCli(process.argv.slice(2));
+if (import.meta.main) process.exitCode = await crewInvocationCli(process.argv.slice(2));

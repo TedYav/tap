@@ -13,12 +13,12 @@
  * Subcommands (argv): claude <settings.json> <hook_cmd> <guard_cmd> ·
  * agents <AGENTS.md> · codex-config <config.toml> <hook_cmd> <guard_cmd> ·
  * codex-legacy <hooks.json> · cursor <hooks.json> <hook_cmd> <guard_cmd> ·
- * gemini <hooks.json> <guard_cmd>.
+ * gemini <hooks.json> <guard_cmd> · agy-identity <hooks.json> <hook_cmd>.
  */
 import { closeSync, existsSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import { pyDumpIndent } from "./lossless-json";
-import { CODEX_BEGIN, CODEX_END, hookBlock } from "./install-manifest";
+import { CODEX_BEGIN, CODEX_END, hookBlock, agyIdentityHookSpec } from "./install-manifest";
 import { asciiTrim, chompEol, CodexFenceError, relocateCodexEndMarker, splitKeepEnds } from "./codex-fence";
 import { isMap, loads, type JsonFloat, type JsonMap, type JsonValue } from "./watch-detect";
 
@@ -764,12 +764,32 @@ export function geminiGuard(path: string, guardCmd: string): number {
   }
   data.set("tap-tmux-kill-server", managed);
   try {
-    atomicReplace(dirname(path) || ".", `${basename(path)}.tap-tmp.`, jsonDump(data), path);
+    const target = lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ? realpathSync(path) : path;
+    atomicReplace(dirname(target) || ".", `${basename(target)}.tap-tmp.`, jsonDump(data), target);
   } catch (error) {
     warn(`install: WARNING: skipped Antigravity tmux guard — could not write ${path}: ${errText(error)}; next: make ${dirname(path)} writable and rerun ./install.sh`);
     return 0;
   }
   process.stdout.write(`install: wired Antigravity tmux guard into ${path}\n`);
+  return 0;
+}
+
+/** A separate owned namespace lets uninstall preserve the unrelated guard. */
+export function agyIdentityHook(path: string, hookCmd: string): number {
+  try {
+    const parsed = existsSync(path) ? loads(readStrict(path)) : new Map<string, JsonValue>();
+    if (!isMap(parsed)) throw new SyntaxError("hooks must be a JSON object");
+    const managed = loads(JSON.stringify(agyIdentityHookSpec(hookCmd)));
+    const existing = parsed.get("tap-session-identity");
+    if (existing !== undefined && deepEq(existing, managed)) return 0;
+    parsed.set("tap-session-identity", managed);
+    // A user's shared hooks file may be symlinked into their configuration repo.
+    const target = lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ? realpathSync(path) : path;
+    atomicReplace(dirname(target), `${basename(target)}.tap-tmp.`, jsonDump(parsed), target);
+    process.stdout.write(`install: wired Antigravity native identity hook into ${path}\n`);
+  } catch (error) {
+    warn(`install: WARNING: skipped Antigravity identity hook — ${path}: ${errText(error)}; next: repair the hooks file and rerun ./install.sh`);
+  }
   return 0;
 }
 
@@ -780,7 +800,7 @@ export function geminiGuard(path: string, guardCmd: string): number {
 export function cli(argv: string[]): number {
   const [sub, ...rest] = argv;
   const need = (n: number): void => {
-    if (rest.length < n) { process.stderr.write("usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini <paths…>\n"); process.exit(2); }
+    if (rest.length < n) { process.stderr.write("usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n"); process.exit(2); }
   };
   switch (sub) {
     case "claude": need(3); return claudeHooks(rest[0]!, rest[1]!, rest[2]!);
@@ -789,8 +809,9 @@ export function cli(argv: string[]): number {
     case "codex-legacy": need(1); return codexLegacy(rest[0]!);
     case "cursor": need(3); return cursorHooks(rest[0]!, rest[1]!, rest[2]!);
     case "gemini": need(2); return geminiGuard(rest[0]!, rest[1]!);
+    case "agy-identity": need(2); return agyIdentityHook(rest[0]!, rest[1]!);
     default:
-      process.stderr.write(`usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini <paths…>\n`);
+      process.stderr.write(`usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n`);
       return 2;
   }
 }

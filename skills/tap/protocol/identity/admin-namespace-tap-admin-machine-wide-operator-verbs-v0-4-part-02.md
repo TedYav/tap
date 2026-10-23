@@ -34,5 +34,19 @@ TAP never converts old registry formats. For one release the verb stays as a stu
 
 ### Reset archive lifecycle
 
-Team reset archives are durable recovery backups: every `tap team reset` preserves one exact archive, and no reset invocation deletes an earlier archive. `tap team restore` puts a COMPLETE checkpoint back; `tap team purge` is the only deletion path and takes one exact archive name, previews under `--dry-run`, prompts on a TTY, and refuses non-interactively without `--yes`. Reset archives, restore recovers, purge deletes, rebuild re-derives observable live pane seats, and refresh reconciles current rows.
+`tap team reset [TEAM]` uses `team out --hard` to stop and retire selected parent
+families while preserving team initialization, enrollment and bus state. All
+seats are selected unless `--only` or `--except` narrows the cohort; the caller
+is included and stops last. `--except <your-handle>` keeps the caller running.
+Full-team and picker retirement requires confirmation (`--yes` without a
+terminal); supplied handle lists need no extra consent. `--dry-run` has no effects.
 
+The checkpoint cut and `tap team restore` / `tap team purge` are retired.
+Restore and purge refuse with `error_class=renamed_verb` before resolving team
+state. Reset's old `--kill-self` and `--allow-nonstandard-bus-path` flags do the
+same. Every existing archive/team-reset/ bundle stays untouched. The shared
+reset fence and generation plumbing remains until a separate retirement.
+
+Legacy reset fences still guard ordinary writes. A live or unreadable owner
+requires waiting. A proved-stale owner reports manual inspection and removal of
+the exact fence path; retrying team reset cannot complete a retired checkpoint.

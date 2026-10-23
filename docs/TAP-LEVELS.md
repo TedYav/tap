@@ -118,7 +118,7 @@ metadata.secondary_roles = ["implementer", "researcher"]
 metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "debugger", "prose_writer"]
 ```
 
-Use `tap models` for model guidance and `tap presets` for saved recipes.
+Use `tap presets` for saved recipes and `tap team` for who is seated. Launch a supported model directly with `tap launch <harness> [name] --model <id> --effort <level>` where effort is supported.
 After adapting and saving these presets, `tap launch astra builder` or
 `tap launch luna tasker` uses that recipe for a new seat. Both examples use
 the same model family; choose a different family when the work calls for

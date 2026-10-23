@@ -74,7 +74,7 @@ dumb = "A model which is generally fast and cheap, and useful for offloading mor
 
 # -- Presets ---
 
-# For simplicity, the names of these presets will be used to match seat names in the personal calibration ledger (~/.tap/seat-calibration.md; see `tap models`)
+# For simplicity, the names of these presets will be used to match seat names in the personal calibration ledger (~/.tap/seat-calibration.md); `tap presets` lists saved recipes
 # We will assume that a seat with a given name prefix should match a seat calibration.
 # i.e. don't name a seat sol-scout if you don't want the sol calibration to apply.
 

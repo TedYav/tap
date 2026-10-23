@@ -5,6 +5,7 @@
 import { buildHarnessInvocation } from "./adapters";
 import { resolveCatalog } from "./catalog";
 import { planResume } from "./resume-identity";
+import { mergeEnvJson, openCodeTabsMode } from "./env-json";
 import {
   LauncherError,
   UNBOUND_RESUME_IDENTITY,
@@ -172,10 +173,12 @@ export function jsonSafe(value: unknown): unknown {
 /**
  * Compose the launch environment from its tiers, later winning.
  *
- *   1. claude defaults -- the ONLY env the launcher originates, and deliberately
+ *   1. harness defaults, deliberately
  *      still parent-honouring: they carry no audit weight. Cosmetics
  *      (truecolor, scroll speed 4, no-flicker) plus CLAUDE_CODE_DISABLE_AGENT_VIEW=1, which
  *      keeps agent view off the seat's pane (tap-k0jwy).
+ *      OpenCode's CLI JSON defaults tabs off beneath explicit inline settings;
+ *      that one JSON key merges recursively across the tiers below.
  *   2. `[harness.<name>.env]` machine policy, read FRESH on every launch and
  *      every resume. Reading rather than replaying is what makes the policy
  *      migration-free: a seat created before the policy existed picks it up on
@@ -245,6 +248,12 @@ export function applyLaunchEnv(
     }
   }
   Object.assign(composed, declared);
+  if (record.harness === "opencode" && !record.harness_unset_env?.includes("OPENCODE_CLI_CONFIG_CONTENT")) {
+    const key = "OPENCODE_CLI_CONFIG_CONTENT";
+    composed[key] = mergeEnvJson(key, { tabs: { mode: "off" } },
+      [env[key], policyEnv[key], invocation.env[key], record.harness_env?.[key]]);
+    notice(`tap session: OpenCode tabs.mode=${openCodeTabsMode(composed[key])}`);
+  }
   return { argv: invocation.argv, env: composed };
 }
 

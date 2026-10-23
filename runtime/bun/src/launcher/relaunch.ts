@@ -107,25 +107,25 @@ export function classify(members: Member[], diagnostics: string[]): { member: Me
 
 const short = (text: string, limit = 140) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/[\r\n\x00-\x1f\x7f]+/g, " ").trim().slice(0, limit);
 /** A live crew row relaunches fresh in its own pane, in-process; durable rows resume through the native replacement core. */
-async function crew(member: Member, callerPane: string, options: Options, signal?: AbortSignal, progress?: (line: string) => void): Promise<MemberResult> {
+export async function crewMember(member: Member, callerPane: string, options: Options, signal?: AbortSignal, progress?: (line: string) => void): Promise<MemberResult> {
   try {
-    // A fresh crew process has no conversation to instruct and no resume argv to amend.
-    if (options.message !== undefined || options.overrides || options.workdir !== undefined) {
-      return { code: 2, reason: "-m, --workdir, --env, --unset-env and harness flags do not apply to a fresh crew relaunch; relaunch crew without them" };
+    // A fresh crew process has no conversation to instruct and no recorded workdir; env and harness overrides update its recipe.
+    if (options.message !== undefined || options.workdir !== undefined) {
+      return { code: 2, reason: "-m and --workdir do not apply to a fresh crew relaunch; relaunch crew without them" };
     }
     const ctx = teamContext(member.team, false);
     if (ctx.root !== member.root) return { code: 2, reason: `team ${member.team} enrollment changed since selection; nothing was replaced` };
-    await relaunchCrew(ctx, seats(ctx), member.handle, callerPane, { dryRun: options.dryRun, expect: member.row, signal, progress });
+    await relaunchCrew(ctx, seats(ctx), member.handle, callerPane, { dryRun: options.dryRun, expect: member.row, signal, progress, overrides: options.overrides });
     return { code: 0 };
   } catch (error) {
-    return error instanceof TapError ? { code: error.code, reason: `${error.detail}; next: ${error.action}` }
+    return error instanceof TapError ? { code: error.code, error_class: error.errorClass, reason: `${error.detail}; next: ${error.action}` }
       : { code: 1, reason: String((error as Error).message ?? error) };
   }
 }
 
 const isCrewRow = (m: Member): boolean => m.row.crew === true || m.row.crew === 1;
 
-export async function relaunch(options: Options, deps = { context: relaunchContext, prepare: prepareRelaunch, run: relaunchOne, classify, crew, load: loadGlobalRegistry, write: (text: string) => { process.stdout.write(text); }, color: !!process.stdout.isTTY }, signal?: AbortSignal): Promise<number> {
+export async function relaunch(options: Options, deps = { context: relaunchContext, prepare: prepareRelaunch, run: relaunchOne, classify, crew: crewMember, load: loadGlobalRegistry, write: (text: string) => { process.stdout.write(text); }, color: !!process.stdout.isTTY }, signal?: AbortSignal): Promise<number> {
   const context = deps.context();
   if (options.seat && !options.seat.includes("/")) {
     if (!context.team) throw new Error("current team unresolved; pass team/handle");

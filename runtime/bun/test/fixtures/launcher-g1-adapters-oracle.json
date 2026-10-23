@@ -1066,8 +1066,7 @@
    "action": "resume",
    "argv": [
     "agy",
-    "--dangerously-skip-permissions",
-    "--continue"
+    "--dangerously-skip-permissions"
    ],
    "harness": "agy",
    "hsid": null,
@@ -1079,7 +1078,6 @@
    "argv": [
     "agy",
     "--dangerously-skip-permissions",
-    "--continue",
     "--prompt-interactive",
     "go"
    ],
@@ -1122,8 +1120,7 @@
     "agy",
     "--dangerously-skip-permissions",
     "--model",
-    "sonnet",
-    "--continue"
+    "sonnet"
    ],
    "harness": "agy",
    "hsid": null,
@@ -1137,7 +1134,6 @@
     "--dangerously-skip-permissions",
     "--model",
     "sonnet",
-    "--continue",
     "--prompt-interactive",
     "go"
    ],

@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createOpenCodeStore, addSession, addMessage } from "./support/opencode-store";
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
@@ -359,10 +360,10 @@ esac`);
     const human = run(["team"], f.worktree, f.env);
     expect(human.status).toBe(0);
     expect(human.stderr).toBe("");
-    expect(human.stdout).toMatch(/handle\s+harness\s+state\s+family\s+context\s+model\s+preset(?:\s|$)/);
+    expect(human.stdout).toMatch(/handle\s+harness\s+state\s+context\s+family\s+model\s+preset(?:\s|$)/);
     expect(human.stdout).not.toMatch(/handle\s+harness\s+status\s+agent/);
     expect(human.stdout).not.toMatch(/\sroles(?:\s|$)/);
-    expect(human.stdout).toMatch(/live\s+codex\s+● needs you: tap attach roster\/live\s+openai\s+—\s+\?\s+n\/a/);
+    expect(human.stdout).toMatch(/live\s+codex\s+● needs you: tap attach roster\/live\s+—\s+openai\s+\?\s+n\/a/);
     const trace = readFileSync(tmuxTrace, "utf8");
     expect(trace.match(/capture-pane/g)).toHaveLength(1);
     expect(trace).toContain("capture-pane -e -p -t %7");
@@ -503,12 +504,12 @@ esac`);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     const lines = result.stdout.trimEnd().split("\n");
-    expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "family", "context", "model", "preset"]);
+    expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "context", "family", "model", "preset"]);
     const rows = Object.fromEntries(lines.slice(2).map((line) => {
       const cells = line.trimEnd().split(/\s{2,}/);
-      return [cells[0], cells.slice(4)];
+      return [cells[0], [cells[3], ...cells.slice(5)]];
     }));
-    expect(rows.observed).toEqual(["84k / 380k", "gpt-6-astra@xhigh", "n/a"]);
+    expect(rows.observed).toEqual(["84k/380k", "gpt-6-astra@xhigh", "n/a"]);
     expect(rows.fallback).toEqual(["—", "fable@high (launch)", "n/a"]);
     expect(rows.compacted).toEqual(["—", "gpt-6-astra@high", "n/a"]);
     const agents = Object.fromEntries(JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents.map((a: { handle: string }) => [a.handle, a]));
@@ -600,7 +601,7 @@ esac`);
     const result = run(["team"], f.worktree, f.env);
     expect(result.status).toBe(0);
     const lines = result.stdout.trimEnd().split("\n");
-    expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "family", "context", "model", "preset"]);
+    expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "context", "family", "model", "preset"]);
     const rows = Object.fromEntries(lines.slice(2).map((line) => {
       const cells = line.trimEnd().split(/\s{2,}/);
       return [cells[0], cells[2]];
@@ -1013,12 +1014,12 @@ harness = "codex"
     const jsonFamily = (f: ReturnType<typeof fixture>) => Object.fromEntries(
       JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents.map((a: any) => [a.handle, a.family]));
 
-    test("table shows family ahead of context and model; recorded presets keep it with or without launch tuning", () => {
+    test("table shows context ahead of family and model; recorded presets keep it with or without launch tuning", () => {
       const f = familyRoster();
       const human = run(["team"], f.worktree, f.env);
       expect(human.status, human.stderr).toBe(0);
       const lines = human.stdout.trimEnd().split("\n");
-      expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "family", "context", "model", "preset"]);
+      expect(lines[1]!.trimEnd().split(/\s{2,}/)).toEqual(["handle", "harness", "state", "context", "family", "model", "preset"]);
       const at = lines[1]!.indexOf("family");
       const family = (handle: string) => lines.find(line => line.startsWith(handle + " "))!.slice(at).split(/\s{2,}/)[0];
       expect(family("recorded")).toBe("xai");
@@ -1081,13 +1082,13 @@ metadata.model_family = "xai"
       expect(family("unfamilied")).toBe("-");
     });
 
-    test("a narrow terminal drops context, model and preset before family", () => {
+    test("a narrow terminal drops preset, model and family before context", () => {
       const f = familyRoster();
       const narrow = runTty(["team"], f.worktree, f.env, 46);
       expect(narrow.status, narrow.stderr).toBe(0);
-      expect(narrow.stdout).toMatch(/handle\s+harness\s+state\s+family\r?\n/);
-      expect(narrow.stdout).toContain("zhipu");
-      expect(narrow.stdout).toContain("hid context, model, preset to fit 46 columns");
+      expect(narrow.stdout).toMatch(/handle\s+harness\s+state\s+context\r?\n/);
+      expect(narrow.stdout).not.toContain("zhipu");
+      expect(narrow.stdout).toContain("hid family, model, preset to fit 46 columns");
     });
   });
 
@@ -1435,12 +1436,12 @@ esac`);
     expect(res.stderr).toBe("");
     const lines = res.stdout.trim().split("\n");
     expect(lines[0]).toBe("tap team: roster");
-    expect(lines[1]).toMatch(/^handle\s+harness\s+state\s+family\s+context\s+model\s+preset$/);
-    expect(lines[2]).toMatch(/^codex-spark-moderator\s+codex\s+● offline\s+openai\s+—\s+\?\s+gpt-spark$/);
-    expect(lines[3]).toMatch(/^luna-moderator\s+codex\s+● offline\s+openai\s+—\s+\?\s+luna$/);
+    expect(lines[1]).toMatch(/^handle\s+harness\s+state\s+context\s+family\s+model\s+preset$/);
+    expect(lines[2]).toMatch(/^codex-spark-moderator\s+codex\s+● offline\s+—\s+openai\s+\?\s+gpt-spark$/);
+    expect(lines[3]).toMatch(/^luna-moderator\s+codex\s+● offline\s+—\s+openai\s+\?\s+luna$/);
     // window 1 (z-second-child) sorted before window 2 (a-first-child), overriding alphabetical order
-    expect(lines[4]).toMatch(/^\|-- z-second-child\s+codex\s+● offline\s+openai\s+—\s+\?\s+n\/a$/);
-    expect(lines[5]).toMatch(/^`-- a-first-child\s+codex\s+● offline\s+openai\s+—\s+\?\s+n\/a$/);
+    expect(lines[4]).toMatch(/^\|-- z-second-child\s+codex\s+● offline\s+—\s+openai\s+\?\s+n\/a$/);
+    expect(lines[5]).toMatch(/^`-- a-first-child\s+codex\s+● offline\s+—\s+openai\s+\?\s+n\/a$/);
     expect(lines.length).toBe(6);
 
     // Invariant guards: --all, --json, --names run clean and silent.
@@ -1467,8 +1468,8 @@ esac`);
 
     const human = run(["team"], f.worktree, f.env);
     expect(human.status).toBe(0);
-    expect(human.stdout).toMatch(/orphan-crew\s+codex\s+● offline\s+openai\s+—\s+\?\s+n\/a/);
-    expect(human.stdout).toMatch(/second-orphan\s+codex\s+● offline\s+openai\s+—\s+\?\s+n\/a/);
+    expect(human.stdout).toMatch(/orphan-crew\s+codex\s+● offline\s+—\s+openai\s+\?\s+n\/a/);
+    expect(human.stdout).toMatch(/second-orphan\s+codex\s+● offline\s+—\s+openai\s+\?\s+n\/a/);
     expect(human.stdout).not.toContain("|--");
     expect(human.stdout).not.toContain("`--");
     expect(human.stderr).toContain("tap-zhx82");
@@ -1632,8 +1633,8 @@ esac`);
     // 1. Bare tap team and tap team roster match pre-change oracle and render local-team
     const expectedLocal = [
       "tap team: local-team",
-      "handle      harness  state      family  context  model  preset",
-      "local-seat  codex    ● offline  openai  —        ?      n/a",
+      "handle      harness  state      context  family  model  preset",
+      "local-seat  codex    ● offline  —        openai  ?      n/a",
       "",
     ].join("\n");
     const bare = run(["team"], f.worktree, f.env);
@@ -1994,7 +1995,7 @@ esac`);
   expect(JSON.parse(plain.stdout).agents[0].sampled_at).toMatch(/^\d{4}-/);
   expect(readFileSync(trace,"utf8").match(/capture-pane/g)).toHaveLength(1);
   const missing = run(["team"],f.worktree,f.env);
-  expect(missing.stdout).toMatch(/live\s+claude\s+● \w+\s+anthropic\s+—/);
+  expect(missing.stdout).toMatch(/live\s+claude\s+● \w+\s+—\s+anthropic/);
   expect(missing.stdout).not.toContain("Warning:");
   expect(missing.stdout).not.toContain("0 /");
   expect(run(["team","--all"],f.worktree,f.env).stdout).not.toContain("Warning: stats unavailable");
@@ -2010,7 +2011,7 @@ esac`);
   const ps = join(f.dir,"bin","ps");
   writeFileSync(ps, "#!/bin/sh\ncase \"$1\" in -axo) echo \"123 1 claude\";; *) echo \"claude PATH=/bin CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000\";; esac\n", {mode:0o755});
   const human = run(["team"],f.worktree,f.env);
-  expect(human.stdout).toMatch(/live\s+claude\s+● \w+\s+anthropic\s+84k \/ 100k/);
+  expect(human.stdout).toMatch(/live\s+claude\s+● \w+\s+84k\/100k\s+anthropic/);
   expect(human.stdout).not.toContain("Warning: stats unavailable");
   const overridden = JSON.parse(run(["team","--json"],f.worktree,f.env).stdout).agents[0];
   expect(overridden.context_used_percent).toBe(42);
@@ -2870,7 +2871,7 @@ test("attach --next eligibility drops an otherwise-eligible poll row", () => {
 });
 
 
-function openCodeRosterFixture(modelsWork = true, secondSeat = false) {
+function openCodeRosterFixture(secondSeat = false) {
   const f = fixture(); delete f.env.TAP_SERVER_EPOCH;
   replaceTmux(f, String.raw`
 while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
@@ -2882,99 +2883,51 @@ case "$1" in
  *) exit 1 ;;
 esac`);
   const path = join(f.dir,"opencode.db"); f.env.OPENCODE_DB_PATH = path;
-  const db = new Database(path);
-  db.exec("CREATE TABLE session (id TEXT, directory TEXT, revert TEXT); CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT);");
-  db.query("INSERT INTO session VALUES ('seat', ?, NULL)").run(f.worktree);
-  db.query("INSERT INTO message VALUES ('message', 'seat', 1, ?)").run(JSON.stringify({role:"assistant",providerID:"zai",modelID:"glm",time:{completed:1},tokens:{input:131,cache:{read:101696,write:0}}}));
-  // A second seat in its own project directory, which the fake CLI cannot serve.
-  const second = join(f.dir, "second-project");
-  mkdirSync(second);
-  db.query("INSERT INTO session VALUES ('seat2', ?, NULL)").run(second);
-  db.query("INSERT INTO message VALUES ('message2', 'seat2', 1, ?)").run(JSON.stringify({role:"assistant",providerID:"zai",modelID:"glm",time:{completed:1},tokens:{input:131,cache:{read:101696,write:0}}}));
-  db.close();
-  const log = join(f.dir,"opencode.log");
-  writeFileSync(join(f.dir,"bin","opencode"), `#!/bin/sh
-printf '%s|%s\\n' "$(pwd -P)" "$*" >> '${log}'
-[ "$*" = "--version" ] && { echo 1.2.3; exit 0; }
-[ "$*" = "models --verbose --pure" ] || exit 1
-${modelsWork ? "" : "exit 1"}
-[ "$(pwd -P)" = '${realpathSync(f.worktree)}' ] || exit 1
-cat <<'MODELS'
-zai/glm
-{
-  "id": "glm", "providerID": "zai", "limit": {"context": 420000}
-}
-MODELS
-`, {mode:0o755});
+  const db = createOpenCodeStore(path);
+  addSession(db,"seat",realpathSync(f.worktree));
+  const usage={type:"assistant",model:{providerID:"zai",id:"glm"},time:{created:1,completed:2},tokens:{input:131,cache:{read:101696,write:0}}};
+  addMessage(db,usage,{session:"seat"});
+  const second = join(f.dir,"second-project"); mkdirSync(second);
+  addSession(db,"seat2",second); addMessage(db,usage,{session:"seat2"}); db.close();
+  const log=join(f.dir,"opencode.log");
+  writeFileSync(join(f.dir,"bin","opencode"), `#!/bin/sh\necho unexpected >> '${log}'\nexit 1\n`,{mode:0o755});
+  const publish=()=>{
+    const folder=join(f.env.TAP_INDEX_HOME!,"opencode-model-windows.d");mkdirSync(folder,{recursive:true});
+    writeFileSync(join(folder,"project.json"),JSON.stringify({directory:realpathSync(f.worktree),version:"2.1.2",fetched_at:Math.floor(Date.now()/1000),windows:{"zai/glm":420000}}));
+  };
   seedPostFlip(f, {
     live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"opencode",harness_session_id:"seat"},
     ...(secondSeat ? {other:{status:"active",delivery:"pane",pane:"other-session:0.0",pane_id:"%8",session:"other-session",server_epoch:"srv:1:1",harness:"opencode",harness_session_id:"seat2"}} : {}),
   });
   const calls = () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : [];
-  return { f, calls };
+  return { f, calls, publish };
 }
 
-test("OpenCode roster reads the persisted window map and only --refresh-models runs opencode", () => {
-  const { f, calls } = openCodeRosterFixture();
-
-  // Unknown model: the count stays visible, the cap is "?", a footer names the seat and the command. No fetch.
-  const unknown = run(["team"],f.worktree,f.env);
-  expect(unknown.stdout).toContain("102k / ?");
-  expect(unknown.stderr).toContain("Warning: model info missing for live. Run tap team --refresh-models to fetch it.");
-  expect(unknown.stdout).not.toContain("model info missing");
+test("OpenCode roster reads plugin windows without starting a harness", () => {
+  const { f, calls, publish } = openCodeRosterFixture();
+  const unknown=run(["team"],f.worktree,f.env);
+  expect(unknown.stdout).toContain("102k/?");
+  expect(unknown.stderr).toContain("model window unavailable for live");
   expect(JSON.parse(run(["team","--json"],f.worktree,f.env).stdout).agents[0].context_tokens).toMatchObject({input_tokens:101827,window_tokens:null});
-  expect(calls()).toEqual([]);
-
-  // --refresh-models fetches once for the one session directory, then the roster shows the real denominator.
-  const refreshed = run(["team","--refresh-models"],f.worktree,f.env);
-  expect(refreshed.status, refreshed.stderr).toBe(0);
-  expect(refreshed.stderr).toContain("refreshed model info for 1 of 1 project directories");
-  expect(refreshed.stdout).toContain("102k / 420k");
-  expect(refreshed.stderr).not.toContain("model info missing");
-  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(1);
-
-  // Known model: consecutive observations never invoke opencode again.
-  const before = calls().length;
-  expect(run(["team"],f.worktree,f.env).stdout).toContain("102k / 420k");
-  const json = run(["team","--json"],f.worktree,f.env);
+  publish();
+  expect(run(["team"],f.worktree,f.env).stdout).toContain("102k/420k");
+  const json=run(["team","--json"],f.worktree,f.env);
   expect(JSON.parse(json.stdout).agents[0].context_tokens).toMatchObject({input_tokens:101827,window_tokens:420000,used_percent:24,source:"opencode_store"});
-  expect(calls()).toHaveLength(before);
-});
-
-test("--refresh-models refuses --names, and an explicit team's footer names that team's roster command", () => {
-  const { f, calls } = openCodeRosterFixture();
-  const names = run(["team","--refresh-models","--names"],f.worktree,f.env);
-  expect(names.status).toBe(1);
-  expect(names.stderr).toContain("pick one");
   expect(calls()).toEqual([]);
-
-  const other = run(["team","roster","roster"],f.dir,f.env);
-  expect(other.status, other.stderr).toBe(0);
-  expect(other.stderr).toContain("Run tap team roster roster --refresh-models to fetch it.");
 });
 
-test("--refresh-models fails when no directory can be fetched, with one JSON object and a quiet stderr under --json", () => {
-  const { f, calls } = openCodeRosterFixture(false);
-  const human = run(["team","--refresh-models"],f.worktree,f.env);
-  expect(human.status).toBe(1);
-  expect(human.stderr).toContain("tap team: could not fetch OpenCode model info in 1 project directory");
-  expect(human.stderr).toContain("next: tap team --refresh-models");
-  expect(human.stdout).toBe("");
-
-  const json = run(["team","--refresh-models","--json"],f.worktree,f.env);
-  expect(json.status).toBe(1);
-  expect(json.stderr).toBe("");
-  expect(JSON.parse(json.stdout)).toMatchObject({ ok: false, error_class: "model_refresh_failed", action: "tap team --refresh-models" });
-
-  // An explicit team's failure names that team's command, in the human line and the JSON envelope.
-  const otherHuman = run(["team","roster","roster","--refresh-models"],f.dir,f.env);
-  expect(otherHuman.status).toBe(1);
-  expect(otherHuman.stderr).toContain("next: tap team roster roster --refresh-models");
-  const otherJson = run(["team","roster","roster","--refresh-models","--json"],f.dir,f.env);
-  expect(otherJson.stderr).toBe("");
-  expect(JSON.parse(otherJson.stdout)).toMatchObject({ ok: false, error_class: "model_refresh_failed", action: "tap team roster roster --refresh-models" });
+test("retired --refresh-models prints a nonmutating notice and preserves JSON", () => {
+  const { f, calls }=openCodeRosterFixture();
+  const human=run(["team","--refresh-models"],f.worktree,f.env);
+  expect(human.status).toBe(0); expect(human.stderr).toContain("--refresh-models is retired");
+  expect(human.stdout).toContain("102k/?");
+  const json=run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(json.status).toBe(0);expect(json.stderr).toBe("");
   expect(json.stdout.trim().split("\n")).toHaveLength(1);
-  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(4);
+  expect(JSON.parse(json.stdout).agents[0].context_tokens.window_tokens).toBeNull();
+  const names=run(["team","--refresh-models","--names"],f.worktree,f.env);
+  expect(names.status).toBe(1);expect(names.stderr).toContain("pick one");
+  expect(calls()).toEqual([]);
 });
 
 test("roster filters share selection across output shapes and exclude daemons", () => {
@@ -3296,37 +3249,83 @@ esac`);
   });
 });
 
-test("--refresh-models under --json keeps stderr empty on success, on a partial refresh and with nothing to refresh", () => {
-  const { f } = openCodeRosterFixture();
-  const refreshed = run(["team","--refresh-models","--json"],f.worktree,f.env);
-  expect(refreshed.status, refreshed.stderr).toBe(0);
-  expect(refreshed.stderr).toBe("");
-  expect(JSON.parse(refreshed.stdout).agents[0].context_tokens).toMatchObject({ window_tokens: 420000 });
-
-  // Nothing to refresh: the seat's session is not in the OpenCode store.
-  const db = new Database(join(f.dir,"opencode.db"));
-  db.query("DELETE FROM session").run(); db.close();
-  const none = run(["team","--refresh-models","--json"],f.worktree,f.env);
-  expect(none.status).toBe(0);
-  expect(none.stderr).toBe("");
-  expect(run(["team","--refresh-models"],f.worktree,f.env).stderr).toContain("no OpenCode seat with a session directory to refresh");
+test("plugin windows stay directory-specific and a missing session remains unknown", () => {
+  const {f,calls,publish}=openCodeRosterFixture(true);publish();
+  const result=run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(result.status).toBe(0);expect(result.stderr).toBe("");
+  const agents=JSON.parse(result.stdout).agents as {handle:string;context_tokens:{input_tokens:number|null;window_tokens:number|null}}[];
+  expect(agents.find(a=>a.handle==="live")?.context_tokens).toMatchObject({input_tokens:101827,window_tokens:420000});
+  expect(agents.find(a=>a.handle==="other")?.context_tokens).toMatchObject({input_tokens:101827,window_tokens:null});
+  const db=new Database(join(f.dir,"opencode.db"));db.query("DELETE FROM session_v2").run();db.close();
+  const none=run(["team","--refresh-models","--json"],f.worktree,f.env);
+  expect(none.status).toBe(0);expect(none.stderr).toBe("");
+  expect(JSON.parse(none.stdout).agents.every((a:any)=>a.context_tokens?.input_tokens==null)).toBe(true);
+  expect(calls()).toEqual([]);
 });
 
-test("--refresh-models --json with one directory fetched and one failing: one object, empty stderr, partial windows", () => {
-  const { f, calls } = openCodeRosterFixture(true, true);
-  const result = run(["team","--refresh-models","--json"],f.worktree,f.env);
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stderr).toBe("");
-  expect(result.stdout.trim().split("\n")).toHaveLength(1);
-  const agents = JSON.parse(result.stdout).agents as { handle: string; context_tokens: { input_tokens: number | null; window_tokens: number | null } }[];
-  expect(agents.find(a => a.handle === "live")?.context_tokens).toMatchObject({ input_tokens: 101827, window_tokens: 420000 });
-  expect(agents.find(a => a.handle === "other")?.context_tokens).toMatchObject({ input_tokens: 101827, window_tokens: null });
-  expect(calls().filter(line => line.endsWith("|models --verbose --pure"))).toHaveLength(2);
-
-  // The human form reports the partial result on stderr and still prints the roster.
-  const human = run(["team","--refresh-models"],f.worktree,f.env);
-  expect(human.status).toBe(0);
-  expect(human.stderr).toContain("refreshed model info for 1 of 2 project directories");
-  expect(human.stderr).toContain("could not fetch model info in");
-  expect(human.stdout).toContain("102k / 420k");
+test("team context keeps usage and adds cache estimates with a separate JSON schema", () => {
+  const f = fixture();
+  replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\n' ;;
+ capture-pane) printf '❯ \n' ;;
+ display-message) printf '1:1\n' ;;
+ *) exit 1 ;;
+esac`);
+  const transcript = join(f.dir,"cache.jsonl");
+  const timestamp = new Date(Date.now()-60_000).toISOString();
+  writeFileSync(transcript,JSON.stringify({type:"assistant",sessionId:"seat",timestamp,message:{model:"claude-opus",usage:{
+    input_tokens:1000,cache_creation_input_tokens:1000,cache_read_input_tokens:0,
+    cache_creation:{ephemeral_1h_input_tokens:1000,ephemeral_5m_input_tokens:0}}}})+"\n");
+  seedPostFlip(f,{live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"claude",harness_session_id:"seat",transcript_path:transcript}});
+  const result = run(["team","--json"],f.worktree,f.env);
+  expect(result.status,result.stderr).toBe(0);
+  const row = JSON.parse(result.stdout).agents[0];
+  expect(row.status,JSON.stringify(row)).toBe("active");
+  expect(row.prompt_cache).toMatchObject({state:"warm",ttl_seconds:3600,basis:"assistant_timestamp"});
+  expect(row.context_tokens.input_tokens).toBe(2000);
+  expect(row.context_tokens).not.toHaveProperty("prompt_cache");
+  const human = run(["team","--wide"],f.worktree,f.env);
+  expect(human.stdout).toContain("●59m");
+  expect(human.stdout).toContain("2k");
 });
+
+
+test("cache colors survive a last-kept context column and honor all monochrome modes", () => {
+  const f = fixture();
+  replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\n' ;;
+ capture-pane) printf '❯ \n' ;;
+ display-message) printf '1:1\n' ;;
+ *) exit 1 ;;
+esac`);
+  const transcript = join(f.dir,"cache-colors.jsonl");
+  const setCache = (age: number, known = true) => writeFileSync(transcript,JSON.stringify({type:"assistant",sessionId:"seat",
+    timestamp:new Date(Date.now()-age*1000).toISOString(),message:{model:"claude-opus",usage:{input_tokens:1000,
+      cache_creation_input_tokens:1000,cache_read_input_tokens:0,...(known ? {cache_creation:{ephemeral_1h_input_tokens:1000,ephemeral_5m_input_tokens:0}} : {})}}})+"\n");
+  seedPostFlip(f,{live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",
+    server_epoch:"srv:1:1",harness:"claude",harness_session_id:"seat",transcript_path:transcript}});
+  const env = {...f.env}; delete env.NO_COLOR;
+  for (const [age,marker,color] of [[60,"●59m","94"],[3000,"●10m","33"],[3540,"●1m","31"],[3700,"●","38;5;88"]] as const) {
+    setCache(age);
+    const narrow = runTty(["team"],f.worktree,env,40);
+    expect(narrow.status,narrow.stderr).toBe(0);
+    expect(narrow.stdout).toContain(`\x1b[${color}m${marker}\x1b[0m`);
+    expect(narrow.stdout).toMatch(/handle +harness +state +context\r?\n/);
+    expect(narrow.stdout).not.toContain("...");
+    for (const out of [runTty(["team"],f.worktree,{...env,NO_COLOR:""}),run(["team"],f.worktree,env),
+      spawnSync("python3",["-B","-c",TTY_RUNNER,"120",shippedEntry,"team"],{cwd:f.worktree,env:{...env,TERM:"dumb"},encoding:"utf8"})]) {
+      expect(out.status,out.stderr).toBe(0);
+      expect(out.stdout).not.toContain("\x1b");
+      expect(out.stdout).toMatch(new RegExp(`2k ${marker}(?: +|\\r?\\n)`));
+    }
+  }
+  setCache(60,false);
+  const unknown = runTty(["team"],f.worktree,{...env,NO_COLOR:""});
+  expect(unknown.stdout).not.toMatch(/2k ●/);
+},60_000);

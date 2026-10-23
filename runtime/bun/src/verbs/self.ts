@@ -7,16 +7,12 @@
 // payload (tap-lmbs). Exit codes: 0 submitted/armed, 1
 // validation, 3 pane gone, 4 deferred, 5 submit unverified, 6 unsupported,
 // 8 clear/rebrief observer armed. Compact returns 0 queued/armed before input.
-import { mkdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { callerPaneObservation, observeCallerPaneChain, resolveContext, resolveSelf, TapError, type IdentityPaneObservation, type ResolvedContext } from "../context";
 import { loadRegistry, seatMap } from "../registry";
-import { atomicWrite } from "../fsatomic";
-import { markResetGenerationReused } from "../reset";
 import { armSelfCompact } from "../self-compact";
-import { armSelfRecovery, parseOptions as parseRecovery } from "../self-rebrief";
-import { focusNarrowing, handoffPing } from "../compact-focus";
+import { armSelfRecovery, requireHandoff, parseOptions as parseRecovery } from "../self-rebrief";
+import { focusNarrowing } from "../compact-focus";
 import { submitVerify, type BoundRecipient, type SubmitResult } from "../courier";
 import { permittedTakeBack, DARK_EFFECTS } from "../deliver";
 import { draftEffects } from "../spool-drain-effects";
@@ -29,10 +25,11 @@ import { tapScriptsDir } from "../scripts-dir";
 const SCRIPTS = tapScriptsDir();
 const say = (message: string) => process.stderr.write(`self: ${message}\n`);
 
-export interface SelfOptions { verb: SelfVerb; text: string; pane?: string; harness?: string; interval?: string; handoff?: string }
+export interface SelfOptions { verb: SelfVerb; text: string; pane?: string; harness?: string; interval?: string; handoff?: string; notify?: string }
 
-const USAGE = "usage: tap self <compact|goal|loop> [--pane <tmux-target>] [--harness <name>] [--interval <N><s|m|h|d>] [--handoff <file>] [--] <text>\n" +
-  "       tap self <clear|rebrief> [--pane <tmux-target>] [--harness <name>] [--handoff <file>] [--charter <file>] [--notify <seat>]";
+const USAGE = "usage: tap self compact --handoff FILE [--notify SEAT] [--pane TARGET] [--harness NAME] -- FOCUS\n" +
+  "       tap self <goal|loop> [--pane TARGET] [--harness NAME] [--interval DURATION] -- TEXT\n" +
+  "       tap self <clear|rebrief> --handoff FILE [--charter FILE] [--notify SEAT] [--pane TARGET] [--harness NAME]";
 
 export function parseSelf(argv: string[]): SelfOptions {
   const verb = argv[0];
@@ -40,13 +37,13 @@ export function parseSelf(argv: string[]): SelfOptions {
     throw new TapError(1, "usage_error", "tap help self", `first argument must be a verb: compact|goal|loop|clear|rebrief\n${USAGE}`, "tap self");
   }
   const out: SelfOptions = { verb: verb as SelfVerb, text: "" };
-  const flags = { "--pane": "pane", "--harness": "harness", "--interval": "interval", "--handoff": "handoff" } as const;
+  const flags = { "--pane": "pane", "--harness": "harness", "--interval": "interval", "--handoff": "handoff", "--notify": "notify" } as const;
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--") { out.text = argv.slice(i + 1).join(" "); break; }
     if (arg in flags) {
       const value = argv[i + 1];
-      if (value === undefined) throw new TapError(1, "usage_error", "tap help self", `${arg} requires an argument`, "tap self");
+      if (value === undefined || (arg === "--notify" && value.startsWith("--"))) throw new TapError(1, "usage_error", "tap help self", `${arg} requires an argument`, "tap self");
       const field = flags[arg as keyof typeof flags];
       if (out[field] !== undefined) throw new TapError(1, "usage_error", "tap help self", `${arg} may be passed once`, "tap self");
       out[field] = value; i++;
@@ -57,39 +54,8 @@ export function parseSelf(argv: string[]): SelfOptions {
     out.text = argv.slice(i).join(" ");
     break;
   }
+  if (out.verb === "compact" && !out.handoff) throw new Error("an authored --handoff FILE is required; use /tap:self compact to prepare it");
   return out;
-}
-
-/**
- * The agent-authored handoff, copied to the bus BEFORE any pane effect: after
- * the submit is too late, because /compact consumes the turn this runs in.
- */
-export function writeHandoff(busHome: string, seat: string, source: string, now = new Date()): string {
-  const body = readFileSync(resolve(source), "utf8");
-  const safe = seat.replace(/[^A-Za-z0-9._-]/g, "-");
-  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const dir = join(busHome, "handoff");
-  mkdirSync(dir, { recursive: true });
-  const dest = join(dir, `${safe}-${stamp}.md`);
-  const header = `# TAP compaction handoff — ${seat}\n# written ${now.toISOString().replace(/\.\d+Z$/, "Z")}, BEFORE an explicit /compact\n#\n` +
-    "# You are reading this after a compaction. Your context is a SUMMARY of\n" +
-    "# the work; these bytes were written by the agent that still had all of\n" +
-    "# it. Where the two disagree, this file is the record.\n\n";
-  atomicWrite(dest, header + body);
-  markResetGenerationReused(busHome, "handoff");
-  return dest;
-}
-
-function validHandoff(path: string): string | null {
-  // Regular files only: a FIFO or device could block or stream without end.
-  try { if (!statSync(resolve(path)).isFile()) return `--handoff must be a regular file: ${path}`; }
-  catch { return `--handoff file is missing or unreadable: ${path}`; }
-  let bytes: Buffer;
-  try { bytes = readFileSync(resolve(path)); } catch { return `--handoff file is missing or unreadable: ${path}`; }
-  // An EMPTY handoff is worse than none: it survives the compaction and reads as
-  // a positive statement that nothing was in flight.
-  if (!bytes.length) return `--handoff file is empty: ${path} — refusing, because an empty handoff reads as 'nothing was in progress'`;
-  return null;
 }
 
 const mintId = () => `self-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}-${randomBytes(4).toString("hex")}`;
@@ -163,11 +129,9 @@ export function cmdSelf(argv: string[], scripts = SCRIPTS, context?: ResolvedCon
 
 function runSelf(options: SelfOptions, scripts: string, context?: ResolvedContext): number {
   const { verb } = options;
+  if (options.notify !== undefined && verb !== "compact") { say("--notify only applies to compact, clear and rebrief"); return 1; }
+  if (verb === "compact") requireHandoff(options.handoff, "compact");
   if (options.handoff && verb !== "compact") { say("--handoff only applies to the compact verb"); return 1; }
-  if (options.handoff) {
-    const bad = validHandoff(options.handoff);
-    if (bad) { say(bad); return 1; }
-  }
   const id = mintId();
   const marker = ` [[sv:${id}]]`;
   // The marker supplies one separator. Do not manufacture an unverifiable
@@ -220,21 +184,9 @@ function runSelf(options: SelfOptions, scripts: string, context?: ResolvedContex
     say(`pane '${pane}' runs '${live || "unknown"}' but '${self.handle}' is registered as '${harness}'; nothing was submitted — re-register with tap in`); return 1;
   }
 
-  let handoff = "";
   if (verb === "compact") {
-    // Codex compaction is handoff-gated (tap-n27ug): refuse before any effect.
-    if (fam === "codex" && !options.handoff) {
-      say("REJECTED — Codex compaction needs a handoff written by you: run tap self compact --handoff <file> -- '<focus>'"); return 1;
-    }
-    if (options.handoff) {
-      handoff = writeHandoff(ctx.bus.home, self.handle, options.handoff);
-      say(`compaction handoff written to ${handoff}`);
-    }
-    // Every family has one worker-owned compact path. Claude carries its focus
-    // in the typed command; the other families carry it in the resume note.
-    const ping = handoffPing(handoff, self.handle, pane, fam === "claude" ? "" : text);
     if (!ownerStill()) { say(ownerChanged); return 1; }
-    return armSelfCompact({ pane, handoffPath: handoff || undefined, resumePing: ping || undefined, focus: text }, ctx);
+    return armSelfCompact({ pane, handoffPath: options.handoff, focus: text, notify: options.notify }, ctx);
   }
 
   // Typed command prefix, then the pasted text and its marker. The marker is not

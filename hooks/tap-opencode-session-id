@@ -3,7 +3,7 @@
 #
 # Fail CLOSED: empty stdout and exit 0 when the id cannot be proven (ps fails,
 # argv has no --session, pid is not a number). The OpenCode session-start plugin
-# treats empty as "no identity at init" and waits for session.created/updated —
+# treats empty as "no identity at init" and waits for session.created or prompt admission —
 # today's behavior. A miss must never become a guess, and must never brick
 # OpenCode (nonzero would only matter if a caller used set -e on the spawn;
 # we still exit 0 on a miss so a careless caller does not).
@@ -24,7 +24,7 @@ session_id_from_argv() {
   done
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --session)
+      --session|-s)
         if [ "$#" -ge 2 ] && [ -n "$2" ]; then
           printf '%s\n' "$2"
         fi

@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { readPolicy, policyPath } from "../src/approval-timeout-policy";
 import { readEpisodes } from "../src/approval-timeout";
 import { approvalTimeoutOn, cmdApprovalTimeout } from "../src/verbs/approval-timeout";
-import { componentTable } from "../src/team/reset-components";
 import { TapError } from "../src/context";
 
 let bus: string;
@@ -95,8 +94,5 @@ describe("tap approval-timeout (tap-rlebf.2 U3)", () => {
     }
   });
 
-  test("tap team reset checkpoints approval-timeout/ beside watch/", () => {
-    const table = componentTable({});
-    expect(table.find(c => c.name === "approval-timeout")).toEqual({ name: "approval-timeout", fate: "checkpoint", scope: "bus" });
-  });
+
 });

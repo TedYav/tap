@@ -37,7 +37,8 @@ state and cause no new effects. Do not infer a permission choice from an omissio
 Detect installed executables: `claude`, `codex`, `opencode`, `agy`,
 `cursor-agent` (TAP calls this harness `cursor`), and `hermes`. Another
 harness is unsupported today; it can be requested at
-<https://github.com/TedYav/tap/issues>.
+<https://github.com/TedYav/tap/issues>, or added by your own agent with the
+`extend` skill (`tap help skill extend`).
 Before asking, explain auto, the default, and the bypass flag for this harness
 from the list below. In particular, Codex automatic review can approve a tool
 without asking the human; choosing auto does not mean approving every command.
@@ -125,8 +126,8 @@ requires `"replaceCandidate": true`. Shell integration cannot accompany candidat
 plugins are independent effects, so omit them during candidate review.
 
 Claude and Codex use the complete TAP plugin, with names such as `tap:lead` and
-`tap:config-wizard`. Other hosts start with six skills: `tap`, `tap-in`, `tap-send`,
-`tap-escalate`, `tap-config-wizard`, and `tap-help`. For those flat skill catalogs,
+`tap:config-wizard`. Other hosts start with seven skills: `tap`, `tap-in`, `tap-send`,
+`tap-escalate`, `tap-config-wizard`, `tap-help`, and `tap-extend`. For those flat skill catalogs,
 `"fullKit": true` with `"write": "apply"` adds the remaining prefixed skills.
 `"fullKit": false` removes only unchanged TAP-owned optional links and wrappers;
 foreign links, user directories and edited wrappers survive. Omission leaves
@@ -171,12 +172,10 @@ which hooks to trust.
 Offer the [notifier choice](AGENT-SETUP.md#human-notification-setup) once after
 the first observed answer, retaining any preference already supplied.
 
-Use `tap models` for model and effort guidance: a personal ledger wins when
-present; without one, the checked-in reference says **access unverified**.
-`tap models <model>` shows qualified variants and launch examples. A bare
-`tap launch <harness> [name] --model <id> --effort <level>` needs no preset.
+Use `tap presets` for saved recipes and `tap team` for who is seated. A bare
+`tap launch <harness> [name] --model <id> --effort <level>` launches a model your account supports without a preset.
 Use `tap help launch` for legal effort levels; OpenCode and Cursor accept model
-only. Keep service/context/environment qualifications attached to the variant.
+only. Keep service/context/environment qualifications attached to the launch choice.
 
 Presets save a combination you use often. The configuration skill can save a model and
 effort the human already knows they can use. A preset name must differ from a

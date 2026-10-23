@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { calibrationView, compactAge, latestObservation, modelsView, teamsView, teamStatus } from "../src/routing";
+import { calibrationView, compactAge, latestObservation, teamsView, teamStatus } from "../src/routing";
 import { NO_MACHINE_INDEX } from "../src/selector";
 import golden from "./fixtures/routing/ledger.json";
 import teamsCli from "./fixtures/routing/teams-cli.json";
@@ -21,16 +21,49 @@ function directory(): string {
   return path;
 }
 
-test("ledger views preserve captured Python stdout, stderr and exits", () => {
+test("retired models returns a native read-free tombstone for every former entry shape", () => {
+  const dir = directory(), home = join(dir, "home"), index = join(dir, "index");
+  mkdirSync(home); mkdirSync(index);
+  const ledger = join(dir, "ledger");
+  writeFileSync(ledger, "malformed ledger must not be read");
+  writeFileSync(join(index, "global-registry.json"), "{broken registry");
+  const before = readdirSync(dir, {recursive:true, encoding:"utf8"}).sort();
+  const expected = "tap models: tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l); next: tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated\n";
+  const env = {...process.env, HOME:home, TAP_INDEX_HOME:index, TAP_HOME:join(dir, "absent-bus"),
+    TAP_MODELS_LEDGER:ledger, TAP_VERBOSE:"0", BUN_RUNTIME_TRANSPILER_CACHE_PATH:"0"};
+  for (const args of [["models"], ["models", "--all"], ["models", "--full"], ["models", "fable"],
+    ["models", "--help"], ["help", "models"]]) {
+    const trace = join(dir, "trace");
+    writeFileSync(trace, "");
+    const result = spawnSync("bash", [join(root, "bin/tap"), ...args], {
+      cwd:dir, env:{...env, TAP_BUN_ROUTE_TRACE:trace}, encoding:"utf8",
+    });
+    expect({exit:result.status, stdout:result.stdout, stderr:result.stderr}, args.join(" "))
+      .toEqual({exit:1, stdout:"", stderr:expected});
+    expect(readFileSync(trace, "utf8")).toBe(`native ${args.includes("--help") ? "help" : args[0]}\n`);
+  }
+  for (const args of [["models", "--json"], ["models", "--all", "--json"]]) {
+    const result = spawnSync("bash", [join(root, "bin/tap"), ...args], {cwd:dir, env, encoding:"utf8"});
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok:false, error_class:"models_retired", effect:"none",
+      action:"tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated",
+      detail:"tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l)",
+    });
+  }
+  expect(readdirSync(dir, {recursive:true, encoding:"utf8"}).sort()).toEqual([...before, "trace"].sort());
+  expect(readFileSync(ledger, "utf8")).toBe("malformed ledger must not be read");
+  expect(readFileSync(join(index, "global-registry.json"), "utf8")).toBe("{broken registry");
+});
+
+test("calibration preserves captured Python stdout, stderr and exits", () => {
   const dir = directory();
   for (const [i, sample] of golden.cases.entries()) {
-    // Deliberate new absent-ledger contract has its own reference/no-write proof below.
-    if (sample.name === "missing") continue;
+    if (!("roster" in sample) || !sample.roster) continue;
     const path = join(dir, `${i}.md`), ledger = golden.ledgers[sample.ledger];
     if (ledger !== null) writeFileSync(path, ledger!);
-    const result = "roster" in sample && sample.roster
-      ? calibrationView(sample.roster, sample.activity!, sample.strongest!, path, sample.now!)
-      : modelsView(sample.args.slice(1), path);
+    const result = calibrationView(sample.roster, sample.activity!, sample.strongest!, path, sample.now!);
     const seen = { ...result, stdout: result.stdout.split(path).join("<LEDGER>"), stderr: result.stderr.split(path).join("<LEDGER>") };
     if (sample.name === "calibration false") {
       // Only harness-family guesses and resulting column widths were retired.
@@ -42,23 +75,20 @@ test("ledger views preserve captured Python stdout, stderr and exits", () => {
   }
 });
 
-test("genuine ledger absence supplies read-only reference; full, malformed and dangling paths refuse", () => {
+test("calibration ledger absence supplies read-only reference; malformed and dangling paths refuse", () => {
   const dir = directory(), absent = join(dir,"missing");
-  const before = readdirSync(dir, {recursive:true});
-  const result = modelsView(["fable"], absent);
+  const before = readdirSync(dir, {recursive:true, encoding:"utf8"});
+  const result = calibrationView({agents:[]}, "", false, absent);
   expect(result.exit).toBe(0);
-  expect(result.stdout).toContain("reference; access unverified");
-  expect(result.stdout).toContain("effort=high");
-  expect(result.stdout).toContain("effort=medium");
-  expect(modelsView(["--full"],absent).exit).toBe(1);
+  expect(result.stdout).toContain("Reference; access unverified");
+  expect(result.stdout).toContain("Saved recipes: tap presets");
   expect(readdirSync(dir,{recursive:true})).toEqual(before);
   writeFileSync(join(dir,"malformed"), "not a routing table");
   symlinkSync(absent,join(dir,"dangling"));
   writeFileSync(join(dir,"unreadable"),"private"); chmodSync(join(dir,"unreadable"),0);
   for (const path of [join(dir,"malformed"),join(dir,"dangling"),join(dir,"unreadable"),dir]) {
-    for (const view of [modelsView([],path),calibrationView({agents:[]},"",false,path)]) {
-      expect(view.exit).toBe(1); expect(view.stdout).toBe("");
-    }
+    const view = calibrationView({agents:[]},"",false,path);
+    expect(view.exit).toBe(1); expect(view.stdout).toBe("");
   }
 });
 
@@ -110,56 +140,11 @@ test("latest evidence ranks endpoints but displays the ledger's literal token", 
     .toEqual(["2026-07-28", "2026-07-28\ufeff–07-30"]);
 });
 
-test("a BOM is not Python whitespace in a disposition heading", () => {
-  const path = join(directory(), "ledger");
-  writeFileSync(path, "## Routing table\n|handle|model @ harness|family|tier|\n|-|-|-|-|\n|x|m @ codex|openai|basic|\n###\ufeffx\nnot a disposition\n");
-  expect(modelsView(["x"], path).stdout).not.toContain("not a disposition");
-});
-
 test("unjoined active seats remain tier-zero targets, and an empty candidate set is empty", () => {
   const path = join(directory(), "ledger");
   writeFileSync(path, "## Routing table\n|handle|model @ harness|family|tier|\n|-|-|-|-|\n");
   expect(calibrationView({agents:[{handle:"unjoined",status:"active"},{handle:"offline",status:"suspended"}]}, "", true, path).stdout).toBe("unjoined\n");
   expect(calibrationView({agents:[]}, "", true, path).stdout).toBe("");
-});
-
-test("models is registry-independent through native and shell doors", () => {
-  const dir = directory(), home = join(dir,"home"), index = join(dir,"index"), cwd = join(dir,"unenrolled");
-  for (const path of [home,index,cwd]) mkdirSync(path);
-  const path = join(dir,"ledger.md");
-  writeFileSync(path, golden.ledgers[0]!);
-  writeFileSync(join(index,"global-registry.json"), "{broken registry");
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME:home, TAP_INDEX_HOME:index, TAP_MODELS_LEDGER:path,
-    TAP_HOME:join(dir,"absent-bus"), TAP_VERBOSE:"0" };
-  delete env.BUN_RUNTIME_TRANSPILER_CACHE_PATH;
-  const doors = [["bun",join(root,"runtime/bun/main.ts")], ["bash",join(root,"scripts/tap.sh")], ["bash",join(root,"bin/tap")]];
-  const before = readdirSync(dir,{recursive:true}).sort();
-  for (const door of doors) for (const args of [[],["--verbose"],["--v"],["-v"],["opus","--all"],["--full=x"]]) {
-    // Raw Bun starts before the owner can configure its cache. Shipped shell
-    // entrances must set the pin themselves, including a fresh HOME.
-    const runEnv: NodeJS.ProcessEnv = {...env};
-    if (door[0] === "bun") runEnv.BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
-    const result = spawnSync(door[0]!,[...door.slice(1),"models",...args],{cwd,env:runEnv,encoding:"utf8"});
-    expect({exit:result.status,stdout:result.stdout,stderr:result.stderr},`${door.join(" ")} models ${args.join(" ")}`).toEqual(modelsView(args,path));
-  }
-  expect(readdirSync(dir,{recursive:true}).sort()).toEqual(before);
-  expect(readFileSync(join(index,"global-registry.json"),"utf8")).toBe("{broken registry");
-}, 30000);
-
-test("exact public help keeps its dispatcher; abbreviated or trailing help keeps argparse text", () => {
-  const cwd = directory();
-  const env = {...process.env,BUN_RUNTIME_TRANSPILER_CACHE_PATH:"0",TAP_VERBOSE:"0"};
-  const publicHelp = spawnSync("bash",[join(root,"scripts/tap.sh"),"help","models"],{cwd,env,encoding:"utf8"});
-  expect(publicHelp.status).toBe(0);
-  for (const door of [["bun",join(root,"runtime/bun/main.ts")],["bash",join(root,"scripts/tap.sh")]]) {
-    const exact = spawnSync(door[0]!,[...door.slice(1),"models","--help"],{cwd,env,encoding:"utf8"});
-    expect(exact.status).toBe(0);
-    expect(exact.stdout).toBe(publicHelp.stdout);
-    for (const args of [["--h"],["opus","--help"]]) {
-      const result = spawnSync(door[0]!,[...door.slice(1),"models",...args],{cwd,env,encoding:"utf8"});
-      expect({exit:result.status,stdout:result.stdout,stderr:result.stderr}).toEqual(modelsView(args));
-    }
-  }
 });
 
 function fleet(stub = true) {
@@ -338,6 +323,14 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
     expect({exit:summary.status,stdout:summary.stdout,stderr:summary.stderr},door.join(" ")).toEqual(expected);
     const list = run(["team","list"]);
     expect(list.status).toBe(0); expect(list.stdout).toBe(expected.stdout+"to see seats on this team: tap team (or tap team roster)\n");
+    for (const shape of [["--json"], ["--all","--json"], ["--wide"], ["--details","--json"], ["--context","--json"]]) {
+      const seats = run(["teams","--seats",...shape]);
+      const alias = run(["team","list","--seats",...shape]);
+      expect({exit:alias.status,stdout:alias.stdout,stderr:alias.stderr}).toEqual({exit:seats.status,stdout:seats.stdout,stderr:seats.stderr});
+    }
+    const namedSeats = run(["teams","beta","--seats","--json"]);
+    expect(namedSeats.status).toBe(1);
+    expect(JSON.parse(namedSeats.stdout).error_class).toBe("unknown_option");
     const named = run(["teams","beta","--json"]);
     expect(named.status,named.stderr).toBe(0);
     expect(JSON.parse(named.stdout).agents.map((a:{handle:string})=>a.handle)).toEqual(["beta"]);
@@ -347,7 +340,7 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
     expect(bad.status).toBe(2); expect(bad.stdout).toBe("");
   }
   expect(readFileSync(beta.registry,"utf8")).toContain('"beta"');
-  const ttyEnv = {...process.env}; delete ttyEnv.NO_COLOR;
+  const ttyEnv: NodeJS.ProcessEnv = {...process.env,TERM:"xterm-256color"}; delete ttyEnv.NO_COLOR;
   const tty = (args: string[]) => spawnSync("python3",["-B","-c",
     "import os,pty,sys; raise SystemExit(os.waitstatus_to_exitcode(pty.spawn(sys.argv[1:])))",
     process.execPath,join(root,"runtime/bun/main.ts"),...args],{encoding:"utf8",cwd:fx.dir,env:ttyEnv,timeout:20000});
@@ -355,6 +348,9 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
   expect(color.status,color.stderr).toBe(0); expect(color.stdout).toContain("\x1b[34m●\x1b[0m idle");
   expect(captured.status,captured.stderr).toBe(0);
   expect(captured.stdout.replaceAll("\r","")).toBe(expected.stdout+"to see seats on this team: tap team (or tap team roster)\n");
+  const seatTty = tty(["teams","--seats"]), seatAliasTty = tty(["team","list","--seats"]);
+  expect({exit:seatAliasTty.status,stdout:seatAliasTty.stdout,stderr:seatAliasTty.stderr}).toEqual({exit:seatTty.status,stdout:seatTty.stdout,stderr:seatTty.stderr});
+  expect(seatTty.stdout).toContain("\x1b[1;36mbeta\x1b[0m");
   fx.teams.ghost = {root:fx.dir,registry_location:join(fx.dir,"missing")};
   fx.teams.historical = {root:fx.dir,state:"historical",registry_location:beta.registry};
   fx.teams.bare = {root:fx.dir};
@@ -366,3 +362,128 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
       : `tap: acting registry for team '${name}' is unreachable (flip marker live/invalid?); next: tap doctor\n`});
   }
 }, 60000);
+
+test("machine seats flatten teams, sort warm expiry first, and preserve offline selection in JSON", async () => {
+  const fx = fleet();
+  const cache = (expires_at: string) => ({state:"warm",ttl_seconds:3600,expires_at,last_activity_at:"2026-10-22T08:00:00Z",source:"claude_transcript"});
+  fx.enroll("alpha",{}, {agents:[
+    {handle:"later",harness:"claude",status:"active",agent_state:"idle",prompt_cache:cache("2099-10-22T09:00:00Z")},
+    {handle:"sleeping",harness:"claude",status:"suspended"},
+  ]});
+  fx.enroll("beta",{}, {agents:[
+    {handle:"soon",harness:"claude",status:"active",agent_state:"working",prompt_cache:cache("2099-10-22T08:30:00Z")},
+    {handle:"unknown",harness:"codex",status:"active",agent_state:"idle",prompt_cache:null},
+  ]});
+  fx.save();
+  const result = await teamsView(["--seats","--json"]);
+  expect(result.exit).toBe(0);
+  expect(result.stderr).toBe("");
+  const doc = JSON.parse(result.stdout);
+  expect(doc.scope).toBe("machine");
+  expect(doc.agents.map((row: any) => `${row.team}/${row.handle}`)).toEqual(["beta/soon","alpha/later","beta/unknown"]);
+  expect(doc.agents[0].prompt_cache.ttl_seconds).toBe(3600);
+  const all = JSON.parse((await teamsView(["--seats","--all","--json"])).stdout);
+  expect(all.agents).toHaveLength(4);
+  const human = (await teamsView(["--seats","--wide"])).stdout;
+  expect(human).toMatch(/^  handle +harness +state +context +family +model +preset\n/);
+  expect(human).toContain(`beta  2/2 seats  ${join(fx.dir,"beta")}\n  soon`);
+  expect(human.indexOf("\nbeta ")).toBeLessThan(human.indexOf("\nalpha "));
+  expect(human).not.toContain("sleeping");
+  expect((await teamsView(["--seats","--details","--json"])).exit).toBe(1);
+  expect(JSON.parse((await teamsView(["--json"])).stdout)).toMatchObject({ok:false,error_class:"usage_error",detail:"--json requires --seats"});
+  expect((await teamsView(["--","--seats"])).exit).toBe(2);
+  expect((await teamsView(["--seats","--det","--json"])).exit).toBe(1);
+  expect((await teamsView(["--seats","--help"])).stdout).toContain("tap teams --seats");
+});
+
+test("machine seats keep healthy seats and disclose unobserved teams in both formats", async () => {
+  const fx = fleet();
+  fx.enroll("broken",{}, {error:"cannot read",agents:[]});
+  fx.enroll("healthy",{}, {agents:[{handle:"warm",harness:"claude",status:"active",agent_state:"idle"}]});
+  fx.save();
+  const result = await teamsView(["--seats","--json"]);
+  expect(result.exit).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout)).toMatchObject({ok:true,unobserved_teams:["broken"],agents:[{team:"healthy",handle:"warm"}]});
+  const human = await teamsView(["--seats"]);
+  expect(human.exit).toBe(0);
+  expect(human.stdout).toContain("healthy  1/1 seats");
+  expect(human.stdout).toMatch(/\n  warm +claude/);
+  expect(human.stderr).toContain("broken");
+  expect(human.stderr).toContain("tap teams --details");
+});
+
+test("machine seats refresh clock-derived cache fields at final collection time", async () => {
+  const fx = fleet();
+  fx.enroll("alpha",{}, {agents:[{handle:"expired",harness:"claude",status:"active",agent_state:"idle",prompt_cache:{
+    state:"warm",ttl_seconds:3600,last_activity_at:"2026-01-01T00:00:00Z",expires_at:"2026-01-01T01:00:00Z",
+    remaining_seconds:60,source:"claude_transcript",basis:"assistant_timestamp",unknown_reason:null}}]});
+  fx.save();
+  const result = await teamsView(["--seats","--json"]);
+  expect(JSON.parse(result.stdout).agents[0].prompt_cache).toMatchObject({state:"cold",remaining_seconds:0});
+  const human = await teamsView(["--seats"]);
+  expect(human.stdout).toMatch(/— ●/);
+  expect(human.stdout).not.toContain("expired/");
+});
+
+test("machine seat index refusals retain actionable recovery fields", async () => {
+  const fx = fleet();
+  const absent = await teamsView(["--seats","--json"]);
+  expect(JSON.parse(absent.stdout).action).toBe("tap init  OR  tap session launch");
+  writeFileSync(join(fx.index,"global-registry.json"),"{bad");
+  const invalid = await teamsView(["--seats","--json"]);
+  expect(JSON.parse(invalid.stdout).action).toBe("tap doctor");
+});
+
+
+test("nested seats keep urgency within teams, cold before unknown, and align all columns", async () => {
+  const fx = fleet();
+  const expiry = (seconds: number) => ({state:"warm",ttl_seconds:3600,expires_at:new Date(Date.now()+seconds*1000).toISOString()});
+  fx.enroll("zeta",{}, {agents:[
+    {handle:"a-unknown",harness:"codex",status:"active",agent_state:"working",family:"openai",model:"gpt",effort:"high",preset:"sol"},
+    {handle:"z-cold",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(-10)},
+    {handle:"soon",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(120),
+      context_tokens:{input_tokens:329000,window_tokens:600000},observed_model:"opus",observed_effort:"high",family:"anthropic",preset:"opus"},
+  ]});
+  fx.enroll("alpha",{}, {agents:[{handle:"later",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(180)}]});
+  fx.save();
+  const human = (await teamsView(["--seats","--wide"])).stdout;
+  const lines = human.trimEnd().split("\n");
+  expect(lines.filter(line=>line.includes("handle"))).toHaveLength(1);
+  expect(lines[1]).toMatch(/^zeta  3\/3 seats/);
+  expect(lines.slice(2,5).map(line=>line.trim().split(/\s+/)[0])).toEqual(["soon","z-cold","a-unknown"]);
+  expect(lines[2]).toMatch(/329k\/600k ●2m +anthropic +opus@high +opus$/);
+  expect(lines[4]).toMatch(/openai +gpt@high \(launch\) +sol$/);
+  const contextAt = lines[0]!.indexOf("context");
+  expect(lines[2]!.indexOf("329k/600k")).toBe(contextAt);
+  expect(human).not.toContain("\x1b");
+  // JSON remains the original flat urgency list: cold/unknown ties use team and handle.
+  const doc = JSON.parse((await teamsView(["--seats","--json"])).stdout);
+  expect(doc.agents.map((r:any)=>r.handle)).toEqual(["soon","later","a-unknown","z-cold"]);
+});
+
+
+test("nested machine styling respects color opt-outs and subtracts the seat indent from width", () => {
+  const fx = fleet();
+  fx.enroll("alpha",{}, {agents:[{handle:"seat",harness:"claude",status:"active",agent_state:"idle",family:"anthropic",
+    observed_model:"opus",preset:"long-preset-name",context_tokens:{input_tokens:329000,window_tokens:600000},
+    prompt_cache:{state:"warm",ttl_seconds:3600,expires_at:new Date(Date.now()+600000).toISOString()}}]});
+  fx.save();
+  const env: NodeJS.ProcessEnv = {...process.env,TERM:"xterm-256color",COLUMNS:"50"}; delete env.NO_COLOR;
+  const tty = (extra: NodeJS.ProcessEnv) => spawnSync("python3",["-B","-c",
+    "import os,pty,sys; raise SystemExit(os.waitstatus_to_exitcode(pty.spawn(sys.argv[1:])))",
+    process.execPath,join(root,"runtime/bun/src/routing.ts"),"teams","--seats"],{encoding:"utf8",env:{...env,...extra},timeout:20000});
+  const colored = tty({});
+  expect(colored.status,colored.stderr).toBe(0);
+  expect(colored.stdout).toContain("\x1b[1;36malpha\x1b[0m");
+  expect(colored.stdout).toContain("\x1b[33m●10m\x1b[0m");
+  const plain = colored.stdout.replace(/\x1b\[[0-9;]*m/g,"").replaceAll("\r","");
+  expect(plain).toMatch(/^  handle +harness +state +context\n/);
+  for (const line of plain.split("\n").filter(line=>line.startsWith("  "))) expect(line.length).toBeLessThanOrEqual(50);
+  for (const extra of [{NO_COLOR:""},{TERM:"dumb"}]) {
+    const mono = tty(extra);
+    expect(mono.status,mono.stderr).toBe(0);
+    expect(mono.stdout).not.toContain("\x1b");
+    expect(mono.stdout).toContain("329k/600k ●10m");
+  }
+});

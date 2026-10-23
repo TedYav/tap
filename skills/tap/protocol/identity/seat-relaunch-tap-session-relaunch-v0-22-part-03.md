@@ -66,7 +66,7 @@ Harness arguments after `--` append after the stored recipe and generated argume
 
 Repeatable `--env KEY=VALUE` replaces the stored value; the last assignment to a key wins. Repeatable `--unset-env KEY` removes a variable from the child environment after login startup, including preset, machine-policy, and inherited values. The existing environment-key fence applies to both flags. Setting and unsetting the same key in one command refuses; a later set clears an earlier persisted unset.
 
-Overrides persist with the session. Relaunch retains the existing settings and conversation, appends new arguments, and saves environment changes at the guarded replacement boundary. A dry run changes nothing. A bare relaunch handle selects the current enrolled team; `team/handle` selects that explicit team. The same overrides apply to each selected seat in a batch.
+Overrides persist with the session. Relaunch retains the existing settings and conversation, appends new arguments, and saves environment changes at the guarded replacement boundary. A dry run changes nothing. A bare relaunch handle selects the current enrolled team; `team/handle` selects that explicit team. The same overrides apply to each selected seat in a batch, crew included.
 
 This supersedes earlier preset exclusivity for `--env` and the earlier replacement/leading-position behavior for explicit launch arguments. Existing stored passthrough vectors retain their original interpretation; new explicit tails and unset keys use separate additive record fields.
 
@@ -74,7 +74,7 @@ This supersedes earlier preset exclusivity for `--env` and the earlier replaceme
 
 **Grammar.** `tap session relaunch <[team/]handle> --workdir <path>` is single-seat only: batch (`--harness`) and crew relaunches refuse it, and the option is the one durable override of a seat's recorded `launch_workdir`. Without it the recorded value is used.
 
-**Validation.** The path passes launch's repository-membership validation (an existing worktree of the team's repository) while the target is resolved, before the active/self exclusions can drop the seat, so a mistyped path refuses `invalid_workdir` even for an inactive or caller-pane seat and even under `--dry-run`. A valid worktree still refuses `resume_unavailable_in_workdir`, before any respawn and under `--dry-run`, when the conversation's workspace-keyed store (Cursor) is absent there.
+**Validation.** Launch's repository-membership check runs before active/self exclusions: an invalid worktree refuses `invalid_workdir` for inactive and caller-pane seats too, including dry runs. Before respawn, `resume_unavailable_in_workdir` refuses a missing Cursor workspace store or an OpenCode native session whose directory cannot be verified as the target ([store rules](resume-store.md)); dry runs apply both guards.
 
 **Dry run.** It changes nothing and names the directory it would use: the JSON receipt's `results[].workdir` and the human plan line `would respawn in <dir> and record it as launch_workdir`. Both appear only when `--workdir` was given.
 

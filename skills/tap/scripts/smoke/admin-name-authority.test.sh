@@ -119,8 +119,8 @@ cat > "$BUS/registry.json" <<'JSON'
   "schema": "0.20", "team": {"name": "Authority"},
   "seats": {
     "active": {"status": "active", "delivery": "pane", "session": "Authority/live", "pane": "Authority/live:0.0", "pane_id": "%11", "harness": "codex", "server_epoch": "srv:900:100"},
-    "gone": {"status": "active", "delivery": "pane", "session": "Authority/gone", "pane": "Authority/gone:0.0", "pane_id": "%11", "harness": "codex", "server_epoch": "srv:900:100"},
-    "gone_id_only": {"status": "active", "delivery": "pane", "session": "Authority/gone-id-only", "pane_id": "%11", "harness": "codex", "server_epoch": "srv:900:100"},
+    "gone": {"status": "active", "delivery": "pane", "session": "Authority/gone", "pane": "Authority/gone:0.0", "pane_id": "%66", "harness": "codex", "server_epoch": "srv:900:100"},
+    "gone_id_only": {"status": "active", "delivery": "pane", "session": "Authority/gone-id-only", "pane_id": "%67", "harness": "codex", "server_epoch": "srv:900:100"},
     "stale": {"status": "active", "delivery": "pane", "session": "Authority/stale", "pane": "Authority/stale:0.0", "pane_id": "%77", "harness": "codex", "server_epoch": "srv:100:1", "native_session_id": "native-stale"},
     "shell": {"status": "active", "delivery": "pane", "session": "Authority/shell", "pane": "Authority/shell:0.0", "pane_id": "%12", "harness": "codex", "server_epoch": "srv:900:100", "native_session_id": "native-shell"},
     "rebound": {"status": "active", "delivery": "pane", "session": "Authority/rebound", "pane": "Authority/rebound:0.0", "pane_id": "%99", "harness": "codex", "server_epoch": "srv:900:100", "native_session_id": "native-rebound"}
@@ -203,7 +203,7 @@ path = sys.argv[1]
 registry = json.load(open(path))
 registry["seats"]["gone"] = {
     "status": "active", "delivery": "pane", "session": "Authority/gone",
-    "pane": "Authority/gone:0.0", "pane_id": "%11", "harness": "codex",
+    "pane": "Authority/gone:0.0", "pane_id": "%66", "harness": "codex",
     "server_epoch": "srv:900:100", "registered_at": "stale-registration",
 }
 with open(path, "w") as fh:

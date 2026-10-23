@@ -20,7 +20,7 @@ Bun: send/assign/reply, sessions, [lifecycle, crew generations](../protocol/iden
 
 [Pane enrollment](../protocol/identity/README.md): register/SessionStart/bind/repair scan id/generation/socket before publishing. Proven foreign/machine faults refuse `pane_enrolled_elsewhere`/`pane_enrollment_unknown`; other defects skip. No cross-bus lock; concurrent scans may see absence.
 
-Handles name seats; instances distinguish occupants. At every effect (detached too) and final registry read, recheck liveness, seat instance and pane/session/generation/socket binding; identity needs a process-owned pane ([poll exception](../protocol/messages/poll-mode-delivery-class-v0-4-part-02.md)). Outside ancestry: one exact active Claude row per [job rules](../protocol/identity/registry-unit-1-part-09.md), or the pane whose harness [holds the caller's terminal](../protocol/identity/held-terminal.md); neither replaces identity or shared-actor rules.
+Handles: seats; instances: occupants. At every effect (detached too) and final read, recheck liveness, instance and pane/session/generation/socket. Identity: process-owned pane ([poll exception](../protocol/messages/poll-mode-delivery-class-v0-4-part-02.md)). Exceptions: one exact active Claude [job row](../protocol/identity/registry-unit-1-part-09.md), a [harness-held caller terminal](../protocol/identity/held-terminal.md), or native shell/process proof for a launcher-owned [shared OpenCode seat](../protocol/identity/opencode-shared.md). Actor rules apply.
 
 Cwd walks stop at Git roots and only default a team; `unanchored_bus` or an enrolled cwd team not holding the calling pane re-anchors once via it: live marker, machine-unique row (`contested`/unproven fail closed), same Git common dir, revalidated; never launcher enrollment ([ref](../protocol/delivery/structured-failures-and-json-output-part-03.md)). Restart: no dispatch writes; lifecycle re-attests.
 
@@ -34,9 +34,7 @@ After send/reply, work; never sleep/poll. Check obligations before yielding. Rec
 
 All readers treat `suspended/incapable` as stopped-like. Only public re-registration from its recorded pane clears it, never repair/rebuild/attach/resume.
 
-[Self compact](../protocol/delivery/command-mode-tap-compact-and-the-deprecated-tap-command-part-02.md): caller arms; worker queues before input, owns proof; timeout keeps handoff, no resume.
-
-Rebrief replaces context, keeps instance/obligations; Codex reset proof is post-input; persist brief before effects.
+[Self context](../protocol/delivery/command-mode-tap-compact-and-the-deprecated-tap-command-part-02.md): compact/rebrief (clear alias): authored brief before effects; same instance/obligations. Native proof; no effect replay. Notify: optional audience, no inference/transfer. Codex reset proof: post-input.
 
 Versions track readers/controls. Tests, not prose, pin invariants. Reviews/gates are not transport receipts.
 

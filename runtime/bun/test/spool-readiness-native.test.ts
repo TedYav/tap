@@ -33,7 +33,7 @@ test("native bound identity classifies every refusal reason and never captures a
   for (const [over, expected] of [
     [{}, "match"], [{ status: "suspended" }, "handle_missing_or_inactive"], [{ delivery: "poll" }, "not_pane_delivery"],
     [{ pane: "other:0.0" }, "pane_drift"], [{ pane_id: "" }, "pane_id_missing"], [{ pane_id: "%999" }, "pane_id_drift"],
-    [{ session: "replacement" }, "session_absent"], [{ server_epoch: "srv:999:1" }, "server_epoch_stale"],
+    [{ session: "replacement" }, "pane_session_conflict"], [{ server_epoch: "srv:999:1" }, "server_epoch_stale"],
     [{ server_epoch: "" }, "server_epoch_missing"],
   ] as const) {
     f.writeSeat(over);

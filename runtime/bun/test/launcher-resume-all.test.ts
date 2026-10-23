@@ -144,6 +144,24 @@ test("an unobservable tmux namespace refuses; only the recognized no-server answ
 
 const three = (root: string) => Object.fromEntries([1, 2, 3].map(n => [`seat${n}`, seat(root, `seat${n}`)]));
 
+test("a pinned restart cohort never offers fresh launches after a failed resume", async () => {
+  const f = fixture(three);
+  const restartRows = new Map(Object.entries(three(f.root)));
+  const d = deps({ hasTty: () => true, run: async () => { throw new TransactionError("seat changed", undefined, "seat_changed", "retry tap team up --last"); } });
+  const result = await captured(() => resumeAll(options({ restartRows }), f.root, d.value));
+  expect(result.value).toBe(1);
+  expect(result.out).toContain("seat changed");
+  // The default confirm throws: a fresh-start prompt would fail this test.
+});
+
+test.each(["", "unsupported"])("a pinned restart row with harness '%s' refuses instead of disappearing", async harness => {
+  const f = fixture(three);
+  const restartRows = new Map([["seat1", seat(f.root, "seat1", { harness })]]);
+  const d = deps();
+  await expect(captured(() => resumeAll(options({ restartRows, dryRun: true }), f.root, d.value))).rejects.toThrow("stored launch recipe");
+  expect(d.calls).toEqual([]);
+});
+
 test.each([
   ["exit code", async (): Promise<number> => 2, "resume failed (exit 2)"],
   ["launcher refusal", async (): Promise<number> => { throw new InvocationError("fixture refusal"); }, "fixture refusal"],
@@ -492,7 +510,7 @@ test("a failed bootstrap is said once, as the typed refusal line", async () => {
 // ---- the reset fence: checked at entry and again after bootstrap, before any effect ----
 
 const fenced = (root: string) => writeLiveFence(join(root, ".tap/bus/reset.fence.json"));
-const midReset = (root: string) => `refusing session resume — team bus is mid-reset (fence at ${join(root, ".tap/bus/reset.fence.json")}); next: tap team reset`;
+const midReset = (root: string) => `refusing session resume — team bus is mid-reset (fence at ${join(root, ".tap/bus/reset.fence.json")}); next: wait for the reset owner (or until identity is readable)`;
 
 test("a live reset fence refuses at entry, before bootstrap or any launch", async () => {
   delete process.env.TAP_HOME;

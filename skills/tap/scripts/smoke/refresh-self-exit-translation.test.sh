@@ -427,5 +427,20 @@ else
   FAILED=1
 fi
 
+# The real shared arm (without the preload stub) refuses bare self refresh,
+# including --fresh, before a reset request or instance retirement can be written.
+for fresh in no yes; do
+  extra=(); [ "$fresh" != yes ] || extra=(--fresh)
+  before_registry="$(shasum -a 256 "$BUS_ROOT/.tap/team-registry.json")"
+  rc=0
+  ( cd "$BUS_ROOT" && env PATH="$WORK/bin:$PATH" TMUX="/tmp/fake,1,0" TMUX_PANE="$PANE_ID" \
+      TAP_INDEX_HOME="$INDEX" TAP_HOME="$BUS" \
+      "$REAL_BUN" "$ROOT/runtime/bun/main.ts" refresh solo ${extra[@]+"${extra[@]}"} >/dev/null 2>"$WORK/real-self.err" ) || rc=$?
+  check "(8) real self refresh fresh=$fresh requires a brief" "$rc" "1"
+  grep -qF '/tap:self rebrief' "$WORK/real-self.err" || FAILED=1
+  [ "$(shasum -a 256 "$BUS_ROOT/.tap/team-registry.json")" = "$before_registry" ] || FAILED=1
+  [ ! -d "$BUS/handoff" ] || FAILED=1
+done
+
 [ "$FAILED" = 0 ] || exit 1
 echo "refresh-self-exit-translation: ok"

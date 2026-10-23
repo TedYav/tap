@@ -14,7 +14,18 @@ An unresolved explicit target never reports successful retirement. Nameless
 | `shutdown` | Retire row with history | Stop exact session | Retire rows with history; stop with owner |
 | `out --hard` / `out --kill` | Same hard-removal mechanism as shutdown | Same exact stop | Same retirement |
 | `team out` | Retire selected parent families with per-seat history; keep team initialized | Preserve every process | Retire owned crew rows; preserve processes under their parent lifetime |
-| `team out --hard` / `--kill` | Same family retirement | Stop exact parent and bound child processes | Stop owned crew panes before the parent session |
+| `team reset` / `team out --hard` / `--kill` | Same family retirement | Stop exact parent and bound child processes | Stop owned crew panes before the parent session |
+
+`team reset [TEAM]` is an alias of `team out --hard [TEAM]`, with the same
+receipts, refusals and family engine. It selects every seat by default, including
+the caller, whose family stops last. Hard retirement of pane-backed families refuses before any retirement when the caller cannot be observed. `--except <your-handle>` spares the caller.
+Full-team and picker retirement requires confirmation (`--yes` without a
+terminal); explicit handle lists need no extra consent. Dry-run needs none.
+Reset preserves the registry envelope, enrollment, bus, mail, watch state and
+all historical archives. The checkpoint cut is retired; `team restore` and
+`team purge` are non-mutating `renamed_verb` tombstones. The removed reset flags
+`--kill-self` and `--allow-nonstandard-bus-path` refuse before team resolution.
+Shared reset fence/generation plumbing remains pending separate retirement.
 
 `team out [TEAM]` selects parent seats as family units; `--only` names parents
 to act on and `--except` names parents to spare. Crew handles cannot be named
@@ -111,7 +122,28 @@ hard removal and crew shutdown retain their requested actions. Detail uses
 A requested stop event is process-effect intent, not confirmation that the
 process stopped.
 
-`team purge` remains native with `--yes` and `--dry-run`. There is no public
-standalone `archive-purge` command; this lifecycle change does not add one or
-claim parity with the retired spelling. Bus mail and historical evidence are
-not rewritten by seat retirement.
+Bus mail and historical evidence are not rewritten by seat retirement.
+Historical team-reset bundles remain on disk for manual inspection; the retired
+checkpoint commands never inspect, restore or delete them.
+
+`tap out --last` (`-` remains an alias) selects the unique latest `exited_at`
+among active pane-backed rows or delivery-marked `suspended/pane_gone` rows
+that the shared refresh classifier proves gone.
+Live, launching, pending, poll, other suspended and foreign-team/socket rows are excluded.
+Missing exit stamps are recorded only after readable observation; ties refuse.
+The selected row and positive absence are revalidated under retirement custody.
+
+The shared classifier also reports `gone/pane_absent` when a valid recorded
+pane ID is missing from a readable global pane inventory in its still-present
+session and its explicit server epoch matches. A session-scoped scan cannot
+exclude a pane moved elsewhere and keeps `unknown/designated_pane_missing`.
+This widens ordinary `team refresh` to
+shared-session exits. Rebound addresses, panes visible in another session, poisoned pane records, launching markers,
+missing or stale epochs, and unreadable pane sets remain conservative; an exited harness in a surviving pane is offline.
+
+For recognized no-server replies, `out --last` and `-` use the positive-empty
+namespace authority shared with `team refresh --hard`. The query pins its physical
+socket; any recorded server socket must match. Other failures and excluded row
+statuses remain refusals. The namespace proof is refreshed under retirement
+custody, so a server that starts meanwhile must pass the normal snapshot checks.
+Plain refresh's no-server polarity stays unchanged.

@@ -66,20 +66,23 @@ function db(name: string, rows: object[]): string {
   return path;
 }
 const msg = (role: string, created: number, completed: number | null, finish: string | null, sessionID = "s1") =>
-  ({ role, sessionID, time: { created, completed }, finish });
+  ({ type: role, sessionID, time: { created, completed }, finish });
 
-test("opencode: the newest message of any role must be a completed assistant stop", () => {
-  const ok = db("stop.db", [msg("user", 1000, null, null), msg("assistant", 2000, 3000, "stop"), msg("assistant", 9000, null, null, "other")]);
-  expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: ok })).toEqual({ ended: true, lastActivity: 3, at: 3 });
-  // A stale completed tool-calls finish while its tool runs: work, not idle.
-  const tool = db("tool.db", [msg("assistant", 2000, 3000, "tool-calls")]);
-  expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: tool })?.ended).toBe(false);
-  // A newer user message after the stop: unprocessed work.
-  const user = db("user.db", [msg("assistant", 2000, 3000, "stop"), msg("user", 4000, null, null)]);
-  expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: user })).toEqual({ ended: false, lastActivity: 4, at: null });
-  // An open assistant message.
-  const open = db("open.db", [msg("assistant", 2000, null, null)]);
-  expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: open })?.ended).toBe(false);
+test("opencode: native idle ends the turn, and newer input or output is work", () => {
+  for (const outcome of ["succeeded", "failed", "interrupted"]) {
+    const idle = {type:"idle",sessionID:"s1",time:{created:3100},outcome};
+    const path = db(`idle-${outcome}.db`, [msg("user",1000,null,null),msg("assistant",2000,3000,"stop"),idle,
+      msg("assistant",9000,null,null,"other")]);
+    expect(opencodeEvidence("s1",{OPENCODE_DB_PATH:path})).toEqual({ended:true,lastActivity:3.1,at:3.1});
+  }
+  for (const type of ["user", "synthetic", "assistant"]) {
+    const path=db(`after-idle-${type}.db`,[msg("assistant",2000,3000,"stop"),
+      {type:"idle",sessionID:"s1",time:{created:3100},outcome:"succeeded"},msg(type,4000,null,null)]);
+    expect(opencodeEvidence("s1",{OPENCODE_DB_PATH:path})).toEqual({ended:false,lastActivity:4,at:null});
+  }
+  // An assistant stop is not the session's terminal marker in OpenCode 2.
+  const stop=db("stop-without-idle.db",[msg("assistant",2000,3000,"stop")]);
+  expect(opencodeEvidence("s1",{OPENCODE_DB_PATH:stop})).toEqual({ended:false,lastActivity:3,at:null});
 });
 
 test("opencode: no session, no rows, a missing or junk store are unknown", () => {

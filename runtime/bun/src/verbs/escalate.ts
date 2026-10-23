@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // Direct machine notification. Only the first nonempty body line leaves TAP;
 // no courier, obligation, bus initialization, or delivery-liveness prerequisite.
 import { accessSync, closeSync, constants, existsSync, openSync, readSync, statSync } from "node:fs";
@@ -97,7 +98,7 @@ export async function cmdEscalate(argv: string[], env: NodeJS.ProcessEnv = proce
     catch { question = ""; }
     if (!question) fail(1, "empty_question", 'tap escalate -m "<question>" (or -f <file> whose first non-empty line is the question)',
       "the body has no non-empty line, so there is no question to notify");
-    from ??= env.TAP_SELF || "";
+    from ??= inheritedActor(env);
     if (!from) {
       let generation = false;
       try {

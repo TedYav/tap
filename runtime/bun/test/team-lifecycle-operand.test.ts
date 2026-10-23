@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import { removeScratchTree } from "./support/scratch";
+import { physicalSocketPath } from "../src/tmux";
 
 const repo = resolve(import.meta.dir, "../../..");
 const shippedEntry = join(repo, "bin/tap");
@@ -218,6 +219,125 @@ test("team up <team> --only selects within the named team", () => {
   const wrong = run(["team", "up", "foreign-team", "--only", "local-seat", "--dry-run"], f.localRoot, f.env);
   expect(wrong.status).toBe(1);
   expect(wrong.stderr).toContain("local-seat");
+}, 30_000);
+
+function restartRows(f: ReturnType<typeof fixture>, stoppedNewest = false) {
+  writeFileSync(join(f.dir, "bin/tmux"), "#!/bin/sh\necho 'no server running on fixture socket' >&2\nexit 1\n", { mode: 0o755 });
+  const doc = JSON.parse(readFileSync(f.foreignRegistry, "utf8"));
+  doc.seats = Object.fromEntries([
+    ["older", "srv:10:10", "active", ""],
+    ["latest-a", "srv:20:20", stoppedNewest ? "suspended" : "active", stoppedNewest ? "session_stopped" : ""],
+    ["latest-b", "srv:20:20", "suspended", stoppedNewest ? "session_stopped" : "pane_gone"],
+    ["stopped", "srv:20:20", "suspended", "session_stopped"],
+  ].map(([handle, epoch, status, reason]) => [handle, { ...seat(f.foreignRoot, "foreign-team", handle!),
+    instance: `instance-${handle}`, status, status_reason: reason, server_epoch: epoch,
+    boot_id: "bootuuid:00000000-0000-0000-0000-000000000002", server_socket: physicalSocketPath(f.env),
+  }]));
+  writeFileSync(f.foreignRegistry, JSON.stringify(doc));
+}
+
+test.each(["--last", "-"])("team up %s previews only the latest restart generation without writing", flag => {
+  const f = fixture(); restartRows(f);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", flag, "--dry-run"], f.localRoot, f.env);
+  expect(result.status, result.stderr + result.stdout).toBe(0);
+  expect(result.stdout).toContain("would resume foreign-team/latest-a");
+  expect(result.stdout).toContain("would resume foreign-team/latest-b");
+  expect(result.stdout).not.toContain("would resume foreign-team/older");
+  expect(result.stdout).not.toContain("would resume foreign-team/stopped");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test("team up --last never falls back through a deliberately stopped latest generation", () => {
+  const f = fixture(); restartRows(f, true);
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run"], f.localRoot, f.env);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("no restart cohort");
+  expect(result.stdout).not.toContain("would resume");
+}, 30_000);
+
+test.each(["home", "select", "registry"])("team up --last validates the %s pin even for an empty cohort", pin => {
+  const f = fixture(); restartRows(f, true);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const env = { ...f.env, ...(pin === "home" ? { TAP_HOME: join(f.localRoot, ".tap/bus") }
+    : pin === "select" ? { TAP_TEAM_SELECT: "local-team" }
+    : { TAP_HOME: join(f.foreignRoot, ".tap/bus"), TAP_REGISTRY: join(f.localRoot, ".tap/team-registry.json") }) };
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run", "--json"], f.localRoot, env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout).error_class).toBe("usage_error");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test("team up --last accepts matching pins for an empty cohort", () => {
+  const f = fixture(); restartRows(f, true);
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run", "--json"], f.localRoot,
+    { ...f.env, TAP_HOME: join(f.foreignRoot, ".tap/bus"), TAP_TEAM_SELECT: "foreign-team" });
+  expect(result.status, result.stderr + result.stdout).toBe(0);
+  expect(JSON.parse(result.stdout).outcome).toBe("no_restart_cohort");
+}, 30_000);
+
+test.each([false, true])("team up --last rejects literal --yes after the separator (option consent: %s)", confirmed => {
+  const f = fixture(); restartRows(f);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", "--json", ...(confirmed ? ["--yes"] : []), "--", "--yes"], f.localRoot, f.env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout).error_class).toBe("usage_error");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test("team up --last requires nonterminal consent before any launch or JSON receipt", () => {
+  const f = fixture(); restartRows(f);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", "--json"], f.localRoot, f.env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout).error_class).toBe("confirmation_required");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test.each(["--json", "--j"])("team up --last emits a structured refusal for an unreadable namespace (%s)", jsonFlag => {
+  const f = fixture(); restartRows(f);
+  writeFileSync(join(f.dir, "bin/tmux"), "#!/bin/sh\necho 'permission denied opening socket' >&2\nexit 1\n", { mode: 0o755 });
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run", jsonFlag], f.localRoot, f.env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout).error_class).toBe("observation_unobservable");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test("team up --last refuses a live empty server when generation probes fail", () => {
+  const f = fixture(); restartRows(f);
+  writeFileSync(join(f.dir, "bin/tmux"), `#!/bin/sh
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in list-sessions) exit 0 ;; *) exit 1 ;; esac
+`, { mode: 0o755 });
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run", "--json"], f.localRoot, f.env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout).error_class).toBe("observation_unobservable");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test("team up --last --attach previews viewers for exactly the pinned restart cohort", () => {
+  const f = fixture(); restartRows(f);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", "--dry-run", "--attach"], f.localRoot, f.env);
+  expect(result.status, result.stderr + result.stdout).toBe(0);
+  expect(result.stdout).toContain("--attach would open 2 viewer(s): latest-a, latest-b");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
+}, 30_000);
+
+test.each(["--only", "--except"])("team up --last refuses %s before effects", selector => {
+  const f = fixture(); restartRows(f);
+  const before = readFileSync(f.foreignRegistry, "utf8");
+  const result = run(["team", "up", "foreign-team", "--last", selector, "latest-a", "--dry-run"], f.localRoot, f.env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("--last cannot be combined");
+  expect(readFileSync(f.foreignRegistry, "utf8")).toBe(before);
 }, 30_000);
 
 test("team up <team> --except spares the named seat through the env handoff", () => {

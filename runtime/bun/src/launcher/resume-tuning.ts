@@ -15,7 +15,7 @@ export type TuningAxis = "model" | "effort";
  * (2026-10-06; isolated tmux servers, launch value differing from the machine default):
  * - claude 2.1.291 `--resume <id>`: model kept; effort fell back to settings (high -> medium).
  * - codex 0.160.1 `resume <id>` (the TUI path TAP launches): model and effort kept. `codex exec resume` keeps neither.
- * - opencode 1.18.34 `--session <id>`: model kept over the most-recent model. TAP has no opencode effort axis.
+ * - opencode 2.1.2 `--session <id>`: the native session owns model and variant.
  * - cursor 2026.10.01 `--resume <id>`: the machine-global default model (whatever any seat chose last) replaces it.
  * - agy 1.3.0 `--conversation <id>`: effort fell back to its default; model restoration is unconfirmed (the TUI label
  *   did not distinguish the launch model from the default), so it is treated as not restored.
@@ -26,7 +26,7 @@ export type TuningAxis = "model" | "effort";
 export const NATIVE_RESUME_RESTORES: Record<string, readonly TuningAxis[]> = {
   claude: ["model"],
   codex: ["model", "effort"],
-  opencode: ["model"],
+  opencode: ["model", "effort"],
   cursor: [],
   agy: [],
   hermes: [],

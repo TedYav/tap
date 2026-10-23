@@ -127,7 +127,7 @@ function run(f: ReturnType<typeof fixture>, verb: "down" | "shutdown", args: str
   return JSON.parse(child.stdout) as { code: number; output: string };
 }
 
-test("interactive down previews finite parent cohort, cancellation has no effect, then confirmation stops its crew", () => {
+test("interactive down previews finite parent cohort, cancellation has no effect, then confirmation stops its legacy crew", () => {
   const f = fixture(true);
   try {
     const pickerCancelled = run(f, "down", ["--only"], "parent", "yes", false, true);

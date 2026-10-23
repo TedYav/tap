@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // `tap poll [me]` — list unprocessed payloads addressed to me.
 //
 // unprocessed = a payload whose envelope `to` is me and which has no `.done`.
@@ -17,7 +18,7 @@ import { join } from "node:path";
 import { spoolAuthorized } from "../payload-view";
 import { addresseeGrant, historyDirForBus } from "../addressee-grant";
 import { inboxRows, type InboxFacts } from "../slices/inbox-view";
-import { TapError, observeCallingPane, refuseUnanchoredPane, requireActingRegistry } from "../context";
+import { TapError, observeCallerIdentity, refuseUnanchoredPane, requireActingRegistry } from "../context";
 import { envelopeField, validateEnvelope } from "../envelope";
 import { ageNowEpoch, idAgeSeconds } from "../ids";
 import { quarantinePayload } from "../quarantine";
@@ -33,7 +34,7 @@ import { assertResetUnfenced } from "../reset";
 import { exchangeSelf } from "../exchange-self";
 
 export function cmdPoll(argv: string[]): number {
-  let me = process.env.TAP_SELF || "";
+  let me = "";
   let quiet = false;
   let json = false;
   let team = "";
@@ -70,7 +71,7 @@ export function cmdPoll(argv: string[]): number {
       if (!callerPin && ctx.busRule !== "env") requireActingRegistry(ctx, 4);
     } catch (error) {
       if (team || !(error instanceof TapError) || error.errorClass !== "unanchored_bus") throw error;
-      const seen = observeCallingPane();
+      const seen = observeCallerIdentity();
       if (seen.state === "inside") {
         refuseUnanchoredPane(seen.paneId, process.cwd(), 4,
           { session: seen.session, serverEpoch: seen.serverEpoch }, process.env, seen.paneId, true);
@@ -87,7 +88,7 @@ export function cmdPoll(argv: string[]): number {
         `cwd-derived bus has no acting registry and the caller pane is not observable (${reason})`);
     }
     assertResetUnfenced(ctx.bus.home, "tap poll");
-    if (!me) me = exchangeSelf(ctx, "poll");
+    if (!me) me = inheritedActor() || exchangeSelf(ctx, "poll");
     ctx.bus.ensureDirs();
 
     let quarantined = 0;

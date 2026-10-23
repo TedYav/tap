@@ -21,10 +21,13 @@ function numText(value: unknown): string {
     : typeof value === "number" && Number.isInteger(value) ? String(value) : "";
 }
 
-/** The two next-steps bash offers, which say OPPOSITE things to the operator. */
+/** Legacy checkpoint fences retain their guards, with recovery that still exists. */
 const FENCE_ACTION_WAIT =
-  "wait for the reset owner (or until identity is readable), then: tap team reset";
-const FENCE_ACTION_RETRY = "tap team reset  # retry completes the cut, then restore";
+  "wait for the reset owner (or until identity is readable)";
+function ownedFenceAction(path: string): string {
+  return fenceOwnerLive(path) ? FENCE_ACTION_WAIT
+    : `checkpoint reset is retired; after confirming no reset owner is running, remove the stale fence: rm ${shQuote(path)}`;
+}
 // The kernel helper accepts whole-second waits; this is its shortest positive bound.
 // Deliberately not timing-asserted: proving a holder releases mid-wait requires a
 // timing-dependent child process. The refusal branches below are mutation-pinned.
@@ -322,7 +325,7 @@ export function resetFenceRefusal(
   const path = join(busHome, "reset.fence.json");
   if (!isFile(path)) return null;
   return unownedFenceRefusal(path, operation) ?? {
-    action: fenceOwnerLive(path) ? FENCE_ACTION_WAIT : FENCE_ACTION_RETRY,
+    action: ownedFenceAction(path),
     detail: `refusing ${operation} — team bus is mid-reset (fence at ${path})`,
   };
 }
@@ -359,7 +362,7 @@ function shQuote(s: string): string {
 export function launcherFenceRefusal(path: string, operation: string): string {
   const unowned = unownedFenceRefusal(path, operation);
   return unowned ? `${unowned.detail}; next: ${unowned.action}`
-    : `refusing ${operation} — team bus is mid-reset (fence at ${path}); next: tap team reset`;
+    : `refusing ${operation} — team bus is mid-reset (fence at ${path}); next: ${ownedFenceAction(path)}`;
 }
 
 export function assertResetUnfenced(busHome: string, operation: string): void {
@@ -608,7 +611,7 @@ function writerLock(busHome: string, waitMs = Infinity, operation = "tap team re
   if (!lock) {
     // Only the bounded fence acquire can time out, before any stop or checkpoint.
     const note = readResetHolderNote(path);
-    throw new TapError(1, "reset_custody_busy", "re-run tap team reset; another TAP mutation holds the reset sidecar",
+    throw new TapError(1, "reset_custody_busy", "retry after the current TAP mutation releases reset custody",
       `refusing reset — could not obtain the reset fence sidecar within ${Math.ceil(waitMs / 1000)}s` +
         (note ? ` (held by ${note.operation}, pid ${note.pid}, since ${note.since})` : ""));
   }

@@ -37,7 +37,7 @@ import { cmdSend } from "./src/verbs/send";
 import { recordRefusalBeforeSend, recordSendRefusal, refusalErrorId } from "./src/send-refusal-log";
 import { cmdSpool } from "./src/verbs/spool";
 import { cmdTeam, AGENT_FAMILIES } from "./src/verbs/team";
-import { cmdModels, teamsView, writeRoutingResult } from "./src/routing";
+import { teamsView, writeRoutingResult } from "./src/routing";
 import { cmdTeardown } from "./src/verbs/teardown";
 import { cmdHealth } from "./src/verbs/health";
 import { cmdSeatRefresh } from "./src/verbs/seat-refresh";
@@ -55,6 +55,7 @@ import { cmdPick } from "./src/verbs/pick";
 import { cmdKeybinding } from "./src/verbs/keybinding";
 import { cmdTmuxDefaults } from "./src/verbs/tmux-defaults";
 import { cmdConfig } from "./src/verbs/config";
+import { cmdCalibrate } from "./src/verbs/calibrate";
 import { cmdWhoami } from "./src/verbs/whoami";
 import { cmdProvenance } from "./src/verbs/provenance";
 import { cmdWatch } from "./src/verbs/watch";
@@ -137,7 +138,7 @@ const nativeHandlers = {
   },
   reset: argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
-    throw new TapError(1, "renamed_verb", "tap team reset", "tap reset moved to tap team reset (recoverable team reinitialization)");
+    throw new TapError(1, "renamed_verb", "tap team reset", "tap reset moved to tap team reset (stop and retire seats; keep the team initialized)");
   },
   // Native on every form and born with no Bash twin.
   withdraw: cmdWithdraw,
@@ -183,7 +184,12 @@ const nativeHandlers = {
   recap: cmdRecap,
   spool: (argv) => cmdSpool(argv, tapScriptsDir()),
   team: (argv) => cmdTeam(argv, tapScriptsDir()),
-  models: cmdModels,
+  models: argv => {
+    if (argv.includes("--json")) process.env.TAP_JSON = "1";
+    throw new TapError(1, "models_retired",
+      "tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated",
+      "tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l)", undefined, "none");
+  },
   teams: async (argv): Promise<number> => {
     if (argv[0] === "refresh") return runNative("admin", nativeHandlers.admin, argv);
     const name = argv[0], scripts = tapScriptsDir();
@@ -242,6 +248,7 @@ const nativeHandlers = {
   escalate: cmdEscalate,
   presets: cmdPresets,
   config: cmdConfig,
+  calibrate: cmdCalibrate,
   draft: cmdDraft,
   peek: argv => cmdPeek(argv, tapScriptsDir()),
   pick: argv => cmdPick(argv),

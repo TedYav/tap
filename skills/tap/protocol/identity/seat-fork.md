@@ -15,7 +15,9 @@ seat, `/resume` the source conversation, then `/fork` it".
   would resume. Without one, fork refuses `no_exact_resume_identity` (exit 2)
   rather than start a different conversation. A Claude id counts only when its
   transcript exists.
-- Only claude, codex and opencode have a CLI fork. cursor and agy refuse
+- Only claude and codex have a supported CLI fork. OpenCode 2 has no TUI
+  fork flag and refuses `fork_unsupported` (tap-ki7uw); start a fresh seat.
+  cursor and agy refuse
   `fork_unsupported` before any effect, naming the in-session `/fork`; hermes
   refuses the same way.
 
@@ -25,7 +27,6 @@ seat, `/resume` the source conversation, then `/fork` it".
 |---|---|
 | claude | `claude --resume <source-id> --fork-session --session-id <minted-id>` |
 | codex | `codex fork <source-id>` |
-| opencode | `opencode --session <source-id> --fork` |
 
 - The fork inherits the source's recipe as launch and resume persist it: preset,
   model, harness passthrough, env overrides and unsets, harness tail, launch
@@ -37,13 +38,10 @@ seat, `/resume` the source conversation, then `/fork` it".
   harness, id, session or instance changed refuses `fork_source_changed`.
 - It registers under its own handle with its own native id. The launch
   transaction reserves it as kind `new` with capture mode `launcher_new`: Claude's
-  minted id is the expected id, and codex and opencode report the id their fork
+  minted id is the expected id, and codex reports the id their fork
   created. The source id is carried only as `fork_source_session_id` on the
   in-memory record and is never stored on a row, so the fork cannot claim or
   quarantine the source's identity (`duplicate_identity_owner`).
-- OpenCode's session-start plugin binds `--session` from argv at init; under
-  `--fork` that value is the copied conversation, so `tap-opencode-session-id`
-  returns nothing and the plugin binds the fork's id from `session.created`.
 
 ## Naming and collisions
 
@@ -59,10 +57,11 @@ seat, `/resume` the source conversation, then `/fork` it".
   even on a terminal: a collision refuses `session_exists` (or `session_record_exists`
   for a retained row) as the one JSON object on stdout, with nothing on stderr.
 
-- Launch's collision chooser lists `[f]` in every menu. It is enabled only
-  when this verb can fork the incumbent: a roster seat on a forkable harness
-  with a stored conversation id and no stored conversation-selecting flag.
-  Otherwise it is greyed with the reason (not a TAP seat, harness cannot fork,
+- Launch's collision chooser lists `[f]` in every menu. A roster seat on a
+  forkable harness with a saved-chat reference and no stored conversation-selecting
+  flag offers `[f]` immediately. Its native conversation is validated after the
+  keypress, before asking for a name; a missing chat refuses without launching.
+  Known row-only refusals are greyed with the reason (not a TAP seat, harness cannot fork,
   uses `<flag>`, no saved chat to fork; each at most 21 characters so the row
   fits 50 columns), or
   shows `(unavailable: <reason>)` without colour, and pressing it re-shows the
@@ -91,5 +90,5 @@ seat, `/resume` the source conversation, then `/fork` it".
 - A real fork prints a receipt naming source, fork and session, then attaches as
   launch does. `--json` prints one object
   `{ok, source, handle, session, harness, fork_of, harness_session_id}` (the id
-  read from the bound row, so codex and opencode report their fork's id) and does
+  read from the bound row, so codex reports their fork's id) and does
   not attach. Refusals use the structured error line; exit 2 for refusals.

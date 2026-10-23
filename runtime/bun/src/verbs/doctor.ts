@@ -47,6 +47,8 @@ import { Notices } from "../launcher/catalog-notices";
 import { PERMISSION_HARNESSES } from "../launcher/permissions";
 import { recordFromRow } from "../launcher/transaction";
 import { recordHasResumeArtifact } from "../launcher/resume-identity";
+import { agyIdentityHookSpec } from "../install-manifest";
+import { agyConversationStore, agyRootStatus } from "../agy-conversation";
 
 const ID_TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const REQUIRED_PAYLOAD_FIELDS = ["id", "from", "to", "kind", "path"];
@@ -363,6 +365,7 @@ export function cmdDoctor(argv: string[], scriptsDir: string): number | Promise<
   // An old store is reported once; its rows never feed the startup, unbound, tmux or Codex scans.
   const recoveryRoot = teamRootFromBus(busHome);
   if (scanRegistry(registryPath, findings, withRegistry, recoveryRoot)) withRegistry = false;
+  if (withRegistry) scanAgyIdentityHook(registryPath, findings, process.env, checkoutRoot);
   const liveElsewhere = new Map<string, string>();
   scanStartup(registryPath, findings, withRegistry, liveElsewhere, recoveryRoot);
   // A wrong socket can leave a live seat stored as suspended. Reconcile the
@@ -478,6 +481,46 @@ function installLine(): Record<string, unknown> {
   };
 }
 
+function scanAgyIdentityHook(registryPath: string, findings: Finding[], env: NodeJS.ProcessEnv, checkout: string): void {
+  const registry = readJsonFile(registryPath);
+  if (!("value" in registry) || !isRecord(registry.value) || !isRecord(registry.value.seats)
+    || !Object.values(registry.value.seats).some(row => isRecord(row) && row.harness === "agy"
+      && row.delivery !== "poll" && row.status !== "historical")) return;
+  // An empty exact-id lookup checks readability/schema without selecting an id.
+  const store = agyRootStatus("", env);
+  if (store.kind === "unavailable") findings.push({ severity: "warning", name: "agy_identity_store",
+    detail: { status: store.kind, path: agyConversationStore(env), reason: store.detail },
+    problem: `Antigravity native identity store is unavailable: ${store.detail}; new identity capture is refused`,
+    next: "start agy and submit a turn; if this persists, check its conversation_summaries.db permissions and schema" });
+  const home = env.HOME || "";
+  const configured = env.TAP_GEMINI_HOME || env.GEMINI_HOME || join(home, ".gemini");
+  const gemini = configured.startsWith("~/") ? join(home, configured.slice(2)) : configured;
+  const path = join(gemini, "config/hooks.json");
+  let status = "missing";
+  try {
+    if (existsSync(path)) {
+      const data = statSync(path).isFile() ? JSON.parse(readFileSync(path, "utf8")) : null;
+      const hook = isRecord(data) ? data["tap-session-identity"] : null;
+      const expected = agyIdentityHookSpec(join(checkout, "hooks/tap-agy-identity.sh"));
+      if (!isRecord(data)) status = "invalid";
+      else if (isRecord(hook) && hook.enabled === false) status = "disabled";
+      else if (isRecord(hook)) {
+        const wired = Object.entries(expected).every(([event, handlers]) => {
+          const rows = hook[event], handler = handlers[0]!;
+          return Array.isArray(rows) && rows.some(item => isRecord(item)
+            && item.command === handler.command && (item.type === undefined || item.type === "command")
+            && typeof item.timeout === "number" && item.timeout > 0 && item.timeout <= handler.timeout);
+        });
+        if (wired && existsSync(join(checkout, "hooks/tap-agy-identity.sh"))) return;
+        status = "stale";
+      }
+    }
+  } catch { status = "unreadable"; }
+  findings.push({ severity: "warning", name: "agy_identity_hook", detail: { status, path },
+    problem: `Antigravity native identity hook is ${status}; conversation ids may be absent or stale`,
+    next: `bash ${shellQuote(join(checkout, "install.sh"))} --sync; then submit a turn in the agy seat` });
+}
+
 /** The artifact's tap-release.json, when the root holds a readable one. */
 function releaseMarker(root: string): { version: string; commit: string; platform: string; bun: string } | null {
   try {
@@ -535,6 +578,8 @@ function seatRecovery(handle: string, seat: unknown, team: unknown, root: string
     // explicit fields or override permissions; never print secret env values.
     if (!preset && ((isRecord(seat.harness_env) && Object.keys(seat.harness_env).length > 0)
       || (Array.isArray(seat.passthrough) && seat.passthrough.length > 0))) return manual;
+    // Typed --env keys, --unset-env keys and -- arguments sit on top of any preset.
+    if (["harness_env_set", "harness_unset_env", "harness_tail"].some(key => Array.isArray(seat[key]) && (seat[key] as unknown[]).length > 0)) return manual;
     if (seat.permissions !== undefined && seat.permissions !== null) {
       try {
         const permissions = PERMISSION_HARNESSES.includes(str(seat.harness))

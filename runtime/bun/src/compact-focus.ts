@@ -51,6 +51,11 @@ export function beadsReachable(dir: string, env: NodeJS.ProcessEnv = process.env
   return false;
 }
 
+/** Read the entire brief before role guidance can trigger any initialization. */
+export function authoredRecovery(path: string, seat: string, notify?: string): string {
+  return `Read the whole brief at ${path}, including its charter, handoff, holds, Keep scope and live scheduler ids, before taking action. Then load its named role skills as guidance, without replaying their initialization: no fresh staffing, dispatch or re-arming. If essential priming is unavailable, stop and report the missing source. Run tap whoami and tap poll ${seat}; reconcile live state and still-owned obligations. Follow the brief's Next step, including any hold or wait for orders; outstanding obligations stay recorded. After reading, report the absolute brief path, restored role and next action ${notify ? `to ${notify} through TAP` : "in your own conversation for the operator; do not message a peer"}.`;
+}
+
 /**
  * The one-line resume prompt handed to a freshly compacted agent.
  *
@@ -61,7 +66,8 @@ export function beadsReachable(dir: string, env: NodeJS.ProcessEnv = process.env
  * only when bd is installed and a beads database resolves from the TARGET pane's
  * cwd, and the poll clause only for a named seat. The focus clause is verbatim.
  */
-export function handoffPing(path: string, seat = "", pane = "", focus = "", env: NodeJS.ProcessEnv = process.env): string {
+export function handoffPing(path: string, seat = "", pane = "", focus = "", env: NodeJS.ProcessEnv = process.env, notify?: string): string {
+  if (path) return `Post-compaction resume check. ${authoredRecovery(path, seat, notify)}${focus ? ` Focus preserved before compaction: ${focus}` : ""}`;
   const poll = seat ? ` Run 'tap poll ${seat}' and settle or answer anything unsettled.` : "";
   let cwd = "";
   if (pane) {
@@ -74,11 +80,8 @@ export function handoffPing(path: string, seat = "", pane = "", focus = "", env:
   }
   cwd ||= process.cwd();
   const beads = Bun.which("bd", { PATH: env.PATH ?? "" }) && beadsReachable(cwd, env) ? " and 'bd ready'" : "";
-  // Always arm, never conditionally: a compact with no handoff still gets
-  // a ping that says the summary is lossy rather than implying it is complete.
-  const lead = path
-    ? `Read ${path} first — it is a handoff written to you, before compacting, by the agent that still had the full context.`
-    : "No handoff file was written before this compaction, so treat your summary as lossy rather than authoritative.";
+  // Peer compaction without a supplied brief retains its existing resume contract.
+  const lead = "No handoff file was written before this compaction, so treat your summary as lossy rather than authoritative.";
   const focusClause = focus ? ` Focus written for you BEFORE this compaction, by the agent that still had the full context: ${focus}` : "";
   return `Post-compaction resume check. ${lead}${focusClause}${poll} Check your task list${beads} for work already claimed. If work is in progress or owed, continue it without waiting to be asked. If nothing is in progress, reply 'nothing in progress' and end the turn.`;
 }

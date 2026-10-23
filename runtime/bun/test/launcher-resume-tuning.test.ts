@@ -215,7 +215,8 @@ test("an id-less resume starts fresh, so it keeps the launch model", () => {
   const env = machine();
   const record = seat("opencode", { harness_session_id: null });
   const argv = launchInvocation("resume", record, new Notices(() => {}), { env, resume: null, receipts: () => {} }).argv;
-  expect(flagValue(argv, "--model")).toEqual(["launch-model"]);
+  expect(flagValue(argv, "--model")).toEqual([]);
+  expect(record.launch_tuning?.model).toBe("launch-model");
   expect(resumeTuning(record, null, env)).toBeUndefined();
 });
 
@@ -234,4 +235,9 @@ test("a moved transcript_path falls back to the project store for the observatio
   expect(observedResumeEffort(record, ID, env)).toBe("low");
   // The legacy compose bridge derives the same observation.
   expect(resumeTuning(record, ID, env)?.observedEffort).toBe("low");
+});
+
+test("OpenCode native resume refuses typed tuning rather than silently discarding it",()=>{
+  const record=seat("opencode",{harness_tail:["--variant","high"]});
+  expect(()=>resume(record,machine(),2)).toThrow("OpenCode 2 resumes its native model and variant");
 });

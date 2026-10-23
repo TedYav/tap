@@ -318,9 +318,9 @@ for (const harness of ["cursor", "agy"]) {
     expect(() => launchInvocation("resume", record, notices, { env: { ...process.env, ...fixture(harness, '"auto"') }, resume: null }))
       .toThrow("harness_permissions_conflict");
   });
-  test(`${harness} crew replay keeps its recorded auto choice when the catalog now says bypass`, () => {
+  test(`${harness} crew replay keeps its recorded auto choice when the catalog now says bypass`, async () => {
     const env = { ...process.env, ...fixture(harness, '"bypass"') };
-    const { command } = crewRecipeInvocation("team", "crew", { harness, model: "m", harness_env: {}, passthrough: [], cwd: "/tmp", permissions: "auto" }, env);
+    const { command } = await crewRecipeInvocation("team", "crew", { harness, model: "m", harness_env: {}, passthrough: [], cwd: "/tmp", permissions: "auto" }, env);
     for (const token of spec.bypass.filter(t => t.startsWith("-"))) expect(command).not.toContain(token);
     for (const token of spec.auto) expect(command).toContain(token);
   });

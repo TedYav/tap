@@ -4,7 +4,7 @@ import { compactionWitnessPath } from "../compaction-proof";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { constants as osConstants } from "node:os";
-import { TapError, resolveContext, resolveSelf, observeCallingPane, type ResolvedContext } from "../context";
+import { TapError, resolveContext, resolveSelf, observeCallerIdentity, type ResolvedContext } from "../context";
 import { resolveSelection } from "../team-selection";
 import { stampEnvelope, validateEnvelope } from "../envelope";
 import { atomicWrite, ensureAscii } from "../fsatomic";
@@ -15,7 +15,7 @@ import { pyReadUtf8, pyStrCompare } from "../spool-publication";
 import { hasControlCharacter } from "../pane/reader";
 import { focusMode, focusNarrowing, handoffPing } from "../compact-focus";
 import { teamRegistryFileRefusal } from "../register-authority";
-import { peerSubmitArgv, verbArgv } from "../courier-argv";
+import { peerSubmitArgv } from "../courier-argv";
 
 import { assertResetUnfenced, markResetGenerationReused } from "../reset";
 import { compactNoActor, compactObservedRow, compactHarness, attention } from "../compact-support";
@@ -41,8 +41,8 @@ export type PeerSubmitter = (request: PeerSubmit, run: (command: string[], input
 export const nativePeerSubmit: PeerSubmitter = async (request, run) =>
   (await run(peerSubmitArgv(request.scriptsDir), JSON.stringify(request))).code;
 
-/** `selfCompact` runs `tap self compact` for a self-target and `peerSubmit` a peer's control; tests substitute both. */
-export async function cmdCompact(argv: string[], scripts: string, alias = false, selfCompact?: (focus: string) => Promise<number>,
+/** Tests substitute the peer control process; self targets refuse before input. */
+export async function cmdCompact(argv: string[], scripts: string, alias = false,
   peerSubmit: PeerSubmitter = nativePeerSubmit): Promise<number> {
   const surface = alias ? "command" : "compact";
   const label = alias && !process.env.TAP_CONTEXT_ENTRY ? "tap command" : "tap compact";
@@ -127,7 +127,7 @@ export async function cmdCompact(argv: string[], scripts: string, alias = false,
       const narrowed = focusNarrowing(focus);
       if (narrowed) throw new TapError(1, "usage_error", "tap help compact", `tap compact: focus contains exclusive/destructive phrasing: '${narrowed}'. A focus SUPPLEMENTS the summarizer — enumerate what to PRESERVE instead`, "tap command");
     }
-    const caller = observeCallingPane();
+    const caller = observeCallerIdentity();
     const observation = caller.state === "inside" ? { status: "ok" as const, ...caller } : null;
     const pin = process.env.TAP_HOME ?? "";
     let ctx: ResolvedContext;
@@ -209,18 +209,8 @@ export async function cmdCompact(argv: string[], scripts: string, alias = false,
     }
     const harness = (pane: string) => compactHarness(pane);
     async function self(target: string): Promise<number> {
-      if ((await harness(initiatorPane)).startsWith("codex")) {
-        err("tap compact: Codex seats compact themselves: write a handoff, then run tap self compact --handoff <file> -- '<focus>'"); return 1;
-      }
-      if (!focus) { err(`tap compact: refusing to compact '${target}' (yourself) with no -m: the focus is the only thing you can add that the default summarizer cannot, and you are the only caller who knows it. Pass -m '<live threads, paths, unresolved decisions>'.`); return 1; }
-      checkCancelled();
-      // A child in its own group, like every other effect here, so cancellation
-      // stops the self submit too rather than waiting out a synchronous call.
-      const code = selfCompact ? await selfCompact(focus)
-        : (await run(verbArgv(scripts, ["self", "compact", "--", focus]))).code;
-      if (!code) { process.stdout.write(`${label}: compact ${target}: armed (self; completion unverified)\n`); return 0; }
-      if (code === 6) return 6;
-      err(`tap compact: self-compaction of '${target}' failed (tap self rc=${code})`); return 1;
+      err(`tap compact: '${target}' is yourself; use /tap:self compact to author the required handoff before compaction`);
+      return 1;
     }
     async function one(target: string): Promise<number> {
       if (target === initiator) return self(target);

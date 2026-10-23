@@ -40,7 +40,7 @@ import json, os, re, subprocess, sys
 collab_dir, script_dir, tid, round_cap_raw, driver = sys.argv[1:6]
 OPEN = {"proposed", "accepted"}
 sys.path.insert(0, script_dir)
-from payload_meta import parse_payload, proposal_ops
+from payload_meta import load_dispositions, parse_payload, proposal_ops
 
 def die(msg):
     sys.exit(f"collab/is-converged: {msg}")
@@ -80,6 +80,16 @@ processed = set()
 if os.path.exists(processed_path):
     with open(processed_path) as fh:
         processed = {line.strip() for line in fh if line.strip()}
+
+# A disposed op (dispose.sh) is processed without a ledger event. The record is
+# written before its bookmark, so read it here too, through the shared validator: a
+# crash between the two writes must not leave a disposed op looking pending, and a
+# torn, incomplete or wrong-thread record fails loud.
+try:
+    processed.update(load_dispositions(thread_dir, tid, driver))
+except ValueError as exc:
+    sys.stderr.write(f"collab/is-converged: {exc}\n")
+    sys.exit(3)
 
 # An append may survive a crash before fold saves its bookmark file. Recover the
 # same per-op source stamps fold uses, through the ledger's validated read path.

@@ -14,10 +14,23 @@ const object = (value: unknown): Record<string, unknown> => {
   return value;
 };
 
-/** sha256 of each earlier shipped signpost block, markers included: v3, then v4 (before tap-xe42x's nudge line). */
+/** SHA-256 of every earlier shipped repo-charter.md block, BEGIN/END markers included.
+ * Derived from `git log --follow -- skills/tap/templates/repo-charter.md`;
+ * strip trailing CR/LF bytes exactly as charter() does. v5 is the current template.
+ */
 const SHIPPED_CHARTERS = new Set([
-  "ecb6d98a18c29a086e8537ed2237033595f285d2699c8b8b896f1ffecd032d64",
-  "b387ef87615614d5b594f053a93bcfa5c313b8f3ded6c3dedebcd014d064df7a",
+  "452ad51928e8ec81f46aa9cd93845d0d02090cec64713d7e36dd54135a86ee46", // 26e3fa343 (v1)
+  "9ec8d80645d0400df788c9ded3252c89e04514cd652869b409d096d10db36422", // 3ff329bf5 (v1)
+  "294d6378c6f0310d2c0d443b8abc278d07f9be491d1be98828c721d78d0eada9", // bdbaee577 (v2)
+  "2b26c106987fd6604539f91c1cb91d41ef4e8dbb75629af01868612ccc4ea190", // 2bdc64f43 (v3)
+  "5f77e8f614800373026f6168e886a6cf3ca41cf6f382405b4e46e0ae1420a44f", // 3383a1e29 (v3)
+  "b7b0b0b6a782e74eee6483b91dbd33949be07d836e931f4413943aa5230bbb78", // 981330d73 (v3)
+  "0f4dc217b7e7bbc95001aa1aae6aabaf15ba56a2b4b0a2d9afe948b49b4c5a04", // e7b3c3d44 (v3)
+  "f272be2db26263c8a252846d27811878ee8fd1aa3b998707f8a7fe4f20af1b19", // 659f57698 (v3)
+  "6f90b8ce94cb77f8bb51808533b715e8461b60e4bf0d322d79530f4bcac28dc6", // 11a4dc587 (v3)
+  "ecb6d98a18c29a086e8537ed2237033595f285d2699c8b8b896f1ffecd032d64", // fcf08f8f7 (v3)
+  "61bbd66270dbc51d3364abced7776360c135205039ce3b086b91b90eb31a5075", // a934bfd84 (v4)
+  "b387ef87615614d5b594f053a93bcfa5c313b8f3ded6c3dedebcd014d064df7a", // b336bc082 (v4)
 ]);
 
 function charter(root: string, scripts: string, check: boolean): number {
@@ -55,7 +68,7 @@ function charter(root: string, scripts: string, check: boolean): number {
   let rendered: Buffer;
   if (start >= 0) {
     const existing = current.subarray(start, stop + end.length);
-    // Only byte-known shipped cards (v3, v4) may migrate; customized cards are user work.
+    // Only byte-known shipped cards may migrate; customized cards are user work.
     if (!existing.equals(canonical) && !SHIPPED_CHARTERS.has(createHash("sha256").update(existing).digest("hex"))) {
       return fail(`tap setup --repo: preserved customized TAP block in ${path}; update it manually or restore a canonical block, then rerun`, 2);
     }

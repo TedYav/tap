@@ -12,8 +12,8 @@ recognized prompt, and it sends only the lone Escape that
 
 - `tap approval-timeout on|off|status [--json] [--team <name>]` writes and reads
   `approval-timeout/policy.json` on the team bus. Missing or unreadable reads as
-  off. The policy survives a watch disarm and rearm. `tap team reset`
-  checkpoints `approval-timeout/` beside `watch/`.
+  off. The policy survives a watch disarm, rearm and `tap team reset`; reset
+  preserves `approval-timeout/` and `watch/` in place.
 - Each harness has one built-in timeout: Claude, Codex, Cursor, OpenCode and AGY
   600 s; Hermes 120 s. There is no team or seat duration. Revisit only when an
   operator asks for a different duration on a real team.
@@ -64,7 +64,7 @@ observed or escalated. Today no row is live.
 | Claude | `permission_prompt` with a `No` option | Escape | `Esc to cancel` footer | pending capture |
 | Codex | closing `press enter to confirm or esc to cancel` | Escape | `No, and tell Codex what to do differently (esc)` | pending capture; the post-Escape frame is unknown |
 | Cursor | `Run this command?` | Escape | `Skip & tell the agent what to do instead (esc or n)` | pending capture; the post-Escape frame is unknown |
-| OpenCode | `△ Permission required` with `Allow once  Allow always  Reject` | Escape | none on the frame; `escapeKey="reject"` in the 1.18 TUI source, plus the sibling proof below | pending capture |
+| OpenCode 2 | `△ Permission required` with `Allow once  Allow always  Reject` | none attested | no 2.x key/sibling-scope proof | escalates without a key |
 | AGY | `Requesting permission for:` with `No, cancel` | Escape | `esc to cancel` footer | pending capture |
 | Hermes | synthetic only; the real prompt is not recognized | none until a real capture proves one | none | Hermes has no automatic timeout observation or escalation until its prompt is captured (follow-up). |
 
@@ -74,20 +74,7 @@ the real prompt: it is shorter so that TAP observes the expiry first, allowing
 two 60 s ticks of lag. `status` already warns when the tick interval is above
 90 s. Enter is never sent, even where Hermes shows deny as the default choice.
 
-**OpenCode siblings.** OpenCode's Reject fails every pending permission in the
-session. TAP's OpenCode plugin records, per pane under the index home, the
-pending requests of the session that asked, whether that session is a known root
-session, the OpenCode version, and its process ids. While anything is pending it
-heartbeats every 30 s. The key may go only when all of these hold:
-
-- the heartbeat is no older than 60 s;
-- the plugin is bound to the seat pane's process or its parent;
-- OpenCode is 1.18.x;
-- the request is in a root session, with no other session pending;
-- exactly one request is pending, and its pattern appears in the frame's excerpt.
-
-Otherwise the request is escalated rather than rejected. A sibling refusal keeps
-the episode open, and each tick re-checks it. It is told once per reason.
+**OpenCode 2.** The former 1.18-only sibling proof is retired with 1.x support. The plugin still records pending requests and process identity, but no 2.x Reject-key and sibling-scope attestation exists. The production timeout pass reports `version_unproven` and escalates; it sends no key. Capturing and verifying that behavior is required before enabling automatic rejection for 2.x.
 
 ## The key
 

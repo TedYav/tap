@@ -27,6 +27,9 @@ import { isFile } from "./watch-lease";
 import { pidHasAncestor, processRow } from "./process-ancestry";
 import { DEFAULT_AGENT_FAMILIES, classifyHolderCommand, readProcessTableMemoized } from "./observe";
 import { isOldStoreRefusal } from "./register-authority";
+import { nativeOpenCodeCaller, readOpenCodeAncestry } from "./opencode-service";
+import { openCodeServerAncestor } from "./opencode-shared";
+import { verifySharedSeat } from "./opencode-shared-seat";
 
 export class TapError extends Error {
   constructor(
@@ -133,6 +136,12 @@ export function resolveContext(
   env: NodeJS.ProcessEnv = process.env,
   opts?: { explicitTeam?: string; pinnedRoot?: string; paneFallback?: boolean; readOnly?: boolean },
 ): ResolvedContext {
+  if (opts?.explicitTeam === undefined && opts?.pinnedRoot === undefined && opts?.paneFallback !== false) {
+    const shared = observeSharedCaller(env, opts?.readOnly);
+    if (shared?.kind === "verified" && shared.child) {
+      return buildContext(selectCaller({ cwd, env: shared.env, pinnedRoot: shared.match.root }), shared.env);
+    }
+  }
   let caller: Selection;
   try {
     caller = selectCaller({ cwd, env, explicitTeam: opts?.explicitTeam, pinnedRoot: opts?.pinnedRoot });
@@ -226,7 +235,7 @@ function attemptPaneAnchor(cwd: string, env: NodeJS.ProcessEnv, readOnly: boolea
   if (snapshot.marker !== "live" || !snapshot.doc) {
     throw new Error("pane anchoring needs a live machine index marker");
   }
-  const seen = observeCallingPane(env, readOnly);
+  const seen = observeCallerIdentity(env, readOnly);
   if (seen.state !== "inside") {
     throw new Error("pane anchoring needs an observable calling pane inside tmux");
   }
@@ -404,11 +413,64 @@ export function requireActingRegistry(ctx: Context, code: number): void {
  */
 export type CallingPaneObservation =
   | { state: "inside"; paneId: string; session: string; serverEpoch: string;
+      selectedHandle?: string; selectedInstance?: string; selectedSocket?: string; selectedPane?: string;
       address?: string; panePid?: string; currentCommand?: string; currentPath?: string; socketPath?: string }
   | { state: "outside"; detail: string; climb?: string }
-  | { state: "unobservable"; refusal: string; paneId?: string; unverifiable?: true; missing?: "session" | "epoch"; session?: string };
+  | { state: "unobservable"; refusal: string; paneId?: string; unverifiable?: true; missing?: "session" | "epoch"; session?: string; shared?: true };
+
+/** Native shell evidence may name a seat; it never makes the service's tty
+ * the caller's terminal. Physical operations keep observeCallingPane. */
+export function observeCallerIdentity(env: NodeJS.ProcessEnv = process.env, readOnly = false, extended = false): CallingPaneObservation {
+  const shared = observeSharedCaller(env, readOnly);
+  if (!shared) return observeCallingPane(env, readOnly, extended);
+  if (shared.kind === "refused") return { state: "unobservable", refusal: sharedCallerRefusal(shared.reason), shared: true };
+  const row = shared.match.row;
+  return { state: "inside", ...shared.pane, selectedHandle: shared.match.handle,
+    selectedInstance: row.instance as string, selectedSocket: row.server_socket as string, selectedPane: row.pane as string };
+}
+
+export function observeSharedCaller(env: NodeJS.ProcessEnv = process.env, readOnly = false) {
+  const proof = nativeOpenCodeCaller(env);
+  if (proof.kind === "none") return null;
+  if (proof.kind === "refused") return proof;
+  const binding = verifySharedSeat(proof, env, (target, pinned, socket) => {
+    const pane = observeIdentityPane(target, pinned, socket, readOnly);
+    return pane.status === "ok" ? pane : null;
+  });
+  if (binding.kind === "refused") return binding;
+  const child = proof.sessionId !== proof.rootSessionId;
+  if (child) {
+    // Native child tools inherit the service env. Carry the verified root pins
+    // into subsequent in-process effect code, whose tmux helpers use this env.
+    for (const key of ["TAP_HOME", "TAP_LOCK_DIR", "TAP_TMUX_SOCKET_PATH", "TMUX_PANE"]) env[key] = binding.env[key];
+    delete env.TAP_TMUX_SOCKET;
+    env.TMUX = `${binding.env.TAP_TMUX_SOCKET_PATH},0,0`;
+  }
+  return { ...binding, child };
+}
+
+function sharedCallerRefusal(reason: string): string {
+  return `OpenCode shared caller refused (${reason}); use the native shell tool; if its binding changed, run tap session relaunch <handle>`;
+}
+
+/** An inherited service-wide actor must not override an attested shell seat.
+ * Call only after an explicit --from/--by/positional actor has been selected. */
+export function inheritedActor(env: NodeJS.ProcessEnv = process.env): string {
+  const actor = env.TAP_SELF || "";
+  if (!actor) return "";
+  const shared = observeSharedCaller(env);
+  if (shared && (shared.kind === "refused" || actor !== shared.match.handle))
+    throw new TapError(1, "shared_actor_mismatch", "unset TAP_SELF and retry from the native shell tool",
+      shared.kind === "refused" ? sharedCallerRefusal(shared.reason) : `inherited TAP_SELF '${actor}' disagrees with the verified shared seat '${shared.match.handle}'`);
+  return actor;
+}
 
 export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnly = false, extended = false): CallingPaneObservation {
+  const processes = readOpenCodeAncestry(env);
+  const boundary = processes ? openCodeServerAncestor(processes, process.pid) : { kind: "unobservable" as const };
+  if (boundary.kind === "unobservable") return { state: "unobservable", refusal: "OpenCode server boundary could not be observed" };
+  if (boundary.kind === "server" && !boundary.private)
+    return { state: "unobservable", refusal: "OpenCode service tools have no physical calling pane", shared: true };
   const probe = readOnly ? tmuxReadOnly : tmux;
   const inventoryFormat = "#{pane_id}\t#{pane_tty}";
   let pid = process.pid;
@@ -788,15 +850,18 @@ export function callerObservationReason(seen: CallingPaneObservation): string {
  * not identity evidence. Walk to the first controlling TTY, map that TTY to one
  * pane, then reassert the same binding with a targeted query.
  *
- * A projection over `observeCallingPane`, kept for its nine existing callers.
+ * A projection over `observeCallerIdentity` for existing pane consumers.
  * The three shapes they select on are preserved exactly: `ok`, `unverifiable`
  * with its pane id, and `null` for everything else -- including `outside`,
- * which is not a pane.
+ * which is not a pane. Verified shared callers additionally carry their seat
+ * claims so resolveSelf rejects a successor instance.
  */
 export function callingPane(env: NodeJS.ProcessEnv = process.env): IdentityPaneObservation | null {
-  const seen = observeCallingPane(env);
+  const seen = observeCallerIdentity(env);
   if (seen.state === "inside") {
     return { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch,
+      ...(seen.selectedHandle ? { selectedHandle: seen.selectedHandle, selectedInstance: seen.selectedInstance,
+        selectedSocket: seen.selectedSocket, selectedPane: seen.selectedPane } : {}),
       address: seen.address, panePid: seen.panePid, currentCommand: seen.currentCommand,
       currentPath: seen.currentPath, socketPath: seen.socketPath };
   }
@@ -826,11 +891,11 @@ export type IdentityPaneObservation =
  * stays separate from the courier's general observePane contract: self
  * resolution requires the incumbent's atomic identity record and grammar.
  */
-function observeIdentityPane(target: string, env: NodeJS.ProcessEnv, expectedSocket = ""): IdentityPaneObservation {
+export function observeIdentityPane(target: string, env: NodeJS.ProcessEnv, expectedSocket = "", readOnly = false): IdentityPaneObservation {
   const format = expectedSocket
     ? "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}\t#{socket_path}"
     : "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}";
-  const result = tmux(["display-message", "-p", "-t", target, format], env);
+  const result = (readOnly ? tmuxReadOnly : tmux)(["display-message", "-p", "-t", target, format], env);
   if (result.rateLimited) return { status: "unverifiable", paneId: target };
   const raw = result.stdout.split("\n", 1)[0] ?? "";
   const fields = raw.split("\t");
@@ -956,14 +1021,16 @@ export function observeCallerPaneChain(env: NodeJS.ProcessEnv = process.env, anc
   observed?: CallingPaneObservation): CallerPaneChain {
   // A caller that already observed its pane (SessionStart's launch-evidence
   // check) passes that one observation through instead of re-walking tmux.
-  const seen = observed ?? observeCallingPane(env, false, extended);
+  const seen = observed ?? observeCallerIdentity(env, false, extended);
   const direct = (p: { paneId: string; session: string; serverEpoch: string;
-      address?: string; panePid?: string; currentCommand?: string; currentPath?: string; socketPath?: string }): CallerPaneChain => ({
+      address?: string; panePid?: string; currentCommand?: string; currentPath?: string; socketPath?: string;
+      selectedSocket?: string; selectedHandle?: string; selectedInstance?: string; selectedPane?: string }): CallerPaneChain => ({
     ok: true, paneId: p.paneId, session: p.session, serverEpoch: p.serverEpoch,
-    selectedSocket: "", selectedHandle: "", selectedInstance: "", selectedPane: "", viaJob: false,
+    selectedSocket: p.selectedSocket ?? "", selectedHandle: p.selectedHandle ?? "", selectedInstance: p.selectedInstance ?? "", selectedPane: p.selectedPane ?? "", viaJob: false,
     address: p.address ?? "", panePid: p.panePid ?? "", currentCommand: p.currentCommand ?? "",
     currentPath: p.currentPath ?? "", socketPath: p.socketPath ?? "" });
   if (seen.state === "inside") return direct(seen);
+  if (seen.state === "unobservable" && seen.shared) return { ok: false, reason: seen.refusal };
   const processRefusal = seen.state === "outside" ? seen.detail : seen.refusal;
   const jobDir = env.CLAUDE_JOB_DIR ?? "";
   if (seen.state !== "outside" && jobDir === "") {

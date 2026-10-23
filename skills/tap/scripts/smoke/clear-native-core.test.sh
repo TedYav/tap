@@ -61,6 +61,9 @@ LOGIN_SHELL
 # the way a matching registration would, then idles under the harness's name.
 cat > "$WORK/bin/claude" <<'HARNESS'
 #!/bin/sh
+if [ "${0##*/}" = opencode ]; then
+  case "$1" in --version|api) exec "${TAP_SMOKE_BUN:?}" "$OPENCODE_FIXTURE" "$@" ;; esac
+fi
 { printf 'TAP_CLEAR_ID=%s\n' "${TAP_CLEAR_ID:-}"; printf '%s\n' "$@"; } > "$LAUNCHES/$$"
 if [ -n "${TAP_CLEAR_ID:-}" ]; then
   "$REAL_PYTHON3" - "$REG" "$TAP_CLEAR_ID" <<'PY'
@@ -76,6 +79,7 @@ fi
 exec "$IDLE/${0##*/}" 600
 HARNESS
 cp "$WORK/bin/claude" "$WORK/bin/opencode"
+export OPENCODE_FIXTURE="$ROOT/runtime/bun/test/support/opencode-cli.ts" TAP_TEST_OPENCODE_LOG="$WORK/opencode-sessions"
 ln -s /bin/sleep "$WORK/idle/claude"; ln -s /bin/sleep "$WORK/idle/opencode"; export IDLE="$WORK/idle"
 chmod +x "$WORK/bin/tmux" "$WORK/bin/ps" "$WORK/bin/sh" "$WORK/bin/claude" "$WORK/bin/opencode"
 export PATH="$WORK/bin:$PATH" TAP_LAUNCH_SHELL="$WORK/bin/sh"
@@ -100,7 +104,7 @@ seed() { # seed <sol pane_id> <sol session> [harness]
 import json, pathlib, sys
 w = pathlib.Path(sys.argv[1]); lead, pane, session, harness, epoch = sys.argv[2:]
 seat = lambda p, s, h: {"status": "active", "delivery": "pane", "harness": h, "pane_id": p, "pane": f"{s}:0.0",
-                        "session": s, "registered_at": "t", "model": "opus-test", "permissions": "bypass",
+                        "session": s, "registered_at": "t", "model": "fixture/opus-test" if h == "opencode" else "opus-test", "permissions": "bypass",
                         "harness_session_id": "old-conversation", "clear_nonce": "stale-witness", **({"server_epoch": epoch} if epoch else {})}
 reg = w / "Demo/.tap/team-registry.json"
 reg.write_text(json.dumps({"schema": "0.20", "team": {"name": "Demo"},
@@ -135,7 +139,7 @@ echo "clear-native-core: dry run routes native, fresh, shows the clear id: ok"
 CREW="$(T new-window -P -F '#{pane_id}' -t Demo/lead "exec $IDLE/opencode 600")"
 seed "$CREW" Demo/lead opencode
 run tap_clear sol --dry-run; [ "$rc" = 0 ] || fail "crew dry run failed: $out"
-grep -q -- 'opencode --model opus-test' <<<"$out" && ! grep -q -- 'claude' <<<"$out" || fail "crew clear used another recipe: $out"
+grep -q -- 'opencode --standalone' <<<"$out" && ! grep -q -- 'claude' <<<"$out" || fail "crew clear used another harness: $out"
 T kill-window -t "$CREW"
 echo "clear-native-core: a crew seat clears with its own recipe: ok"
 
@@ -189,5 +193,13 @@ run tap_clear sol -m "hello from the clear"
 grep -q -- 'hello from the clear' "$LAUNCHES/$(pid "$SOL")" && fail "opencode instruction rode argv"
 grep -rlq -- 'hello from the clear' "$WORK/Demo/.tap/bus" || fail "opencode instruction never reached the bus: $out"
 [ -z "$(find "$WORK/Demo/.tap/bus/tmp" -name '.tap-clear-instruction.*' 2>/dev/null)" ] || fail "instruction body file left behind"
+python3 - "$LAUNCHES/$(pid "$SOL")" "$TAP_TEST_OPENCODE_LOG" <<'PY_MODEL'
+import json, pathlib, sys
+argv = pathlib.Path(sys.argv[1]).read_text().splitlines()
+prepared = json.loads(pathlib.Path(sys.argv[2]).read_text().splitlines()[-1])
+assert prepared["model"] == {"providerID": "fixture", "id": "opus-test"}, prepared
+assert argv[argv.index("--session") + 1] == prepared["id"], (argv, prepared)
+assert "--model" not in argv, argv
+PY_MODEL
 echo "clear-native-core: opencode -m rides the bus after rebind: ok"
 echo "clear-native-core: ok"

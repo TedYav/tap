@@ -383,7 +383,7 @@ test("the public shutdown entry fences a mid-reset bus; the internal reset-stop 
     expectTapError(
       () => runTeamStop({ verb: "shutdown", policy: "clear", argv: [], ctx: c, roster: [], fenced: true, effects: baseEffects() }),
       "team_reset_fenced",
-      "wait for the reset owner (or until identity is readable), then: tap team reset",
+      "wait for the reset owner (or until identity is readable)",
       "refusing shutdown — team bus is mid-reset (fence at " + join(c.bus.home, "reset.fence.json") + ")",
     );
     const rc = runTeamStop({

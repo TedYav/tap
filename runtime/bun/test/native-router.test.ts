@@ -411,9 +411,9 @@ esac
     },
     {
       verb: "reset",
-      stderr: "tap reset: tap reset moved to tap team reset (recoverable team reinitialization); next: tap team reset\n",
-      json: '{"ok":false,"error_class":"renamed_verb","action":"tap team reset","detail":"tap reset moved to tap team reset (recoverable team reinitialization)"}\n',
-      help: "NAME\n  tap reset — renamed to tap team reset\n\nUSAGE\n  tap reset\n\nDESCRIPTION\n  Renamed: use tap team reset [--dry-run] [--yes] [--allow-nonstandard-bus-path] [--kill-self] [--json]. It creates a fenced, complete team checkpoint before reinitializing the acting registry and bus; tap team restore puts that checkpoint back.\n",
+      stderr: "tap reset: tap reset moved to tap team reset (stop and retire seats; keep the team initialized); next: tap team reset\n",
+      json: '{"ok":false,"error_class":"renamed_verb","action":"tap team reset","detail":"tap reset moved to tap team reset (stop and retire seats; keep the team initialized)"}\n',
+      help: "NAME\n  tap reset — renamed to tap team reset\n\nUSAGE\n  tap reset\n\nDESCRIPTION\n  Renamed: use tap team reset [TEAM] [--only <handles> | --except <handles>] [--dry-run] [--yes] [--json]. It stops and retires selected seats while keeping the team initialized.\n",
     },
   ]) {
     test(`top-level renamed tombstones: ${tombstone.verb} preserves refusals through every entry`, () => {
@@ -577,42 +577,13 @@ esac
     }
   });
 
-  test("team reset and restore recover a missing acting file", () => {
+  test("team restore refuses as a tombstone through the native team door", () => {
     const { dir, env, worktree } = fixture();
-    const { bus, registry } = seedLiveTeam(worktree, env.TAP_INDEX_HOME!, {
-      poller: { delivery: "poll", status: "active", pane_id: "%7", pane: "stale" },
-    });
-    Object.assign(env, { TAP_HOME: bus, TAP_SCRATCH_ONLY: dir, TAP_BOOT_ID: "boot:100" });
-    writeFileSync(join(bus, "payloads", "kept.md"), "durable payload");
-    const invoke = (verb: string, args: string[] = []) => run("bash", [shippedEntry, "team", verb, "--json", ...args], worktree, env, 15000);
-    const first = invoke("reset");
-    expect(first.status).toBe(0);
-    const receipt = JSON.parse(first.stdout);
-    unlinkSync(registry);
-    writeFileSync(join(bus, "reset.fence.json"), JSON.stringify({ pid: 2147483647, owner_start: "1", boot_id: "boot:100",
-      token: "dead", bundle_id: receipt.bundle_id, op: "team-reset", phase: "cutting" }));
-    const resumed = invoke("reset");
-    if (resumed.status !== 0) throw new Error(`reset recovery: ${resumed.stdout}\n${resumed.stderr}`);
-    expect(resumed.status).toBe(0);
-    expect(JSON.parse(resumed.stdout).status).toBe("cut_resumed");
-    const restored = invoke("restore", ["--archive", receipt.bundle_id]);
-    expect(restored.status).toBe(0);
-    expect(JSON.parse(restored.stdout).restored_agents).toBe(1);
-    expect(JSON.parse(readFileSync(registry, "utf8")).seats.poller).toEqual({
-      delivery: "poll", status: "suspended", status_reason: "restored_from_archive",
-    });
-    expect(readFileSync(join(bus, "payloads", "kept.md"), "utf8")).toBe("durable payload");
-    expect(readdirSync(join(bus, "archive", "team-reset"))).toHaveLength(1);
-  });
-
-  test("team restore consumes an archive operand named like a sibling command", () => {
-    const { dir, env, worktree } = fixture();
-    const { bus } = seedLiveTeam(worktree, env.TAP_INDEX_HOME!, {});
     const trace = join(dir, "reset-route.trace");
-    Object.assign(env, { TAP_HOME: bus, TAP_BUN_ROUTE_TRACE: trace });
+    Object.assign(env, { TAP_BUN_ROUTE_TRACE: trace });
     const result = run("bun", [candidate, "team", "restore", "--archive", "up", "--json"], worktree, env);
     expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout).error_class).toBe("archive_not_found");
+    expect(JSON.parse(result.stdout).error_class).toBe("renamed_verb");
     expect(readFileSync(trace, "utf8")).toBe("native team\n");
   });
 
@@ -641,31 +612,6 @@ esac
     expect(readFileSync(trace, "utf8")).toContain("native restore\n");
   });
 
-  test("team restore renders malformed checkpoint JSON as a refusal", () => {
-    const { dir, env, worktree } = fixture();
-    const { bus, registry } = seedLiveTeam(worktree, env.TAP_INDEX_HOME!, {});
-    Object.assign(env, { TAP_HOME: bus, TAP_SCRATCH_ONLY: dir, TAP_BOOT_ID: "boot:100" });
-    const reset = run("bash", [shippedEntry, "team", "reset", "--json"], worktree, env, 15000);
-    expect(reset.status).toBe(0);
-    const { archive, bundle_id } = JSON.parse(reset.stdout);
-    const before = readFileSync(registry, "utf8");
-    for (const [name, bytes, errorClass] of [
-      ["meta.json", "{broken", "archive_invalid"], ["meta.json", "[]", "archive_invalid"],
-      ["inventory.json", "{broken", "inventory_mismatch"], ["inventory.json", "null", "inventory_mismatch"],
-    ]) {
-      const path = join(archive, name!), saved = readFileSync(path, "utf8");
-      try {
-        writeFileSync(path, bytes!);
-        const result = run("bash", [shippedEntry, "team", "restore", "--archive", bundle_id, "--json"], worktree, env, 15000);
-        expect(result.status).toBe(1);
-        expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error_class: errorClass });
-        expect(result.stderr).toBe("");
-        expect(existsSync(join(bus, "reset.fence.json"))).toBe(false);
-        expect(readFileSync(registry, "utf8")).toBe(before);
-      } finally { writeFileSync(path, saved); }
-    }
-  });
-
   test("teamstop door parity: a fenced mid-reset bus refuses identically through both entry points", () => {
     const { dir, env, worktree } = fixture();
     // A reset fence refuses `team down --json` identically through BOTH doors:
@@ -688,7 +634,7 @@ esac
     const body = JSON.parse(actual.stdout) as { ok: boolean; error_class: string; action: string; detail: string };
     expect(body).toMatchObject({ ok: false, error_class: "team_reset_fenced" });
     expect(body.detail).toContain("refusing tap team down — team bus is mid-reset (fence at ");
-    expect(body.action).toContain("wait for the reset owner (or until identity is readable), then: tap team reset");
+    expect(body.action).toContain("wait for the reset owner (or until identity is readable)");
   });
 
   test("retired done under a live marker and a calling pane resolves no actor and writes no audit row", () => {
@@ -950,7 +896,7 @@ if [ "\${1-}" = +%s ]; then printf '1789722000\\n'; else exec /bin/date "$@"; fi
     expect(native.stderr).toContain("refusing tap done — team bus is mid-reset");
     expect(native.stderr).toContain(`fence at ${realpathSync(fence)}`);
     expect(native.stderr).toContain(
-      "wait for the reset owner (or until identity is readable), then: tap team reset",
+      "wait for the reset owner (or until identity is readable)",
     );
     expect(existsSync(join(doneBus, "payloads"))).toBe(false);
     expect(existsSync(join(doneBus, "receipts"))).toBe(false);

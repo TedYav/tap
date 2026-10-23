@@ -28,7 +28,7 @@ import { spawnSync } from "node:child_process";
 import { basename } from "node:path";
 import { readIndexJson, resolveTeamMarkerAware } from "./index-home";
 import { carrierArgs, writeResult } from "./slices/result-pairs";
-import { resolveContext, teamRootFromBus, TapError, type ResolvedContext } from "./context";
+import { observeSharedCaller, resolveContext, teamRootFromBus, TapError, type ResolvedContext } from "./context";
 
 /**
  * Resolve the acting context for a verb that accepts `--team`.
@@ -43,6 +43,13 @@ export function resolveSelection(
   cwd: string = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedContext {
+  const shared = observeSharedCaller(env);
+  if (shared?.kind === "verified" && shared.child) {
+    // A child's TAP_HOME belongs to the service process, not its TUI. The
+    // verified native parent binding supplies the caller pin for this arm.
+    callerPin = shared.env.TAP_HOME ?? "";
+    env = shared.env;
+  }
   if (!callerPin) {
     return resolveContext(cwd, env, team ? { explicitTeam: team } : undefined);
   }

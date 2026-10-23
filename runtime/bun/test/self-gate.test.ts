@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkHarness, checkText, commandPrefix, COMPACT_FOCUS_CAP, GOAL_CAP, matchPhrase } from "../src/self-gate";
-import { parseSelf, writeHandoff } from "../src/verbs/self";
+import { parseSelf } from "../src/verbs/self";
 import { removeScratchTree } from "./support/scratch";
 
 const MARKER = " [[sv:self-20260923T000000Z-deadbeef]]";
@@ -101,21 +101,6 @@ test("parse accepts positional text or --, rejects unknown verbs and repeated fl
   expect(() => parseSelf(["goal", "--pane", "a", "--pane", "b", "x"])).toThrow("may be passed once");
   expect(() => parseSelf(["goal", "--bogus", "x"])).toThrow("unknown flag");
   expect(() => parseSelf(["goal", "--pane"])).toThrow("requires an argument");
-});
-
-test("the handoff is copied to the bus with the post-compaction header", () => {
-  if (!process.env.TAP_HOME) throw new Error("self-gate tests require the isolated runner");
-  const dir = mkdtempSync(join(process.env.TAP_HOME, "self-handoff-"));
-  try {
-    const source = join(dir, "source.md");
-    writeFileSync(source, "in-flight: B3 PR B\n");
-    const dest = writeHandoff(join(dir, "bus"), "self/native", source, new Date("2026-09-23T13:00:00.123Z"));
-    expect(dest).toBe(join(dir, "bus", "handoff", "self-native-20260923T130000Z.md"));
-    const bytes = readFileSync(dest, "utf8");
-    expect(bytes).toStartWith("# TAP compaction handoff — self/native\n# written 2026-09-23T13:00:00Z, BEFORE an explicit /compact\n#\n");
-    expect(bytes).toContain("Where the two disagree, this file is the record.\n\nin-flight: B3 PR B\n");
-    expect(readdirSync(join(dir, "bus", "handoff"))).toEqual(["self-native-20260923T130000Z.md"]);
-  } finally { removeScratchTree(dir); }
 });
 
 // tap-vho8h: the focus is typed as keystroke chunks and proven back row by

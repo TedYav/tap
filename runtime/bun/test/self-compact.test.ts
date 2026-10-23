@@ -3,7 +3,7 @@ import { afterAll, expect, test } from "bun:test";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compactReadiness, compactedAfter, escapeRefusal, latestTurnId, lockedCompactSubmit, parseOptions, resumeSendArgs, requestSeat, spawnRequest, runCompact, runWake, stageResumeBody, TERMINAL, type CompactEffects, type CompactReceipt, type CompactRequest, type WakeEffects, type WakeReceipt, type WakeRequest } from "../src/self-compact";
+import { armSelfCompact, compactReadiness, compactedAfter, escapeRefusal, latestTurnId, lockedCompactSubmit, parseOptions, resumeSendArgs, requestSeat, spawnRequest, runCompact, runWake, stageResumeBody, TERMINAL, type CompactEffects, type CompactReceipt, type CompactRequest, type WakeEffects, type WakeReceipt, type WakeRequest } from "../src/self-compact";
 import { detectAgentState } from "../src/agent-state";
 import type { SubmitResult } from "../src/courier";
 import { classifySubmitFrame } from "../src/submit-frame";
@@ -87,12 +87,14 @@ function run(fake: Fake, timeout = 8000, ping?: string): Promise<void> {
   seedRollout(ROLLOUT, "old", [{ type: "turn_context", payload: { turn_id: TURN } }]);
   return runCompact(request(ping ? { resumePing: ping } : {}), fake.fx, timeout);
 }
-test("parseOptions requires a pane and a focus; the handoff is enforced per family at arm", () => {
+test("parseOptions and direct arm require an authored handoff", () => {
   expect(() => parseOptions(["--pane", "%5"])).toThrow("tap self compact --handoff");
   expect(() => parseOptions(["--handoff-path", "/h"])).toThrow();
-  expect(parseOptions(["--pane", "%5", "--", "focus text"])).toMatchObject({ pane: "%5", focus: "focus text" });
+  expect(() => parseOptions(["--pane", "%5", "--", "focus text"])).toThrow("/tap:self compact");
+  expect(() => armSelfCompact({pane:"%5",focus:"preserve work"})).toThrow("/tap:self compact");
+  expect(parseOptions(["--pane", "%5", "--handoff-path", "/h", "--notify", "peer", "--", "f"])).toMatchObject({notify:"peer"});
   expect(parseOptions(["--pane", "%5", "--handoff-path", "/h", "--", "focus text"])).toMatchObject({ pane: "%5", handoffPath: "/h", focus: "focus text" });
-  expect(parseOptions(["--pane", "%5", "--handoff-path", "/h", "--resume-ping", "p", "--", "f"]).resumePing).toBe("p");
+  expect(() => parseOptions(["--pane", "%5", "--handoff-path", "/h", "--resume-ping", "p", "--", "f"])).toThrow("unexpected argument");
 });
 test("compactedAfter admits only complete records appended after the Enter offset of the bound session", () => {
   const path = join(root, "proof.jsonl");
@@ -671,7 +673,7 @@ test("wake without a precomposed ping names the handoff and the poll", async () 
   const f = fakeWake({  });
   await runWake(f.request("claude", { resumePing: undefined }), f.fx("claude"), 5000);
   const sent = f.log.find(l => l.startsWith("send:"))!;
-  expect(sent).toContain("Read /bus/handoff/worker.md first");
+  expect(sent).toContain("Read the whole brief at /bus/handoff/worker.md");
   expect(sent).toContain("tap poll worker");
 });
 
@@ -857,4 +859,32 @@ test("claude wake: an unverified submit with a boundary keeps its detail through
   expect(terminal.detail).toContain("staged, working, width 52");
   expect(terminal.detail).toContain("press Enter there to submit it");
   expect(f.log.some(l => l.startsWith("send:"))).toBe(false);
+});
+
+test("production compact failure notification is separate and never replays a claimed worker", async () => {
+  const { worker } = await import("../src/self-compact");
+  for (const notify of [undefined, "owner"]) {
+    const id=notify ? "notify-worker" : "operator-worker";
+    const bus=join(root,id);mkdirSync(bus,{recursive:true});
+    const registry=join(bus,"registry.json");
+    writeFileSync(registry,JSON.stringify({schema:"0.20",team:{name:"team"},seats:{worker:{...SEAT,instance:"replacement"}}}));
+    const req=request({id,bus,registry,notify});
+    const path=join(bus,`${id}.compact.json`);writeFileSync(path,JSON.stringify(req));
+    await worker(path);
+    const receiptPath=join(bus,`${id}.compact.receipt.json`);
+    const before=readFileSync(receiptPath,"utf8");
+    expect(JSON.parse(before)).toMatchObject({state:"incomplete",handoff:req.handoff});
+    expect(existsSync(`${receiptPath}.notify.json`)).toBe(notify !== undefined);
+    await worker(path);
+    expect(readFileSync(receiptPath,"utf8")).toBe(before);
+  }
+});
+
+test("historical handoff-less wake keeps its saved continuation and proof barrier", async () => {
+  const f=fakeWake({});
+  const saved="Previously authored continuation: inspect the existing work.";
+  await runWake(f.request("claude",{handoff:undefined,resumePing:saved}),f.fx("claude"),5000);
+  expect(f.log.filter(line=>line.startsWith("send:"))).toEqual([`send:${saved}`]);
+  expect(f.receipts.at(-1)?.state).toBe("resume-sent");
+  expect(()=>armSelfCompact({pane:"%5",focus:"preserve work"})).toThrow("/tap:self compact");
 });

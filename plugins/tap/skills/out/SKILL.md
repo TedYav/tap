@@ -1,7 +1,7 @@
 ---
 name: out
 description: "When leaving TAP or removing the last exited teammate, unregister and free the handle."
-argument-hint: '[handle|-] [--forward-to successor]'
+argument-hint: '[handle|--last|-] [--forward-to successor]'
 allowed-tools: 'Bash'
 role: maker
 ---

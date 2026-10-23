@@ -81,13 +81,9 @@ test("codex fork runs `codex fork <id>` and leaves the new id to the harness", a
   expect(argv).not.toContain("resume");
 });
 
-test("opencode fork keeps the source --session through the composer's session pin", async () => {
+test("OpenCode 2 TUI fork refuses before any effect", async () => {
   const f = world(), r = recorder();
-  const record = await planFork(opts("oc"), f.root, r.deps);
-  const argv = argvOf(record);
-  expect(argv).toContain("--fork");
-  expect(argv.filter(token => token === "--session")).toHaveLength(1);
-  expect(argv[argv.indexOf("--session") + 1]).toBe("ses_source");
+  await expect(planFork(opts("oc"), f.root, r.deps)).rejects.toMatchObject({errorClass:"fork_unsupported"});
 });
 
 test.each([["ag", "agy"], ["cu", "cursor"]])("%s (%s) refuses before any effect and names the in-session /fork", async (handle, harness) => {

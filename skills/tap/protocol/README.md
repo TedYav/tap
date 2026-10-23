@@ -15,3 +15,4 @@ Exact CLI grammar lives in `tap help <verb>`. Start task lookup in [`../GUIDE.md
 - [Harness drivers and appendices](./harness/README.md) — 5 bounded source pages
 
 - [Model reference and launch tuning](identity/model-reference.md): absent-ledger guidance and stored launch identity.
+- [Seat observations](identity/calibration.md): explicit calibration reads, local append-only store and render budgets.

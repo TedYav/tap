@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { removeScratchTree } from "./support/scratch";
 import { enrollScratchRoot } from "./support/enroll-scratch";
 import { INHERITED_IDENTITY_ENV } from "../src/session-store";
+import { crewRecipeInvocation, crewRecipeWithOverrides } from "../src/launcher/crew-invocation";
 
 const root = realpathSync(mkdtempSync(join(process.env.TMUX_TMPDIR ?? tmpdir(), "crew-inv.")));
 const door = resolve(import.meta.dir, "../src/launcher/crew-invocation.ts");
@@ -45,7 +46,8 @@ for (const harness of ["claude", "codex", "opencode", "cursor", "agy", "hermes"]
     const f = fixture();
     Object.assign(f.env, { TAP_HARNESS_SESSION_ID: "parent-id", CODEX_THREAD_ID: "parent-id", CLAUDE_CODE_SESSION_ID: "parent-id" });
     const command = success(f, harness);
-    expect(command).toContain("--model model-x");
+    if (harness === "opencode") expect(command).not.toContain("--model");
+    else expect(command).toContain("--model model-x");
     for (const forbidden of ["parent-id", "--resume", "--session", "--conversation", "--continue"]) expect(command).not.toContain(forbidden);
     expect(command.startsWith("/bin/sh -lic ")).toBe(true);
     if (harness === "claude") expect(command).toContain("--name team/crew");
@@ -84,7 +86,8 @@ test("preset digest, exclusivity and harness are checked before rendering", () =
   const f = fixture(preset("codex"));
   expect(refusal(f, ["--preset", "chosen", "--preset-digest", "wrong"], "preset_config_changed").detail).toContain("changed mid-launch");
   refusal(f, ["--preset", "chosen", "--model", ""], "preset_not_composable");
-  refusal(f, ["--preset", "chosen", "--env", "GOOD=x"], "preset_not_composable");
+  refusal(f, ["--preset", "chosen", "--model", "model-x"], "preset_not_composable");
+  expect(success(f, "codex", ["--preset", "chosen", "--env", "GOOD=x"])).toContain("GOOD=x");
   refusal(f, ["--preset", "chosen"], "preset_harness_mismatch", "claude");
   success(f, "codex", ["--preset", "chosen"]);
 });
@@ -221,9 +224,9 @@ test("crew preserves the incumbent secure-read refusal and degraded-notice vocab
     try {
       const { crewInvocation } = await import("../src/launcher/crew-invocation");
       const args = ["codex", "team/crew", "--cwd", f.cwd, ...(explicitPreset ? ["--preset", "chosen"] : ["--model", "ok"])];
-      if (explicitPreset) expect(() => crewInvocation(args, f.env)).toThrow("preset_config_invalid: invalid preset config");
+      if (explicitPreset) await expect(crewInvocation(args, f.env)).rejects.toThrow("preset_config_invalid: invalid preset config");
       else {
-        crewInvocation(args, { ...f.env, TAP_JSON: "0" });
+        await crewInvocation(args, { ...f.env, TAP_JSON: "0" });
         expect(messages.join("")).toContain("source changed while it was being opened; retry");
         expect(messages.join("")).not.toContain("changed while opening");
       }
@@ -278,4 +281,104 @@ test("crew launch strips inherited harness identity env before the harness, keep
   expect(child.status, child.stderr).toBe(0);
   const seen = Object.fromEntries(child.stdout.trim().split("\n").map(line => line.split(/=(.*)/s).slice(0, 2)));
   expect(seen).toEqual({ ...Object.fromEntries([...INHERITED_IDENTITY_ENV].map(key => [key, "absent"])), TMUX: "/tmp/sock,1,0", TMUX_PANE: "%3" });
+});
+
+// Crew takes tap session launch's overrides: typed env, unset keys and a literal harness tail, with or without a preset.
+const echoHarness = (f: Fixture, name: string, keys: string[]) => {
+  const executable = join(f.cwd, name);
+  writeFileSync(executable, `#!/bin/sh\n${keys.map(key => `printf '%s=%s\\n' ${key} "\${${key}-absent}"`).join("\n")}\nfor arg in "$@"; do printf 'arg=%s\\n' "$arg"; done\n`, { mode: 0o755 });
+  return executable;
+};
+test("OpenCode crew launch and recipe replay pass merged tabs config to the TUI", async () => {
+  const f = fixture();
+  const executable = echoHarness(f, "opencode", ["OPENCODE_CLI_CONFIG_CONTENT"]);
+  Object.assign(f.env, { OPENCODE_CLI_CONFIG_CONTENT: '{"theme":{"name":"keep"}}' });
+  const fresh = success(f, "opencode");
+  const replay = await crewRecipeInvocation("team", "crew", { harness: "opencode", model: "model-x", cwd: f.cwd,
+    harness_env: { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"on"}}' }, passthrough: [], permissions: "auto" }, f.env);
+  for (const [command, mode] of [[fresh, "off"], [replay.command, "on"]]) {
+    const child = spawnSync("/bin/sh", ["-c", command!.replace(/\bopencode\b(?= --standalone)/, executable)], { env: f.env, encoding: "utf8" });
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout.split("\n")[0]!.slice("OPENCODE_CLI_CONFIG_CONTENT=".length)))
+      .toEqual({ tabs: { mode }, theme: { name: "keep" } });
+  }
+});
+test("OpenCode crew unset masks malformed ambient config and removes the default", () => {
+  const f = fixture();
+  Object.assign(f.env, { OPENCODE_CLI_CONFIG_CONTENT: "malformed", TAP_JSON: "0" });
+  const r = run(f, "opencode", ["--model", "m", "--unset-env=OPENCODE_CLI_CONFIG_CONTENT"]);
+  expect(r.status, r.stderr).toBe(0);
+  expect(r.stderr).not.toContain("tabs.mode=off");
+  expect(r.stdout).toContain("-u OPENCODE_CLI_CONFIG_CONTENT");
+  expect(r.stdout).not.toContain("OPENCODE_CLI_CONFIG_CONTENT=");
+});
+test("a preset composes typed env, unset keys and a literal harness tail", () => {
+  const f = fixture(preset("codex", 'env.CREW_VALUE = "from preset"\nenv.CREW_DROP = "from preset"\n'));
+  const command = success(f, "codex", ["--preset", "chosen", "--env=CREW_VALUE=typed", "--unset-env=CREW_DROP",
+    "--harness-arg=-c", "--harness-arg=model_context_window=250000", "--harness-arg="]);
+  expect(command).toContain("-u CREW_DROP");
+  const executable = echoHarness(f, "codex", ["CREW_VALUE", "CREW_DROP"]);
+  // An ambient value is masked too: env -u runs after login startup.
+  const child = spawnSync("/bin/sh", ["-c", command.replace(/\bcodex\b/, executable)], { env: { ...f.env, CREW_DROP: "ambient" }, encoding: "utf8" });
+  expect(child.status, child.stderr).toBe(0);
+  const lines = child.stdout.trim().split("\n");
+  expect(lines.slice(0, 2)).toEqual(["CREW_VALUE=typed", "CREW_DROP=absent"]);
+  expect(lines.slice(-3)).toEqual(["arg=-c", "arg=model_context_window=250000", "arg="]);
+  expect(lines).toContain("arg=--model");
+});
+test("unset keys also mask machine policy and launcher defaults", () => {
+  const f = fixture('version = 3\n[harness.claude.env]\nCREW_MACHINE = "policy"\n');
+  const command = success(f, "claude", ["--model", "m", "--unset-env=CREW_MACHINE", "--unset-env=CLAUDE_CODE_NO_FLICKER"]);
+  expect(command).not.toContain("CREW_MACHINE=policy");
+  expect(command).not.toContain("CLAUDE_CODE_NO_FLICKER=1");
+  expect(command).toContain("-u CLAUDE_CODE_NO_FLICKER");
+  expect(command).toContain("-u CREW_MACHINE");
+});
+test("override refusals: same key twice, the env fence on unset keys, conversation flags, and permission conflicts", () => {
+  const f = fixture(preset("claude") + '[harness.claude]\npermissions = "auto"\n');
+  expect(refusal(f, ["--model", "m", "--env=SAME=x", "--unset-env=SAME"], "launch_arg_invalid", "claude").detail).toContain("both --env and --unset-env name SAME");
+  expect(refusal(f, ["--model", "m", "--unset-env=TAP_HOME"], "launch_env_forbidden", "claude").action).toBe("remove --unset-env TAP_HOME from the command");
+  expect(refusal(f, ["--model", "m", "--unset-env=BAD-KEY"], "launch_arg_invalid", "claude").detail).toContain("--unset-env key 'BAD-KEY'");
+  for (const flag of ["--resume=abc", "--continue", "-c", "--session-id"]) {
+    expect(refusal(f, ["--preset", "chosen", `--harness-arg=${flag}`], "launch_arg_invalid", "claude").detail).toContain("a crew seat always starts a fresh one");
+  }
+  for (const [harness, flags] of [["codex", ["resume"]], ["codex", ["fork"]], ["cursor", ["--resume=abc"]], ["cursor", ["--continue"]],
+    ["agy", ["--conversation", "abc"]], ["agy", ["--continue"]]] as const) {
+    const detail = refusal(fixture(), ["--model", "m", ...flags.map(flag => `--harness-arg=${flag}`)], "launch_arg_invalid", harness).detail;
+    expect(detail).toContain("a crew seat always starts a fresh one");
+  }
+  expect(refusal(f, ["--preset", "chosen", "--harness-arg=--dangerously-skip-permissions"], "session_error", "claude").detail).toContain("harness_permissions_conflict");
+  const oc = fixture();
+  expect(success(oc, "opencode", ["--model", "m", "--harness-arg=--continue", "--harness-arg=--verbose"])).not.toContain("--continue");
+});
+test("overrides persist beside the preset recipe and replay on relaunch", async () => {
+  const f = fixture(preset("claude", 'env.TERM = "xterm"\n') + '[harness.claude]\npermissions = "auto"\n');
+  const r = registry(f);
+  success(f, "claude", [...r.args, "--env=CREW_SETTING=v", "--unset-env=TERM", "--harness-arg=--verbose"]);
+  const row = JSON.parse(readFileSync(r.path, "utf8")).seats.crew;
+  expect(row).toMatchObject({ harness_env: { CREW_SETTING: "v" }, harness_env_set: ["CREW_SETTING"], harness_unset_env: ["TERM"],
+    harness_tail: ["--verbose"], passthrough_from_config: true });
+  const { command } = await crewRecipeInvocation("team", "crew", row, f.env);
+  expect(command).toContain("-u TERM");
+  expect(command).toContain("CREW_SETTING=v");
+  expect(command).not.toContain("TERM=xterm");
+  expect(command.endsWith(" --verbose")).toBe(true);
+  // A selector written into a stored tail refuses on replay too.
+  let replayed: { errorClass?: string } | null = null;
+  try { await crewRecipeInvocation("team", "crew", { ...row, harness_tail: ["--resume", "old-id"] }, f.env); } catch (error) { replayed = error as { errorClass?: string }; }
+  expect(replayed?.errorClass).toBe("launch_arg_invalid");
+  for (const field of ["harness_unset_env", "harness_tail"]) {
+    let thrown: { errorClass?: string } | null = null;
+    try { await crewRecipeInvocation("team", "crew", { ...row, [field]: "not-a-list" }, f.env); } catch (error) { thrown = error as { errorClass?: string }; }
+    expect(thrown?.errorClass).toBe("crew_recipe_missing");
+  }
+});
+
+test("relaunch overrides fold into a crew recipe: unset then set again, typed keys tracked by name", () => {
+  const base = { harness_env: { KEEP: "k", TYPED: "old" }, harness_unset_env: [], harness_tail: ["--a"], harness_env_set: ["TYPED"] };
+  const unset = crewRecipeWithOverrides(base, { unset_env: ["TYPED"], argv: ["--b"] })!;
+  expect(unset).toEqual({ harness_env: { KEEP: "k" }, harness_unset_env: ["TYPED"], harness_tail: ["--a", "--b"], harness_env_set: [] });
+  const reset = crewRecipeWithOverrides(unset, { env: ["TYPED=new"] })!;
+  expect(reset).toEqual({ harness_env: { KEEP: "k", TYPED: "new" }, harness_unset_env: [], harness_tail: ["--a", "--b"], harness_env_set: ["TYPED"] });
+  expect(crewRecipeWithOverrides({ ...base, harness_tail: "bad" }, { env: ["X=1"] })).toBeNull();
 });

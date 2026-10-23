@@ -18,11 +18,12 @@ const TEAM = [...(HELP_COMPOSITES.team ?? [])].sort(codePointCompare);
 const SESSION = [...(HELP_COMPOSITES.session ?? [])].sort(codePointCompare);
 const KEYBINDING = ["install", "remove", "status"];
 const FLAGS: Record<string, string[]> = {
+  calibrate: ["-f", "--ref", "--effort", "--all", "--json"],
   attach: ["--no-resume", "--next", "--interactive", "-i"],
-  teams: ["--all", "--details", "--json"],
+  teams: ["--all", "--details", "--json", "--seats", "--wide"],
   team: ["--json", "--all", "--names", "--active", "--offline", "--context"],
   "team roster": ["--json", "--all", "--names", "--active", "--offline", "--context"],
-  "team list": ["--json", "--all", "--details"],
+  "team list": ["--json", "--all", "--details", "--seats", "--wide"],
   "team attach": ["--only", "--except", "--dry-run", "--tabs", "--all", "--yes"],
   "team detach": ["--only", "--except", "--handle", "--yes", "--dry-run"],
   "team down": ["--only", "--except", "--dry-run", "--json", "--yes"],
@@ -42,7 +43,7 @@ const FLAGS: Record<string, string[]> = {
   poll: ["--team", "--json", "--quiet"],
   outstanding: ["--team", "--json", "--stale"],
   peek: ["--pane", "--json"],
-  nudge: ["--pane", "--aggressiveness"],
+  nudge: ["--to", "--pane", "--message", "--no-interrupt", "--dry-run", "--harness", "--team", "--active-within", "--yes"],
   pick: ["--pane", "--list", "--json"],
   "keybinding install": ["--key", "--tap", "--dry-run", "--json"],
   "keybinding remove": ["--dry-run", "--json"],
@@ -54,9 +55,9 @@ const FLAGS: Record<string, string[]> = {
 const TEAM_VALUE = new Set(["--team"]);
 const LIST_VALUE = new Set(["--only", "--except"]);
 const ACTOR_VALUE = new Set(["--from", "--by", "--handle", "--to"]);
-const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "-m", "--tap", "--key"]);
-const TARGET_VERBS = new Set(["attach", "out", "shutdown", "down", "up", "peek", "clear", "poll", "outstanding", "send", "assign", "nudge"]);
-const QUALIFIED_TARGET_VERBS = new Set(["attach", "out", "shutdown", "down", "up", "clear", "send", "assign", "nudge"]);
+const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--ref", "--effort", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "--harness", "--active-within", "-m", "--tap", "--key"]);
+const TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "peek", "clear", "poll", "outstanding", "send", "assign", "nudge"]);
+const QUALIFIED_TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "clear", "send", "assign", "nudge"]);
 const FILE_SENTINEL = "\x1fFILES";
 
 function row(value: unknown): value is Seat { return typeof value === "object" && value !== null && !Array.isArray(value); }
@@ -125,7 +126,7 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   const sub = ["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? before[1] ?? "" : "";
   const command = sub ? `${verb} ${sub}` : verb;
   const previous = before.at(-1) ?? "";
-  if (previous === "-f" && (verb === "send" || verb === "assign" || verb === "reply")) return [{ value: FILE_SENTINEL, description: "file position" }];
+  if (previous === "-f" && (verb === "send" || verb === "assign" || verb === "reply" || verb === "calibrate")) return [{ value: FILE_SENTINEL, description: "file position" }];
   if (previous === "--tap" && verb === "keybinding") return [{ value: FILE_SENTINEL, description: "file position" }];
   const result: Candidate[] = [];
   const add = (value: string, description: string) => { if (value.startsWith(prefix)) result.push({ value, description }); };

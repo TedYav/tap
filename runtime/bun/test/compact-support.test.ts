@@ -131,7 +131,7 @@ mock.module(${JSON.stringify(resolve(import.meta.dir, "../src/observe-gather.ts"
   gatherRowsFromEnv: (rows: any[]) => rows.map(r => [r.key, 'active', '', r.pane, r.pane_id, r.harness, '0'].join('\\x1f')) }));
 const { cmdCompact } = await import(${JSON.stringify(resolve(import.meta.dir, "../src/verbs/compact.ts"))});
 const { writeFileSync } = await import("node:fs");
-try { process.exitCode = await cmdCompact(['peer'], ${JSON.stringify(resolve(import.meta.dir, "../../../skills/tap/scripts"))}, false, undefined,
+try { process.exitCode = await cmdCompact(['peer'], ${JSON.stringify(resolve(import.meta.dir, "../../../skills/tap/scripts"))}, false,
  async (r) => { writeFileSync(${JSON.stringify(marker)}, 'yes'); writeFileSync(r.proofReceipt, JSON.stringify({ id: r.id, state: 'resume-sent', evidence: 'transcript-proven', compactedAt: new Date().toISOString() })); return 0; }); }
 catch (e: any) { process.stdout.write(JSON.stringify({ error: e.errorClass, action: e.action })); process.exitCode = e.code ?? 1; }
 `);

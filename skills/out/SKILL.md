@@ -1,7 +1,7 @@
 ---
 name: out
 description: "When leaving TAP or removing the last exited teammate, unregister and free the handle."
-argument-hint: '[handle|-] [--forward-to successor]'
+argument-hint: '[handle|--last|-] [--forward-to successor]'
 allowed-tools: 'Bash'
 role: maker
 ---
@@ -16,7 +16,20 @@ tap out
 
 Bare form targets your own derived handle; pass a name to remove a specific one. **Idempotent** — removing an absent handle is a no-op.
 
-**Most recently exited teammate:** `tap out -` (same as `tap unregister -`) picks a corpse on your team — pane-backed seats that are (`active` + probe-dead) or (`suspended` + `status_reason=pane_gone`). Exactly one → unregister; zero → refuse; multiple → prefer latest `exited_at` when stamps distinguish. Never live, pending, poll, `user_removed`, or cross-team.
+**Most recently exited teammate:** `tap out --last` (`tap out -` is an alias)
+uses the same absence classifier as `tap team refresh`. It considers active pane-backed rows and rows marked suspended/pane_gone by delivery whose session is positively absent, or whose recorded pane ID
+is absent from a readable pane set in the same current server epoch. It excludes
+live, launching, pending, poll, other suspended and foreign-team/socket rows. Missing `exited_at`
+stamps are recorded on first observed absence; the unique latest stamp wins,
+and a tie refuses with the candidates. Unreadable snapshots refuse without
+stamping. The selected row and its absence are checked again under retirement
+custody. If the harness is still shutting down after `/exit`, wait and retry.
+For the final session's exit, `--last` accepts the recognized-empty namespace
+proof used by `team refresh --hard`; any recorded server socket must match the
+queried physical socket. Plain refresh's no-server polarity is unchanged.
+Other failures refuse. The empty proof is rechecked before retirement, so a
+server started meanwhile cannot make a revived seat eligible.
+Do not combine `--last` with a name, `--pane`, `--kill` or `--forward-to`.
 
 Distinct from `tap register --offline`, which _suspends_ the entry (keeps it for provenance) rather than removing it. Rejoin any time with **/tap:in** (manual reconnect — TAP-launched seats are already registered).
 

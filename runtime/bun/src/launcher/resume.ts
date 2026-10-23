@@ -26,7 +26,7 @@ import { PANE_FACTS_FORMAT, paneFacts, paneHarness, parsePaneFacts, type PaneFac
 import { pathIsUnder, realOrSelf, recordKeySelection, rootForCwd } from "./records";
 import { timestamp } from "./repair";
 import { freshLaunchSessionId } from "./adapters";
-import { recordHasResumeArtifact, pyRepr } from "./resume-identity";
+import { idlessFreshWarning, recordHasResumeArtifact, pyRepr } from "./resume-identity";
 import { fenceSurvivingCrew, reclaimRevivedCrew, survivingCrews, type SurvivingCrew } from "../crew-lifetime";
 import { teamRegistryRefusal } from "../register-authority";
 import { LauncherError } from "./types";
@@ -337,7 +337,7 @@ export const receipt = (message: string) => out(`tap session: ${message}`);
 function reviveContext(harness: string, sessionId: string | null | undefined): string {
   if (sessionId) return `${harness} resume ${sessionId}`;
   if (harness === "claude" || harness === "codex") return `${harness} native picker`;
-  if (harness === "agy") return "agy native latest (--continue)";
+  if (harness === "agy") return "no conversation id on record; pick one with agy's /resume";
   if (harness === "cursor") return "no session id on record; browse past sessions with cursor-agent ls";
   return "no conversation to resume";
 }
@@ -351,6 +351,13 @@ export interface ResumeDeps {
   register: (record: LaunchRecord) => Promise<boolean>;
   hasTty: () => boolean;
   choose: typeof promptChoice;
+}
+
+const FRESH_START_WARNING_HOLD_MS = 1500;
+
+/** Whether the resume attach holds before repainting: only a resume tail whose record printed an id-less fresh-start warning. */
+export function holdsFreshStartWarning(tail: "resume" | "launch", record: LaunchRecord): boolean {
+  return tail === "resume" && idlessFreshWarning(record) !== null;
 }
 
 /** The attach tail, in the process that owns the terminal. Never the verdict: always 0. */
@@ -368,7 +375,9 @@ export async function attachTailInProcess(tail: "resume" | "launch", record: Lau
   }
   if ("detached" in decision) { receipt(detachedReceipt(name, decision.detached, target)); return 0; }
   if ("refused" in decision) { receipt(detachedReceipt(name, attachNarration(name, decision.refused).receipt!, target)); return 0; }
-  // Custody is re-read at the spawn: the probe above may have blocked meanwhile.
+  // The attach repaints the terminal: hold an id-less fresh-start warning on screen long enough to read.
+  if (holdsFreshStartWarning(tail, record)) await Bun.sleep(FRESH_START_WARNING_HOLD_MS);
+  // Custody is re-read at the spawn: the probe above, or the hold, may have blocked meanwhile.
   if (!callerOwnsForegroundTty()) {
     receipt(detachedReceipt(name, attachNarration(name, ATTACH_REFUSED_TTY_OWNERSHIP).receipt!, target));
     return 0;
@@ -488,7 +497,10 @@ async function runAdoptedResume(harness: string, base: string, cwd: string, opti
   const record = withRecordDefaults({ name, harness, cwd, base, tag: null, index: allocatedIndex(name, base, harness), model: null,
     last_launched: timestamp() });
   // Cursor never opens its picker (tap-we6b): an id-less resume starts fresh, as OpenCode's does.
-  const how = harness === "opencode" || harness === "cursor" ? "; starting a fresh conversation" : " using the native resume picker";
+  // agy's picker is in-app only, so it starts empty and the operator picks with /resume.
+  const how = harness === "opencode" || harness === "cursor" ? "; starting a fresh conversation"
+    : harness === "agy" ? "; starting an empty conversation. Use agy's /resume picker to select the conversation you want"
+    : " using the native resume picker";
   err(`tap session: no known ${harness} session found; creating tmux session ${pyRepr(name)}${how}`);
   err(`tap session: resuming ${name}; expected seat ${launchHandle(record)}`);
   const outcome = await deps.run("adopted", record, { native_query: null });

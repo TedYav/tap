@@ -76,6 +76,8 @@ for spec in sys.argv[2:]:
                      "pane": f"{session}:0.0", "session": session, "registered_at": "t", "server_epoch": os.environ["EPOCH"],
                      **({"crew": True} if crew else {}),
                      **({"server_socket": crew[1]} if len(crew) > 1 else {})}
+# Named removal must remain a repair even when a durable owner link is wrong.
+seats['crew-a'].update(crew_owner='does-not-exist', crew_owner_instance='stale-instance')
 def team(name, rows):
     reg = w / name / ".tap/team-registry.json"
     reg.write_text(json.dumps({"schema": "0.20", "team": {"name": name}, "seats": rows}))

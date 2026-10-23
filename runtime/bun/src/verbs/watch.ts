@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // `tap watch on|pause|resume|off|status|ack|reminders|tick|run` -- the supervision
 // verb layer, native (migration slice W1; `tick` since W2c-2, `run` since W3; the
 // `tap-watch.sh` forward deleted at W4). Two doors reach ONE body: the Bun router
@@ -77,7 +78,8 @@ interface ActorRefusal { action: string; detail: string }
  */
 function resolveActor(ctx: Context, explicit: string, env: NodeJS.ProcessEnv, refusal: ActorRefusal, escape = false, paneOnly = false): string {
   if (explicit) return explicit;
-  if (env.TAP_SELF && !paneOnly) return env.TAP_SELF;
+  const inherited = paneOnly ? "" : inheritedActor(env);
+  if (inherited) return inherited;
   const pane = callingPane(env);
   if (pane?.status === "ok") {
     try { return resolveSelf(ctx, pane, 1, env).handle; } catch (error) {
@@ -117,7 +119,7 @@ function cmdOn(ctx: Context, argv: string[], scripts: string, env: NodeJS.Proces
   // tap-0nzm: `evaluator` defaults AFTER parsing, so "passed --evaluator codex"
   // stays distinguishable from "omitted". Only the settings EXPLICITLY passed
   // enter `intent`, as "<stored-field-name>=<value>".
-  let armer = env.TAP_SELF ?? "", doneWhen = "", doneFile = "", threshold = "", probeTimeout = "", interval = "",
+  let armer = "", doneWhen = "", doneFile = "", threshold = "", probeTimeout = "", interval = "",
     evaluator = "", chain = "", terminal = "", contextThreshold = "40", contextExempt = "", rearm = false, force = false,
     noSpawn = (env.TAP_WATCH_NO_SPAWN ?? "0") === "1";
   const intent: Array<[field: string, want: string]> = [];
@@ -277,7 +279,7 @@ export function durationSeconds(duration: string): bigint | null {
 }
 
 function cmdPause(ctx: Context, argv: string[], scripts: string, env: NodeJS.ProcessEnv): number {
-  let actor = env.TAP_SELF ?? "", reason = "", duration = "4h";
+  let actor = "", reason = "", duration = "4h";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     switch (a) {
@@ -289,6 +291,7 @@ function cmdPause(ctx: Context, argv: string[], scripts: string, env: NodeJS.Pro
         usage(`unexpected arg '${a}'`);
     }
   }
+  actor ||= inheritedActor(env);
   assertResetUnfenced(ctx.bus.home, "tap watch pause");
   ctx.bus.ensureDirs();
   const arm = armPath(ctx.bus.home);
@@ -323,13 +326,14 @@ function cmdPause(ctx: Context, argv: string[], scripts: string, env: NodeJS.Pro
 }
 
 function cmdResume(ctx: Context, argv: string[], scripts: string, env: NodeJS.ProcessEnv): number {
-  let actor = env.TAP_SELF ?? "";
+  let actor = "";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--by") { actor = value(argv, i, "--by needs a value"); i++; continue; }
     if (a.startsWith("--")) unknownOption(a);
     usage(`unexpected arg '${a}'`);
   }
+  actor ||= inheritedActor(env);
   assertResetUnfenced(ctx.bus.home, "tap watch resume");
   ctx.bus.ensureDirs();
   const arm = armPath(ctx.bus.home);
@@ -461,13 +465,14 @@ function cmdStatus(ctx: Context, env: NodeJS.ProcessEnv): number {
 // --- ack ------------------------------------------------------------------------
 
 function cmdAck(ctx: Context, argv: string[], env: NodeJS.ProcessEnv): number {
-  let actor = env.TAP_SELF ?? "";
+  let actor = "";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--by") { actor = value(argv, i, "--by needs a value"); i++; continue; }
     if (a.startsWith("--")) unknownOption(a);
     usage(`unexpected arg '${a}'`);
   }
+  actor ||= inheritedActor(env);
   assertResetUnfenced(ctx.bus.home, "tap watch ack");
   ctx.bus.ensureDirs();
   const notify = notifyPath(ctx.bus.home);

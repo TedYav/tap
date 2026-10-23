@@ -46,7 +46,7 @@ function registry(f: ReturnType<typeof socketFixture>, parentPane: string, crewP
   const path = join(f.root, "registry.json");
   writeFileSync(path, JSON.stringify({ schema: "0.20", team: { name: "Lifetime" }, seats: {
     parent: { ...base, instance: "parent-one", pane_id: parentPane },
-    child: { ...base, instance: "child-one", pane_id: crewPane, crew: true },
+    child: { ...base, instance: "child-one", pane_id: crewPane, crew: true, crew_owner: "parent", crew_owner_instance: "parent-one" },
   } }));
   return { path, ctx: { registryPath: path, team: "Lifetime" } as ResolvedContext };
 }
@@ -326,4 +326,110 @@ test("parent exit after crew respawn stops the exact verified replacement", asyn
     for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     f.close();
   }
+}, 30000);
+
+test("an override relaunch whose recipe save fails still verifies and supervises the replacement, then reports it", async () => {
+  const f = socketFixture();
+  const saved = new Map(["PATH", "TAP_INDEX_HOME", "TAP_HOME", "TAP_LAUNCH_SHELL"].map(key => [key, process.env[key]]));
+  let binding: Awaited<ReturnType<typeof reconcileCrewLifetime>> | undefined;
+  try {
+    expect(f.tmux("new-session", "-d", "-s", "Lifetime/parent", "-n", "parent", `${f.bin}/codex 600`).status).toBe(0);
+    const parentPane = f.read("display-message", "-p", "-t", "Lifetime/parent:0.0", "#{pane_id}");
+    expect(f.tmux("new-window", "-d", "-t", "Lifetime/parent", "-n", "child", "sleep 600").status).toBe(0);
+    const crewPane = f.read("display-message", "-p", "-t", "Lifetime/parent:1.0", "#{pane_id}");
+    expect(f.tmux("new-session", "-d", "-s", "operator", "sleep 600").status).toBe(0);
+    const { path, ctx: partial } = registry(f, parentPane, crewPane);
+    const root = realpathSync(f.root), index = join(root, "index");
+    mkdirSync(index);
+    process.env.TAP_INDEX_HOME = index;
+    delete process.env.TAP_HOME;
+    writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
+      Lifetime: { root, registry_location: realpathSync(path), state: "registered" },
+    } }));
+    const document = JSON.parse(readFileSync(path, "utf8"));
+    Object.assign(document.seats.child, { cwd: root, model: "gpt-test", permissions: "bypass",
+      harness_env: {}, passthrough: [], passthrough_from_config: false, preset: null });
+    writeFileSync(path, JSON.stringify(document));
+    const ctx = { ...partial, root, registryPath: realpathSync(path), bus: new Bus(join(root, ".tap", "bus")) } as ResolvedContext;
+    binding = await reconcileCrewLifetime(ctx, "parent", "child");
+    const dump = join(root, "override-seen");
+    unlinkSync(join(f.bin, "codex"));
+    writeFileSync(join(f.bin, "codex"), `#!/bin/sh\nprintf '%s\\n' "\${CREW_NEW-absent}" > '${dump}'\nexec sleep 600\n`, { mode: 0o755 });
+    const shell = join(f.bin, "sh");
+    writeFileSync(shell, '#!/bin/sh\nif [ "$1" = -lic ]; then shift; exec /bin/sh -c "$@"; fi\nexec /bin/sh "$@"\n', { mode: 0o755 });
+    process.env.PATH = `${f.bin}:${process.env.PATH}`;
+    process.env.TAP_LAUNCH_SHELL = shell;
+    const oldPid = f.read("display-message", "-p", "-t", crewPane, "#{pane_pid}");
+    let error = null as { code?: number; errorClass?: string; action?: string } | null;
+    try {
+      await relaunchCrew(ctx, document.seats, "child", "", { overrides: { env: ["CREW_NEW=typed"] }, progress: line => {
+        // Only the post-respawn save fails: another writer changes the recipe right before the effect.
+        if (!line.startsWith("replacing crew process")) return;
+        const now = JSON.parse(readFileSync(path, "utf8"));
+        now.seats.child.harness_env = { CREW_OTHER: "1" };
+        writeFileSync(path, JSON.stringify(now));
+      } });
+    } catch (caught) { error = caught as typeof error; }
+    expect(error).toMatchObject({ code: 1, errorClass: "crew_recipe_unpersisted" });
+    expect(error?.action).toContain("tap session relaunch Lifetime/child");
+    expect(error?.action).not.toContain("tap crew relaunch");
+    const replacement = f.read("display-message", "-p", "-t", crewPane, "#{pane_pid}");
+    expect(replacement).not.toBe(oldPid);
+    expect(await waitFor(() => { try { return readFileSync(dump, "utf8").trim() === "typed"; } catch { return false; } })).toBe(true);
+    // The recipe on disk is the other writer's, not this relaunch's.
+    expect(JSON.parse(readFileSync(path, "utf8")).seats.child.harness_env).toEqual({ CREW_OTHER: "1" });
+    // The replacement is supervised: parent exit stops exactly it.
+    expect(f.tmux("kill-pane", "-t", parentPane).status).toBe(0);
+    expect(await waitFor(() => !f.read("list-panes", "-a", "-F", "#{pane_id}").split("\n").includes(crewPane))).toBe(true);
+    expect(f.tmux("has-session", "-t", "operator").status).toBe(0);
+  } finally {
+    if (binding) stopCrewLifetimeHelper(binding);
+    for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    f.close();
+  }
+}, 30000);
+
+test.each([undefined, "wrong-instance"])("an unbound crew cannot be adopted by a same-session parent with link %j", async ownerInstance => {
+  const f = socketFixture();
+  try {
+    expect(f.tmux("new-session", "-d", "-s", "Lifetime/parent", `${f.bin}/codex 600`).status).toBe(0);
+    const parent = f.read("display-message", "-p", "-t", "Lifetime/parent", "#{pane_id}");
+    expect(f.tmux("new-window", "-d", "-t", "Lifetime/parent", "sleep 600").status).toBe(0);
+    const child = f.read("display-message", "-p", "-t", "Lifetime/parent:1", "#{pane_id}");
+    const { path, ctx } = registry(f, parent, child);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    delete doc.seats.child.crew_owner; delete doc.seats.child.crew_owner_instance;
+    if (ownerInstance) { doc.seats.child.crew_owner = "parent"; doc.seats.child.crew_owner_instance = ownerInstance; }
+    writeFileSync(path, JSON.stringify(doc));
+    const before = readFileSync(path, "utf8");
+    await expect(rearmCrewLifetime(ctx, "child")).rejects.toThrow("recreate");
+    expect(readFileSync(path, "utf8")).toBe(before);
+    expect(f.read("display-message", "-p", "-t", child, "#{pane_id}")).toBe(child);
+  } finally { f.close(); }
+}, 30000);
+
+test("revival cannot reclaim an unbound crew after its parent handle is reused", async () => {
+  const { survivingCrews, reclaimRevivedCrew } = await import("../src/crew-lifetime");
+  const f = socketFixture();
+  try {
+    expect(f.tmux("new-session", "-d", "-s", "Lifetime/parent", `${f.bin}/codex 600`).status).toBe(0);
+    const parent = f.read("display-message", "-p", "-t", "Lifetime/parent", "#{pane_id}");
+    expect(f.tmux("new-window", "-d", "-t", "Lifetime/parent", "sleep 600").status).toBe(0);
+    const child = f.read("display-message", "-p", "-t", "Lifetime/parent:1", "#{pane_id}");
+    const { path, ctx } = registry(f, parent, child);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.seats.child.crew_owner = "parent";
+    doc.seats.child.crew_owner_instance = "original-parent";
+    // Reused handle, same session, no pane-local binding after a restart.
+    doc.seats.parent.instance = "replacement-parent";
+    writeFileSync(path, JSON.stringify(doc));
+    expect(survivingCrews(ctx, "parent")).toEqual([]);
+    const before = readFileSync(path, "utf8");
+    const pid = f.read("display-message", "-p", "-t", child, "#{pane_pid}");
+    const { procStartEpoch } = await import("../src/reset");
+    await expect(reclaimRevivedCrew(ctx, "parent", { crew: "child", crewInstance: "child-one", crewPane: child,
+      ownerInstance: "replacement-parent", child: { pid, start: procStartEpoch(pid), boot: bootId() }, binding: null })).rejects.toThrow("recreate");
+    expect(readFileSync(path, "utf8")).toBe(before);
+    expect(f.read("display-message", "-p", "-t", child, "#{pane_id}")).toBe(child);
+  } finally { f.close(); }
 }, 30000);

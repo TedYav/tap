@@ -74,7 +74,9 @@ negotiation mechanism — techniques a lane may reach for, not a gate it must pa
 
 ## Model tier
 
-Use the mission's explicit model assignments and AGENTS.md's current staffing directive. Record harness, exact model@effort and relevant service/context/environment qualifications in the plan. Consult `tap models` for personal calibration or qualified reference guidance and `tap team calibration` for reachable seats. Reference guidance does not verify account access; saved presets are optional recipes. Launch a supported combination directly with `tap launch <harness> [name] --model <id> --effort <level>`; OpenCode and Cursor accept model only. Preserve explicit user assignments across launches and resumes.
+Before staffing or briefing, read `tap calibrate`.
+
+Use the mission's explicit model assignments and AGENTS.md's current staffing directive. Record harness, exact model@effort and relevant service/context/environment qualifications in the plan. Use `tap presets` for saved recipes and `tap team` for who is seated. Saved recipes do not verify account access. Launch a supported combination directly with `tap launch <harness> [name] --model <id> --effort <level>`; OpenCode and Cursor accept model only. Preserve explicit user assignments across launches and resumes.
 
 A bigger window needs no `-big` preset row. Claude: `tap launch opus <name> --env CLAUDE_CODE_AUTO_COMPACT_WINDOW=700000` sets the auto-compaction window (the env replaces the preset's value); it is capped by the model's own context window and does not raise it. Codex sets the context window and its compaction limit: `tap launch astra <name> -- -c model_context_window=700000 -c model_auto_compact_token_limit=600000` — the two keys move together; they are appended after the preset's own values, and whether Codex honors the later duplicate `-c` is unverified, so confirm the effective window in the launched seat before relying on it. The same `--env` / `--` tail works on `tap session relaunch <name>` for a durable seat; a crew seat refuses overrides on relaunch. Per-harness knob names and spellings: `skills/tap/config/harness-knobs.toml`.
 

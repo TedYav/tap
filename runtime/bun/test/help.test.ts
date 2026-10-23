@@ -627,7 +627,7 @@ describe("register recovery and session door pages (docs lane 2)", () => {
     const page = lookupHelp(["register"]).stdout;
     for (const flag of ["--list-history", "--restore <instance>", "--fresh", "--override-worktree"]) expect(page).toContain(flag);
     expect(page).toContain("tap restore <handle> --archive <archive>   restore a handle's archived state");
-    expect(page).toContain("tap team restore                           restore a team checkpoint");
+    expect(page).toContain("tap team reset                             stop and retire seats; keep the team");
     expect(page).toContain("tap session resume <handle>                bring a stopped process back");
     expect(page).not.toContain("(the team archive)");
     expect(page.split("\n").every(line => line.length < 400 || line.trimStart().startsWith("tap register "))).toBe(true);
@@ -646,7 +646,7 @@ describe("register recovery and session door pages (docs lane 2)", () => {
     expect(family.split("\n").every(line => line.length <= 100)).toBe(true);
     expect(family.replace(/\s+/g, " ")).toContain("With a preset, model and effort come from the preset and cannot be overridden. With a bare harness, use --model and --effort");
     expect(family).not.toContain("stay preset-owned");
-    expect(family.replace(/\s+/g, " ")).toContain("OpenCode and Cursor take --model only.");
+    expect(family.replace(/\s+/g, " ")).toContain("OpenCode 2 takes model and variant; Cursor takes model only.");
     expect(family.replace(/\s+/g, " ")).toContain("continue the stored conversation where the harness can");
     expect(family).not.toContain("same chat");
     expect(family.replace(/\s+/g, " ")).toContain("restart may already have ended the old session");
@@ -840,7 +840,7 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
 
     const index = JSON.parse(frozen) as ReturnType<typeof helpCatalogIndex>;
     expect(index.filter((row) => row.dedicated)).toHaveLength(90);
-    expect(index.filter((row) => row.tombstone)).toHaveLength(2);
+    expect(index.filter((row) => row.tombstone)).toHaveLength(3);
     expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(46);
 
     for (const row of index) {
@@ -896,7 +896,7 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
 
 test("team roster help describes count/cap and keeps exact telemetry available", () => {
   const page = lookupHelp(["team", "roster"]).stdout;
-  expect(page).toContain("145k / 380k");
+  expect(page).toContain("145k/380k");
   expect(page).toContain("cap defaults to 1M");
   expect(page).toContain("context_tokens");
   expect(page).not.toContain("Context is the harness-reported footer percentage");
@@ -969,16 +969,16 @@ describe("team and admin family pages", () => {
     }
   });
 
-  test("team reset refuses --force while down and shutdown accept it", () => {
-    expect(lookupHelp(["team", "reset"]).stdout).toContain("--force refuses as an unknown option");
-    expect(lookupHelp(["team", "reset"]).stdout).toContain("--yes                          Accepted and ignored: reset never prompts");
-  });
-
-  test("team restore documents --again and the pristine-state fence", () => {
-    const page = lookupHelp(["team", "restore"]).stdout;
-    expect(page).toContain("[--again]");
-    expect(page).toContain("already_restored");
-    expect(page).toContain("pristine");
+  test("team reset explains caller inclusion and the replacement for checkpoints", () => {
+    const page = lookupHelp(["team", "reset"]).stdout;
+    expect(page).toContain("INCLUDING YOUR OWN SEAT");
+    expect(page).toContain("--except <your-handle>");
+    expect(page).toContain("tap team out --hard");
+    for (const verb of ["restore", "purge"]) {
+      const tombstone = lookupHelp(["team", verb]).stdout;
+      expect(tombstone).toContain("removed checkpoint operation");
+      expect(tombstone).toContain("error_class=renamed_verb");
+    }
   });
 
   test("admin is a per-operation index that labels tombstones and keeps admin ps", () => {

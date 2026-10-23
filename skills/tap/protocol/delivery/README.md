@@ -43,6 +43,7 @@ retained pane's identity before removing it.
 - [Explicit sender withdrawal (tap-owanr)](./sender-withdrawal-tap-owanr.md) — sender-side retraction of delivered mail
 - [Crew revival](./crew-revival.md) — reviving a seat beside crews that outlived it, and reclaiming them (tap-9rrat)
 - [`tap nudge`: the unstick ladder and fan-out](./nudge.md) — blocker dismissal, staged-sentinel submit, interrupt plus the id-less doorbell, actor recording, outcomes (tap-xe42x)
+- [`tap nudge --harness`: the fan-out](./nudge-fanout.md) — family selection, skips, `--active-within`, confirmation, send-time recheck and exits (tap-s1k5j)
 - [Structured failures and JSON output — source part 1 of 7](./structured-failures-and-json-output-part-01.md) — source bytes 651209–652535
 - [Structured failures and JSON output — source part 2 of 7](./structured-failures-and-json-output-part-02.md) — source bytes 652535–661532
 - [Structured failures and JSON output — source part 3 of 7](./structured-failures-and-json-output-part-03.md) — source bytes 661532–670533

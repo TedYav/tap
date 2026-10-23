@@ -2,11 +2,7 @@
 // binding, the recovery door for the one key, the OpenCode sibling proof, and the
 // watcher's notice path. Stamped in the sidecar fingerprint (the tick calls it).
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-import type { ApprovalSeams, Episode, SeatRow, SiblingProof } from "./approval-timeout";
+import type { ApprovalSeams, Episode } from "./approval-timeout";
 import { approvalHarness } from "./approval-timeout-policy";
 import { loadRegistry, seatMap } from "./registry";
 import { recoveryEffect, REAL_RECOVERY_IO } from "./recovery/effect";
@@ -36,42 +32,6 @@ export function armerReason(e: Episode, minutes: number): string {
   }
 }
 
-/**
- * The TAP OpenCode plugin's pane-keyed approval state (U8, hooks/tap-opencode-session-start.ts
- * `approvalStatePath`): machine-local under the index home, bound to the pane's process below.
- */
-export const opencodeStatePath = (env: NodeJS.ProcessEnv, paneId: string): string =>
-  join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "approval-timeout", "opencode", `${paneId.replace(/^%/, "")}.json`);
-
-/** Heartbeat freshness for the plugin's pending-permission record. */
-export const SIBLING_HEARTBEAT_MAX_AGE_S = 60;
-
-interface OpencodeState {
-  version?: string; pid?: number; ppid?: number; at?: number; session?: string; root?: boolean;
-  pending?: { id: string; summary?: string }[]; other_sessions_pending?: number;
-}
-
-/**
- * Root session, a fresh heartbeat from the seat's own OpenCode process, a 1.18.x
- * TUI, and exactly one pending request whose summary appears in the frame's excerpt.
- */
-export function readSiblingProof(path: string, panePid: string, excerpt: string, now: number): SiblingProof {
-  let state: OpencodeState;
-  try { state = JSON.parse(readFileSync(path, "utf8")) as OpencodeState; } catch { return "unproven"; }
-  if (typeof state.version !== "string" || !/^1\.18\.\d+$/.test(state.version)) return "version_unproven";
-  if (typeof state.at !== "number" || now - state.at > SIBLING_HEARTBEAT_MAX_AGE_S || state.at > now + 5) return "unproven";
-  // The pane runs OpenCode directly or under one wrapper shell.
-  if (panePid === "" || (String(state.pid ?? "") !== panePid && String(state.ppid ?? "") !== panePid)) return "unproven";
-  // A known root session, and no pending request the frame could belong to instead.
-  if (state.root !== true || state.other_sessions_pending !== 0) return "unproven";
-  const pending = Array.isArray(state.pending) ? state.pending : null;
-  if (!pending) return "unproven";
-  if (pending.length > 1) return "pending";
-  if (pending.length !== 1) return "unproven";
-  const summary = pending[0]!.summary ?? "";
-  return summary !== "" && excerpt.includes(summary) ? "single" : "unproven";
-}
-
 export interface RealApprovalArgs { bus: string; scripts: string; registry: string; env: NodeJS.ProcessEnv; now(): number }
 
 export function realApprovalSeams(a: RealApprovalArgs): ApprovalSeams {
@@ -90,10 +50,10 @@ export function realApprovalSeams(a: RealApprovalArgs): ApprovalSeams {
         return String(s.instance ?? "");
       } catch { return null; }
     },
-    siblingProof(row: SeatRow, episode: Episode) {
-      let pid = "";
-      try { pid = String(targetRow(a.registry, row.handle, row.pane, row.paneId).processPid); } catch { return "unproven"; }
-      return readSiblingProof(opencodeStatePath(a.env, row.paneId), pid, episode.excerpt, a.now());
+    siblingProof() {
+      // OpenCode 1.x is retired. The 2.x Reject key and its sibling scope have
+      // no live attestation yet; the timeout pass escalates without sending a key.
+      return "version_unproven";
     },
     reject(row, episode, gate, verify) {
       const target = targetRow(a.registry, row.handle, row.pane, row.paneId);

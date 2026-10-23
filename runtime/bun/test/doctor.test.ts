@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -195,6 +196,33 @@ function runDoctor(
   });
   return { rc: run.status ?? -1, out: run.stdout ?? "", err: run.stderr ?? "" };
 }
+
+test("doctor diagnoses missing or disabled agy identity wiring and recognizes the installed hook", () => {
+  const fx = fixture({ registry: { schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" }, seats: {
+    scout: { harness: "agy", status: "active", delivery: "pane" },
+  } } });
+  const gemini = join(fx.home, ".gemini"), hooks = join(gemini, "config/hooks.json");
+  const finding = () => JSON.parse(runDoctor(fx, ["--json"], { TAP_GEMINI_HOME: gemini }).out).findings
+    .find((row: { name: string }) => row.name === "agy_identity_hook");
+  expect(finding()?.detail.status).toBe("missing");
+  mkdirSync(join(gemini, "config"), { recursive: true });
+  const spec = {
+    PreInvocation: [{ type: "command", command: `bash '${join(root, "hooks/tap-agy-identity.sh")}'`, timeout: 3 }],
+    PostInvocation: [{ type: "command", command: `bash '${join(root, "hooks/tap-agy-identity.sh")}'`, timeout: 3 }],
+  };
+  writeFileSync(hooks, JSON.stringify({ "tap-session-identity": { ...spec, enabled: false } }));
+  expect(finding()?.detail.status).toBe("disabled");
+  writeFileSync(hooks, JSON.stringify({ "tap-session-identity": spec }));
+  expect(finding()).toBeUndefined();
+  mkdirSync(join(gemini, "antigravity-cli"), { recursive: true });
+  const db = new Database(join(gemini, "antigravity-cli/conversation_summaries.db"));
+  db.exec("CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY)");
+  db.close();
+  const store = JSON.parse(runDoctor(fx, ["--json"], { TAP_GEMINI_HOME: gemini }).out).findings
+    .find((row: { name: string }) => row.name === "agy_identity_store");
+  expect(store?.detail.status).toBe("unavailable");
+  expect(store?.detail.reason).toContain("parent_conversation_id");
+});
 
 test("doctor inspects the configured command without invoking it and names missing transports", () => {
   const fx = fixture(), config = join(fx.home, ".config/tap"), marker = join(fx.dir, "notified");
@@ -640,6 +668,18 @@ esac
     expect(next).not.toContain("tap team refresh");
   });
 
+  for (const typed of [{ harness_env_set: ["CREW_SETTING"] }, { harness_unset_env: ["CREW_SETTING"] }, { harness_tail: ["--verbose"] }]) {
+    test(`gone preset crew with typed overrides preserves its recipe: ${Object.keys(typed)[0]}`, () => {
+      const fx = fixture({ tmuxSh: absentSeatTmux, registry: {
+        schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" },
+        seats: { scout: { ...activeSeat, crew: true, preset: { name: "reviewer" }, model: "claude-sonnet-4-5", ...typed } },
+      } });
+      const next = String(jsonRun(fx).find("seat_unavailable")[0]?.detail.next);
+      expect(next).toContain("preserve the stored launch recipe");
+      expect(next).not.toContain("tap crew add reviewer");
+    });
+  }
+
   test("crew launch context is preserved before any cleanup advice", () => {
     const tmuxSh = absentSeatTmux.replace('case "$1" in', 'case "$*" in *"#{socket_path}"*) exit 1 ;; esac\ncase "$1" in');
     const fx = fixture({ tmuxSh });
@@ -738,18 +778,34 @@ esac
     }
   });
 
-  test("a missing binding in a live session asks for reconciliation rather than another launch", () => {
+  test("a positively absent pane in a live shared session recommends recovery without writes", () => {
     const tmuxSh = absentSeatTmux.replaceAll("other", "u1/scout").replace("scout:0.0", "scout:1.0");
     const fx = fixture({ tmuxSh, registry: {
       schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" }, seats: { scout: activeSeat },
     } });
     const before = stateDigest(fx);
     const json = jsonRun(fx);
-    expect(json.find("seat_unavailable")).toEqual([]);
-    expect(json.find("seat_binding_missing")[0]?.detail).toMatchObject({
-      handle: "scout", status: "unknown", reason: "designated_pane_missing", next: "tap team refresh",
+    expect(json.find("seat_unavailable")[0]?.detail).toMatchObject({
+      handle: "scout", status: "gone", reason: "pane_absent", next: "tap session resume scout",
     });
+    expect(json.find("seat_binding_missing")).toEqual([]);
     expect(stateDigest(fx)).toBe(before);
+  });
+
+  test("a missing binding without a pane ID or epoch asks for reconciliation rather than another launch", () => {
+    const tmuxSh = absentSeatTmux.replaceAll("other", "u1/scout").replace("scout:0.0", "scout:1.0");
+    for (const patch of [{ pane_id: "" }, { server_epoch: "" }]) {
+      const fx = fixture({ tmuxSh, registry: {
+        schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" }, seats: { scout: { ...activeSeat, ...patch } },
+      } });
+      const before = stateDigest(fx);
+      const json = jsonRun(fx);
+      expect(json.find("seat_unavailable")).toEqual([]);
+      expect(json.find("seat_binding_missing")[0]?.detail).toMatchObject({
+        handle: "scout", status: "unknown", reason: "designated_pane_missing", next: "tap team refresh",
+      });
+      expect(stateDigest(fx)).toBe(before);
+    }
   });
 
   test("a suspended durable seat recommends resume instead of a new pane, without writes", () => {

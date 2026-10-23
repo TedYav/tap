@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { TapError } from "../src/context";
-import { isFanoutArgv, parseFanoutArgs, recheck, runFanout, type FanoutEffects, type FanoutRow } from "../src/verbs/nudge-fanout";
+import { activityVerdict, isFanoutArgv, parseFanoutArgs, recheck, runFanout, seatActivity, type FanoutEffects, type FanoutRow } from "../src/verbs/nudge-fanout";
 
 function row(handle: string, harness: string, status = "active", delivery = "pane", statusReason = ""): FanoutRow {
   return { handle, harness, status, delivery, statusReason, instance: `${handle}-i1`, session: "", pane: "", observedPaneId: "", observedServerEpoch: "", attached: "0" } as FanoutRow;
@@ -25,6 +25,9 @@ function effects(over: Partial<FanoutEffects> = {}) {
   const fx: FanoutEffects = {
     teams: () => [{ team: "a", registryLocation: "/a/registry.json" }, { team: "b", registryLocation: "/b/registry.json" }],
     roster: loc => ({ rows: ROSTERS[loc]! }),
+    // Activity is read only under --active-within; any other read is a defect.
+    activity: () => { throw new Error("unexpected activity read"); },
+    now: () => NOW,
     nudge: seat => { sent.push(`${seat.team}/${seat.handle}`); return 0; },
     confirm: () => { throw new Error("unexpected prompt"); },
     interactive: () => false,
@@ -35,6 +38,7 @@ function effects(over: Partial<FanoutEffects> = {}) {
   return { fx, sent, out };
 }
 
+const NOW = 1_800_000_000;
 const self = { team: "a", handle: "me" };
 const args = (argv: string[]) => parseFanoutArgs(argv);
 
@@ -111,6 +115,57 @@ test("the dry run names the wire each seat would get, and --no-interrupt", () =>
   expect(out.join("")).toContain('each seat: the nudge ladder, then [[TAP v0.23 nudge message="say \\"hi\\""]] (--no-interrupt)');
 });
 
+test("--active-within takes a duration that names its unit; a bare number refuses with a hint", () => {
+  expect(args(["--harness", "codex"]).activeWithin).toBeNull();
+  for (const [text, seconds] of [["90s", 90], ["30m", 1800], ["2h", 7200], ["1d", 86400]] as const) {
+    expect(args(["--harness", "codex", "--active-within", text]).activeWithin).toEqual({ seconds, text });
+  }
+  const refusal = (argv: string[]) => { try { parseFanoutArgs(argv); return ""; } catch (e) { return (e as TapError).detail; } };
+  const needs = (bad: string) => `--active-within needs a duration with a unit (s, m, h or d), e.g. 30m or 2h; got '${bad}'`;
+  expect(refusal(["--harness", "codex", "--active-within", "30"])).toBe(`${needs("30")} (add a unit: 30s for seconds, 30m for minutes)`);
+  for (const bad of ["0", "0m", "-5m", "1.5h", "30min", "30M", "1w", " 30m", "1e3s", "999999999999999999d"]) {
+    expect(refusal(["--harness", "codex", "--active-within", bad])).toBe(needs(bad));
+  }
+  expect(refusal(["--harness", "codex", "--active-within"])).toContain("--active-within needs a value");
+  // A valued flag consumes its value, so the value never reads as a stray peer.
+  expect(isFanoutArgv(["--active-within", "--harness"])).toBe(false);
+});
+
+test("activityVerdict: inside the window is a target; older, unknown or future-dated evidence skips", () => {
+  const w = { seconds: 1800, text: "30m" };
+  expect(activityVerdict(NOW - 1800, NOW, w)).toEqual({ verdict: { kind: "target" }, age: 1800 });
+  expect(activityVerdict(NOW - 0.4, NOW, w)).toEqual({ verdict: { kind: "target" }, age: 1 });
+  expect(activityVerdict(NOW - 1801, NOW, w)).toEqual({ verdict: { kind: "skip", reason: "last active 30m ago, over --active-within 30m" }, age: 1801 });
+  expect(activityVerdict(null, NOW, w).verdict).toEqual({ kind: "skip", reason: "activity unknown (this harness keeps no activity record TAP can read)" });
+  expect(activityVerdict(Number.NaN, NOW, w).verdict.kind).toBe("skip");
+  expect(activityVerdict(NOW + 5, NOW, w).verdict).toEqual({ kind: "skip", reason: "activity unknown (its activity record is dated in the future)" });
+});
+
+test("--active-within nudges only recently active targets, lists the rest with their age, and reads no skipped seat", () => {
+  const last: Record<string, number | null> = { cx1: NOW - 240, cx2: NOW - 3 * 3600 - 300 };
+  const reads: string[] = [];
+  const dry = effects({ activity: row => { reads.push(row.handle); return last[row.handle] ?? null; } });
+  expect(runFanout(args(["--harness", "codex", "--team", "*", "--active-within", "30m", "--dry-run"]), self, dry.fx)).toBe(0);
+  const text = dry.out.join("");
+  expect(text).toContain("1 codex seat(s) to nudge across all teams, active within 30m (dry run; nothing sent)");
+  expect(text).toContain("a/cx1  target (last active 4m ago)");
+  expect(text).toContain("b/cx2  skip: last active 3h05m ago, over --active-within 30m");
+  expect(text).toContain("a/cxoff  skip: offline (server_epoch_stale)");
+  // Self, poll, offline and suspended seats are skipped before any activity read.
+  expect(reads).toEqual(["cx1", "cx2"]);
+  const live = effects({ activity: row => last[row.handle] ?? null });
+  expect(runFanout(args(["--harness", "codex", "--team", "*", "--active-within", "30m", "--yes"]), self, live.fx)).toBe(0);
+  expect(live.sent).toEqual(["a/cx1"]);
+});
+
+test("--active-within skips a seat with no readable activity record instead of waking it", () => {
+  const { fx, out, sent } = effects({ activity: () => null });
+  expect(runFanout(args(["--harness", "codex", "--team", "*", "--active-within", "10m", "--yes"]), self, fx)).toBe(0);
+  expect(sent).toEqual([]);
+  expect(out.join("")).toContain("0 codex seat(s) to nudge across all teams, active within 10m");
+  expect(out.join("")).toContain("a/cx1  skip: activity unknown (this harness keeps no activity record TAP can read)");
+});
+
 test("one held seat is reported and never stops the others; exit is nonzero", () => {
   const { fx, out, sent } = effects({
     nudge: seat => {
@@ -176,6 +231,50 @@ test("public --harness --dry-run classifies the seat, ignores TAP_SELF, and touc
   expect(run.stdout).not.toContain("skip: self");
   expect(run.stdout).toContain("dry run; nothing sent");
 }, 30000);
+
+test("the production activity reader dates real transcripts: recent wakes; stale, relative or missing records skip", () => {
+  const root = mkdtempSync(join(tmpdir(), "tap-nudge-activity-"));
+  roots.push(root);
+  const now = Math.trunc(Date.now() / 1000);
+  const record = (path: string, line: object, mtime: number) => { writeFileSync(path, JSON.stringify(line) + "\n"); utimesSync(path, mtime, mtime); return path; };
+  const codexEnd = { type: "event_msg", payload: { type: "task_complete" } };
+  const seat = (handle: string, harness: string, fields: Partial<FanoutRow>): FanoutRow => ({ ...row(handle, harness), ...fields });
+  const codexRows = [
+    seat("fresh", "codex", { transcriptPath: record(join(root, "fresh.jsonl"), codexEnd, now - 240) }),
+    seat("stale", "codex-mini", { transcriptPath: record(join(root, "stale.jsonl"), codexEnd, now - 3 * 3600) }),
+    seat("relative", "codex", { transcriptPath: "fresh.jsonl" }),
+    seat("missing", "codex", { transcriptPath: join(root, "absent.jsonl") }),
+  ];
+  // Claude seats with no registered path resolve <session>.jsonl under HOME's projects dir.
+  const projects = join(root, "home", ".claude", "projects", "-repo");
+  mkdirSync(projects, { recursive: true });
+  record(join(projects, "sess-1.jsonl"), { type: "assistant", message: { stop_reason: "end_turn" } }, now - 60);
+  const claudeRows = [seat("cl", "claude", { harnessSessionId: "sess-1" }), seat("clnone", "claude", { harnessSessionId: "sess-404" })];
+  const env = { HOME: join(root, "home") };
+  const run = (harness: string, rows: FanoutRow[]) => {
+    const fx = effects({ teams: () => [{ team: "t", registryLocation: "/t/registry.json" }], roster: () => ({ rows }),
+      activity: r => seatActivity(r, env), now: () => now });
+    expect(runFanout(args(["--harness", harness, "--team", "t", "--active-within", "30m", "--yes"]), { team: "t", handle: "me" }, fx.fx)).toBe(0);
+    return { sent: fx.sent, text: fx.out.join("") };
+  };
+  const codex = run("codex", codexRows);
+  expect(codex.sent).toEqual(["t/fresh"]);
+  expect(codex.text).toContain("t/fresh  target (last active 4m ago)");
+  expect(codex.text).toContain("t/stale  skip: last active 3h00m ago, over --active-within 30m");
+  expect(codex.text).toContain("t/relative  skip: activity unknown");
+  expect(codex.text).toContain("t/missing  skip: activity unknown");
+  const claude = run("claude", claudeRows);
+  expect(claude.sent).toEqual(["t/cl"]);
+  expect(claude.text).toContain("t/clnone  skip: activity unknown");
+});
+
+test("the single-seat form refuses --active-within before reading anything", async () => {
+  const { cmdNudge } = await import("../src/verbs/nudge");
+  let error: TapError | undefined;
+  try { cmdNudge(["tap/peer", "--active-within", "30m"], "", new Set()); } catch (e) { error = e as TapError; }
+  expect(error?.errorClass).toBe("usage_error");
+  expect(error?.detail).toBe("--active-within selects seats for the --harness fan-out; tap nudge <peer> always nudges the seat it names; nothing sent");
+});
 
 test("the fan-out hands each seat's selected instance to its nudge, and a replaced seat refuses", async () => {
   const { instanceDrift } = await import("../src/verbs/nudge");

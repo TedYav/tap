@@ -26,7 +26,7 @@ const EFFORT_HERMES = ["none", "minimal", "low", "medium", "high", "xhigh", "max
 export const TUNING_CAPABILITIES: Record<string, HarnessTuning> = {
   claude: { model: { argv: ["--model"] }, effort: { argv: ["--effort"], domain: EFFORT_CLAUDE } },
   codex: { model: { argv: ["--model"] }, effort: { argv: ["-c"], valueTemplate: 'model_reasoning_effort="{value}"' } },
-  opencode: { model: { argv: ["--model"] }, provider: true },
+  opencode: { model: { argv: ["--model"] }, effort: { argv: ["--variant"] }, provider: true },
   cursor: { model: { argv: ["--model"] } },
   agy: { model: { argv: ["--model"] }, effort: { argv: ["--effort"], domain: EFFORT_AGY } },
   hermes: { model: { argv: ["--model"] }, effort: { argv: ["--reasoning"], domain: EFFORT_HERMES } },
@@ -48,6 +48,12 @@ export function launchTuning(harness: string, argv: readonly string[], env: Reco
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i]!;
     if (token === "--") break;
+    // Match the attached short form that stripTuningAxes removes from TUI argv.
+    if (flags.has("-m") && token.startsWith("-m") && token.length > 2) {
+      const value = token.slice(2).replace(/^=/, "");
+      if (value && !value.startsWith("-")) values.set("--model", value);
+      continue;
+    }
     const equal = token.indexOf("="), key = equal < 0 ? token : token.slice(0, equal);
     if (!flags.has(key)) continue;
     const value = equal < 0 ? argv[++i] : token.slice(equal + 1);
@@ -63,14 +69,24 @@ export function launchTuning(harness: string, argv: readonly string[], env: Reco
     try { parsed = (Bun.TOML.parse(`value = ${value}`) as Record<string,unknown>).value; } catch { /* bare string */ }
     qualifiers[key] = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
   }
-  const effort = caps?.effort?.valueTemplate ? qualifiers.model_reasoning_effort ?? null : values.get(caps?.effort?.argv[0] ?? "") ?? null;
+  let effort = caps?.effort?.valueTemplate ? qualifiers.model_reasoning_effort ?? null : values.get(caps?.effort?.argv[0] ?? "") ?? null;
   delete qualifiers.model_reasoning_effort;
   const provider = values.get("--provider");
   if (provider) qualifiers.provider = provider;
   const environment: Record<string, string> = {};
   // This is the catalog's current wrapper qualification, never a provider credential.
   if (harness === "codex" && env.PONYTAIL_DEFAULT_MODE !== undefined) environment.PONYTAIL_DEFAULT_MODE = env.PONYTAIL_DEFAULT_MODE;
-  return { model: values.get(caps?.model?.argv[0] ?? "") ?? null, effort, qualifiers, environment };
+  let model = values.get(caps?.model?.argv[0] ?? "") ?? null;
+  if (harness === "opencode" && model?.includes("#")) {
+    const [ref, variant, extra] = model.split("#");
+    if (ref && variant && extra === undefined) {
+      if (effort && effort !== variant) refuse("opencode_model_unavailable",
+        `OpenCode model variant '${variant}' conflicts with --effort '${effort}'`, "pass the same variant or omit one spelling");
+      model = ref;
+      effort = variant;
+    }
+  }
+  return { model, effort, qualifiers, environment };
 }
 
 function tokens(axis: TuningAxis, value: string): string[] {

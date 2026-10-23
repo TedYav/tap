@@ -112,7 +112,7 @@ process.exitCode = await attachTailInProcess("resume", { name: "repo/scout", har
 // ---- the reset fence: at entry for every form, and again inside the adopted arm ----
 
 const fencePath = (root: string) => join(root, ".tap/bus/reset.fence.json");
-const midReset = (root: string) => `refusing session resume — team bus is mid-reset (fence at ${fencePath(root)}); next: tap team reset`;
+const midReset = (root: string) => `refusing session resume — team bus is mid-reset (fence at ${fencePath(root)}); next: wait for the reset owner (or until identity is readable)`;
 
 test("a live reset fence refuses at entry, before any lookup, tmux probe or effect", async () => {
   const world = fixture({ registry: { schema: "0.20", team: { name: "repo" },

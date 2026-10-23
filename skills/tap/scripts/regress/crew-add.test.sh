@@ -483,7 +483,8 @@ set +e
 TAP_HARNESS_SESSION_ID=driver-generic-must-not-transfer \
 CODEX_THREAD_ID=11111111-1111-4111-8111-111111111111 \
 "$TAP" crew add codex crew-sol --model gpt-5.6-sol --cwd "$SIDE" \
-  --env CREW_SMOKE_FLAG=on --env CREW_SMOKE_SECOND=two \
+  --env CREW_SMOKE_FLAG=on --env=CREW_SMOKE_SECOND=two --unset-env CREW_SMOKE_GONE \
+  -- -c crew_tail_marker=1 \
   > "$WORK/add.out" 2> "$WORK/add.err"
 add_rc=$?
 set -e
@@ -534,6 +535,10 @@ assert re.search(
     sent,
 ), sent
 assert "--dangerously-bypass-approvals-and-sandbox" not in sent, sent
+# --unset-env lands in the -u run after login startup; the -- tail appends last.
+assert "-u CREW_SMOKE_GONE " in sent, sent
+command = next(line for line in sent.splitlines() if " -lic " in line)
+assert command.endswith(" -c crew_tail_marker=1"), command
 PY
 # This arm covers a SAME-TEAM cwd only: inside the bound worktree, so no
 # override is passed and no override warning may appear. It does not cover the
@@ -552,6 +557,9 @@ assert entry["crew"] is True, entry
 assert entry["harness"] == "codex", entry
 assert entry["model"] == "gpt-5.6-sol", entry
 assert entry["harness_env"] == {"CREW_SMOKE_FLAG": "on", "CREW_SMOKE_SECOND": "two"}, entry
+assert entry["harness_env_set"] == ["CREW_SMOKE_FLAG", "CREW_SMOKE_SECOND"], entry
+assert entry["harness_unset_env"] == ["CREW_SMOKE_GONE"], entry
+assert entry["harness_tail"] == ["-c", "crew_tail_marker=1"], entry
 assert entry["pane_current_command"] == "zsh", entry
 assert "harness_session_id" not in entry, entry
 # tap-fgx9: pane ADDRESS is session:window.pane; pane_id is the %N id.

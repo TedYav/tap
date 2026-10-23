@@ -18,7 +18,7 @@ let root = "";
 
 /** An opencode `message` row: the JSON the live writer stores, one column. */
 const assistant = (sessionID: string, created: number, completed: number | null, finish: string | null) =>
-  ({ role: "assistant", sessionID, time: { created, completed }, finish });
+  ({ type: "assistant", sessionID, time: { created, completed }, finish });
 
 function makeDb(name: string, rows: object[]): string {
   const db = join(root, name);
@@ -56,7 +56,7 @@ describe("opencodeTurnState", () => {
   });
 
   test("no matching assistant row -> unknown", () => {
-    const db = makeDb("nomatch.db", [assistant("other", 1, 5, "stop"), { role: "user", sessionID: "s1" }]);
+    const db = makeDb("nomatch.db", [assistant("other", 1, 5, "stop"), { type: "user", sessionID: "s1" }]);
     expect(opencodeTurnState("s1", pinned(db))).toBe("unknown");
   });
 

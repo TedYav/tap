@@ -36,6 +36,8 @@ function fix(o: { team?: string; tmux?: boolean } = {}): Fix {
   writeFileSync(join(bus, "reset-generation.json"), '{"state":"pristine"}\n');
   if (o.tmux) {
     writeFileSync(join(state, "epoch"), "900:100");
+    writeFileSync(join(state, "sessions", "observer"), "");
+    writeFileSync(join(state, "panes"), "%900\tobserver\t@900\n");
     writeFileSync(join(fakeBin, "tmux"), TMUX_SH, { mode: 0o755 });
   } else {
     writeFileSync(join(fakeBin, "tmux"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
@@ -45,6 +47,7 @@ function fix(o: { team?: string; tmux?: boolean } = {}): Fix {
   delete (env as Record<string, string | undefined>).TMUX_PANE;
   delete (env as Record<string, string | undefined>).TAP_SELF;
   env.PATH = `${fakeBin}:${env.PATH}`;
+  env.FAKE_SOCKET_PATH = physicalSocketPath(env);
   return { root, cwd, bus, registry, index, fakeBin, state, env };
 }
 
@@ -56,6 +59,10 @@ session_id() { printf '$'; printf '%s' "$1" | cksum | cut -d ' ' -f 1; }
 pane_line() { grep -F "$1" "$S/panes" 2>/dev/null | grep -F "$1	" | head -1; }
 fld() { printf '%s\n' "$1" | cut -f"$2"; }
 while [ "$1" = "-L" ] || [ "$1" = "-S" ]; do shift 2; done
+if [ -f "$S/no-server" ]; then echo "$(cat "$S/no-server")" >&2; exit 1; fi
+if [ "$1" = "$FAKE_LAST_READ" ] || { [ "$FAKE_LAST_READ" = socket ] && case "$*" in *socket_path*) true ;; *) false ;; esac; }; then
+  if [ "$FAKE_LAST_FAILURE" = timeout ]; then sleep 1; else echo 'fork failed: Device not configured' >&2; exit 1; fi
+fi
 case "$1" in
   display-message)
     shift; target=""; fmt=""
@@ -71,6 +78,7 @@ case "$1" in
         line="$(pane_line "$target")" || { echo "cannot find pane $target" >&2; exit 1; }
         fld "$line" 1 ;;
       *pid*start_time*) cat "$S/epoch" ;;
+      "#{socket_path}") printf '%s\\n' "$FAKE_SOCKET_PATH" ;;
       "#{session_name}")
         line="$(pane_line "$target")" || { echo "cannot find pane $target" >&2; exit 1; }
         fld "$line" 2 ;;
@@ -83,7 +91,23 @@ case "$1" in
     name="$(printf '%s' "$3" | sed 's/^=//')"
     [ -f "$S/sessions/$(enc "$name")" ] && exit 0
     exit 1 ;;
+  list-sessions)
+    [ -z "$FAKE_SNAPSHOT_FAIL" ] || { echo 'permission denied' >&2; exit 1; }
+    for file in "$S"/sessions/*; do
+      [ -f "$file" ] || continue
+      name="$(basename "$file" | sed 's|__|/|g')"
+      case "$*" in *start_time*) printf '%s\\t%s\\t0\\n' "$name" "$(cat "$S/epoch")" ;; *) printf '%s\\n' "$name" ;; esac
+    done ;;
   list-panes)
+    [ -z "$FAKE_SNAPSHOT_FAIL" ] || { echo 'permission denied' >&2; exit 1; }
+    case "$*" in *pane_current_command*)
+      while IFS="\t" read -r pid sess win; do
+        [ -f "$S/sessions/$(enc "$sess")" ] || continue
+        printf '%s\\t%s:0.0\\t%s\\tclaude\\t1\\t%s\\t0\\n' "$sess" "$sess" "$pid" "$(cat "$S/epoch")"
+      done < "$S/panes"
+      [ -z "$FAKE_POISONED_FOREIGN" ] || printf 'foreign\\ttruncated\\n'
+      exit 0 ;;
+    esac
     case "$*" in *session_id*)
       if [ -f "$S/effect" ] && [ -n "$FAKE_OBSERVATION_FAIL_AFTER_KILL" ]; then echo 'permission denied' >&2; exit 1; fi
       found=0
@@ -163,7 +187,7 @@ function killedLog(f: Fix): string[] {
   return existsSync(p) ? readFileSync(p, "utf8").split("\n").filter(Boolean) : [];
 }
 function fakePanes(f: Fix, panes: Record<string, [string, string]>): void {
-  writeFileSync(join(f.state, "panes"), Object.entries(panes).map(([id, [sess, win]]) => `${id}\t${sess}\t${win}`).join("\n") + "\n");
+  writeFileSync(join(f.state, "panes"), Object.entries({ "%900": ["observer", "@900"] as [string, string], ...panes }).map(([id, [sess, win]]) => `${id}\t${sess}\t${win}`).join("\n") + "\n");
 }
 function fakeSession(f: Fix, name: string): void {
   writeFileSync(join(f.state, "sessions", name.replaceAll("/", "__")), "");
@@ -305,7 +329,7 @@ test("failed publication keeps the row and removes this attempt's tombstone", ()
 });
 
 test("dash picks the single dead seat and keeps poll siblings; note prints once", () => {
-  const f = fix(); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "" }), carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", delivery: "poll" }) });
+  const f = fix({ tmux: true }); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "" }), carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", delivery: "poll" }) });
   const r = run(f, ["out", "-"]);
   expect(r.code).toBe(0);
   expect(seatsOf(f).bob).toBeUndefined();
@@ -315,7 +339,7 @@ test("dash picks the single dead seat and keeps poll siblings; note prints once"
 });
 
 test("dash stamps exited_at then refuses ambiguous dead seats", () => {
-  const f = fix(); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "" }), carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "" }) });
+  const f = fix({ tmux: true }); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "" }), carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "" }) });
   const r = run(f, ["out", "-"]);
   expect(r.code).toBe(1);
   expect(r.err).toContain("tap unregister <name>");
@@ -329,14 +353,14 @@ test("dash stamps exited_at then refuses ambiguous dead seats", () => {
 });
 
 test("dash refuses when every pane seat is poll-dead (live count 0)", () => {
-  const f = fix(); reg(f, { carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", delivery: "poll" }) });
+  const f = fix({ tmux: true }); reg(f, { carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", delivery: "poll" }) });
   const r = run(f, ["out", "-"]);
   expect(r.code).toBe(1);
-  expect(r.err).toContain("no dead seats (0 active pane(s))");
+  expect(r.err).toContain("no eligible exited seats");
 });
 
 test("dash is incompatible with --kill", () => {
-  const f = fix(); reg(f, { alice: row() });
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
   const r = run(f, ["out", "-", "--kill"]);
   expect(r.code).toBe(1);
   expect(r.err).toContain("'-' is incompatible with --kill");
@@ -632,7 +656,7 @@ test("TAP_SCRATCH_ONLY outside the bus root refuses a kill", () => {
 });
 
 test("dash refuses a valid non-object registry without touching its bytes", () => {
-  const f = fix(); reg(f, { alice: row() });
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
   const bytes = readFileSync(f.registry, "utf8");
   writeFileSync(f.registry, "[]\n");
   const before = {
@@ -654,7 +678,7 @@ test("dash refuses a valid non-object registry without touching its bytes", () =
 });
 
 test("dash refuses a seat-less object as old_store and leaves its bytes, tombs and generation", () => {
-  const f = fix(); reg(f, { alice: row() });
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
   const seatless = '{"mystery": 1, "schema": "0.20", "team": {"name": "t"}}\n';
   writeFileSync(f.registry, seatless);
   const r = run(f, ["out", "-"]);
@@ -703,7 +727,7 @@ test("parse refusals keep the incumbent grammar", () => {
 });
 
 test("dash honors missing-vs-present status: explicit null excluded, missing status eligible", () => {
-  const f = fix();
+  const f = fix({ tmux: true });
   reg(f, {
     carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", status: null }),
     dave: row({ pane: "t/dave", pane_id: "%7", session: "t/dave", server_epoch: "" }),
@@ -848,6 +872,7 @@ test("dash treats a drained courier bucket as no answer: the live row is retaine
   const f = fix({ tmux: true });
   fakePanes(f, { "%1": ["t/alice", "@1"] });
   reg(f, { alice: row() });
+  fakeSession(f, "t/alice");
   // Drain the shared per-socket token bucket with a fixed future clock so no
   // refill happens between claims: RATE_CAPACITY claims succeed, then the
   // bucket reports empty. paneAlive must not consult this bucket at all.
@@ -863,7 +888,7 @@ test("dash treats a drained courier bucket as no answer: the live row is retaine
   // The probe answers through the unthrottled read-only door: the pane is
   // live, so the scan refuses (no dead seats) and never retires the row.
   expect(r.code).toBe(1);
-  expect(r.err).toContain("no dead seats (1 active pane(s))");
+  expect(r.err).toContain("no eligible exited seats");
   expect(seatsOf(f).alice).toBeDefined();
   expect(events(f).length).toBe(0);
   expect(tombs(f).length).toBe(0);
@@ -909,7 +934,7 @@ test("tagged Bus refusals render as themselves, not registry_invalid", () => {
 test("dash race with a vanishing enrollment revalidates; formerly acting registry stays intact", async () => {
   // Pre-stamped exited_at: the dash scan publishes stamps by design, so this
   // control asserts semantic preservation, not byte identity.
-  const f = fix(); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", exited_at: "2026-09-20T00:00:00Z" }) });
+  const f = fix({ tmux: true }); reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", exited_at: "2026-09-20T00:00:00Z" }) });
   const barrier = join(f.root, "barrier");
   const beforeDoc = JSON.parse(readFileSync(f.registry, "utf8")) as { seats: Record<string, unknown> };
   const env = { ...f.env, TAP_SCRATCH_ONLY: f.root, TAP_OUT_RETIRE_TEST_BARRIER: barrier, TAP_OUT_RETIRE_TEST_STAGE: "after-select" } as NodeJS.ProcessEnv;
@@ -1003,4 +1028,115 @@ test("out --kill withdraws inbound after a stop, and keeps it when the stop fail
   const ok = run(f, ["out", "alice", "--kill"]);
   expect(ok.code, ok.err).toBe(0);
   expect(withdrawn(f, "k-001")).toBe(true);
+});
+
+for (const spelling of ["--last", "-"]) test(`last selection ${spelling} includes delivery-marked exits and excludes parked or revived rows`, () => {
+  const f = fix({ tmux: true });
+  fakePanes(f, { "%1": ["shared", "@1"] }); fakeSession(f, "shared");
+  reg(f, {
+    old: row({ session: "absent", exited_at: "2026-10-20T00:00:00Z" }),
+    sharedGone: row({ session: "shared", pane: "shared:9.8", pane_id: "%8", exited_at: "2026-10-20T12:00:00Z" }),
+    latest: row({ status: "suspended", status_reason: "pane_gone", session: "shared", pane: "shared:9.9", pane_id: "%7", exited_at: "2026-10-21T00:00:00Z" }),
+    live: row({ session: "shared", pane: "shared:0.0" }),
+    launching: row({ status_reason: "launching", launch_id: "launch|pending", session: "shared", pane: "shared:9.7", pane_id: "%99", exited_at: "2099-01-01T00:00:00Z" }),
+    reportedLive: row({ status: "suspended", status_reason: "pane_gone", session: "shared", pane: "shared:0.0", exited_at: "2099-01-01T00:00:00Z" }),
+    pending: row({ status: "pending" }), parked: row({ status: "suspended", status_reason: "session_stopped" }),
+    poll: row({ delivery: "poll" }), foreign: row({ team: "other" }), socket: row({ server_socket: "/foreign" }),
+  });
+  const preview = run(f, ["team", "refresh", "--dry-run", "--json"]);
+  expect(preview.code, preview.out + preview.err).toBe(0);
+  expect(JSON.parse(preview.out).trimmed.map((r: { handle: string }) => r.handle)).toContain("sharedGone");
+  const result = run(f, ["out", spelling]);
+  expect(result.code, result.out + result.err).toBe(0);
+  expect(seatsOf(f).latest).toBeUndefined();
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["foreign", "launching", "live", "old", "parked", "pending", "poll", "reportedLive", "sharedGone", "socket"]);
+});
+
+for (const spelling of ["--last", "-"]) test(`last selection ${spelling} refuses an unreadable snapshot without stamping registry bytes`, () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
+  const before = readFileSync(f.registry, "utf8");
+  const result = run(f, ["out", spelling], { FAKE_SNAPSHOT_FAIL: "1" });
+  expect(result.code).toBe(1);
+  expect(result.err).toContain("unobservable");
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+  expect(tombs(f)).toEqual([]);
+});
+
+for (const extra of [["alice"], ["--pane", "%1"], ["--kill"]]) test(`last selection conflicts with ${extra.join(" ")}`, () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
+  const before = readFileSync(f.registry, "utf8");
+  expect(run(f, ["out", "--last", ...extra]).code).toBe(1);
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+});
+
+for (const change of ["revival", "replacement", "suspension"]) test(`last selection refuses ${change} before retirement`, async () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
+  const barrier = join(f.root, "last-barrier");
+  const proc = Bun.spawn([process.execPath, MAIN, "out", "--last", "--json"], { cwd: f.cwd,
+    env: { ...f.env, TAP_SCRATCH_ONLY: f.root, TAP_OUT_RETIRE_TEST_BARRIER: barrier, TAP_OUT_RETIRE_TEST_STAGE: "after-dash-select" }, stdout: "pipe", stderr: "pipe" });
+  const deadline = Date.now() + 10000;
+  while (!existsSync(barrier + ".ready") && Date.now() < deadline) await Bun.sleep(20);
+  expect(existsSync(barrier + ".ready")).toBe(true);
+  if (change === "revival") { fakePanes(f, { "%1": ["t/alice", "@1"] }); fakeSession(f, "t/alice"); }
+  else { const seats = seatsOf(f); seats.alice![change === "replacement" ? "instance" : "status"] = change === "replacement" ? "new|identity" : "suspended"; reg(f, seats); }
+  writeFileSync(barrier + ".continue", "");
+  expect(await proc.exited).toBe(1);
+  expect(seatsOf(f).alice).toBeDefined();
+  expect(tombs(f)).toEqual([]);
+}, 20000);
+
+for (const [point, failure] of [["list-sessions", "timeout"], ["socket", "fork"]]) test(`last read ${point} ${failure} has retryable no-effect guidance`, () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
+  const before = readFileSync(f.registry, "utf8");
+  const result = run(f, ["out", "--last", "--json"], { FAKE_LAST_READ: point, FAKE_LAST_FAILURE: failure, TAP_TMUX_TIMEOUT_SECONDS: "0.05" });
+  expect(result.code).toBe(1);
+  const error = JSON.parse(result.out);
+  expect(error.error_class).toBe("observation_unobservable");
+  expect(error.action).toContain("retry");
+  expect(error.action).not.toContain("possible effect");
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+  expect(tombs(f)).toEqual([]);
+});
+
+for (const spelling of ["--last", "-"]) for (const answer of ["no server running on private fixture", "error connecting to private fixture (No such file or directory)"])
+ test(`last empty namespace ${spelling}: ${answer}`, () => {
+  const f = fix({ tmux: true });
+  writeFileSync(join(f.state, "no-server"), answer);
+  reg(f, {
+    old: row({ exited_at: "2026-10-20T00:00:00Z" }),
+    latest: row({ pane_id: "%9", server_socket: physicalSocketPath(f.env), exited_at: "2026-10-21T00:00:00Z" }),
+    foreign: row({ server_socket: "/foreign/socket", exited_at: "2099-01-01T00:00:00Z" }),
+    pending: row({ status: "pending" }), stopped: row({ status: "suspended", status_reason: "session_stopped" }),
+    launching: row({ status_reason: "launching", launch_id: "pending|1" }), poll: row({ delivery: "poll" }),
+    shapeless: { status: "active", delivery: "pane" },
+  });
+  const result = run(f, ["out", spelling]);
+  expect(result.code, result.out + result.err).toBe(0);
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["foreign", "launching", "old", "pending", "poll", "shapeless", "stopped"]);
+});
+
+test("last empty namespace revalidates when a server starts before retirement", async () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row({ server_socket: physicalSocketPath(f.env) }) });
+  writeFileSync(join(f.state, "no-server"), "no server running on private fixture");
+  const barrier = join(f.root, "empty-barrier");
+  const proc = Bun.spawn([process.execPath, MAIN, "out", "--last", "--json"], { cwd: f.cwd,
+    env: { ...f.env, TAP_SCRATCH_ONLY: f.root, TAP_OUT_RETIRE_TEST_BARRIER: barrier, TAP_OUT_RETIRE_TEST_STAGE: "after-dash-select" }, stdout: "pipe", stderr: "pipe" });
+  const deadline = Date.now() + 10000;
+  while (!existsSync(barrier + ".ready") && Date.now() < deadline) await Bun.sleep(20);
+  expect(existsSync(barrier + ".ready")).toBe(true);
+  rmSync(join(f.state, "no-server"));
+  fakePanes(f, { "%1": ["t/alice", "@1"] }); fakeSession(f, "t/alice");
+  writeFileSync(barrier + ".continue", "");
+  expect(await proc.exited).toBe(1);
+  expect(seatsOf(f).alice).toBeDefined(); expect(tombs(f)).toEqual([]);
+}, 20000);
+
+test("last poisoned foreign panes preserve exact registry bytes", () => {
+  const f = fix({ tmux: true }); reg(f, { alice: row() });
+  const compact = JSON.stringify(JSON.parse(readFileSync(f.registry, "utf8")));
+  writeFileSync(f.registry, compact);
+  const result = run(f, ["out", "--last"], { FAKE_POISONED_FOREIGN: "1" });
+  expect(result.code).toBe(1);
+  expect(readFileSync(f.registry, "utf8")).toBe(compact);
+  expect(tombs(f)).toEqual([]);
 });

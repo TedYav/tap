@@ -214,8 +214,7 @@ export function buildHarnessInvocation(
     // OpenCode resume in 4b075d370): emit --session whenever the stored id is
     // truthy, for both new and resume; id-less rows stay bare. Model argv
     // precedes --session, matching the Python order.
-    if (source) argv.push("--session", source, "--fork");
-    else if (record.harness_session_id) {
+    if (record.harness_session_id) {
       argv.push("--session", record.harness_session_id);
     }
     return { argv, env };
@@ -253,11 +252,7 @@ export function buildHarnessInvocation(
     const argv = ["agy", ...permissionArgv("agy", permissions ?? resolveCatalog(undefined, "agy", environ, () => {}).permissions)];
     argv.push(...model());
     if (action === "resume") {
-      if (record.harness_session_id) {
-        argv.push("--conversation", record.harness_session_id);
-      } else {
-        argv.push("--continue");
-      }
+      if (record.harness_session_id) argv.push("--conversation", record.harness_session_id);
     }
     if (initialPrompt) argv.push("--prompt-interactive", initialPrompt);
     return { argv, env };

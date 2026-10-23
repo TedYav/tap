@@ -237,7 +237,7 @@ refuse before effects.
 | `write` | `"apply"` or `"candidate"`, required when config bytes change |
 | `replaceCandidate` | `true` to replace an existing inactive candidate |
 | `shellIntegration` | `true` for the managed Bash/Zsh PATH/completion block and aliases for the presets selected in this object; false or omission does nothing; not allowed with candidate |
-| `fullKit` | `true` installs optional prefixed skills for flat hosts; `false` keeps their six defaults and removes only unchanged owned optional links/stubs; Claude/Codex always use the complete native TAP plugin; saved as `skills.full_kit`; omission has no effect |
+| `fullKit` | `true` installs optional prefixed skills for flat hosts; `false` keeps their seven defaults and removes only unchanged owned optional links/stubs; Claude/Codex always use the complete native TAP plugin; saved as `skills.full_kit`; omission has no effect |
 | `plugins` | Map of `claude`/`codex` to arrays containing `ponytail`, `compound-engineering`, or `superpowers`; explicit installs only, never uninstall by omission |
 | `notifications` | `notifier: "system" | "command"` and optional literal `command` argv; command mode requires a new command or a valid saved one |
 | `onboarding` | `init: "ask" | "auto"` |
@@ -245,7 +245,7 @@ refuse before effects.
 
 Claude and Codex load all public TAP skills from the native plugin, as `tap:lead`,
 `tap:drive`, and `tap:tap`. Flat hosts start with `tap`, `tap-in`, `tap-send`,
-`tap-escalate`, `tap-config-wizard` and `tap-help`; the full-kit choice adds their
+`tap-escalate`, `tap-config-wizard`, `tap-help` and `tap-extend`; the full-kit choice adds their
 remaining prefixed skills. `tap help skill tap-config` still locates this skill.
 The full-kit question defaults to No and gates optional third-party plugin questions.
 Direct `plugins` answers remain independent. Candidate and dry-run choices never

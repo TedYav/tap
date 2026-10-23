@@ -70,7 +70,6 @@ SUITE_SLOT = "skills/tap/scripts/smoke/suite-slot.test.sh"
 SUITE_SLOT_PUBLISHER = "scripts/suite_slot.py"
 GOALIE_RUN_PUBLISHER = "runtime/bun/src/goalie-run.ts"
 COURIER_AUTO_SETTLE = "skills/tap/scripts/smoke/courier-auto-settle.test.sh"
-OPENCODE_WIRE = "skills/tap/scripts/smoke/opencode-context-wire.test.sh"
 PRESETS_VERB = "skills/tap/scripts/smoke/presets-verb.test.sh"
 WAVE_SESSION_REAP = "skills/tap/scripts/smoke/wave-session-reap.test.sh"
 SMOKE_ALL_PUBLISHER = "scripts/smoke-all.sh"
@@ -120,12 +119,7 @@ CONTRACTS = {
         'writeFileSync(state+"/status.tmp",rc+"\\n"); renameSync(state+"/status.tmp",state+"/status");',
         'writeFileSync(state+"/status",rc+"\\n");',
     ),
-    # Bounded for-loop polls (tap-p8u7w).
-    f"{OPENCODE_WIRE}:$WORK/port": Contract(
-        'await Bun.write(`${process.env.CAPTURE_PORT_FILE!}.tmp`, String(server.port));\n'
-        'renameSync(`${process.env.CAPTURE_PORT_FILE!}.tmp`, process.env.CAPTURE_PORT_FILE!);',
-        'await Bun.write(`${process.env.CAPTURE_PORT_FILE!}`, String(server.port));',
-    ),
+    # OpenCode 2's wire test uses an in-process server; its old port-file poll is gone.
     # The fake harness writes argv first, env second; each is published by rename.
     f"{PRESETS_VERB}:$POS/crew-argv.txt": Contract(
         'printf \'%s\\n\' "$*" > "${TAP_SMOKE_ARGV:?}.tmp"\n'
@@ -709,7 +703,7 @@ def self_test(root: Path) -> None:
                 candidate = Path(tmp)
                 for relative in {
                     ASK, SUITE_SLOT, SUITE_SLOT_PUBLISHER, GOALIE_RUN_PUBLISHER, COURIER_AUTO_SETTLE,
-                    OPENCODE_WIRE, PRESETS_VERB, WAVE_SESSION_REAP, SMOKE_ALL_PUBLISHER,
+                    PRESETS_VERB, WAVE_SESSION_REAP, SMOKE_ALL_PUBLISHER,
                     NUDGE_SUBMIT, BEADS_REBASE_EXPORT, BUN_RUNNER_DISCOVERY, COMMAND_MODE, HEALTH_DIFFERENTIAL,
                     DONE_TOMBSTONE, INSTALL_FIRST_RUN, PROBE_RUNNER,
                 }:

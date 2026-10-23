@@ -48,16 +48,21 @@ test("beads resolve from an ancestor or BEADS_DIR, and a relative walk terminate
   } finally { removeScratchTree(dir); }
 });
 
-test("the resume ping is byte-identical to the retired Bash text", () => {
+test("self recovery honors authored order while peer no-brief recovery keeps its contract", () => {
   const dir = scratch();
   try {
     mkdirSync(join(dir, "bin"));
     writeFileSync(join(dir, "bin/bd"), "#!/bin/sh\n", { mode: 0o755 });
     const tail = " for work already claimed. If work is in progress or owed, continue it without waiting to be asked. If nothing is in progress, reply 'nothing in progress' and end the turn.";
-    expect(handoffPing("/bus/handoff/x.md", "seat-a", "", "keep the lock ruling", { PATH: join(dir, "bin"), BEADS_DIR: "/b" })).toBe(
-      "Post-compaction resume check. Read /bus/handoff/x.md first — it is a handoff written to you, before compacting, by the agent that still had the full context." +
-      " Focus written for you BEFORE this compaction, by the agent that still had the full context: keep the lock ruling" +
-      " Run 'tap poll seat-a' and settle or answer anything unsettled. Check your task list and 'bd ready'" + tail);
+    const body=handoffPing("/bus/handoff/x.md", "seat-a", "", "keep the lock ruling", { PATH: join(dir, "bin"), BEADS_DIR: "/b" });
+    expect(body).toContain("whole brief at /bus/handoff/x.md");
+    expect(body.indexOf("holds, Keep scope and live scheduler ids")).toBeLessThan(body.indexOf("load its named role skills"));
+    expect(body).toContain("without replaying their initialization");
+    expect(body).toContain("Next step");
+    expect(body).toContain("own conversation");
+    expect(body).toContain("keep the lock ruling");
+    expect(body).not.toContain("continue it without waiting");
+    expect(handoffPing("/h.md", "seat-a", "", "", {}, "leader")).toContain("to leader through TAP");
     // An unreachable tmux on the optional cwd probe falls back to our cwd; the
     // ping is often built after /compact already went in, so it must not throw.
     writeFileSync(join(dir, "bin/tmux"), "#!/bin/sh\nprintf 'fork failed: Device not configured\\n' >&2\nexit 1\n", { mode: 0o755 });

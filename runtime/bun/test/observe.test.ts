@@ -60,7 +60,7 @@ test("an unobservable probe is unknown, never gone — the polarity that keeps l
 
   // A genuinely absent session IS gone — the polarity is not blanket caution.
   const absent = buildSnapshot({ ...base, panes_rc: 0, panes_text: `t\tt:0.0\t%1\tclaude\t1\t${EPOCH}\t0\n` });
-  expect(classifyRow({ ...row, session: "nope", pane: "nope:0.0" }, absent))
+  expect(classifyRow({ ...row, session: "nope", pane: "nope:0.0", pane_id: "%9" }, absent))
     .toBe(["gone", "session_absent", "", "", "", ""].join(US));
 });
 
@@ -368,6 +368,36 @@ test("a recorded address naming a different pane refuses instead of resolving", 
     .toBe(["active", "", "t:0.0", "%1", "claude", ""].join(US));
 });
 
+test("a recorded pane absent from a readable current shared session is gone", () => {
+  const base = { sessions_rc: 0, sessions_text: `t\t${EPOCH}\t1\n`, panes_rc: 0, ps_rc: 1,
+    panes_text: `t\tt:0.0\t%1\tclaude\t4001\t${EPOCH}\t0\n` };
+  const row = { status: "active", session: "t", pane: "t:9.9", pane_id: "%7", row_epoch: SRV };
+  expect(classifyRow(row, buildSnapshot(base)).split(US).slice(0, 2)).toEqual(["gone", "pane_absent"]);
+  // A session-only scan cannot exclude this ID having moved to another session.
+  expect(classifyRow(row, buildSnapshot({ ...base, session_scope: "t" })).split(US).slice(0, 2))
+    .toEqual(["unknown", "designated_pane_missing"]);
+  for (const patch of [{ row_epoch: "" }, { pane_id: "" }, { pane_id: "bad" }])
+    expect(classifyRow({ ...row, ...patch }, buildSnapshot(base)).split(US)[0]).toBe("unknown");
+  expect(classifyRow({ ...row, row_epoch: "srv:old:epoch" }, buildSnapshot(base)).split(US)[0]).toBe("offline");
+  expect(classifyRow(row, buildSnapshot({ ...base, panes_rc: 1 })).split(US)[0]).toBe("unknown");
+  expect(classifyRow({ ...row, pane: "t:0.0" }, buildSnapshot(base)).split(US).slice(0, 2)).toEqual(["unknown", "address_rebound"]);
+});
+
+test("a recorded pane visible in another session is a conflict, never gone", () => {
+  const base = { sessions_rc: 0, sessions_text: `t\t${EPOCH}\t1\nother\t${EPOCH}\t0\n`, panes_rc: 0, ps_rc: 1,
+    panes_text: `t\tt:0.0\t%1\tclaude\t4001\t${EPOCH}\t0\nother\tother:0.0\t%7\tclaude\t4007\t${EPOCH}\t0\n` };
+  for (const session of ["t", "absent"])
+    expect(classifyRow({ status: "active", session, pane: `${session}:9.9`, pane_id: "%7", row_epoch: SRV }, buildSnapshot(base)).split(US).slice(0, 2))
+      .toEqual(["unknown", "pane_session_conflict"]);
+});
+
+test("a missing pane never turns an active launching marker into gone", () => {
+  const snap = buildSnapshot({ sessions_rc: 0, sessions_text: `t\t${EPOCH}\t1\n`, panes_rc: 0, ps_rc: 1,
+    panes_text: `t\tt:0.0\t%1\tclaude\t4001\t${EPOCH}\t0\n` });
+  expect(classifyRow({ status: "active", status_reason: "launching", session: "t", pane: "t:9.9", pane_id: "%7", row_epoch: SRV }, snap).split(US).slice(0, 2))
+    .toEqual(["unknown", "designated_pane_missing"]);
+});
+
 test("epoch and boot staleness are offline; an unreadable one is unknown", () => {
   const base = {
     sessions_rc: 0, sessions_text: `t\t${EPOCH}\t\n`, panes_rc: 0, ps_rc: 0,
@@ -650,4 +680,18 @@ test("dead flag is mandatory and strict; a dead pane needs no cached command or 
     const p = parsePanes(row, 0, null);
     expect(sessionPanesFor(p.bySession, p.mode, "t", SRV)).toBeNull();
   }
+});
+
+test("poisoned foreign pane records forbid both absence verdicts", () => {
+  const base = { sessions_rc: 0, sessions_text: `t\t${EPOCH}\t1\nother\t${EPOCH}\t0\n`, panes_rc: 0, ps_rc: 1 };
+  const clean = `t\tt:0.0\t%1\tclaude\t4001\t${EPOCH}\t0\nother\tother:0.0\t%2\tclaude\t4002\t${EPOCH}\t0\n`;
+  for (const session of ["t", "absent"]) {
+    const row = { status: "active", session, pane: `${session}:9.9`, pane_id: "%7", row_epoch: SRV };
+    expect(classifyRow(row, buildSnapshot({ ...base, panes_text: clean })).split(US)[0]).toBe("gone");
+    expect(classifyRow(row, buildSnapshot({ ...base, panes_text: clean + "other\ttruncated\n" })).split(US).slice(0, 2))
+      .toEqual(["unknown", "pane_set_poisoned"]);
+  }
+  expect(classifyRow({ status: "active", session: "t", pane: "t:9.9", pane_id: "%7", row_epoch: SRV },
+    buildSnapshot({ ...base, panes_text: clean + "t\ttruncated\n" })).split(US).slice(0, 2))
+      .toEqual(["unknown", "pane_set_unobservable"]);
 });

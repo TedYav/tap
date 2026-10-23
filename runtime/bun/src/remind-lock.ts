@@ -85,6 +85,31 @@ export interface HeldLock { release(): void }
 /** A held lock whose descriptor the holder may also write through (the clear fence). */
 export interface HeldFdLock extends HeldLock { readonly fd: number }
 
+/** Inspect an existing lock namespace without creating files or waiting. */
+export function acquireExistingFlock(lockPath: string): HeldFdLock | null {
+  let fd: number | undefined;
+  try {
+    fd=openSync(lockPath,constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+    if (!fstatSync(fd).isFile()) return null;
+    const fn=flock();
+    if (!fn) return null;
+    const held=tryHold(fn,fd,"exclusive");
+    if (!held) return null;
+    fd=undefined; // The hold now owns the descriptor.
+    if (namesCurrentFile(held.fd,lockPath,true)) return held;
+    held.release();
+    return null;
+  } catch { return null; } finally { if (fd!==undefined) closeSync(fd); }
+}
+
+export type FlockState = "held" | "not-held" | "unknown";
+/** Positive observation requires WouldBlock; a broken instrument is unknown. */
+export function flockState(fd: number, fx = { flock: flock(), errno: lastErrno }): FlockState {
+  if (!fx.flock) return "unknown";
+  if (fx.flock(fd,LOCK_EX | LOCK_NB)===0) return fx.flock(fd,LOCK_UN)===0 ? "not-held" : "unknown";
+  return fx.errno()===(process.platform==="darwin" ? 35 : 11) ? "held" : "unknown";
+}
+
 /**
  * Acquire the lock, or return null if it stays contended to the deadline.
  *

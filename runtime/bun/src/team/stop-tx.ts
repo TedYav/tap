@@ -27,6 +27,7 @@ import { TapError } from "../context";
 import { acquireRegistryLock } from "../panelock";
 import { oldStoreRefusalText } from "../register-authority";
 import type { Seat } from "../registry";
+import { assertSharedStopCleared, quiesceSharedSession } from "../opencode-shared-stop";
 import { atomicWrite } from "../fsatomic";
 import { codePointCompare, spared } from "./selection";
 import { destructiveSessionTarget, type LifecycleTmux } from "../lifecycle-target";
@@ -395,6 +396,16 @@ export function runStopTx(input: StopTxInput): StopTxResult {
     // record exactly when the transaction does NOT reach a terminal outcome.
     // (tap-team-stop.sh L370-399.)
     retained = [...adopted];
+
+    if (mode !== "authorize_only" && mode !== "cotenant_only") {
+      try {
+        for (const [handle, row] of Object.entries(agents)) if (row.session === session) {
+          const root = pyIsDict(doc.team) && typeof doc.team.worktree_root === "string" ? doc.team.worktree_root : dirname(dirname(path));
+          if (input.policy === "clear") assertSharedStopCleared(root, row);
+          quiesceSharedSession(row, root, handle);
+        }
+      } catch (error) { return done({ kind: "refused", detail: error instanceof TapError ? `${error.detail}; next: ${error.action}` : String(error) }); }
+    }
 
     if (mode === "cotenant_only") return done({ kind: "authorized" });
 

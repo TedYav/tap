@@ -27,7 +27,7 @@ import { assertBoundInstances, assertBoundSeats, readDiscoverySeats, type BoundC
 
 export { bootstrapTmux } from "./resume-prelude";
 
-export interface Options { dryRun: boolean; json: boolean; model: string | null; teams: boolean; key: string | null; legacyName: string | null; lifecycle?: LifecycleReceipt }
+export interface Options { dryRun: boolean; json: boolean; model: string | null; teams: boolean; key: string | null; legacyName: string | null; lifecycle?: LifecycleReceipt; restartRows?: Map<string, Row> }
 
 /** Canonical cohort options from the public session door. */
 export function parseResumeAll(argv: string[]): Options {
@@ -127,7 +127,15 @@ export async function resumeAll(options: Options, cwd: string, deps: ResumeAllDe
   const observation = await deps.observe();
   const priorNames = new Set(state.sessions.map(record => record.name));
   const recovered = rebootResumeRecords(root, state.entries, observation).filter(record => !priorNames.has(record.name));
-  const sessions = [...state.sessions, ...recovered];
+  const sessions = options.restartRows
+    ? [...options.restartRows].map(([handle, row]) => {
+      const record = recordFromRow(handle, row, state.team, root);
+      if (!record) {
+        const detail = `stored launch recipe for '${handle}' cannot be decoded; no restart cohort launched`;
+        throw new LauncherError(detail, "invalid_restart_recipe", "tap team doctor", detail);
+      }
+      return withRecordDefaults(record);
+    }) : [...state.sessions, ...recovered];
   let excepted = popHandles("TAP_TEAM_EXCEPT_HANDLES");
   const only = popHandles("TAP_TEAM_ONLY_HANDLES");
   const inScope = sessions.filter(record => pathIsUnder(record.cwd, root));
@@ -311,7 +319,7 @@ async function failureSummary(failures: Failure[], total: number, options: Optio
   }
   out(`tap team up: ${failures.length} of ${total} seat(s) ${options.dryRun ? "would not resume" : "failed to resume"}:`);
   for (const failure of failures) for (const line of failureLines(failure)) out(line);
-  if (options.dryRun || !deps.hasTty()) return 1;
+  if (options.dryRun || options.restartRows || !deps.hasTty()) return 1;
   if (deps.confirm("team up", "start a new session and resume manually?", true)) {
     // The run's exit is a cohort verdict: any failed fresh launch is a flat 1, never a seat's own code.
     const fresh = await freshStart(failures.map(([record]) => record), deps.run, onStarted);
@@ -365,6 +373,7 @@ export async function cmdSessionResumeAll(argv: string[], scriptDir = SCRIPTS, l
   try { options = parseResumeAll(argv); }
   catch (error) { return render(error, jsonRequested); }
   if (lifecycle) options.lifecycle = lifecycle;
+  options.restartRows = bound?.restartRows;
   const cwd = realOrSelf(root ?? process.cwd());
   if (bound) assertBoundSeats(bound, readDiscoverySeats(bound.team.registryPath));
   const notices = new Notices();
@@ -382,6 +391,7 @@ export async function cmdSessionResumeAll(argv: string[], scriptDir = SCRIPTS, l
     const result = await launchTransaction({ kind, record: cloneRecord(record), dry_run: options.dryRun, json: options.json, output_path: outputPath,
       lifecycle_receipt: options.lifecycle,
       approved_instance: bound?.seats.get(identityHandle(record))?.instance,
+      approved_restart_row: bound?.restartRows?.get(identityHandle(record)),
       terminal: { stderr_tty: stderrTty }, script_dir: scriptDir, ...extra }, process.env, signal, notices);
     Object.assign(record, result.record);
     return result.code;

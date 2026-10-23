@@ -82,12 +82,12 @@ w = pathlib.Path(sys.argv[1]); lead, ca, cb, cc, cx = sys.argv[2:]
 demo = w / "Demo"
 def crew(pane, **extra):
     row = {"status": "active", "delivery": "pane", "harness": "codex", "pane_id": pane, "pane": "Demo/lead:1.0",
-           "session": "Demo/lead", "registered_at": "t", "crew": True, "model": "gpt-test", "permissions": "bypass",
+           "session": "Demo/lead", "registered_at": "t", "crew": True, "instance": "crew-"+pane, "crew_owner": "lead", "crew_owner_instance": "lead-one", "model": "gpt-test", "permissions": "bypass",
            "harness_env": {}, "passthrough": [], "passthrough_from_config": False, "preset": None, "cwd": str(demo)}
     row.update(extra)
     return {k: v for k, v in row.items() if v != "__drop__"}
 seats = {
-    "lead": {"status": "active", "delivery": "pane", "harness": "claude", "pane_id": lead, "pane": "Demo/lead:0.0", "session": "Demo/lead", "registered_at": "t"},
+    "lead": {"instance": "lead-one", "status": "active", "delivery": "pane", "harness": "claude", "pane_id": lead, "pane": "Demo/lead:0.0", "session": "Demo/lead", "registered_at": "t"},
     "crew-a": crew(ca, harness_session_id="old-conversation", transcript_path="/old/transcript.jsonl"),
     "crew-b": crew(cb, cwd="__drop__"),
     "crew-c": crew(cc, preset={"name": "gone", "source_path": "/nowhere", "config_digest": "x"}, passthrough_from_config=True),

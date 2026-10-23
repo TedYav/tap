@@ -26,6 +26,7 @@ must be traceable to the anchor; declare composition in help or the contract.
 |---|---|
 | Exchange verbs (`send`, `reply`, `poll`, `outstanding`) | One exchange on a resolved bus; qualified addresses may cross teams |
 | Identity (`in`, `out`, `whoami`) | Pane/seat and resolved team |
+| Calibration (`calibrate`) | Machine-local observation store under HOME; writes compose with registered caller identity |
 | Supervision and diagnostics | Resolved team bus, seat or explicit target |
 | Bootstrap (`init`, `setup`) | Repository/team |
 | `tap team <verb>` | Resolved team |
@@ -83,9 +84,10 @@ meaning and routing; whole-page snapshots are not the default.
 Legacy team lifecycle exceptions are not precedents: `team down` and
 `team shutdown` accept `--force` as a compatibility no-op. On their interactive
 target-discovery path, `--yes` skips only the final confirmation after the
-preview; on an explicit-target path it remains a no-op. `team reset` accepts
-`--yes` as a no-op and refuses `--force`. Its path-shape
-escape is specifically `--allow-nonstandard-bus-path`.
+preview; on an explicit-target path it remains a no-op. `team reset` aliases
+`team out --hard`: `--yes` confirms full-team or picker retirement; without
+a terminal these paths require it. Supplied handle lists need no extra consent. The retired `--kill-self` and `--allow-nonstandard-bus-path` flags
+refuse before team resolution.
 
 Message bodies use `-f <path>` or `-f -` with literal stdin. Prose that contains a backtick or command substitution uses a file, never an inline body, because the shell expands backticks and command substitution before tap receives the body. A quoted heredoc is the accepted alternative to a file.
 
@@ -110,6 +112,15 @@ stable action token. Preserve the JSON contract when changing presentation.
 Unknown commands/options, missing help and renamed verbs use this same grammar
 with the narrowest useful help or replacement. TTY and `NO_COLOR` do not change
 JSON bytes.
+
+`tap calibrate` v1 has one deliberate exception: when `calibration.enabled` is
+false (the default), reads and writes, including `--json`, refuse with one stderr
+line, no stdout and exit 1. The line names the setting and enable command. Once
+enabled, it uses the ordinary envelope: `unknown_route` means no roster/launch
+evidence for a target; `invalid_note` or `empty_note` means the body/reference
+cannot be recorded; `calibration_unavailable` means the machine store or its lock
+cannot be used. These refusals preserve the active bytes rather than repairing
+them. See the [calibration owner](../skills/tap/protocol/identity/calibration.md).
 
 **CLI-EXIT-0:** Non-zero means the command could not do its
 job: bad input, a refusal, an unreadable bus or registry, unobservable tmux, a
@@ -172,8 +183,8 @@ repair findings red. Skipped checks are yellow and grouped under `not checked`;
 their JSON severity remains `warning`. Color honors `NO_COLOR` (including an empty value) and
 `TERM=dumb`; progress requires both output streams to be terminals and is
 disabled for `TERM=dumb`. JSON and redirected output contain no terminal
-controls. The human `tap team` roster also styles state dots and daemon harness labels:
-daemon labels are italic and ready dots light cyan. Styling
+controls. The human `tap team` roster also styles state dots, cache markers and daemon harness labels:
+daemon labels are italic and ready dots light cyan. Cache dots and their minutes are bright blue at 15m or more, yellow under 15m and red under 5m; after expiry a bare dark-red dot remains. `tap teams --seats` uses the same cache and state colors beneath bold cyan team headings. Styling
 requires a terminal, respects `NO_COLOR` and `TERM=dumb`, and never enters
 redirected or JSON output. `tap admin ps` is also an explicit exception: status dots reuse the roster palette; qualifying top CPU/memory cells use bold amber plus an ASCII `*`. The mark and its conditional legend remain in uncolored human output. Color requires TTY stdout, absent `NO_COLOR`, and `TERM` other than `dumb`. JSON stays uncolored and numeric. `tap session launch` is also an explicit exception: when stderr is a terminal and `TERM` is not `dumb`, it shows a transient monochrome spinner line per real launch phase on stderr. Each phase settles to `✓`; a failure settles the phase it stopped in to `✗` before the error. Every effect-bearing phase (the ones named below) keeps its `✓` however briefly it ran, so a launch lists the same steps on a fast and a slow harness; other phases too brief to draw leave nothing. Redirected stderr, `--json`, `TAP_JSON=1` and dry runs see no spinner. In every mode, a failure inside an effect-bearing phase (reserving, tmux setup, harness start, readiness, marking ready) names that phase in its error, as `tap session: while <phase>: <cause>`; config-time refusals keep their bytes. `tap team refresh` is also an explicit exception, sharing the launcher's spinner: on a stderr terminal with `TERM` not `dumb` and `NO_COLOR` unset, a real refresh shows a transient line per slow phase (waiting for the registry lock, re-binding each seat), settling to `✓`, or `✗` on failure. Phases too brief to draw leave nothing. `--json`, `TAP_JSON=1`, `--dry-run`, `NO_COLOR` (even empty), `TERM=dumb` and redirected stderr see no spinner; the per-seat receipt stays on stdout, byte-identical. The launch collision chooser is also an explicit exception (tap-ibmoe): on a colour terminal (stderr a TTY, `NO_COLOR` absent, `TERM` set and not `dumb`), an unavailable `[f] fork` row and the name prompt's default suffix render grey (SGR 90); the name prompt redraws its line in place. Without colour the row reads `(unavailable: <reason>)`, and under `NO_COLOR` the name prompt is still edited key by key (tap-tl6rh): a plain line with the default in brackets, no escapes, each accepted key echoed. The editor never lets a character a handle cannot hold (space, `/`, a leading `-`) enter the line, pasted or typed; it rings the bell and names the allowed characters. `TERM=dumb` (or no `TERM`) keeps a cooked line, where the launcher's name check refuses and asks again, naming the allowed characters. Any interactive prompt under the launch spinner suspends it while it waits. Other commands still need an explicit ruling for color.
 

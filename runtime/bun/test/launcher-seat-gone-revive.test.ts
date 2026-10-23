@@ -10,7 +10,7 @@ import { classifySession, crewPanesIn } from "../src/launcher/observation";
 import { describeReviveTier } from "../src/launcher/collision";
 import { cmdSessionLaunch } from "../src/launcher/new";
 import { exactRevivalIdentity } from "../src/launcher/transaction";
-import { Database } from "bun:sqlite";
+import { createOpenCodeStore, addSession } from "./support/opencode-store";
 import { crewLifetimeBinding, processGeneration, reclaimRevivedCrew, reconcileCrewLifetime, survivingCrews, validateCrewLifetimeBinding } from "../src/crew-lifetime";
 
 const original = { ...process.env };
@@ -78,7 +78,7 @@ async function seatGoneWithCrews(f: ReturnType<typeof fixture>, arm: false | "lo
   const opencodeCrew = f.T("new-window", "-d", "-t", `=${SESSION}:`, "-P", "-F", "#{pane_id}", `${f.root}/real/opencode 600`);
   const claudeCrew = f.T("new-window", "-d", "-t", `=${SESSION}:`, "-P", "-F", "#{pane_id}", `${f.root}/real/claude 600`);
   const doc = f.doc();
-  const crewRow = (harness: string, pane: string, instance: string) => ({ crew: true, harness, session: SESSION, pane_id: pane, instance,
+  const crewRow = (harness: string, pane: string, instance: string) => ({ crew: true, crew_owner: "reviewer", crew_owner_instance: seat.instance, harness, session: SESSION, pane_id: pane, instance,
     server_epoch: seat.server_epoch, server_socket: seat.server_socket, status: "active", delivery: "pane" });
   doc.seats["kimi-review"] = crewRow("opencode", opencodeCrew, "kimi-review|0000000000000001");
   doc.seats["claude-review"] = crewRow("claude", claudeCrew, "claude-review|0000000000000002");
@@ -148,8 +148,8 @@ test("the chooser's [r] revives the seat into its session and keeps every crew w
   } finally { process.stdout.write = out; process.stderr.write = err; }
   const said = written.join("");
   expect(code, said).toBe(0);
-  expect(asked[0]).toContain("claude exited; other windows still hold the session");
-  expect(asked).toContain(`r: ${describeReviveTier("exact")}`);
+  expect(asked[0]).toContain("session name is live");
+  expect(asked).toContain(`r: ${describeReviveTier("attach-or-resume")}`);
   expect(said).not.toContain("not live");
   expect(said).toContain(`revived ${SESSION} in a new window`);
   const after = panes(f);
@@ -280,9 +280,8 @@ test("the exact revival gate pins each harness's contract", () => {
   // A readable OpenCode store that lacks the id refuses; one that has it binds it.
   const data = join(f.root, "xdg");
   mkdirSync(join(data, "opencode"), { recursive: true });
-  const db = new Database(join(data, "opencode", "opencode.db"));
-  db.exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL)");
-  db.query("INSERT INTO session (id, directory) VALUES ('ses_present', '/tmp/wt')").run();
+  const db = createOpenCodeStore(join(data, "opencode", "opencode.db"));
+  addSession(db, "ses_present", "/tmp/wt");
   db.close();
   const env = { ...process.env, XDG_DATA_HOME: data };
   expect(() => exactRevivalIdentity(record("opencode", "ses_absent") as never, env)).toThrow("has no such session");

@@ -84,9 +84,9 @@ export type Choose = typeof promptChoice;
 /** describe_revive_tier: what [r] would actually do, by resume tier (tap-u3bl). */
 export function describeReviveTier(tier: string): string {
   return ({
+    "attach-or-resume": "Attach if running; otherwise resume",
     exact: "Resume the chat by its native ID",
     picker: "No usable ID; open the native picker",
-    latest: "No usable ID; resume the latest chat",
     fresh: "Nothing to resume; start fresh",
     // tap-we6b rework: the stored id failed the resume-artifact probe; [r]
     // refuses rather than silently start a different conversation.
@@ -99,7 +99,7 @@ export function describeReviveTier(tier: string): string {
 export type ForkUnavailable = string | null;
 export const NOT_A_SEAT = "not a TAP seat";
 
-/** [f] is always listed so the menu keeps one shape; it is enabled only when a fork can succeed.
+/** [f] stays listed; known row-only refusals disable it before native saved-chat validation.
  *  Reasons stay lowercase for the error sentences that end with them; the row capitalizes. */
 const forkOption = (unavailable: ForkUnavailable): ChoiceOption => unavailable === null
   ? ["f", "fork", "Fork a new session with this history"]

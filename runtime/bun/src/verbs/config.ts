@@ -16,6 +16,8 @@ const KEY_SEGMENT = /^[A-Za-z0-9_-]+$/;
  * Every table in the launcher catalog's TOP_LEVEL_KEYS needs an entry; the
  * census test in config.test.ts fails when the two lists drift. */
 export const EFFECTS: Record<string, string> = {
+  experimental: "takes effect on the next fresh launch; existing seats keep their recorded mode",
+  calibration: "takes effect on the next tap calibrate",
   sentinel: "takes effect on the next delivery",
   notifications: "takes effect on the next escalation",
   injection: "takes effect on the next delivery",
@@ -44,6 +46,8 @@ export const EFFECTS: Record<string, string> = {
  * get refuses it when unset: recovery.aggressiveness is chosen per verb, and
  * skills.full_kit unset means "keep what is installed", which differs from false. */
 export const DEFAULTS: Record<string, string | number | boolean> = {
+  "experimental.opencode_shared_server": false,
+  "calibration.enabled": false,
   "sentinel.preview": false,
   "sentinel.preview_chars": 120,
   "injection.behavior": "clobber",

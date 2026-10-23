@@ -92,15 +92,32 @@ A fresh project offers tap init; noninteractive callers must initialize first.
 From an agent or without a terminal, use tap attach `<team/seat>` to visit it.
 A name already in use offers [r] resume, [n] new, [f] fork, [k] kill, [q]
 quit; a harness running in tmux off the roster offers no [r]. [n] and [f]
-ask for the name; [f] is greyed when the seat cannot fork.
+ask for the name. [r] on a running seat uses the attach-only path above, including
+switching the caller's client inside tmux; it does not re-register or relaunch.
+Stopped seats retain their resume behavior. The live-name menu uses the roster
+and tmux namespace snapshot; process and saved-chat checks run after selection.
+If [r] finds a shell where the seat was expected, TAP asks again with the reseat
+choices before replacing anything.
+
+[f] is greyed for a missing seat, unsupported harness, conflicting stored flags
+or a row with no saved-chat reference. Otherwise the saved chat is validated
+after [f], before asking for a name; an unavailable chat refuses without a fork.
 Bare harnesses: claude, codex, opencode, cursor, agy, hermes.
-Choose with tap models; presets optionally save a combination you use often.
+Use tap presets for saved recipes or launch a supported model directly with
+tap launch <harness> [name] --model <id> --effort <level>.
 Claude effort: low, medium, high, xhigh, max. AGY: low, medium, high.
 Hermes: none, minimal, low, medium, high, xhigh, max, ultra.
-Codex passes non-empty effort strings through to the harness. OpenCode and
-Cursor support model only; no standalone effort flag. Unknown defaults stay unknown.
-Top-level --effort cannot combine with a harness tail; qualified examples from
-tap models use the native effort flag when a service/context tail is needed.
+Codex passes non-empty effort strings through to the harness. OpenCode 2.x uses
+`--effort` for an available model variant, also accepted as `provider/model#variant`.
+An OpenCode preset uses `params.variant` for that axis, following the native flag.
+TAP validates the model and variant through the native API, creates the session,
+then opens the interactive TUI with `--standalone --session <id>`. An unavailable
+model or variant refuses before replacing a seat. Native resume preserves the
+model and variant selected inside OpenCode; typed TUI tuning overrides refuse
+with guidance to change them inside OpenCode. Cursor supports model only. Unknown
+defaults stay unknown.
+Top-level --effort cannot combine with a harness tail; use the native effort
+flag when a service/context tail is needed.
 
 ### Tuning and policy
 

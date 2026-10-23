@@ -1,3 +1,6 @@
+import { inheritedActor } from "../context";
+import { assertSharedStopCleared, quiesceSharedSession, refuseSharedSelfStop, retainUnquiescedSharedSession } from "../opencode-shared-stop";
+import { activateSharedRow, prepareSharedActivation } from "./opencode-shared-activation";
 import { launchWorkdir, validateLaunchWorkdir } from "./workdir";
 // Durable in-pane replacement for `tap clear` (R7a). Dark until R7b routes
 // `clear` here: nothing in main.ts reaches this module yet.
@@ -11,11 +14,12 @@ import { launchWorkdir, validateLaunchWorkdir } from "./workdir";
 // live fence exists (reset-components.ts firstLiveFence), and each side stores
 // its claim before it loads the other's.
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { appendFileSync, fsyncSync, ftruncateSync, mkdirSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { loadavg } from "node:os";
 import { dirname, join } from "node:path";
 import { fencePath, readClearFence } from "../clear-fence";
-import { observeCallingPane, resolveContext, TapError, type CallingPaneObservation } from "../context";
+import { observeCallerIdentity, resolveContext, TapError, type CallingPaneObservation } from "../context";
 import { acquireRegistryLock } from "../panelock";
 import { loadCurrentRegistry, saveRegistry, seatMap } from "../registry";
 import { OldStoreError } from "../register-authority";
@@ -192,6 +196,12 @@ function rowStillTarget(row: unknown, target: ClearTargetIdentity): boolean {
   if (typeof row !== "object" || row === null || Array.isArray(row)) return false;
   return voidedPaneId(row as Row, target.epoch) === target.paneId && !staleSeatGeneration(row, target.generation);
 }
+function assertSharedReplacementBinding(row: Row, expected: Row): void {
+  for (const key of ["instance", "pane_id", "session", "server_epoch", "server_socket", "harness_session_id", "opencode_service"]) {
+    if (!isDeepStrictEqual(row[key], expected[key]))
+      throw new ClearRefusal(refusal("clear_target_moved", "inspect the seat before replacing it again", `shared binding changed during replacement (${key})`));
+  }
+}
 
 /**
  * Write the nonce the NEXT registration must carry, after rechecking that the
@@ -209,8 +219,11 @@ export async function stampExpectedClearNonce(scope: ClearScope, handle: string,
         `seat '${handle}' no longer names pane ${target.paneId} under this tmux server; nothing was replaced`));
     }
     checkRelaunchExpectation(scope, handle, row, (doc.team ?? {}) as Row, expect, env);
+    if (record.opencode_server_mode === "shared" && "entry" in target) assertSharedReplacementBinding(row, target.entry as Row);
+    quiesceSharedSession(row, scope.root, handle, { env });
     Object.assign(row, { harness_env: record.harness_env ?? {}, harness_unset_env: record.harness_unset_env ?? [], harness_tail: record.harness_tail ?? [] });
     row.expected_clear_nonce = nonce;
+    if (record.opencode_server_mode === "shared") row.status_reason = "launching";
     if (record.permissions != null) row.permissions = record.permissions;
     // A witness left by a PREVIOUS clear must not verify this one.
     delete row.clear_nonce;
@@ -237,11 +250,28 @@ export async function consumeExpectedClearNonce(scope: ClearScope, handle: strin
  */
 type TokenOutcome = "keep" | "promote" | "clear";
 
-async function consumeClearNonce(scope: ClearScope, handle: string, nonce: string, verb: string, signal?: AbortSignal, launchWorkdir?: string,
-  token: TokenOutcome = "keep") {
+export async function consumeClearNonce(scope: ClearScope, handle: string, nonce: string, verb: string, signal?: AbortSignal, launchWorkdir?: string,
+  token: TokenOutcome = "keep", shared?: { record: LaunchRecord; facts?: PaneFacts; expected: Row; env: NodeJS.ProcessEnv }) {
   return underCustody(scope, verb, doc => {
     const row = seatMap(doc)[handle] as Row | undefined;
     if (!row || typeof row !== "object" || row.expected_clear_nonce !== nonce) return false;
+    if (shared) {
+      assertSharedReplacementBinding(row, shared.expected);
+      if (shared.facts) {
+        activateSharedRow(row, shared.record, shared.facts, shared.env,
+          { root: scope.root, bus: scope.busHome, socket: String(row.server_socket) });
+        row.clear_nonce = nonce;
+      } else {
+        const retained = retainUnquiescedSharedSession(shared.record, scope.root, handle,
+          "replacement was attempted but shared activation was not verified; native work may still be running");
+        Object.assign(row, { status: "suspended", status_reason: "unquiesced", harness_session_id: retained.session,
+          opencode_service: retained.service, opencode_server_mode: "shared" });
+        delete row.clear_nonce;
+      }
+    } else if (row.opencode_server_mode === "shared") {
+      row.status_reason = token === "keep" ? "" : "replacement_unverified";
+      if (token !== "keep") row.status = "suspended";
+    }
     delete row.expected_clear_nonce;
     if (token === "promote") row.launch_witness = nonce;
     else if (token === "clear") delete row.launch_witness;
@@ -330,7 +360,7 @@ export async function clearTargetPane(scope: ClearScope, handle: string, opts: {
   } else if (observed !== expected) {
     throw fail("pane_recycled", restartHint, `seat '${handle}' is on record in session '${expected}', but pane ${paneId} now lives in '${observed}' — the id has been recycled and that pane belongs to something else. Refusing to replace a process this seat does not own; re-register the seat, or recreate it: ${restartHint}`);
   }
-  const caller = opts.caller ?? observeCallingPane(env, true);
+  const caller = opts.caller ?? observeCallerIdentity(env, true);
   if (caller.state === "inside" && caller.paneId === paneId) {
     throw fail("self_clear", "ask a teammate to run it, or run it from another pane", `refusing to run ${verb} on '${handle}' from inside its own pane — it would end its own process before it could verify the rebind. Ask a teammate to run it, or run it from another pane.`);
   }
@@ -352,7 +382,7 @@ export interface ClearPlan { target: ClearTarget; record: LaunchRecord; nonce: s
 export function refuseUnsupportedInstruction(harness: string, instruction: string | null | undefined, recipient: string,
   env: NodeJS.ProcessEnv): ReplaceOutcome | null {
   if (!instruction || harness !== "hermes") return null;
-  const sender = (env.TAP_SELF ?? "").trim();
+  const sender = inheritedActor(env).trim();
   return refusal("instruction_unsupported",
     `repeat without -m, then: tap send ${recipient} -f <file> --fyi --wake ${sender ? `--from ${sender}` : "--from <your-handle>"}`,
     `${harness} has no channel for a -m instruction (its argv carries no prompt); nothing was replaced`);
@@ -364,9 +394,11 @@ export function refuseUnsupportedInstruction(harness: string, instruction: strin
  * `TAP_CLEAR_ID`.
  */
 export async function planClear(scope: ClearScope, handle: string, instruction: string | null,
-  opts: { env?: NodeJS.ProcessEnv; caller?: CallingPaneObservation; notices?: Notices } = {}): Promise<ClearPlan> {
+  opts: { env?: NodeJS.ProcessEnv; caller?: CallingPaneObservation; notices?: Notices; dryRun?: boolean } = {}): Promise<ClearPlan> {
   const env = opts.env ?? process.env;
   const target = await clearTargetPane(scope, handle, { env, caller: opts.caller });
+  refuseSharedSelfStop([[handle, target.entry]], "tap clear", false, env, opts.caller);
+  assertSharedStopCleared(scope.root, target.entry);
   const row = recordFromRow(handle, target.entry, {}, scope.root);
   if (!row) {
     throw new ClearRefusal(refusal("launch_recipe_missing", "re-register it from its live pane before clearing",
@@ -376,7 +408,9 @@ export async function planClear(scope: ClearScope, handle: string, instruction: 
   if (unsupported) throw new ClearRefusal(unsupported);
   if (row.launch_workdir !== undefined) row.launch_workdir = validateLaunchWorkdir(scope.root, row.launch_workdir);
   // A FRESH conversation: reusing the old id would point the new process at a populated session.
-  let record: LaunchRecord = await mintLaunchSessionId({ ...row, harness_session_id: null }, env);
+  let record: LaunchRecord = { ...row, harness_session_id: null };
+  if (record.harness === "opencode") launchInvocation("new", record, opts.notices ?? new Notices(), { env, prompt: instruction, notify: false });
+  if (!(opts.dryRun && record.harness === "opencode")) record = await mintLaunchSessionId(record, env, undefined, opts.notices);
   if (record.harness === "claude" && !record.harness_session_id) {
     record = { ...record, harness_session_id: freshLaunchSessionId("claude"), identity_capture_action: "new" };
   }
@@ -412,6 +446,8 @@ export interface ReplaceOptions {
 export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, opts: ReplaceOptions): Promise<ReplaceOutcome> {
   const { verb, handle } = opts, env = opts.env ?? process.env;
   const { target, record, nonce, ceiling } = plan, paneId = target.paneId;
+  refuseSharedSelfStop([[handle, target.entry]], verb, false, env);
+  assertSharedStopCleared(scope.root, target.entry);
   if (record.launch_workdir !== undefined) record.launch_workdir = validateLaunchWorkdir(scope.root, record.launch_workdir);
   prepareCodexAutoReceipts(record.harness, record.permissions, env);
   const fence = acquireClearFence(scope.busHome, handle, nonce, record.harness, ceiling);
@@ -439,7 +475,8 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
     if (workdirRecorded) return { retired: true, note: `; launch_workdir recorded as ${workdir}` };
     let retired = false, wrote = false, why = "";
     try {
-      const c = await consumeClearNonce(scope, handle, nonce, verb, undefined, workdir, respawnAttempted ? "clear" : "keep");
+      const c = await consumeClearNonce(scope, handle, nonce, verb, undefined, workdir, respawnAttempted ? "clear" : "keep",
+        respawnAttempted && record.opencode_server_mode === "shared" ? { record, expected: target.entry, env } : undefined);
       retired = c.ok; wrote = c.ok && c.value === true;
       why = c.ok ? "the seat row is gone or its clear expectation changed" : c.outcome.detail;
     } catch (error) {
@@ -447,10 +484,12 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
     }
     // An ambiguous respawn (tmux may have run it, the client timed out or was cancelled first) proves no
     // effect, so the row is NOT recorded, but the possible new directory is disclosed.
-    if (workdir === undefined) return { retired, note: respawnAttempted && opts.launchWorkdir !== undefined
-      ? `; the harness may now run in ${opts.launchWorkdir}; launch_workdir was not updated` : "" };
-    return { retired, note: wrote ? `; launch_workdir recorded as ${workdir}`
-      : `; the harness runs in ${workdir} but the recorded launch_workdir was NOT updated`, ...(wrote ? {} : { unpersisted: why }) };
+    const sharedNote = respawnAttempted && record.opencode_server_mode === "shared"
+      ? `; native session ${record.harness_session_id} may still run; ${retired && wrote ? "its binding and worktree hold were retained" : "recovery recording is unverified"}; from another pane: tap down ${record.name} (or --skip-quiesce)` : "";
+    if (workdir === undefined) return { retired, note: sharedNote + (respawnAttempted && opts.launchWorkdir !== undefined
+      ? `; the harness may now run in ${opts.launchWorkdir}; launch_workdir was not updated` : "") };
+    return { retired, note: sharedNote + (wrote ? `; launch_workdir recorded as ${workdir}`
+      : `; the harness runs in ${workdir} but the recorded launch_workdir was NOT updated`), ...(wrote ? {} : { unpersisted: why }) };
   };
   const unpersistedOutcome = (persisted: { unpersisted?: string }, original: string): ReplaceOutcome | null => persisted.unpersisted === undefined ? null
     : { code: 7, errorClass: "launch_workdir_unpersisted", action: `tmux attach -t ${paneId}   # the pane is the authority; then: ${UNPERSISTED_ACTION}`,
@@ -508,6 +547,7 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
       warnings.push(`${verb}: WARNING: could not arm remain-on-exit on pane ${paneId}; if the harness fails to start, the pane (and a single-window seat's session) will be lost rather than kept for inspection`);
     }
     let verified = false;
+    let sharedFacts: PaneFacts | undefined;
     let readinessReason: string | null = null;
     // After the respawn the process is already replaced: a registry that cannot
     // be read now is a post-effect state (exit 7), never a refusal.
@@ -524,6 +564,7 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
       opts.signal?.throwIfAborted();
       if (respawn.code === 124) throw new PaneObservationTimeout(paneId);
       if (respawn.code !== 0) {
+        if (record.opencode_server_mode === "shared") throw new Error(`respawn attempt returned ${respawn.code}: ${respawn.stderr.trim()}; shared replacement state is unverified`);
         await consumeExpectedClearNonce(scope, handle, nonce, verb);
         return { code: respawn.code, errorClass: "tmux_error", action: `tmux attach -t ${paneId}   # the pane is the authority`,
           detail: `could not respawn pane ${paneId}: ${respawn.stderr.trim() || `tmux exit ${respawn.code}`}` };
@@ -532,7 +573,20 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
       opts.signal?.throwIfAborted();
       opts.progress?.(`respawn attempted; observing ${record.harness} startup for up to ${ceiling}s (pane ${paneId})`);
       const started = performance.now(), deadline = started + ceiling * 1000;
-      if (opts.relaunch) {
+      if (record.opencode_server_mode === "shared") {
+        for (;;) {
+          opts.signal?.throwIfAborted();
+          const fresh = await paneFacts(paneId, env, opts.signal);
+          if (fresh && fresh.pane_pid !== facts.pane_pid && fresh.server_epoch === facts.server_epoch) {
+            try {
+              prepareSharedActivation(record, fresh, env, { root: scope.root, bus: scope.busHome, socket: String(row.server_socket) });
+              sharedFacts = fresh; verified = true; break;
+            } catch (error) { if (!(error instanceof LauncherError)) throw error; }
+          }
+          if (performance.now() >= deadline) break;
+          await Bun.sleep(opts.pollMs ?? 250);
+        }
+      } else if (opts.relaunch) {
         const readiness = await awaitReplacedHarness({ pane_id: paneId, harness: record.harness, timeout: ceiling,
           expected_server_epoch: facts.server_epoch, previous_pane_pid: facts.pane_pid, detect_resume_picker: true }, env, opts.signal);
         verified = readiness.ready;
@@ -558,15 +612,34 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
     }
     opts.signal?.throwIfAborted();
     let consumed: Awaited<ReturnType<typeof consumeClearNonce>>;
-    try { consumed = await consumeClearNonce(scope, handle, nonce, verb, undefined, opts.launchWorkdir, verified ? "promote" : "clear"); }
+    try { consumed = await consumeClearNonce(scope, handle, nonce, verb, undefined, opts.launchWorkdir, verified ? "promote" : "clear",
+      record.opencode_server_mode === "shared" ? { record, facts: sharedFacts, expected: target.entry, env } : undefined); }
     catch (error) {
       // A custody/registry read or write that THROWS after the respawn is still the post-effect case when
       // --workdir's row update was required; report it as launch_workdir_unpersisted naming the cause, not exit 1.
-      if (opts.launchWorkdir === undefined) throw error;
+      if (opts.launchWorkdir === undefined && record.opencode_server_mode !== "shared") throw error;
       consumed = { ok: false, outcome: { code: 1, errorClass: "registry_write_failed", action: "tap doctor",
         detail: `${(error as { errorClass?: string }).errorClass ?? "error"}: ${(error as { detail?: string }).detail ?? (error as Error).message ?? String(error)}` } };
+      if (record.opencode_server_mode === "shared") {
+        verified = false;
+        afterEffect = { ...consumed.outcome, lead: "shared activation failed after the pane was replaced" };
+        // Recovery records the prepared binding; it never repeats activation or respawn.
+        try { consumed = await consumeClearNonce(scope, handle, nonce, verb, undefined, opts.launchWorkdir, "clear", { record, expected: target.entry, env }); }
+        catch { /* Preserve the original failure; the unconsumed nonce remains visible. */ }
+      }
     }
     if (!consumed.ok && consumed.outcome.errorClass === "old_store") afterEffect ??= consumed.outcome;
+    if (record.opencode_server_mode === "shared" && (!consumed.ok || consumed.value !== true)) {
+      verified = false;
+      afterEffect ??= { errorClass: "opencode_shared_activation_failed", action: "inspect the native session and relaunch from another pane",
+        detail: consumed.ok ? "shared activation lost its row or nonce" : consumed.outcome.detail };
+    }
+    if (record.opencode_server_mode === "shared" && !verified && consumed.ok && consumed.value === true) {
+      afterEffect = { errorClass: "opencode_shared_activation_failed",
+        action: `from another pane: tap down ${record.name}; if quiescence is unavailable: tap down ${record.name} --skip-quiesce`,
+        lead: "shared activation was not verified",
+        detail: `native session ${record.harness_session_id} may still be running; its prepared binding is retained in the suspended row with a worktree hold${afterEffect ? `; ${afterEffect.detail}` : ""}` };
+    }
     if (opts.launchWorkdir !== undefined && consumed.ok && consumed.value === true) workdirRecorded = true;
     // An explicit --workdir exists to change the stored recipe, so the row update is not best-effort:
     // the harness already runs in the new directory, and a row that still names the old one sends the
@@ -609,7 +682,7 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
       const recipient = opts.team ? `${opts.team}/${handle}` : handle;
       const rc = opts.sendInstruction ? await opts.sendInstruction(recipient, opts.instruction) : await sendClearInstruction(recipient, opts.instruction, scope.busHome, !!opts.relaunch);
       if (rc !== 0) {
-        const sender = (env.TAP_SELF ?? "").trim();
+        const sender = inheritedActor(env).trim();
         return { code: 6, errorClass: "instruction_undelivered",
           action: `tap send ${recipient} -f <file> --fyi --wake ${sender ? `--from ${sender}` : "--from <your-handle>"}`,
           detail: `replaced ${handle} (${record.harness}) in place at ${paneId}, but the -m instruction did not land (send exit ${rc})` };
@@ -644,7 +717,7 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
     }
     if (error instanceof ClearRefusal) return error.outcome;
     if (error instanceof OldStoreError) return { code: 1, errorClass: "old_store", action: error.action, detail: error.detail };
-    if (respawned && opts.launchWorkdir !== undefined) {
+    if ((respawned && opts.launchWorkdir !== undefined) || (respawnAttempted && record.opencode_server_mode === "shared")) {
       // Any other exception after a successful respawn (a spawn error, a failed process-group termination in a
       // later observation) is the same post-effect case: record the workdir, report exit 7, never retry.
       const persisted = await retireAfterRespawn();
@@ -676,7 +749,7 @@ async function sendClearInstruction(recipient: string, instruction: string, busH
     writeFileSync(path, "This instruction arrived over the TAP bus, not as process argv (opencode has no interactive "
       + "initial-prompt form; the positional is a project directory).\n\n" + `${instruction.trimEnd()}\n`);
     const argv = [recipient, "-f", path, "--fyi", "--wake"];
-    const sender = (process.env.TAP_SELF ?? "").trim();
+    const sender = inheritedActor().trim();
     if (sender) argv.push("--from", sender);
     return cmdSend(argv, tapScriptsDir(), AGENT_FAMILIES, { quiet });
   } catch {
@@ -747,7 +820,7 @@ export async function cmdClearNative(argv: string[], env: NodeJS.ProcessEnv = pr
   let plan: ClearPlan;
   const notices = new Notices();
   notices.suppress(env.TAP_JSON === "1");
-  try { plan = await planClear(scope, seat, message, { env, notices }); }
+  try { plan = await planClear(scope, seat, message, { env, notices, dryRun }); }
   catch (error) {
     if (error instanceof ClearRefusal) { printOutcome(error.outcome, verb); return 2; }
     if (error instanceof LauncherError) {

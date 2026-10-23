@@ -3,7 +3,7 @@
 // resume --all takes one snapshot for its whole cohort; single-seat live
 // reattach (launcher.py) asks through the worker and observes once per call.
 import { InvocationError } from "./invocation";
-import { launchCommand } from "./process";
+import { launchTmux } from "./process";
 import { bootId, legacyBootId, serverEpochFromRaw } from "../tmux";
 import { isDict } from "../spool-publication";
 
@@ -11,22 +11,27 @@ type Row = Record<string, unknown>;
 export type Observation = { boot: string | null; epoch: string | null; socket: string };
 
 async function tmuxRun(args: string[], socketPinned: boolean, timeoutMs?: number, signal?: AbortSignal) {
-  const pin = socketPinned && process.env.TAP_TMUX_SOCKET_PATH ? ["-S", process.env.TAP_TMUX_SOCKET_PATH] : [];
   try {
-    const result = await launchCommand(["tmux", ...pin, ...args], { env: process.env, timeoutMs, signal });
+    const result = await launchTmux(args, process.env, signal, socketPinned, timeoutMs);
     signal?.throwIfAborted();
     return result;
   }
   catch { signal?.throwIfAborted(); return null; }
 }
 
-/** tmux_sessions_for_namespace: only tmux's recognized no-server answer is empty. */
-export async function namespaceSnapshot(): Promise<Set<string>> {
-  const result = await tmuxRun(["list-sessions", "-F", "#S"], false);
-  if (result && result.code === 0) return new Set(result.stdout.split("\n").filter(Boolean));
+export interface NamespaceObservation { names: Set<string>; serverAbsent: boolean }
+
+/** Keep successful-empty distinct from tmux's recognized no-server response. */
+export async function observeNamespace(socketPinned = false): Promise<NamespaceObservation> {
+  const result = await tmuxRun(["list-sessions", "-F", "#S"], socketPinned);
+  if (result && result.code === 0) return { names: new Set(result.stdout.split("\n").filter(Boolean)), serverAbsent: false };
   const stderr = result ? result.stderr.trim() : "";
-  if (/^(?:no server running on .+|error connecting to .+ \(No such file or directory\))$/.test(stderr)) return new Set();
+  if (/^(?:no server running on .+|error connecting to .+ \(No such file or directory\))$/.test(stderr)) return { names: new Set(), serverAbsent: true };
   throw new InvocationError("tmux session-name snapshot is unobservable; refusing to treat the session namespace as empty");
+}
+
+export async function namespaceSnapshot(socketPinned = false): Promise<Set<string>> {
+  return (await observeNamespace(socketPinned)).names;
 }
 
 async function serverEpochNow(signal?: AbortSignal): Promise<string | null> {
@@ -41,8 +46,8 @@ async function serverEpochNow(signal?: AbortSignal): Promise<string | null> {
   return lines.length === 1 ? serverEpochFromRaw(lines[0]!) || null : null;
 }
 
-async function serverSocket(epoch: string | null, signal?: AbortSignal): Promise<string> {
-  const result = await tmuxRun(["display-message", "-p", "#{pid}:#{start_time}\t#{socket_path}"], false, 2000, signal);
+async function serverSocket(epoch: string | null, signal?: AbortSignal, socketPinned = false): Promise<string> {
+  const result = await tmuxRun(["display-message", "-p", "#{pid}:#{start_time}\t#{socket_path}"], socketPinned, 2000, signal);
   if (!result || result.code !== 0) return "";
   const line = result.stdout.trim(), tab = line.indexOf("\t");
   if (tab < 0) return "";
@@ -88,7 +93,7 @@ export function staleSeatGeneration(entry: unknown, observation: Observation): b
 
 
 /** One generation observation: boot, server epoch, and that epoch's socket. */
-export async function observeGeneration(signal?: AbortSignal): Promise<Observation> {
+export async function observeGeneration(signal?: AbortSignal, socketPinned = false): Promise<Observation> {
   const epoch = await serverEpochNow(signal);
-  return { boot: currentBootId(), epoch, socket: await serverSocket(epoch, signal) };
+  return { boot: currentBootId(), epoch, socket: await serverSocket(epoch, signal, socketPinned) };
 }

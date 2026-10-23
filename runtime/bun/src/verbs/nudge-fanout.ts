@@ -6,7 +6,9 @@ import { AGENT_FAMILIES } from "../harness-families";
 import { globalRegistryPath, readIndexJson } from "../index-home";
 import { nudgeMessageRefusal, renderNudgeWire } from "../nudge-wire";
 import { existsSync } from "node:fs";
+import { harnessEvidence } from "../readiness-stall";
 import { loadRegistry, seatMap } from "../registry";
+import { formatAge } from "../roster-activity";
 import { tmuxReadOnly } from "../tmux";
 import { observe, observedRows, readRegistry, type ObservedRow, type RegistryRow } from "./team";
 
@@ -14,11 +16,15 @@ const USAGE = "tap help nudge";
 /** A fan-out wider than this, or any `--team '*'`, needs `--yes` or a TTY confirmation. */
 export const CONFIRM_ABOVE = 1;
 
-export interface FanoutArgs { harness: string; team: string; message: string; interrupt: boolean; dryRun: boolean; yes: boolean }
+export interface FanoutArgs {
+  harness: string; team: string; message: string; interrupt: boolean; dryRun: boolean; yes: boolean;
+  /** `--active-within <dur>`: nudge only seats whose harness shows activity this recently; null nudges every live seat. */
+  activeWithin: { seconds: number; text: string } | null;
+}
 
 /** True when any of `flags` appears in flag position; a valued flag consumes the next token first. */
 export function flagPresent(argv: readonly string[], flags: readonly string[]): boolean {
-  const valued = new Set(["--message", "--to", "--pane", "--harness", "--team"]);
+  const valued = new Set(["--message", "--to", "--pane", "--harness", "--team", "--active-within"]);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (flags.includes(arg)) return true;
@@ -32,7 +38,7 @@ export function isFanoutArgv(argv: readonly string[]): boolean {
 }
 
 export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
-  const out: FanoutArgs = { harness: "", team: "", message: "", interrupt: true, dryRun: false, yes: false };
+  const out: FanoutArgs = { harness: "", team: "", message: "", interrupt: true, dryRun: false, yes: false, activeWithin: null };
   const value = (i: number, flag: string): string => {
     const next = argv[i + 1];
     if (next === undefined || next === "") throw new TapError(1, "usage_error", USAGE, `${flag} needs a value`);
@@ -45,6 +51,7 @@ export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
       case "--team": out.team = value(i, arg); i++; break;
       case "--message": out.message = value(i, arg); i++; break;
       case "--no-interrupt": out.interrupt = false; break;
+      case "--active-within": { const text = value(i, arg); out.activeWithin = { seconds: activeWithinSeconds(text), text }; i++; break; }
       case "--to": throw new TapError(1, "usage_error", USAGE, "the --harness fan-out form selects its seats by family; nudge one peer with tap nudge <peer>");
       case "--pane": throw new TapError(1, "usage_error", USAGE, "the --harness fan-out form nudges registered seats only; --pane is not available");
       case "--dry-run": out.dryRun = true; break;
@@ -63,6 +70,18 @@ export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
   return out;
 }
 
+const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+
+/** A duration that names its unit (`90s`, `30m`, `2h`, `1d`), like `tap bus archive --older-than 7d`. A bare number
+ * is refused rather than guessed: `30` meant as minutes would silently nudge nobody. */
+function activeWithinSeconds(raw: string): number {
+  const match = /^([1-9]\d*)([smhd])$/.exec(raw);
+  const seconds = match ? Number(match[1]) * UNIT_SECONDS[match[2]!]! : NaN;
+  if (Number.isSafeInteger(seconds)) return seconds;
+  const hint = /^[1-9]\d*$/.test(raw) ? ` (add a unit: ${raw}s for seconds, ${raw}m for minutes)` : "";
+  throw new TapError(1, "usage_error", USAGE, `--active-within needs a duration with a unit (s, m, h or d), e.g. 30m or 2h; got '${raw}'${hint}`);
+}
+
 export type Verdict = { kind: "target" } | { kind: "skip"; reason: string };
 
 const familyOf = (harness: string) => new RegExp(`^${harness}(?:-|$)`);
@@ -74,6 +93,24 @@ export function verdict(row: ObservedRow, team: string, harness: string, self: {
   if (row.delivery === "poll") return { kind: "skip", reason: "poll-mode (discovers work via tap poll)" };
   if (row.status !== "active") return { kind: "skip", reason: `${row.status}${row.statusReason ? ` (${row.statusReason})` : ""}` };
   return { kind: "target" };
+}
+
+/**
+ * `--active-within`: a target stays a target only when its harness's own activity clock (the transcript's last write,
+ * or OpenCode's newest message; readiness-stall's `harnessEvidence`) is at most `within` seconds old. Absent or
+ * future-dated evidence is never activity, so harnesses without a clock (cursor, hermes, agy) are always skipped.
+ */
+export function activityVerdict(lastActivity: number | null, now: number, within: { seconds: number; text: string }): { verdict: Verdict; age: number | null } {
+  if (lastActivity === null || !Number.isFinite(lastActivity)) return { verdict: { kind: "skip", reason: "activity unknown (this harness keeps no activity record TAP can read)" }, age: null };
+  const age = now - Math.floor(lastActivity);
+  if (age < 0) return { verdict: { kind: "skip", reason: "activity unknown (its activity record is dated in the future)" }, age: null };
+  if (age > within.seconds) return { verdict: { kind: "skip", reason: `last active ${formatAge(age)} ago, over --active-within ${within.text}` }, age };
+  return { verdict: { kind: "target" }, age };
+}
+
+/** The production `activity` reader: the roster row's own transcript path and session id, the shape `withAgentStates` passes. */
+export function seatActivity(row: FanoutRow, env: NodeJS.ProcessEnv): number | null {
+  return harnessEvidence(row.harness, { transcript_path: row.transcriptPath ?? "", harness_session_id: row.harnessSessionId ?? "" }, env)?.lastActivity ?? null;
 }
 
 /**
@@ -91,11 +128,14 @@ export function recheck(current: Record<string, unknown> | undefined, harness: s
 }
 
 export type FanoutRow = ObservedRow & { instance: string };
-export interface Seat { team: string; handle: string; registryLocation: string; instance: string; verdict: Verdict }
+export interface Seat { team: string; handle: string; registryLocation: string; instance: string; verdict: Verdict; activeAgo?: number }
 
 export interface FanoutEffects {
   teams(): Array<{ team: string; registryLocation: string }>;
   roster(registryLocation: string): { rows: FanoutRow[] } | { error: string };
+  /** Epoch seconds of the seat's last harness activity, or null when unknown; read only for `--active-within`. */
+  activity(row: FanoutRow): number | null;
+  now(): number;
   /** Run the single-seat ladder on one selected seat; production rechecks the seat's instance first. */
   nudge(seat: Seat): number;
   confirm(question: string): boolean;
@@ -120,15 +160,25 @@ export function runFanout(args: FanoutArgs, self: { team: string; handle: string
     const roster = fx.roster(entry.registryLocation);
     if ("error" in roster) { fx.err(`tap nudge: team '${entry.team}' unreadable: ${roster.error}\n`); unreadable++; continue; }
     for (const row of roster.rows) {
-      const v = verdict(row, entry.team, args.harness, self);
-      if (v) seats.push({ team: entry.team, handle: row.handle, registryLocation: entry.registryLocation, instance: row.instance, verdict: v });
+      let v = verdict(row, entry.team, args.harness, self);
+      if (!v) continue;
+      let activeAgo: number | undefined;
+      // Selection-time only: recheck() guards identity drift and never re-reads activity.
+      if (v.kind === "target" && args.activeWithin !== null) {
+        const judged = activityVerdict(fx.activity(row), fx.now(), args.activeWithin);
+        v = judged.verdict;
+        if (judged.age !== null) activeAgo = judged.age;
+      }
+      seats.push({ team: entry.team, handle: row.handle, registryLocation: entry.registryLocation, instance: row.instance, verdict: v,
+        ...(activeAgo !== undefined && v.kind === "target" ? { activeAgo } : {}) });
     }
   }
   const targets = seats.filter(seat => seat.verdict.kind === "target");
   const scope = args.team === "*" ? "all teams" : `team '${teams[0]!.team}'`;
-  fx.out(`tap nudge: ${targets.length} ${args.harness} seat(s) to nudge across ${scope}${args.dryRun ? " (dry run; nothing sent)" : ""}\n`);
+  const window = args.activeWithin === null ? "" : `, active within ${args.activeWithin.text}`;
+  fx.out(`tap nudge: ${targets.length} ${args.harness} seat(s) to nudge across ${scope}${window}${args.dryRun ? " (dry run; nothing sent)" : ""}\n`);
   if (args.dryRun) fx.out(`  each seat: the nudge ladder, then ${renderNudgeWire(args.message)}${args.interrupt ? "" : " (--no-interrupt)"}\n`);
-  for (const seat of targets) fx.out(`  ${seat.team}/${seat.handle}  target\n`);
+  for (const seat of targets) fx.out(`  ${seat.team}/${seat.handle}  target${seat.activeAgo === undefined ? "" : ` (last active ${formatAge(seat.activeAgo)} ago)`}\n`);
   const skipped = seats.filter(seat => seat.verdict.kind === "skip");
   if (skipped.length) fx.out(`skipped ${skipped.length}:\n`);
   for (const seat of skipped) fx.out(`  ${seat.team}/${seat.handle}  skip: ${(seat.verdict as { reason: string }).reason}\n`);
@@ -195,6 +245,8 @@ export function cmdNudgeFanout(argv: string[], scriptsDir: string, self: { team:
   return runFanout(args, self, {
     teams: () => indexTeams(process.env.TAP_INDEX_HOME),
     roster: productionRoster(scriptsDir),
+    activity: row => seatActivity(row, process.env),
+    now: () => Math.trunc(Date.now() / 1000),
     nudge: seat => {
       const drift = recheck(seatMap(loadRegistry(seat.registryLocation))[seat.handle], args.harness, seat.instance);
       if (drift) throw new TapError(1, "target_changed", "tap nudge --dry-run to re-preview", `${drift}; not nudged`);

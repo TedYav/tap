@@ -21,6 +21,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { basename, dirname, join } from "node:path";
 import { historyDirForBus } from "../addressee-grant";
 import { TapError, observeCallerPaneChain, observeCallingPane, resolveContext, spoolTeamName } from "../context";
+import { nativeOpenCodeCaller } from "../opencode-service";
 import type { PaneLock } from "../panelock";
 import { chooserView, gather, paneHarnessCommand } from "../observe-gather";
 import { memoizedToplevel } from "../git-root";
@@ -564,7 +565,7 @@ export function registerPoll(
       entry.set("status", "active");
       entry.set("status_reason", "");
       if (overrideWt || fieldStr(entry, "registered_from_worktree") === "") entry.set("registered_from_worktree", worktree);
-      for (const stale of ["pane", "pane_id", "pane_current_command", "cost_mode", "include_policy", "crew", "exited_at"]) entry.delete(stale);
+      for (const stale of ["pane", "pane_id", "pane_current_command", "cost_mode", "include_policy", "crew", "crew_owner", "crew_owner_instance", "crew_identity_capture", "exited_at"]) entry.delete(stale);
       if (wakeUrl !== "") entry.set("wake_url", wakeUrl); else entry.delete("wake_url");
       if (unattended) entry.set("unattended", true); else entry.delete("unattended");
       if (replyTo !== "") entry.set("reply_to", replyTo); else entry.delete("reply_to");
@@ -743,6 +744,13 @@ export function publishDerivedBus(busHome: string, env: NodeJS.ProcessEnv): void
 
 function cmdRegisterRun(argv: string[]): number {
   const env = process.env;
+  const sharedCaller = nativeOpenCodeCaller(env);
+  if (sharedCaller.kind === "refused" && sharedCaller.reason === "process_unobservable") {
+    fail(1, "caller_unobservable", "retry after process observation is available", "the calling process ancestry could not be observed");
+  }
+  if (sharedCaller.kind !== "none") {
+    fail(1, "shared_registration", "tap session relaunch <handle>", "OpenCode shared service tools cannot register a pane; the launcher owns their session binding");
+  }
   // The incumbent's _TAP_HOME_WAS_SET: whether TAP_HOME was inherited from the
   // caller's environment, sampled at entry — never an env contract.
   const tapHomeWasSet = "TAP_HOME" in env;
@@ -1503,7 +1511,8 @@ function preparePaneRegistration(ctx: { form: RegisterForm; worktree: string; en
   if (suppressCapture) {
     attribution = { harness: paneHarness, store_path: "", store_kind: "", harness_session_id: "", trust: "none", candidates: 0, detail: "", derived_at: "" };
   } else if (paneHarness !== "") {
-    try { attribution = sessionDerive(paneHarness, worktree, { env: { ...env, TAP_HARNESS_SESSION_ID: directSessionId }, panePid }); } catch { attribution = null; }
+    const captureCwd = env.TAP_REGISTER_CREW_CAPTURE_ONLY === "1" ? observed!.currentPath : worktree;
+    try { attribution = sessionDerive(paneHarness, captureCwd, { env: { ...env, TAP_HARNESS_SESSION_ID: directSessionId }, panePid }); } catch { attribution = null; }
   }
   return { suppressCapture, observedSocket, observed, epochNow, paneHarness, harness, attribution, directSessionId, observedBootId: bootId(env) };
 }
@@ -1629,6 +1638,13 @@ function paneTransaction(ctx: TxnCtx): number {
       fail(2, "seat_instance_changed", "start a new background job from the current seat", "background job owner instance changed before the locked registration write; nothing was written");
     }
 
+    if (env.TAP_REGISTER_CREW_CAPTURE_ONLY === "1" && (!isMap(baseRow)
+      || !(baseRow.get("crew") === true || baseRow.get("crew") === 1n)
+      || !samePaneIdentity(baseRow, observed!.paneId, epochNow)
+      || fieldStr(baseRow, "server_socket") !== observedSocket)) {
+      fail(1, "crew_row_changed", "tap crew list", "crew changed before native identity observation; nothing was written");
+    }
+
     // Team-wide foreign-namespace refusal BEFORE any suffixing: one row bound
     // to another tmux socket means the whole team is probed through the wrong
     // namespace. --namespace-crossing is the only bypass.
@@ -1752,6 +1768,11 @@ function paneTransaction(ctx: TxnCtx): number {
   entry = existingEntry();
   priorExistingChosen = entry !== null;
 
+  // Crew add starts a fresh process even when the chooser reuses a dead
+  // residue row. Its old conversation and occupant cannot describe this child.
+  const replacingCrewBootstrap = form.crew && (env.TAP_REGISTER_CREW_OWNER_PANE ?? "") !== ""
+    && entry !== null && !samePaneIdentity(entry, observed!.paneId, epochNow, form.pane);
+
   // Instance lineage: restore/fresh validation, mint otherwise.
   let instanceId = fieldStr(entry, "instance");
   if (flipLive(indexHome)) {
@@ -1772,6 +1793,13 @@ function paneTransaction(ctx: TxnCtx): number {
   // Copy of the existing row preserving unknown per-agent keys; the identity
   // ladder below mutates only the known fields.
   const next = new Map<string, JsonValue>(entry ?? new Map<string, JsonValue>());
+  if (replacingCrewBootstrap) {
+    instanceId = "";
+    for (const key of ["harness_session_id", "transcript_path", "identity_capture", "identity_capture_result",
+      "quarantined_harness_session_id", "quarantined_transcript_path", "identity_quarantine_reason", "crew_identity_capture",
+      "session_attribution_trust", "derived_at", "session_store_path", "session_store_kind", "derived_harness_session_id",
+      "session_attribution_candidates", "session_attribution_detail", "agy_ls"]) next.delete(key);
+  }
 
   // Identity capture: the verified session id + transcript ride the entry;
   // suppression (crew pre-registration, daemon jobs) blanks them.
@@ -1809,7 +1837,12 @@ function paneTransaction(ctx: TxnCtx): number {
   const authoritativeHarnessSessionId = !priorHarness || priorHarness === harness ? fieldStr(entry, "harness_session_id") : "";
   oldHarnessSessionId = fieldStr(entry, "harness_session_id");
   const samePaneOwner = entry !== null && samePaneIdentity(entry, observed!.paneId, epochNow, form.pane);
-  const duplicateOwner = duplicateIdentityOwner(harnessSessionId, chosen, harness, acting, doc!, indexHome);
+  const crewOwner = fieldStr(entry, "crew_owner");
+  const parentRow = agents.get(crewOwner);
+  const parentIdentityDuplicate = (form.crew || entry?.get("crew") === true || entry?.get("crew") === 1n)
+    && harnessSessionId !== "" && isMap(parentRow) && fieldStr(parentRow, "harness_session_id") === harnessSessionId;
+  const duplicateOwner = parentIdentityDuplicate ? `${team}/${crewOwner}`
+    : duplicateIdentityOwner(harnessSessionId, chosen, harness, acting, doc!, indexHome);
   const rowPaneDead = entry !== null && seatVerdict(entry, seatView, epochNow)[0] === SEAT_PANE_GONE;
   const matchCandidate = entry !== null && harnessSessionId !== "" && (samePaneOwner || rowPaneDead) && harnessSessionId !== oldHarnessSessionId;
   let captureAcceptedNow = false;
@@ -1931,6 +1964,30 @@ function paneTransaction(ctx: TxnCtx): number {
   if (observed!.session !== "") next.set("session", observed!.session);
   if (form.crew) next.set("crew", true);
   else if (!samePaneOwner) next.delete("crew");
+  if (form.crew && (replacingCrewBootstrap || !(entry?.get("crew") === true || entry?.get("crew") === 1n))) {
+    // Only creation may establish parentage. A later SessionStart preserves
+    // even a missing/wrong legacy link until the operator recreates the crew.
+    const callerPane = env.TAP_REGISTER_CREW_OWNER_PANE ?? "";
+    const owners = [...agents.entries()].filter(([, value]) => isMap(value)
+      && value.get("crew") !== true && value.get("crew") !== 1n
+      && fieldStr(value, "pane_id") === callerPane && callerPane !== ""
+      && fieldStr(value, "instance") !== "" && rowActive(value)
+      && fieldStr(value, "delivery") !== "poll"
+      && fieldStr(value, "session") === observed!.session
+      && fieldStr(value, "server_epoch") === epochNow
+      && fieldStr(value, "server_socket") === observedSocket);
+    if (owners.length !== 1 || callerPane === observed!.paneId) {
+      fail(1, "crew_owner_unidentified", "create the crew from its registered parent with tap crew add",
+        "crew creation requires one current non-crew caller pane and retained parent instance; nothing was written");
+    }
+    next.set("crew_owner", owners[0]![0]);
+    next.set("crew_owner_instance", fieldStr(owners[0]![1] as JsonMap, "instance"));
+  }
+  if (next.get("crew") !== true && next.get("crew") !== 1n) {
+    next.delete("crew_owner");
+    next.delete("crew_owner_instance");
+    next.delete("crew_identity_capture");
+  }
   // SessionStart is an ensure-bound fallback, not the owner of launcher
   // readiness; the launcher clears both reason and launch_id after verification.
   if (launcherOwnedStart) {
@@ -2042,6 +2099,29 @@ function paneTransaction(ctx: TxnCtx): number {
     next.delete("quarantined_transcript_path");
     next.delete("identity_quarantine_reason");
   }
+  if (next.get("crew") === true || next.get("crew") === 1n) {
+    // Keep the general identity verdict vocabulary unchanged. This crew-only
+    // observation also represents an attempt that obtained no authoritative id.
+    const outcome: JsonMap = new Map<string, JsonValue>();
+    outcome.set("at", now);
+    if (suppressCapture) {
+      if (!isMap(next.get("crew_identity_capture"))) {
+        outcome.set("decision", "not_started");
+        outcome.set("reason", "crew harness has not started");
+        next.set("crew_identity_capture", outcome);
+      }
+    } else if (harnessSessionId !== "") {
+      const verdict = next.get("identity_capture_result");
+      if (isMap(verdict)) for (const [key, value] of verdict) outcome.set(key, value);
+      next.set("crew_identity_capture", outcome);
+    } else {
+      outcome.set("decision", "unavailable");
+      outcome.set("reason", paneHarness !== harness
+        ? `requested ${harness} harness not observed (observed ${paneHarness || "unknown"})`
+        : `no authoritative native identity: ${attribution?.trust ?? "none"}; ${attribution?.detail || "no process or hook identity"}`);
+      next.set("crew_identity_capture", outcome);
+    }
+  }
     // Revalidate before the first durable lineage/adoption effect. Once mail
     // moves, finish publishing its matching successor row even if the process
     // exits during the sweep; a late refusal would strand adopted mail.
@@ -2065,7 +2145,7 @@ function paneTransaction(ctx: TxnCtx): number {
     // Pane-session lineage: the rebind/restore/fresh fact rides the shared
     // team-history contract. Failures are warning-only, never a refusal.
     if (instanceId !== "") {
-      const note = form.restoreId !== "" ? "restore" : form.fresh || !priorExistingChosen ? "fresh" : "rebind";
+      const note = form.restoreId !== "" ? "restore" : form.fresh || replacingCrewBootstrap || !priorExistingChosen ? "fresh" : "rebind";
       try {
         appendPaneSessionLog(bus.busHome, chosen, instanceId, form.pane, observed!.paneId, harnessSessionId, note);
       } catch (e) {

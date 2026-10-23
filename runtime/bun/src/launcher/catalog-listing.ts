@@ -511,7 +511,7 @@ export const TOP_LEVEL_KEYS = ["version", "presets", "notes", "harness", "roles"
   "recovery", "delivery", "sentinel", "tmux", "diagnostics", "notifications",
   // Written by `tap setup --machine` and read by their own modules (injection-behavior,
   // onboarding, skill-policy); the catalog parse never reads them but must not call them typos.
-  "injection", "onboarding", "skills"];
+  "injection", "onboarding", "skills", "calibration", "experimental"];
 export const SCHEMA_VERSIONS = [2, 3];
 export const RETIRED_SCHEMA_VERSIONS = [1];
 

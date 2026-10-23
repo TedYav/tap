@@ -435,7 +435,7 @@ test("tap in and tap self share the verified caller resolver", () => {
   // (context.ts observeCallerPaneChain), never through a Bash function, and
   // every consumer carries the verified witness forward.
   expect(readFileSync(join(SRC, "verbs", "register.ts"), "utf8")).toContain("observeCallerPaneChain(env, process.cwd(), true)");
-  expect(readFileSync(join(SRC, "context.ts"), "utf8")).toContain("const seen = observeCallingPane(env);");
+  expect(readFileSync(join(SRC, "context.ts"), "utf8")).toContain("const seen = observeCallerIdentity(env);");
   // The SessionStart entry anchors the harness-session row lookup to the root
   // it already resolved, never the hook process's cwd (a cwd inside another
   // enrolled repo would reselect that repo's registry; review P1).

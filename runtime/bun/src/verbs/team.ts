@@ -2,13 +2,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { TapError, callingPane, noMachineIndexError, observeCallingPane, requireActingRegistry, resolveContext, resolveSelf, type ResolvedContext } from "../context";
+import { TapError, callingPane, noMachineIndexError, observeCallerIdentity, requireActingRegistry, resolveContext, resolveSelf, type ResolvedContext } from "../context";
 import { renderRefusals } from "../error-line";
 import { helpArgv } from "../help";
-import { createOpenCodeContextReader, opencodeSessionDirectories } from "../opencode-context";
-import { refreshWindowMap } from "../opencode-model-windows";
+import { createOpenCodeContextReader } from "../opencode-context";
 import { readContextTokens, withClaudeWindow, formatContextTokens, type TokenSample } from "../context-tokens";
 import { claudeWindows } from "../context-window";
+import { formatPromptCache } from "../prompt-cache";
 import { contextUsedPercent, contextQueueFacts, pendingInboundAsks, type AddresseeGate } from "../context-census";
 import { addresseeGrant, historyDirForBus } from "../addressee-grant";
 import { judgeStalled, type StalledJudgement } from "../roster-stalled";
@@ -38,7 +38,10 @@ import { detectAgentState, type AgentState, type AgentStateResult } from "../age
 import { harnessEvidence } from "../readiness-stall";
 import { computeFor, formatAge, rosterActivity, type ComputeJob, type RosterAgentState, type WaitingOn } from "../roster-activity";
 import { readOverprintRecord } from "../overprint-marker";
-import { ServerUnresponsive, serverEpochFromRaw, tmuxReadOnly } from "../tmux";
+import { ServerUnresponsive, serverEpochFromRaw, tmuxReadOnly, physicalSocketPath } from "../tmux";
+import { observeNamespace, observeGeneration } from "../launcher/generation";
+import { selectRestartCohort } from "../team/up-last";
+import { registryState } from "../launcher/resume-prelude";
 import { repoSetupHeadsUp } from "../first-run";
 import { archiveNudge } from "../bus-archive-index";
 import { cmdRefresh } from "./refresh";
@@ -49,7 +52,7 @@ import { harnessModelFamily } from "../launcher/catalog-metadata";
 import { loadModelReference, matchingVariant } from "../launcher/model-reference";
 import type { LaunchTuning } from "../launcher/tuning";
 import { Notices } from "../launcher/catalog-notices";
-import { shlexQuote } from "../launcher/invocation";
+import { shlexQuote, InvocationError } from "../launcher/invocation";
 import { PyInt } from "../spool-publication";
 import { cmdTeamDoctor } from "../team/doctor";
 import { cmdTeamAttach } from "../team/attach";
@@ -58,7 +61,7 @@ import { cmdTeamRestore } from "../team/restore";
 import { cmdTeamPurge } from "../team/purge";
 import { cmdTeamDetach } from "../team/detach";
 import { cmdTeamOut } from "../team/out";
-import { calibrationView, writeRoutingResult } from "../routing";
+import { calibrationView, teamsView, writeRoutingResult } from "../routing";
 import { isOldStoreRefusal } from "../register-authority";
 import { lifecycleDisposition, lifecycleReceipt } from "../lifecycle-target";
 import { assertBoundParentLifetimes, captureCohortParentLifetimes, chooseSeatCohort, chooseTeam, confirmAction, discoveryTerminalAvailable, parentSeatSnapshot, readDiscoverySeats, requireDiscoveryTerminal, revalidateTeam, type BoundCohort, type BoundTeam, type Picker } from "../team/discovery";
@@ -152,7 +155,7 @@ interface TeamOptions {
   team?: string;
   wide: boolean;
   stalled: boolean;
-  /** Refetch OpenCode model windows into the persisted map (the only roster path that runs `opencode`). */
+  /** Retired refresh spelling: prints an advisory and the ordinary read-only roster. */
   refreshModels?: boolean;
   /** Seconds a seat must have been idle (from its dated turn end); set only with --stalled. */
   staleAfter?: number;
@@ -575,41 +578,15 @@ export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions 
   });
 }
 
-/** The refresh remedy for the roster on screen: an explicitly selected team must name itself, or the command resolves the caller's own team. */
-function refreshCommandFor(team?: string): string {
-  return team ? `tap team roster ${team} --refresh-models` : "tap team --refresh-models";
-}
-
-/**
- * `--refresh-models`: fetch each distinct OpenCode session directory once and rewrite the persisted map. Partial
- * failure is reported on stderr and the roster still prints; when every fetch fails the refresh itself has failed.
- */
-function refreshOpenCodeModels(rows: ObservedRow[], command: string, json: boolean): TapError | null {
-  const seats = rows.filter(row => row.harness === "opencode" && row.status === "active" && !row.foreignNamespace)
-    .map(row => ({ sessionId: row.harnessSessionId ?? "", path: row.transcriptPath ?? "" }));
-  const directories = opencodeSessionDirectories(seats);
-  // Under --json stderr stays empty (CLI-ERR): the roster's window_tokens already says which models are unknown.
-  const say = (line: string): void => { if (!json) process.stderr.write(line); };
-  if (!directories.length) { say("tap team: no OpenCode seat with a session directory to refresh\n"); return null; }
-  const result = refreshWindowMap(directories);
-  if (!result.written) {
-    return new TapError(1, "model_refresh_failed", command,
-      `could not fetch OpenCode model info in ${result.directories} project ${result.directories === 1 ? "directory" : "directories"}; is opencode installed and working there?`);
-  }
-  say(`tap team: refreshed model info for ${result.directories - result.failed.length} of ${result.directories} project directories (${result.models} models)\n`);
-  for (const directory of result.failed) say(`tap team: could not fetch model info in ${directory}; is opencode installed?\n`);
-  return null;
-}
-
 /** An OpenCode seat whose input is known but whose model has no recorded window: the persisted map lacks it. */
 function modelWindowMissing(row: ObservedRow): boolean {
   return row.harness === "opencode" && row.tokenSample?.input_tokens != null && row.tokenSample.window_tokens == null;
 }
 
 function contextCell(row: ObservedRow): string {
-  if (row.tokenSample?.input_tokens == null) return "—";
-  const count = formatContextTokens(row.tokenSample);
-  return modelWindowMissing(row) ? `${count} / ?` : count;
+  const count = row.tokenSample?.input_tokens == null ? "—" : formatContextTokens(row.tokenSample);
+  const usage = modelWindowMissing(row) ? `${count}/?` : count;
+  return [usage, formatPromptCache(row.tokenSample?.prompt_cache, rosterStyle())].filter(Boolean).join(" ");
 }
 
 function withTokenSamples(rows: ObservedRow[], panePids = new Map<string,string>()): ObservedRow[] {
@@ -641,7 +618,7 @@ function truncate(value: string, size: number): string {
   return `${chars.slice(0, size - 3).join("")}...`;
 }
 
-function columnWidths(headers: string[], records: string[][]): number[] {
+export function columnWidths(headers: string[], records: string[][]): number[] {
   const rows = [headers, ...records];
   return headers.map((_, i) => Math.max(...rows.map((row) => width(row[i] ?? ""))));
 }
@@ -666,7 +643,7 @@ export function fitColumns(widths: number[], terminal: number | null): number[] 
 /** Roster width source: a TTY-only question, so pipes and redirections never
  * drop columns. `--wide` opts out. COLUMNS wins on a TTY, matching the
  * precedence `table()` has always used. */
-function rosterWidth(wide: boolean): number | null {
+export function rosterWidth(wide: boolean): number | null {
   if (wide || !process.stdout.isTTY) return null;
   if (/^[0-9]+$/.test(process.env.COLUMNS ?? "")) {
     const forced = Number(process.env.COLUMNS);
@@ -768,7 +745,7 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
     // Tuning is independent of the usage verdict: it survives compaction and
     // outlives invalid usage, so it reads off the sample even when
     // context_tokens is null.
-    const contextTokens = sampled ? (({ tuning, ...rest }) => rest)(sampled) : null;
+    const contextTokens = sampled ? (({ tuning, prompt_cache, ...rest }) => rest)(sampled) : null;
     const tuning = row.tokenSample?.tuning ?? null;
     const item: Record<string, unknown> = {
       handle: row.handle,
@@ -789,6 +766,7 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
       turn_ended_at: isoSeconds(row.turnEndedAt),
       turn_ended_source: row.turnEndedSource ?? null,
       context_tokens: contextTokens,
+      prompt_cache: row.tokenSample?.prompt_cache ?? null,
       // Why the count is unknown: the reader's reason, or not_sampled for a row
       // the census did not read. Never derived from the seat's state.
       context_unknown_reason: contextTokens ? null : row.tokenSample?.unknown_reason ?? "not_sampled",
@@ -867,8 +845,11 @@ function teamUp(args: string[], scriptsDir: string): number | Promise<number> {
   const options = separator < 0 ? args : args.slice(0, separator);
   const attach = options.includes("--attach");
   const tabs = options.includes("--tabs");
-  const isVerbFlag = (arg: string) => arg === "--attach" || arg === "--tabs";
+  const last = options.includes("--last") || options.includes("-");
+  const confirmed = options.includes("--yes");
+  const isVerbFlag = (arg: string) => arg === "--attach" || arg === "--tabs" || arg === "--last" || arg === "-";
   const filtered = [...options.filter(arg => !isVerbFlag(arg)), ...(separator < 0 ? [] : args.slice(separator))];
+  const launcherArgs = [...options.filter(arg => !isVerbFlag(arg) && arg !== "--yes"), ...(separator < 0 ? [] : args.slice(separator))];
   const operand = scanTeamOperand(args);
   const scanned = scanOptionalSelection("team up", operand.rest);
   if (operand.extra) throw new TapError(1, "usage_error", "tap help team up",
@@ -877,14 +858,18 @@ function teamUp(args: string[], scriptsDir: string): number | Promise<number> {
   // modes (abbreviations such as --j, and TAP_JSON=1) decide --attach, never
   // a raw spelling.
   let modes: ReturnType<typeof parseSessionDoor>;
-  try { modes = parseSessionDoor("resume", ["--all", ...scanOptionalSelection("team up", scanTeamOperand(filtered).rest).rest.filter(arg => arg !== "--yes")]); }
+  try { modes = parseSessionDoor("resume", ["--all", ...scanOptionalSelection("team up", scanTeamOperand(launcherArgs).rest).rest]); }
   catch (error) { throw new TapError(1, "usage_error", "tap help team up", String((error as Error).message), "tap team up"); }
+  if (modes.json) process.env.TAP_JSON = "1";
   // The renderer reads only the TAP_JSON gate: an abbreviated --j must still
   // get each attach-flag refusal as the one JSON object.
   const refuse = (detail: string): never => {
     if (modes.json) process.env.TAP_JSON = "1";
     throw new TapError(1, "usage_error", "tap help team up", detail, "tap team up");
   };
+  if (last && (modes.key || modes.legacyName)) refuse("unexpected operand after --; tap team up --last accepts no seat operands");
+  if (last && (scanned.pending || scanned.selection.mode)) refuse("--last cannot be combined with --only or --except");
+  if (options.filter(arg => arg === "--last" || arg === "-").length > 1) refuse("--last was given more than once");
   if (tabs && !attach) refuse("--tabs without --attach; --tabs only shapes the attach viewers");
   if (attach && modes.json) refuse("--attach opens viewers and prints human receipts; drop --json");
   let exact: ResolvedContext | undefined;
@@ -897,8 +882,74 @@ function teamUp(args: string[], scriptsDir: string): number | Promise<number> {
     else throw error;
   }
   const attachOptions = attach ? { tabs } : undefined;
+  if (last) {
+    // Named-team authority applies even when selection returns an empty cohort.
+    applyTeamOperand("up", filtered);
+    return restartUp(launcherArgs, scriptsDir, operand.target, exact, modes.dryRun, modes.json, confirmed, attachOptions);
+  }
   if (scanned.pending || needsTeam) return interactiveUp(filtered, scriptsDir, operand.target, exact, scanned.pending, scanned.selection, attachOptions);
   return teamUpExact(filtered, scriptsDir, undefined, attachOptions);
+}
+
+async function restartUp(args: string[], scriptsDir: string, typedTeam: string | undefined, exact: ResolvedContext | undefined,
+  dryRun: boolean, json: boolean, confirmed: boolean, attach?: { tabs: boolean }): Promise<number> {
+  let team: BoundTeam;
+  if (exact) team = { team: exact.team, root: exact.root, registryPath: exact.registryPath, context: exact };
+  else {
+    const picked = await chooseTeam("team up", typedTeam, pick, json);
+    if (picked.kind === "cancelled") { process.stdout.write("tap team up: cancelled\n"); return 0; }
+    if (picked.kind === "interrupted") return 130;
+    team = picked.value;
+  }
+  // Pin before the launcher can bootstrap a server: preview and action share this cohort.
+  const rows = registryState(team.root).entries;
+  let namespace: Awaited<ReturnType<typeof observeNamespace>>;
+  try { namespace = await observeNamespace(true); }
+  catch (error) {
+    if (!(error instanceof InvocationError)) throw error;
+    throw new TapError(1, "observation_unobservable", "inspect tmux and retry tap team up --last", error.message, "tap team up");
+  }
+  const observed = await observeGeneration(undefined, true);
+  const observation = namespace.serverAbsent ? { ...observed, epoch: null, socket: "" } : observed;
+  const cohort = selectRestartCohort(rows, namespace.names, observation, physicalSocketPath(), team.team, namespace.serverAbsent);
+  if (!json) {
+    if (cohort.skipped.length) process.stdout.write(`tap team up: skipped unknown generations: ${cohort.skipped.join(", ")}\n`);
+    if (cohort.crews) process.stdout.write(`tap team up: crews not resumed: ${cohort.crews}\n`);
+  }
+  if (!cohort.rows.size) {
+    process.stdout.write(json ? JSON.stringify({ ok: true, sessions: [], count: 0, outcome: "no_restart_cohort" }) + "\n"
+      : "tap team up: no restart cohort; select seats explicitly with --only <handles>\n");
+    return 0;
+  }
+  if (!dryRun && !confirmed && !discoveryTerminalAvailable(json)) {
+    throw new TapError(1, "confirmation_required", "preview with tap team up --last --dry-run; confirm with --yes",
+      "--yes is required to resume a restart cohort without an interactive terminal", "tap team up");
+  }
+  const seats: BoundCohort["seats"] = new Map();
+  for (const [handle, row] of cohort.rows) {
+    if (typeof row.instance !== "string" || !row.instance) throw new TapError(1, "target_unbound", "tap team doctor",
+      `seat '${handle}' has no instance; restart approval cannot bind it`, "tap team up");
+    seats.set(handle, { handle, instance: row.instance, session: String(row.session), paneId: String(row.pane_id ?? ""),
+      serverEpoch: String(row.server_epoch), status: String(row.status ?? "active"), delivery: String(row.delivery ?? "pane") });
+  }
+  const selection = { mode: "--only" as const, only: [...seats.keys()], except: [] };
+  const bound: BoundCohort = { team, seats, selection, original: selection, restartRows: cohort.rows };
+  if (!json) {
+    process.stdout.write(`tap team up: restart cohort ${cohort.generation}:\n`);
+    for (const [handle, row] of cohort.rows) process.stdout.write(`  ${handle} (registered ${row.registered_at ?? "unknown"})\n`);
+  }
+  const rest = scanTeamOperand(args).rest;
+  const actual = [team.team, ...rest, "--only", [...seats.keys()].join(",")];
+  revalidateTeam(team);
+  if (dryRun) return await teamUpExact(actual, scriptsDir, bound, attach);
+  if (!confirmed) {
+    // Explicit consent skips this pass in every output mode; JSON reports only actual outcomes.
+    const preview = await teamUpExact([...actual, "--dry-run"], scriptsDir, bound, attach);
+    if (preview !== 0) return preview;
+    if (!(await confirmAction())) { process.stdout.write("tap team up: cancelled\n"); return 0; }
+  }
+  revalidateTeam(team);
+  return await teamUpExact(actual, scriptsDir, bound, attach);
 }
 
 async function interactiveUp(
@@ -1122,7 +1173,7 @@ function socketLabel(path: string): string {
   return basename(path) === "default" ? path : basename(path);
 }
 
-function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows, refreshCommand = refreshCommandFor()): void {
+function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows): void {
   rows = [...rows.filter(row => !isDaemon(row)), ...rows.filter(isDaemon)];
   process.stdout.write(`tap ${process.env.TAP_TEAM_LIST_VERB || "team"}: ${team || "(unnamed)"}\n`);
   if (all) {
@@ -1138,13 +1189,12 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
     ));
   } else {
     const displayItems = buildHumanRosterRows(rows, hierarchyRows);
-    // Family sits ahead of the long columns: fitColumns drops from the right, so a
-    // narrow terminal loses context, model and preset before it loses family.
-    const headers = ["handle", "harness", "state", "family", "context", "model", "preset"];
+    // Keep context beside state; narrow terminals drop preset, model and family first.
+    const headers = ["handle", "harness", "state", "context", "family", "model", "preset"];
     const records = displayItems.map(({ row, prefix }) => [
       prefix + row.handle, humanHarness(row), humanAgent(row, team) + (row.foreignNamespace ? ` (bound under ${socketLabel(row.serverSocket!)})` : ""),
-      row.family || "-",
       contextCell(row),
+      row.family || "-",
       modelCell(row),
       row.preset || "n/a",
     ]);
@@ -1158,7 +1208,7 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
     }
   }
   const unknownWindow = rows.filter(modelWindowMissing).map(row => row.handle);
-  if (unknownWindow.length) process.stderr.write(`Warning: model info missing for ${unknownWindow.join(", ")}. Run ${refreshCommand} to fetch it.\n`);
+  if (unknownWindow.length) process.stderr.write(`Warning: model window unavailable for ${unknownWindow.join(", ")}. Running OpenCode 2 seats publish it automatically.\n`);
   const unsupervised = rows.filter(row => row.crew && row.crewLifetime === "unsupervised").map(row => row.handle);
   if (unsupervised.length) process.stdout.write(`Warning: crew supervision missing for ${unsupervised.join(", ")}; run tap crew rearm <handle>.\n`);
 }
@@ -1521,7 +1571,7 @@ function applyTeamOperand(verb: "down" | "up" | "shutdown", args: string[]): { t
 }
 
 export function productionStopEffects(ctx: ResolvedContext): StopEffects {
-  const identityObservation = observeCallingPane(process.env);
+  const identityObservation = observeCallerIdentity(process.env);
   return {
     tmux: liveLifecycleTmux(),
     killSession: session => spawnSync("tmux", ["kill-session", "-t", `=${session}`], { env: process.env }).status === 0,
@@ -1572,6 +1622,10 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     const result = helpArgv(["team", ...argv]);
     process.stdout.write(result.stdout); process.stderr.write(result.stderr); return result.exit;
   }
+  // The machine alias must see the original argv, before roster-only flags are consumed.
+  if (argv[0] === "list" && argv[1]?.startsWith("-") && argv.includes("--seats")) {
+    return teamsView(argv.slice(1),scriptsDir).then(writeRoutingResult);
+  }
   const withContextDetails = argv.includes("--context");
   argv = argv.filter(arg => arg !== "--context");
   // Machine-wide discovery must work before resolving the caller's cwd bus.
@@ -1579,6 +1633,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     const args = argv.slice(1);
     const name = args[0];
     if (name && !name.startsWith("-")) return cmdTeam(["roster", ...args], scriptsDir);
+    if (args.includes("--seats")) return teamsView(args,scriptsDir).then(writeRoutingResult);
     // Bare list enumerates enrolled teams, not a roster: there are no seats to judge.
     const stalledFlag = args.find(arg => arg === "--stalled" || arg === "--stale-after");
     if (stalledFlag) {
@@ -1593,7 +1648,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
     const rc = result.status ?? 1;
-    if (rc === 0) process.stdout.write("to see seats on this team: tap team (or tap team roster)\n");
+    if (rc === 0 && !args.includes("--seats") && !args.includes("--json")) process.stdout.write("to see seats on this team: tap team (or tap team roster)\n");
     return rc;
   }
 
@@ -1609,10 +1664,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   if (argv[0] === "detach") return cmdTeamDetach(argv.slice(1));
   if (argv[0] === "out") return cmdTeamOut(argv.slice(1));
   if (argv[0] === "up") return teamUp(argv.slice(1), scriptsDir);
-  if (argv[0] === "purge") {
-    const ctx = teamContext();
-    return cmdTeamPurge(argv.slice(1), join(ctx.bus.home, "archive/team-reset"));
-  }
+  if (argv[0] === "purge") return cmdTeamPurge(argv.slice(1));
   if (argv[0] === "reset") return cmdTeamReset(argv.slice(1));
   if (argv[0] === "restore") return cmdTeamRestore(argv.slice(1));
   // `shutdown` is the destructive clear and `down` the suspend stop: both are
@@ -1749,12 +1801,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   }
   let rows = hierarchyRows.filter(row => rosterMatches(row, options));
   if (options.refreshModels) {
-    const failure = refreshOpenCodeModels(rows, refreshCommandFor(options.team), options.json);
-    if (failure) {
-      if (options.json) jsonRefusal(failure);
-      else process.stderr.write(`tap team: ${failure.detail}; next: ${humanAction(failure.action)}\n`);
-      return failure.code;
-    }
+    if (!options.json) process.stderr.write("tap team: --refresh-models is retired; running OpenCode 2 seats publish model windows automatically. Nothing was refreshed.\n");
   }
   // --stalled reads every matched seat's state once, then keeps only the stalled ones.
   let view: StalledView | undefined;
@@ -1780,7 +1827,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   } else {
     const all = options.all || crewOnly;
     const sampledRows = all || statesRead ? rows : withTokenSamples(withAgentStates(rows, { team: renderedTeam }), observation.panePids);
-    if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows, refreshCommandFor(options.team));
+    if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows);
     if (view) process.stdout.write(stalledFooter(view, stalledSeatCount));
     if (!all) {
       const mismatchedBindings = sampledRows.filter((row) => row.status === "active" && row.delivery === "pane" &&

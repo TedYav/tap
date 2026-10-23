@@ -13,6 +13,7 @@ import { fencePath } from "../src/clear-fence";
 import { teamContext } from "../src/crew-lifecycle";
 import { TapError } from "../src/context";
 import type { Member } from "../src/launcher/relaunch";
+import { createOpenCodeStore, addSession } from "./support/opencode-store";
 import { removeScratchTree } from "./support/scratch";
 
 const saved = { ...process.env }, roots: string[] = [];
@@ -332,7 +333,7 @@ test("revive tiers retain the characterized Python truth table", () => {
     ["codex", "id", "exact"], ["codex", null, "picker"],
     ["cursor", "id", "exact"], ["cursor", null, "fresh"],
     ["opencode", "id", "exact"], ["opencode", null, "fresh"],
-    ["agy", "id", "exact"], ["agy", null, "latest"],
+    ["agy", "id", "exact"], ["agy", null, "fresh"],
     ["hermes", "id", "exact"], ["hermes", null, "fresh"],
   ];
   const expected = cases.map(([, , tier]) => tier);
@@ -646,12 +647,20 @@ test("hermes relaunch with -m refuses before any effect; without -m it proceeds 
 });
 
 // tap-p8xog: `relaunch --workdir` repairs where a seat's harness runs, through the launcher's own worktree validator.
-function lane(f: { root: string }): string {
+function lane(f: { root: string; row?: { harness: string } }, nativeDirectory: "target" | "original" = "target"): string {
   const git = (...args: string[]) => spawnSync("git", ["-C", f.root, ...args], { encoding: "utf8",
     env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com" } });
   expect(git("commit", "-q", "--allow-empty", "-m", "init").status).toBe(0);
   const path = join(f.root, "lane");
   expect(git("worktree", "add", "-q", path, "-b", "lane").status).toBe(0);
+  // Generic repair cases already have a conversation in the target directory.
+  // The explicit mismatch regression keeps it in the original directory instead.
+  if (f.row?.harness === "opencode") {
+    process.env.XDG_DATA_HOME=join(f.root,"native-data");
+    mkdirSync(join(process.env.XDG_DATA_HOME,"opencode"),{recursive:true});
+    const db=createOpenCodeStore(join(process.env.XDG_DATA_HOME,"opencode/opencode.db"));
+    addSession(db,"conversation",nativeDirectory === "target" ? realpathSync(path) : f.root);db.close();
+  }
   return realpathSync(path);
 }
 test("relaunch --workdir respawns the harness there and records it on the row", async () => {
@@ -1012,4 +1021,18 @@ test("the relaunch invocation carries the team root SessionStart binds through",
   expect(result.code).toBe(0);
   expect(result.stdout).toContain(`TAP_LAUNCH_ROOT=${f.root}`);
   expect(result.stdout).toContain("TAP_CLEAR_ID=");
+});
+
+test("OpenCode relaunch refuses a different native directory before replacing the seat", async () => {
+  const f=fixture(), dir=lane(f,"original");
+  const before=readFileSync(f.scope.registryPath,"utf8");
+  for(const dryRun of [true,false]){
+    const result=await relaunchOne(f.prepared(),{json:false,dryRun,workdir:dir},caller);
+    expect(result.error_class).toBe("resume_unavailable_in_workdir");
+    expect(result.reason).toContain("bound to their directory");
+    expect(f.effects()).toBe("");expect(readFileSync(f.scope.registryPath,"utf8")).toBe(before);
+  }
+  const alias=join(f.root,"alias");symlinkSync(f.root,alias);
+  const unchanged=await relaunchOne(f.prepared(),{json:false,dryRun:true,workdir:alias},caller);
+  expect(unchanged.code).toBe(0);expect(f.effects()).toBe("");
 });

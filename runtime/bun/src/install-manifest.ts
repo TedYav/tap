@@ -159,13 +159,13 @@ export function MANIFEST_HOOK_EXPECTATIONS(hookroot: string) {
       key: "tap-tmux-kill-server",
       value: { PreToolUse: [{ matcher: "run_command", hooks: [{ type: "command", command: guard, timeout: 5 }] }] },
     },
+    geminiIdentity: { key: "tap-session-identity", value: agyIdentityHookSpec(`${hookroot}/tap-agy-identity.sh`) },
     /**
      * OpenCode plugins: exact-byte-pinned generated files. `shim` entries are
      * generated bash shims (the template builds their bytes); `copy` entries
      * are byte-identical copies of repo/hooks/<name>.
      */
     opencodePlugins: [
-      { name: "tap-opencode-session-env.ts", type: "copy" },
       { name: "tap-opencode-session-start.ts", type: "copy" },
       { name: "tap-opencode-tmux-guard.ts", type: "copy" },
       {
@@ -187,6 +187,12 @@ export function MANIFEST_HOOK_EXPECTATIONS(hookroot: string) {
       },
     ] as Array<{ name: string; type: "copy" | "shim"; bytes?: (repo: string) => string }>,
   };
+}
+
+export function agyIdentityHookSpec(hook: string) {
+  // Keep this install-time module's copied-fixture import closure unchanged.
+  const handler = { type: "command", command: `bash '${hook.replace(/'/g, "'\\''")}'`, timeout: 4 };
+  return { PreInvocation: [handler], PostInvocation: [handler] };
 }
 
 /**
@@ -358,8 +364,10 @@ export function scanEntries(repo: string, targets: Record<string, string>, argvI
   surface(agy, () => {
     if (!regular(agy)) return;
     const data = JSON.parse(pyReadUtf8(agy));
-    if (deepEqual((data as Record<string, unknown>)[expected.geminiHooks.key], expected.geminiHooks.value)) {
-      add("json-key", agy, { key: expected.geminiHooks.key, value: expected.geminiHooks.value });
+    for (const hook of [expected.geminiHooks, expected.geminiIdentity]) {
+      if (deepEqual((data as Record<string, unknown>)[hook.key], hook.value)) {
+        add("json-key", agy, { key: hook.key, value: hook.value });
+      }
     }
   });
   const plugins = join(target(targets, "OPENCODE_HOME"), "plugins");
@@ -575,7 +583,9 @@ export function recordManifest(argv: string[]): number {
   for (const [key, entry] of entries) {
     if (entry.kind !== "file") continue;
     const retired = (entry.path === join(indexDir, "python3"))
-      || entry.path.endsWith("/tap-shell-body-guard.py");
+      || entry.path.endsWith("/tap-shell-body-guard.py")
+      || (targets.OPENCODE_HOME !== undefined
+        && entry.path === join(targets.OPENCODE_HOME, "plugins", "tap-opencode-session-env.ts"));
     if (!retired) continue;
     let bytes: Buffer;
     try {

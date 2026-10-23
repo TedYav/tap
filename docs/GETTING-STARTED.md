@@ -142,9 +142,8 @@ You can use ordinary language; the agents handle TAP's commands.
 To see where TAP can go from here, and why two strong agents are often enough,
 read [the five levels of TAP](TAP-LEVELS.md).
 
-For another model, start with `tap models`. Personal calibration wins when
-present; otherwise guidance is labeled **reference; access unverified**. Inspect
-one model with `tap models fable`, then launch a supported choice directly:
+Use `tap presets` for saved recipes and `tap team` for who is seated.
+Launch another model your account supports directly:
 
 ```sh
 tap launch claude model-reviewer --model fable --effort high
@@ -152,7 +151,7 @@ tap launch claude model-reviewer --model fable --effort high
 
 `tap help launch` lists legal effort levels. OpenCode and Cursor accept model
 only, without `--effort`. Service-mode and environment qualifications stay
-attached to each reference variant; they are not universal model capabilities.
+attached to each launch choice; they are not universal model capabilities.
 
 Presets save a combination you use often. Once you know which settings work
 with your account, `/tap:config-wizard` can save them. The interactive
@@ -356,4 +355,7 @@ needs *Applications in terminal may access clipboard* enabled in the profile.
 
 To update TAP later, run `./install.sh --sync` from your TAP clone.
 If it refuses because the clone has local changes, resolve those changes and
-rerun it; a refused sync is an incomplete update.
+rerun it; a refused sync is an incomplete update. A clone carrying your own
+committed customizations updates with `git fetch origin`,
+`git rebase origin/main` and `./install.sh` instead; the `extend` skill
+(`tap help skill extend`) covers customizing TAP.

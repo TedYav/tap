@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // Sender-side cancellation of dead obligations (tap-pe56).
 //
 // `tap cancel <id> [--by <me>] [--team <name>] [--spooled] [--json]`
@@ -74,7 +75,7 @@ const CLAIM_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 // spins. The single yield below, before the first mutation, is where a pending signal is observed.
 export async function cmdCancel(argv: string[], scriptsDir: string): Promise<number> {
   if (argv.includes("--dead-letters")) return cmdCancelDeadLetters(argv);
-  let id = "", actor = process.env.TAP_SELF ?? "", team = "", spooled = false, json = false;
+  let id = "", actor = "", team = "", spooled = false, json = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--by" || arg === "--team") {
@@ -96,6 +97,7 @@ export async function cmdCancel(argv: string[], scriptsDir: string): Promise<num
   // Actor: --by > TAP_SELF > pane-derived handle. The pane fallback fails SOFT
   // (the incumbent swallowed resolve errors into empty), so an unobservable
   // pane is the plain no_actor refusal, not a generation verdict.
+  actor ||= inheritedActor();
   if (!actor) {
     const pane = callingPane();
     if (pane?.status === "ok") actor = resolveSelf(ctx, pane, 1).handle;

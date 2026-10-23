@@ -1,3 +1,4 @@
+import { openCodeServerMode } from "./opencode-mode";
 // Shared value owner for creation, resume and the retained in-pane callers.
 // No registry, fence or process effects belong to invocation construction.
 import { buildHarnessInvocation, hostBootEnv, isolationArgv, withoutNoDaemonForRemote } from "./adapters";
@@ -49,16 +50,21 @@ export function invocationShellCommand(invocation: Invocation, env: NodeJS.Proce
   return [shell, "-lic", 'exec "$0" "$@"', ...command].map(shlexQuote).join(" ");
 }
 
-export function pinOpenCodeSession(argv: string[], id: string | null | undefined): string[] {
+export function pinOpenCodeSession(argv: string[], id: string | null | undefined, mode: "private" | "shared" = "private"): string[] {
   const clean: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i]!, option = token.split("=", 1)[0];
+    if (mode === "shared" && ["--server", "--standalone", "--no-standalone"].includes(option!))
+      throw new InvocationError("shared OpenCode seats use native service discovery; remove the explicit server option");
+    if (option === "--server" || option === "--no-standalone" || token === "--standalone=false")
+      throw new InvocationError("TAP OpenCode seats require --standalone; remove the conflicting server option");
+    if (option === "--standalone") continue;
     if (option === "--session" || option === "-s") {
       if (!token.includes("=") && i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
     } else if (option !== "--continue" && option !== "-c") clean.push(token);
   }
   if (id) clean.push("--session", id);
-  return clean;
+  return mode === "shared" ? clean : [clean[0]!, "--standalone", ...clean.slice(1)];
 }
 
 export function buildInvocation(
@@ -101,7 +107,7 @@ export function buildInvocation(
     if (nativeQuery) argv.push(nativeQuery);
   } else {
     const id = nativeQuery || record.harness_session_id;
-    if (id) argv.push("--conversation", id); else argv.push("--continue");
+    if (id) argv.push("--conversation", id);
   }
   return { argv, env: hostBootEnv(record.harness, permissions, env) };
 }
@@ -152,6 +158,10 @@ export function composeInvocation(
   const harness = record.harness, tail = record.harness_tail ?? [];
   const typedCount = Math.min(resume?.typedTail ?? 0, tail.length);
   const typed = tail.slice(tail.length - typedCount);
+  if (record.harness === "opencode" && resume && (["model", "effort"] as const).some(axis => setsAxis("opencode", typed, axis))) {
+    throw new LauncherError("OpenCode 2 resumes its native model and variant; TUI tuning flags are unavailable", "opencode_resume_tuning_unsupported",
+      "change the model or variant inside OpenCode, or launch a fresh seat with --model and --effort");
+  }
   const strip: TuningAxis[] = resume ? [...restoredAxes(harness)] : [];
   const observedEffort = resume?.observedEffort && !setsAxis(harness, typed, "effort") ? resume.observedEffort : null;
   if (observedEffort) strip.push("effort");
@@ -177,7 +187,7 @@ export function composeInvocation(
   if (observedEffort) argv.splice(1, 0, "--effort", observedEffort);
   argv.push(...replayedTail);
   argv = withoutNoDaemonForRemote(harness, argv);
-  if (harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id);
+  if (harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id, openCodeServerMode(record, env));
   const tuningEnv = { ...configured.env };
   for (const key of configured.unset_env ?? []) delete tuningEnv[key];
   const launched = launchTuning(harness, argv.slice(1), tuningEnv);
@@ -186,6 +196,8 @@ export function composeInvocation(
   const prior = strip.length ? record.launch_tuning ?? recordedLaunchTuning(record, paramsToArgv(policy.params), tuningEnv) : undefined;
   for (const axis of strip) launched[axis] ??= prior?.[axis] ?? null;
   record.launch_tuning = launched;
+  // OpenCode 2 consumes these axes through native session preparation, not TUI flags.
+  if (harness === "opencode") argv = stripTuningAxes(harness, argv, ["model", "effort"]);
   return { argv, env: configured.env, unset_env: configured.unset_env };
 }
 

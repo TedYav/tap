@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 // Sender-side withdrawal of a DELIVERED obligation the sender has superseded.
 //
 // This is deliberately NOT `tap resend`'s withdrawal half, despite sharing its
@@ -15,7 +16,7 @@
 // touches the spool, and never moves the payload.
 import { mkdirSync, openSync, closeSync, fsyncSync, linkSync, unlinkSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { callerObservationReason, observeCallingPane, resolveSelf, TapError } from "../context";
+import { callerObservationReason, observeCallerIdentity, resolveSelf, TapError } from "../context";
 import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
 import { envelopeField, validateEnvelope } from "../envelope";
@@ -75,7 +76,7 @@ function writeReceiptOnce(path: string, fields: Record<string, string | undefine
 
 export function cmdWithdraw(argv: string[]): number {
   let id = "", reason = "", supersededBy = "", team = "", json = false;
-  let actor = process.env.TAP_SELF ?? "";
+  let actor = "";
   try {
     for (let i = 0; i < argv.length; i++) {
       const arg = argv[i]!;
@@ -117,15 +118,16 @@ export function cmdWithdraw(argv: string[]): number {
     const callerPin = process.env.TAP_HOME ?? "";
     applyTeamOverride(team);
     const ctx = resolveSelection(callerPin, team);
+    actor ||= inheritedActor();
     if (!actor) {
-      const seen = observeCallingPane();
+      const seen = observeCallerIdentity();
       if (seen.state !== "inside") {
         // The next step names --by, and the detail carries why the pane could
         // not be observed (whoami's pattern) instead of one fixed reason.
         throw new TapError(1, "no_actor", `tap withdraw ${id} --by <handle>   OR   tap register   (join this team)`,
           `only the original sender withdraws (caller pane observation: ${callerObservationReason(seen)})`);
       }
-      actor = resolveSelf(ctx, { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch }, 1).handle;
+      actor = resolveSelf(ctx, { status: "ok", ...seen }, 1).handle;
     }
     if (!validToken(actor)) {
       throw new TapError(1, "usage_error", "tap help withdraw", `actor '${actor}' is not a valid token (^[A-Za-z0-9][A-Za-z0-9._-]*$)`);

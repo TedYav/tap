@@ -1,5 +1,9 @@
 # Identity and lifecycle
 
+- [Antigravity conversation capture](./agy-conversation-capture.md): native hook timing, identity and resume binding.
+- [Seat observations](./calibration.md): the opt-in calibration store, explicit reads and append/GC boundary.
+- [Team startup and latest restart cohort](./team-up-last.md): ordinary resume membership, generation selection, preview and pinned recovery.
+
 Normative TAP v0.23 protocol pages. Open only the page needed for the current question.
 
 ## Folder trust

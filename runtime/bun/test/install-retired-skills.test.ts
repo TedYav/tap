@@ -8,7 +8,7 @@ const repo=resolve(import.meta.dir,"../../..");
 // coverage and a public candidate without those directories still holds.
 const shippedRepoLocal=REPO_LOCAL_SKILLS.filter((name)=>existsSync(join(repo,"skills",name,"SKILL.md")));
 test("one policy classifies canonical sources and retired names never ship",()=>{
- expect(CORE_SKILLS).toEqual(["tap","in","send","escalate","config-wizard","help"]);
+ expect(CORE_SKILLS).toEqual(["tap","in","send","escalate","config-wizard","help","extend"]);
  expect(REPO_LOCAL_SKILLS).toEqual(["coach","abandon-branch"]);
  for(const name of [...CORE_SKILLS,...OPTIONAL_SKILLS,...shippedRepoLocal])expect(existsSync(join(repo,"skills",name,"SKILL.md"))).toBe(true);
  for(const name of RETIRED_SKILLS)expect(existsSync(join(repo,"skills",name,"SKILL.md"))).toBe(false);

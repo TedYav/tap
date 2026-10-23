@@ -72,3 +72,11 @@ test("setup effort takes exact qualified metadata or labels an unadjusted prior 
   expect(unknown.metadata.intelligence).toBeUndefined();
   expect(source.presets.base.params.effort).toBe("medium");
 });
+
+test("OpenCode inline variants match the equivalent reference recipe",()=>{
+  const parsed=parsePresetCatalog(Buffer.from('version=3\n[presets.oc]\nharness="opencode"\nparams.model="capture/probe"\nparams.variant="high"\n'),"reference","",()=>{});
+  const variants=modelReference(parsed);
+  const tuning=launchTuning("opencode",["-mcapture/probe#high"]);
+  expect(matchingVariant(variants,"opencode",tuning)?.recipes).toContain("oc");
+  expect(()=>launchTuning("opencode",["--model","capture/probe#high","--variant","low"])).toThrow("conflicts");
+});

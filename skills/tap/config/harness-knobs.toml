@@ -38,6 +38,7 @@ resume = { kind = "param", flag = "--resume", value = "optional chat ID", source
 [opencode]
 executable = "opencode"
 version = "1.18.31"
+tabs = { kind = "env", key = "OPENCODE_CLI_CONFIG_CONTENT", tap = "launcher default tabs.mode=off, deep-merged beneath ambient, machine and seat JSON", semantics = "OpenCode 2.1.2 TUI config; explicit tabs settings win; Ctrl+P still writes the user's cli.json", source = "OpenCode v2.1.2 packages/cli/src/config/config.ts; packages/tui/src/config/index.tsx" }
 model = { kind = "param", flag = "--model", tap = "params.model", known_values = ["anthropic/claude-sonnet-5", "openrouter/~moonshotai/kimi-latest"], semantics = "provider/model; run opencode models for this installation, then choose an available Kimi provider/model if desired", source = "opencode --help; opencode models (account-specific snapshot)" }
 effort = { kind = "unsupported", levels = [], semantics = "No effort flag in interactive opencode --help; --variant belongs to opencode run, not the TAP interactive launch", source = "opencode --help; opencode run --help (--variant high/max/minimal examples)" }
 compaction = { kind = "env", key = "OPENCODE_CONFIG_CONTENT", tap = "env.OPENCODE_CONFIG_CONTENT (merge JSON with existing value)", semantics = "JSON compaction.auto/prune/reserved; reserved is a token buffer, not an absolute trigger. Absolute token autocompact mapping unsupported", source = "https://opencode.ai/docs/config/#compaction; https://opencode.ai/docs/config/#precedence-order" }

@@ -1817,3 +1817,155 @@ test("tap-rti5i: a quarantined exact_resume same-observation bind does not consu
     expect(row.identity_capture_result).toMatchObject({ decision: "quarantined", observed_harness_session_id: EXACT_A });
   } finally { removeScratchTree(f.root); }
 }, 60000);
+
+// A bootstrap may pin only its actual caller's retained seat; a later hook
+// must not turn shared-session provenance into a new owner link.
+test("crew bootstrap pins caller ownership and records capture before the harness starts", () => {
+  const f = fixture();
+  try {
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      parent: { status: "active", delivery: "pane", instance: "parent-one", pane_id: "%1",
+        session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket", harness: "codex", harness_session_id: "parent-native" },
+    } });
+    const run = f.door(["child", "--pane", f.addr, "--crew"], {
+      TAP_TMUX_SOCKET_PATH: "/fake/socket", TAP_REGISTER_CREW_OWNER_PANE: "%1", TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE: "1",
+      TAP_REGISTER_EXPECTED_HARNESS: "codex", CODEX_THREAD_ID: "parent-native",
+    });
+    expect({ code: run.code, err: run.err }).toMatchObject({ code: 0 });
+    expect(f.seats().child).toMatchObject({ crew: true, crew_owner: "parent", crew_owner_instance: "parent-one",
+      crew_identity_capture: { decision: "not_started", reason: "crew harness has not started" } });
+    expect(f.seats().child!.harness_session_id).toBeUndefined();
+    expect(f.door(["child", "--pane", f.addr, "--crew"], { TAP_TMUX_SOCKET_PATH: "/fake/socket" }).code).toBe(0);
+    expect(f.seats().child!.crew_identity_capture).toMatchObject({ decision: "unavailable" });
+    const hook = f.door(["child", "--pane", f.addr, "--harness-session-id", "child-native"], { TAP_TMUX_SOCKET_PATH: "/fake/socket" });
+    expect(hook.code).toBe(0);
+    expect(f.seats().child).toMatchObject({ crew_owner: "parent", crew_owner_instance: "parent-one",
+      crew_identity_capture: { decision: "accepted", observed_harness_session_id: "child-native" } });
+    const parentLeak = f.door(["child", "--pane", f.addr, "--harness-session-id", "parent-native"], { TAP_TMUX_SOCKET_PATH: "/fake/socket" });
+    expect(parentLeak.code).toBe(0);
+    expect(f.seats().child).toMatchObject({ harness_session_id: "child-native",
+      crew_identity_capture: { decision: "quarantined", observed_harness_session_id: "parent-native" } });
+  } finally { removeScratchTree(f.root); }
+});
+
+test.each(["missing", "crew", "ambiguous"])("crew bootstrap refuses a %s caller owner without writing", kind => {
+  const f = fixture();
+  try {
+    const parent = { status: "active", delivery: "pane", instance: "parent-one", pane_id: "%1",
+      session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket" };
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats:
+      kind === "missing" ? {} : kind === "crew" ? { parent: { ...parent, crew: true } } : { parent, other: parent } });
+    const before = readFileSync(f.registry, "utf8");
+    const run = f.door(["child", "--pane", f.addr, "--crew"], { TAP_TMUX_SOCKET_PATH: "/fake/socket", TAP_REGISTER_CREW_OWNER_PANE: "%1" });
+    expect(run.code).toBe(1);
+    expect(run.err).toContain("crew creation requires one current non-crew caller pane");
+    expect(readFileSync(f.registry, "utf8")).toBe(before);
+  } finally { removeScratchTree(f.root); }
+});
+
+test("legacy crew registration does not infer or overwrite owner links", () => {
+  const f = fixture();
+  try {
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      child: { status: "active", delivery: "pane", crew: true, instance: "child-one", pane: f.addr,
+        pane_id: "%2", session: "repo/seat", server_epoch: f.epoch },
+    } });
+    expect(f.door(["child", "--pane", f.addr, "--crew"], { TAP_REGISTER_CREW_OWNER_PANE: "%2" }).code).toBe(0);
+    expect(f.seats().child!.crew_owner).toBeUndefined();
+    expect(f.seats().child!.crew_identity_capture).toMatchObject({ decision: "unavailable" });
+    const doc = JSON.parse(readFileSync(f.registry, "utf8"));
+    doc.seats.child.crew_owner = "wrong-parent";
+    doc.seats.child.crew_owner_instance = "wrong-instance";
+    f.writeRegistry(doc);
+    expect(f.door(["child", "--pane", f.addr, "--crew"]).code).toBe(0);
+    expect(f.seats().child).toMatchObject({ crew_owner: "wrong-parent", crew_owner_instance: "wrong-instance" });
+  } finally { removeScratchTree(f.root); }
+});
+
+test.each(["instance", "pane"])("post-add capture refuses a changed crew %s under registry custody", changed => {
+  const f = fixture();
+  try {
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      child: { status: "active", delivery: "pane", crew: true, instance: "child-one", pane: f.addr,
+        pane_id: changed === "pane" ? "%3" : "%2", session: "repo/seat", server_epoch: f.epoch },
+    } });
+    const before = readFileSync(f.registry, "utf8");
+    const result = f.door(["child", "--pane", f.addr, "--crew", "--json"], {
+      TAP_REGISTER_CREW_CAPTURE_ONLY: "1", TAP_CALLER_SELECTED_INSTANCE: changed === "instance" ? "old-child" : "child-one",
+    });
+    expect(result.code).not.toBe(0);
+    expect(JSON.parse(result.out).error_class).toBe(changed === "instance" ? "seat_instance_changed" : "crew_row_changed");
+    expect(readFileSync(f.registry, "utf8")).toBe(before);
+  } finally { removeScratchTree(f.root); }
+});
+
+test.each(["parent-one", "parent-two", undefined])("crew add replaces dead residue instead of inheriting its native identity or owner %j", oldOwnerInstance => {
+  const f = fixture();
+  try {
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      parent: { status: "active", delivery: "pane", instance: "parent-two", pane_id: "%1",
+        session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket", harness: "codex" },
+      child: { status: "active", delivery: "pane", instance: "child-old", crew: true,
+        crew_owner: "parent", crew_owner_instance: oldOwnerInstance, pane: "repo/seat:9.0", pane_id: "%9",
+        session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket", harness: "codex",
+        harness_session_id: "OLD-CONVERSATION", transcript_path: "/old/t.jsonl",
+        identity_capture: { mode: "exact_resume", expected_harness_session_id: "OLD-CONVERSATION" },
+        identity_capture_result: { decision: "accepted", observed_harness_session_id: "OLD-CONVERSATION" },
+        crew_identity_capture: { decision: "accepted", observed_harness_session_id: "OLD-CONVERSATION" },
+        quarantined_harness_session_id: "OLD-QUARANTINE", quarantined_transcript_path: "/old/q.jsonl",
+        identity_quarantine_reason: "old quarantine", session_attribution_trust: "process", session_store_path: "/old/t.jsonl" },
+    } });
+    const result = f.door(["child", "--pane", f.addr, "--crew"], {
+      TAP_TMUX_SOCKET_PATH: "/fake/socket", TAP_REGISTER_CREW_OWNER_PANE: "%1",
+      TAP_REGISTER_EXPECTED_HARNESS: "codex", TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE: "1",
+    });
+    expect({ code: result.code, err: result.err }).toMatchObject({ code: 0 });
+    const row = f.seats().child!;
+    expect(row).toMatchObject({ pane_id: "%2", crew_owner: "parent", crew_owner_instance: "parent-two",
+      crew_identity_capture: { decision: "not_started", reason: "crew harness has not started" } });
+    expect(row.instance).toBeTruthy();
+    expect(row.instance).not.toBe("child-old");
+    for (const field of ["harness_session_id", "transcript_path", "identity_capture", "identity_capture_result",
+      "quarantined_harness_session_id", "quarantined_transcript_path", "identity_quarantine_reason", "session_attribution_trust", "session_store_path"]) {
+      expect(row[field]).toBeUndefined();
+    }
+  } finally { removeScratchTree(f.root); }
+});
+
+test.each(["claude", "codex"])("post-add %s capture uses the observed child subdirectory for native process identity", harness => {
+  const f = fixture();
+  try {
+    const subdir = join(f.repo, "nested"); mkdirSync(subdir);
+    const sid = "55555555-5555-4555-8555-555555555555";
+    const store = harness === "claude" ? join(f.home, ".claude/projects", subdir.replaceAll("/", "-"))
+      : join(f.home, ".codex/sessions/2026/10/23");
+    mkdirSync(store, { recursive: true });
+    const transcript = join(store, harness === "claude" ? `${sid}.jsonl` : `rollout-fixture-${sid}.jsonl`);
+    writeFileSync(transcript, JSON.stringify({ type: "session_meta", payload: { id: sid, cwd: subdir } }) + "\n");
+    const tmuxPath = join(f.bin, "tmux");
+    writeFileSync(tmuxPath, readFileSync(tmuxPath, "utf8").replaceAll("zsh", harness).replaceAll(f.repo, subdir));
+    const observedPath = Bun.spawnSync([tmuxPath, "display-message", "-p", "-t", f.addr, "#{pane_current_path}"],
+      { env: f.env(), stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+    expect(observedPath).toBe(subdir);
+    writeFileSync(join(f.bin, "ps"), `#!/bin/sh
+case "$*" in
+  *'pid=,ppid=,lstart=,comm='*) printf '%s\\n' '4242 1 Fri Sep  5 01:00:00 2026 /bin/${harness}' ;;
+  *) exec /bin/ps "$@" ;;
+esac
+`);
+    writeFileSync(join(f.bin, "lsof"), `#!/bin/sh
+printf '%s\\n' 'p4242' 'fcwd' 'n${subdir}' 'n${transcript}'
+`);
+    chmodSync(join(f.bin, "ps"), 0o755); chmodSync(join(f.bin, "lsof"), 0o755);
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      child: { status: "active", delivery: "pane", crew: true, instance: "child-one", pane: f.addr, pane_id: "%2",
+        harness, session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket" },
+    } });
+    const result = f.door(["child", "--pane", f.addr, "--crew"], {
+      TAP_REGISTER_CREW_CAPTURE_ONLY: "1", TAP_CALLER_SELECTED_INSTANCE: "child-one", TAP_TMUX_SOCKET_PATH: "/fake/socket",
+    });
+    expect({ code: result.code, err: result.err }).toMatchObject({ code: 0 });
+    expect(f.seats().child).toMatchObject({ harness_session_id: sid, session_attribution_trust: "process",
+      crew_identity_capture: { decision: "accepted", observed_harness_session_id: sid } });
+  } finally { removeScratchTree(f.root); }
+});

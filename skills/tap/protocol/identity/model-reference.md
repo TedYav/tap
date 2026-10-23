@@ -1,8 +1,9 @@
 # Model reference and launch tuning
 
 **Absent-ledger model reference (.194).** Only genuine absence of the personal ledger enables the
-checked-in config.v3 catalog projection in both views, labeled **reference; access unverified**.
-Malformed or unreadable existing ledgers refuse; `--full` stays ledger-only. The reference is keyed
+checked-in config.v3 catalog projection for `tap team calibration`, including `--strongest`, labeled **reference; access unverified**.
+`tap models` is retired; model guidance returns after the models/presets split (tap-qxq5l).
+Malformed or unreadable existing ledgers refuse. The reference is keyed
 by exact harness/model and distinct qualified variants (effort, service/context, environment);
 conflicting prior fields are omitted, never first-preset-wins or a union of incompatible roles. It
 writes no config or ledger and performs no provider query. Presets are optional recipes, not access
@@ -34,3 +35,34 @@ and `observed_at` beside the unchanged launch-provenance `model`/`effort`/`launc
 observed ids are full model names, not reference variants.
 
 **Family label (tap-gp75).** `tap presets` (FAMILY column, `family` in `--json`) and `tap team` (family column, `family` on every `--json` agent row) show vendor lineage, so a panel composer groups seats by family without recalling mappings. The value is the preset's `metadata.model_family` (vocabulary and the claude/codex/agy harness fallback: part 06 §Preset `metadata`); opencode, cursor and hermes without the key show `-` / `null`. A seat's family comes from its recorded launch preset, kept for tuned and model-only seats; a preset matched from the handle text is not claimed, so that seat shows its harness's vendor. When the launch-reference metadata is substituted on a seat, its published `metadata.model_family` equals the resolved `family` (omitted when unknown); the reference's own lineage is never shown beside a different one. `tap team --json` labels the source as `family_source` (`preset` for the explicit key, `harness` for the fallback, null when unknown), and `tap team calibration` reads only `preset` lineage, never a harness inference. It is never derived from a model id and is not the preset `family` notes key.
+
+**Prompt-cache estimate.** Claude's session-bound context tail also supplies
+`prompt_cache`, separate from `context_tokens`. Newest cache read/write activity
+plus the newest same-model write's 5m/1h TTL gives an estimated deadline. Mixed
+writes use 5m; compaction fences the evidence. Missing TTL stays unknown. The
+assistant timestamp can lag request start and overstate time left. Human
+countdowns use `●<minutes>m`, or a bare `●` after estimated expiry, without a
+`~` or TTL suffix; JSON retains the estimate basis. Neither warm nor expired is
+an observation of server availability. Codex and unsupported
+harnesses stay null. The full field schema and limits are in
+[roster-cache.md](../../../../docs/roster-cache.md).
+
+The context cell appends a Claude cache estimate when expiry is known: `329k/600k ●58m`. Warm markers carry whole minutes until expiry, rounded up with a minimum of 1m; an elapsed estimate is a bare `●`, and unknown expiry has no marker. The dot and minutes are bright blue (SGR 94) at 15m or more, yellow (33) under 15m and red (31) under 5m; the bare elapsed dot is dark red (38;5;88). Colors require TTY stdout, `NO_COLOR` absent (including an empty value) and `TERM` other than `dumb`. Monochrome keeps the same markers. The estimate is transcript-based, not observed server availability; JSON retains its source, basis and TTL.
+
+**Machine-wide seat view.** `tap teams --seats [--all] [--json] [--wide]` (also
+`tap team list --seats`) groups active seats under team headings carrying
+active/total counts and the root path. One column header aligns the two-space
+indented seat rows with the team roster columns: handle, harness, state, context,
+family, model, preset. Headings are bold cyan (SGR 1;36) on a color terminal;
+state and cache markers use the roster colors. Styling requires TTY stdout,
+`NO_COLOR` absent and `TERM` other than `dumb`.
+`--all` includes dormant teams and inactive seats, preserving its inclusion
+meaning. Teams sort by their soonest warm expiry, then name. Within each team,
+warm seats sort by earliest expiry, then cold, then unknown; ties use handle
+order. Whole-column fitting accounts for the two-space indent. `--details` is a separate
+summary shape; named-team forms refuse `--seats`. JSON is
+`{ok:true,scope:"machine",agents:[...],unobserved_teams:[...]}`, with roster fields
+plus `team` on each agent. JSON stays flat with its original ordering: warm
+expiry first, then cold and unknown in team/handle order. Unreadable teams stay explicit in `unobserved_teams`
+(team-name strings), or one human stderr warning; observed seats remain visible
+and the report exits 0. The seat alias has no pointer footer.

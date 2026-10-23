@@ -1,4 +1,5 @@
-/** Block an unscoped tmux kill-server before OpenCode runs the Bash tool. */
+/** Block an unscoped tmux kill-server before OpenCode 2 runs the shell tool. */
+import type { Plugin } from "@opencode/plugin"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawnSync } from "node:child_process"
@@ -29,11 +30,11 @@ function guardTmuxCommand(command: unknown): void {
   }
 }
 
-export default (async (_context: unknown) => ({
-  "tool.execute.before": async (
-    input: { tool?: string; sessionID?: string; callID?: string },
-    output: { args?: { command?: unknown } },
-  ) => {
-    if (input.tool === "bash") guardTmuxCommand(output.args?.command)
+export default {
+  id: "tap.tmux-guard",
+  async setup(ctx) {
+    await ctx.tool.hook("execute.before", (event) => {
+      if (event.tool === "shell") guardTmuxCommand((event.input as { command?: unknown })?.command)
+    })
   },
-}))
+} satisfies Plugin.Plugin

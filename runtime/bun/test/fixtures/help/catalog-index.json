@@ -167,6 +167,16 @@
   },
   {
     "topic": [
+      "calibrate"
+    ],
+    "key": "calibrate",
+    "exit": 0,
+    "page": "calibrate",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
       "cancel"
     ],
     "key": "cancel",
@@ -589,10 +599,10 @@
       "models"
     ],
     "key": "models",
-    "exit": 0,
-    "page": "models",
-    "dedicated": true,
-    "tombstone": false
+    "exit": 1,
+    "page": "",
+    "dedicated": false,
+    "tombstone": true
   },
   {
     "topic": [

@@ -91,7 +91,7 @@ export async function chooseTeam(verb: string, query: string | undefined, picker
 
 export interface BoundSeat { handle: string; instance: string; session: string; paneId: string; serverEpoch: string; status?: string; delivery?: string }
 export interface CrewInstance { instance: string; session: string }
-export interface BoundCohort { team: BoundTeam; seats: Map<string, BoundSeat>; selection: Selection; original: Selection; parentLifetimes?: Map<string, ParentHarnessLifetime>; crewAtSelection?: Map<string, CrewInstance>; approvedCrewAtConsent?: Map<string, CrewInstance> }
+export interface BoundCohort { team: BoundTeam; seats: Map<string, BoundSeat>; selection: Selection; original: Selection; restartRows?: Map<string, Seat>; parentLifetimes?: Map<string, ParentHarnessLifetime>; crewAtSelection?: Map<string, CrewInstance>; approvedCrewAtConsent?: Map<string, CrewInstance> }
 
 function field(row: Seat, key: string): string { return typeof row[key] === "string" ? row[key] as string : ""; }
 

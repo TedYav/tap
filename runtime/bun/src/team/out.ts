@@ -1,14 +1,15 @@
 // Team-scoped retirement preserves the acting registry and every bus component.
 // A selected parent is one lifecycle unit with its process-bound crew.
-import { TapError, observeCallingPane, resolveContext, type ResolvedContext } from "../context";
+import { TapError, observeCallerIdentity, resolveContext, type ResolvedContext } from "../context";
 import { renderRefusalsAsync } from "../error-line";
 import { pick } from "../fzf";
 import type { Seat } from "../registry";
 import { assertResetUnfenced, procStartEpoch } from "../reset";
 import { retireFamilyRows, restoreFamilyRows, scratchOnlyGuard } from "../out-retire";
 import { liveSeat, seatSnapshot, stopExactPane } from "../seat-stop";
-import { physicalSocketPath } from "../tmux";
+import { physicalSocketPath, tmuxSessionNamespace } from "../tmux";
 import { lifecycleDisposition, tmuxFateStopsNamedSession } from "../lifecycle-target";
+import { refuseSharedSelfStop } from "../opencode-shared-stop";
 import { agentFamilies, harnessEvidence, readProcessTable } from "../observe";
 import { observePaneResult } from "../tmux";
 import { codePointCompare, rosterGate, scanOptionalSelection, selectedHandles, type Selection } from "./selection";
@@ -421,6 +422,7 @@ async function run(argv: string[]): Promise<number> {
     selected = result.value;
   } else selected = cohort(team, opts.selection, current);
   const handles = [...selected.seats.keys()];
+  if (opts.hard) refuseSharedSelfStop(handles.map(handle => [handle, current[handle]!]), "tap team out --hard", true);
   const approvedLifetimes = new Map<string, ParentHarnessLifetime | null>();
   for (const owner of handles) {
     if (poll(current[owner])) { approvedLifetimes.set(owner, null); continue; }
@@ -504,7 +506,16 @@ async function run(argv: string[]): Promise<number> {
   const results: Array<{ owner: string; retired?: string[]; outcome?: string; error_class?: string; detail?: string }> = [];
   let selfReceiptEmitted = false;
   let selfStopReturned = false;
-  const caller = observeCallingPane();
+  const caller = observeCallerIdentity();
+  if (opts.hard && caller.state === "unobservable"
+    && (handles.some(handle => !poll(current[handle])) || boundOrphans.size > 0)) {
+    const namespace = tmuxSessionNamespace();
+    if (!namespace.observable || namespace.names.size > 0) {
+      throw new TapError(1, "caller_identity_unobservable",
+        "run from a terminal or an observable tmux pane",
+        `caller pane is not observable; self-last ordering cannot be guaranteed (${caller.refusal}); nothing retired`, "tap team out");
+    }
+  }
   const selfOrphan = opts.hard && caller.state === "inside"
     ? [...boundOrphans.keys()].find(handle => field(current[handle], "pane_id") === caller.paneId)
     : undefined;

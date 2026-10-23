@@ -1,5 +1,7 @@
 # Staffing
 
+Before staffing or briefing, read `tap calibrate`.
+
 Details for [/tap](../SKILL.md). Paths beginning `skills/` or `docs/` are relative to the TAP checkout.
 
 ## Scope
@@ -14,8 +16,8 @@ skill. This document describes what the all-seat layer does and why its conseque
 
 Roles describe work, independently of the staffed form or model. A **monitor**
 performs recurring checks under the [monitor protocol](../protocol/supervision/monitor.md).
-Use `tap models` for personal calibration or qualified model reference guidance.
-Record harness/model@effort and relevant qualifiers; reference access is unverified.
+Use `tap presets` for saved recipes and `tap team` for who is seated.
+Record a supported harness/model@effort and relevant qualifiers; recipes do not verify account access.
 Presets save combinations you use often and are optional.
 
 **Floor — know your form.** Every agent on a run takes one of four staffed forms, and the form fixes
@@ -86,7 +88,7 @@ is never a default.
 **Parallel writers may share one tree.** Choose custody for attributable work and useful concurrency. A check reading a mutable checkout needs that checkout stable; CI reads an immutable commit in its own checkout and does not freeze local authoring. Regenerated files and semantic interactions cross file boundaries, so disjoint path claims alone do not protect peers.
 
 **Growing the team — discover before you pick a door.** The forms above say what a seat *owes*; this
-says how to get one. Start with `tap models` and the reachable seats in `tap team calibration`.
+says how to get one. Use `tap presets` for saved recipes and `tap team` for who is seated.
 Choose exact model@effort with its service/context/environment qualifications, then use
 `tap launch <harness> [name] --model <id> --effort <level>` where effort is supported.
 `tap presets` lists optional saved combinations; it does not prove account access.

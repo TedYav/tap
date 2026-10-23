@@ -221,7 +221,7 @@ const RETIRED: Record<string, string> = {
 
 export function cmdNudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>): number {
   try {
-    const valued = new Set(["--message", "--to", "--pane", "--harness", "--team"]);
+    const valued = new Set(["--message", "--to", "--pane", "--harness", "--team", "--active-within"]);
     for (let i = 0; i < argv.length; i++) {
       const arg = argv[i]!;
       if (arg === "--") break;
@@ -280,6 +280,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
       if (refusal) throw new TapError(1, "usage_error", `tap send <peer> -f <file> for anything longer or multi-line`, `${refusal}; use tap send; nothing sent`);
     } else if (arg === "--no-interrupt") { interrupt = false; }
     else if (arg === "--dry-run") { dryRun = true; }
+    else if (arg === "--active-within") {
+      throw new TapError(1, "usage_error", USAGE, "--active-within selects seats for the --harness fan-out; tap nudge <peer> always nudges the seat it names; nothing sent");
+    }
     else if (arg === "--pane") {
       if (i + 1 >= argv.length || argv[i + 1] === "") throw new TapError(1, "usage_error", USAGE, "--pane needs a value");
       pane = argv[++i]!;

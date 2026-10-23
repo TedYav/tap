@@ -25,7 +25,7 @@ The v0.4 cumulative clause above is historical: same-team sentinels **remained**
 
 **Changes since v0.5 (delivery-policy wave):** this release established durable send acceptance, delivery-class receipts, delivery-policy normalization, crew support, `tap team down`, and pane reentry. Its historical session-store lifecycle was superseded by v0.20 registry authority.
 
-**Team reset archives:** `tap team reset` writes a copy-verified bundle with `COMPLETE` last, `tap team restore` restores the latest or an exact bundle, and exact-target `tap team purge` is the deletion path. Older complete bundles are never rotated implicitly.
+**Team reset archives:** checkpoint creation is retired. `tap team reset` stops and retires seats while preserving the initialized team; restore and purge are non-mutating tombstones. All existing archive bundles remain untouched.
 
 **Communication identity (tap-ehv + tap-0zv4):** recipient authority is the tuple `(team, handle, pane_id)`, not a bare handle or mutable pane address. A send binds and saves the exact target registry before recipient lookup or any `reply_to` resolution, then requires `registry pane_id == send-time pane_id == live pane_id` at each recipient-effect boundary inside the shared submit helper (interrupt, input clear, stuck-sentinel submit, injection, and Enter). A same-team explicit `--pane` may confirm the registered pane but cannot override it. Bare `reply_to` is resolved against and stamped with the sender's team at send time. This also supersedes tap-rd3's historical “never registry-resolved” readiness wording above: a spool drain does re-read the exact registry bound and stored by the originating send, but never performs fresh team discovery or a bare-handle lookup in the drain caller's registry.
 

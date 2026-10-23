@@ -1,3 +1,8 @@
+import { requireOpenCode2 } from "./opencode-version";
+import { prepareOpenCodeSession } from "./opencode-prepare";
+import { openCodeServerMode } from "./opencode-mode";
+import { activateSharedRow, prepareSharedActivation } from "./opencode-shared-activation";
+import { assertSharedStopCleared, quiesceSharedSession, refuseSharedSelfStop } from "../opencode-shared-stop";
 import { reservedSeatName } from "../ids";
 import { launchWorkdir, validateLaunchWorkdir } from "./workdir";
 import { defaultPermissions, prepareCodexAutoReceipts } from "./permissions";
@@ -13,24 +18,25 @@ import { assertSelectionCurrent, selectCaller, type Selection } from "../selecto
 import { ensureSeatInstance, supersedeForwardingAliases } from "../registry";
 import { isDict, jsonDumpBytes, metaBytes, parseJsonPreserving, PyFloat, PyInt, pyReadUtf8 } from "../spool-publication";
 import { reservationExpired } from "../reservation";
-import { bootId, legacyBootId } from "../tmux";
+import { bootId, legacyBootId, physicalSocketPath } from "../tmux";
 import { launcherFenceRefusal, markResetGenerationReused } from "../reset";
 import { startupTrace, startupTransition } from "../startup-trace";
 import { Notices } from "./catalog-notices";
 import { HARNESSES, resolveHarnessPolicy } from "./catalog";
-import { buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
+import { applyInvocationEnv, buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
 import { type SessionRecord, type Invocation, type ResumeIdentity, UNBOUND_RESUME_IDENTITY } from "./types";
 import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, type StartupObservation } from "./readiness";
 import { currentEpoch, hasSession, classifySession, crewPanesIn, entrySession, verifiedSession, entryObservedDead, destructiveTarget, sessionPaneIds } from "./observation";
 import { launchCommand, launchTmux, LaunchCommandError } from "./process";
 import { ensureTmuxServer, tmuxBootstrapFailure } from "./tmux-bootstrap";
 import { seatIsRelaunchable } from "./complete";
+import { restartRowMatches } from "../team/up-last";
 import { appendRegistryEvent } from "../events";
 import { rootForCwd } from "./records";
 import { enrolledTeams } from "../index-home";
 import { oldStoreAction, oldStoreRefusalText, teamRegistryRefusal } from "../register-authority";
 import { sanitizeComponent } from "./naming";
-import { pyRepr, recordHasResumeArtifact, resolvedResumeIdentity, seatHarnessEnv } from "./resume-identity";
+import { idlessFreshWarning, pyRepr, recordHasResumeArtifact, resolvedResumeIdentity, seatHarnessEnv } from "./resume-identity";
 import { opencodeStorePath, opencodeStoredSession } from "../opencode-store";
 import { launchPhase, launchTracked } from "./progress";
 import { tapScriptsDir, artifactBun } from "../scripts-dir";
@@ -56,6 +62,7 @@ export type TransactionRequest = {
   expected_row?: Row; expected_team?: string; expected_registry?: string; root?: string;
   /** Interactive team-up approval for this exact retained seat instance. */
   approved_instance?: string;
+  approved_restart_row?: Row;
   output_path?: string; notice_state?: { suppressed: boolean; said: string[] };
   preflight_done?: boolean; terminal?: { stderr_tty: boolean };
   rerun_command?: string;
@@ -181,6 +188,10 @@ export function recordFromRow(handle: string, entry: Row, team: Row, root: strin
     last_launched: optional("last_launched"), last_seen: optional("last_seen"),
   };
   const preset = plain(entry.preset);
+  if (record.harness === "opencode") {
+    record.opencode_server_mode = (entry.opencode_server_mode ?? "private") as SessionRecord["opencode_server_mode"];
+    if (isDict(entry.opencode_service)) record.opencode_service = clone(entry.opencode_service) as unknown as SessionRecord["opencode_service"];
+  }
   if (isDict(entry.launch_tuning)) record.launch_tuning = clone(entry.launch_tuning) as SessionRecord["launch_tuning"];
   if (Object.keys(preset).length === 3 && ["name", "source_path", "config_digest"].every(k => string(preset[k]))) record.preset = preset as Record<string, string>;
   return record;
@@ -199,10 +210,15 @@ export function durableRecord(record: LaunchRecord): Row {
   if (Object.keys(record.harness_env ?? {}).length) result.harness_env = record.harness_env;
   if (record.preset) result.preset = record.preset;
   if (record.launch_tuning) result.launch_tuning = clone(record.launch_tuning);
+  if (record.opencode_server_mode) result.opencode_server_mode = record.opencode_server_mode;
+  if (record.opencode_service) result.opencode_service = clone(record.opencode_service);
   return result;
 }
 
 export function storeRecipe(row: Row, record: LaunchRecord): void {
+  for (const key of ["opencode_server_mode", "opencode_service"] as const) {
+    if (record[key] !== undefined) row[key] = clone(record[key]); else delete row[key];
+  }
   record.permissions ??= defaultPermissions(record.harness);
   if (record.launch_tuning) row.launch_tuning = clone(record.launch_tuning); else delete row.launch_tuning;
   if (record.launch_workdir !== undefined) row.launch_workdir = record.launch_workdir; else delete row.launch_workdir;
@@ -319,6 +335,14 @@ export async function reserveTransaction(selection: Selection, request: Transact
     const team = doc.team;
     team.name ??= record.base; team.worktree_root ??= selection.rootReal;
     const existing = Object.hasOwn(seats, handle) && isDict(seats[handle]) ? seats[handle] as Row : null;
+    if (request.approved_restart_row && !restartRowMatches(request.approved_restart_row, existing)) {
+      throw new TransactionError(`tap team up: '${handle}' changed after restart preview; nothing resumed for this seat`, undefined,
+        "seat_changed", "retry tap team up --last");
+    }
+    if (existing) {
+      refuseSharedSelfStop([[handle, existing]], "tap session launch", false, env);
+      assertSharedStopCleared(selection.rootReal, existing);
+    }
     if (request.approved_instance && (!existing || existing.instance !== request.approved_instance)) {
       throw new TransactionError(`tap team up: '${handle}' was replaced after interactive selection; nothing resumed`);
     }
@@ -364,9 +388,9 @@ export async function reserveTransaction(selection: Selection, request: Transact
     // `--resume=<id>` carries that id as an exact-resume expectation.
     row.identity_capture = { mode: record.launch_resume === "exact" && record.harness_session_id ? "exact_resume"
       : record.identity_capture_action === "new" || record.identity_capture_action === "fork" ? "launcher_new" : record.harness_session_id ? "exact_resume"
-      // Id-less OpenCode and cursor resumes start a fresh conversation (neither opens a
-      // picker), so the SessionStart id they report is the launcher's new identity.
-      : record.harness === "opencode" || record.harness === "cursor" ? "launcher_new" : "untrusted_resume",
+      // Id-less OpenCode, cursor and agy resumes start a fresh conversation (none opens a
+      // picker at launch), so the first id they report is the launcher's new identity.
+      : record.harness === "opencode" || record.harness === "cursor" || record.harness === "agy" ? "launcher_new" : "untrusted_resume",
       ...(record.harness_session_id ? { expected_harness_session_id: record.harness_session_id } : {}) };
     // A new incarnation starts: the outgoing one's launch_witness never carries over.
     for (const field of ["pane", "pane_id", "pane_current_command", "wake_url", "status_reason", "exited_at", "launch_witness"]) delete row[field];
@@ -411,7 +435,7 @@ export function resumeIdentityBinding(kind: TransactionRequest["kind"], record: 
   if (seatEnv) delete seatEnv.OPENCODE_DB_PATH;
   if (seatEnv && opencodeStoredSession(record.harness_session_id!, seatEnv) === "absent") {
     throw new TransactionError(
-      `${record.name} (opencode) has stored session id ${record.harness_session_id} but OpenCode's store at ${opencodeStorePath(seatEnv)} has no such session; resume refuses rather than start a harness that exits with "Session not found"`,
+      `${record.name} (opencode) has stored session id ${record.harness_session_id} but OpenCode's store at ${opencodeStorePath(seatEnv)} has no such session; resume refuses rather than start a new empty conversation`,
       undefined, "no_exact_resume_identity", `tap session launch opencode ${launchHandle(record)} --fresh`,
     );
   }
@@ -569,6 +593,24 @@ export async function rollbackOwned(evidence: FailureEvidence, reason: string | 
         }
       } catch { /* Diagnostics never replace the transaction failure. */ }
     }
+    const preparedShared = evidence.record.opencode_server_mode === "shared" &&
+      evidence.record.harness_session_id && evidence.record.opencode_service;
+    if (preparedShared && !quiesceSharedSession(evidence.record, evidence.selection.rootReal, evidence.handle, { env, skip: true }).quiesced) {
+      // Recording an unquiesced session is not permission to kill its pane.
+      // Retain one addressable recovery row; only explicit down may skip stop.
+      const before = clone(row), service = evidence.record.opencode_service!;
+      const { password: _password, ...fingerprint } = service;
+      storeRecipe(row, evidence.record);
+      Object.assign(row, { status: "suspended", status_reason: "unquiesced", opencode_service: fingerprint });
+      delete row.launch_id; delete row.launch_token; delete row.launch_witness;
+      if (evidence.vessel) Object.assign(row, { delivery: "pane", session: evidence.record.name,
+        pane: row.pane || evidence.vessel.pane, pane_id: evidence.vessel.pane, server_epoch: `srv:${evidence.vessel.server}`,
+        server_socket: physicalSocketPath({ ...env, TAP_TMUX_SOCKET_PATH: evidence.vessel.socket }) });
+      saveDoc(evidence.selection.registryLocation, doc);
+      startupTransition(evidence.selection.registryLocation, evidence.handle, before, row, false);
+      process.stderr.write(`tap session: seat ${evidence.selection.team}/${evidence.handle} did not launch; rollback incomplete. Native session ${evidence.record.harness_session_id} may still be running; its pane and suspended row are retained with a worktree hold. From another pane: tap down ${evidence.selection.team}/${evidence.handle}; if native quiescence is still unavailable: tap down ${evidence.selection.team}/${evidence.handle} --skip-quiesce\n`);
+      return false;
+    }
     const before = clone(row);
     let restored: Row | null = null;
     if (evidence.record.replacement_registry_entry) {
@@ -628,7 +670,7 @@ async function stampPane(row: Row, facts: PaneFacts, env: NodeJS.ProcessEnv, sig
   row.server_epoch = facts.server_epoch;
   const socket = await launchTmux(["display-message", "-p", "#{pid}:#{start_time}\t#{socket_path}"], env, signal);
   const [raw, path] = socket.stdout.trim().split("\t");
-  if (socket.code === 0 && raw && path?.startsWith("/") && `srv:${raw}` === facts.server_epoch) row.server_socket = path;
+  if (socket.code === 0 && raw && path?.startsWith("/") && `srv:${raw}` === facts.server_epoch) row.server_socket = physicalSocketPath({ ...env, TAP_TMUX_SOCKET_PATH: path });
   else delete row.server_socket;
   const boot = bootId(env); if (boot) row.boot_id = boot; else delete row.boot_id;
 }
@@ -659,7 +701,7 @@ export async function bindTransaction(evidence: FailureEvidence, facts: PaneFact
         }
       }
     }
-    if (already) return;
+    if (already && evidence.record.opencode_server_mode !== "shared") return;
     const socket = await launchTmux(["display-message", "-p", "#{pid}:#{start_time}\t#{socket_path}"], env, signal);
     const [rawEpoch, socketPath] = socket.stdout.trim().split("\t");
     const enrollment = paneEnrollmentRefusal({ paneId: facts.pane_id, epoch: facts.server_epoch,
@@ -672,6 +714,14 @@ export async function bindTransaction(evidence: FailureEvidence, facts: PaneFact
       registered_from_worktree: evidence.selection.rootReal, registered_at: now() });
     if (evidence.record.launch_tuning) row.launch_tuning = clone(evidence.record.launch_tuning);
     await stampPane(row, facts, env, signal);
+    if (evidence.record.opencode_server_mode === "shared") {
+      if (!row.server_socket || !evidence.record.opencode_service) throw new TransactionError("shared activation requires a canonical socket and service binding");
+      row.opencode_server_mode = "shared";
+      row.opencode_service = clone(evidence.record.opencode_service);
+      row.harness_session_id = evidence.record.harness_session_id;
+      if (ready) activateSharedRow(row, evidence.record, facts, env, { root: evidence.selection.rootReal,
+        bus: evidence.selection.busHome, socket: String(row.server_socket) });
+    }
     delete row.wake_url;
     // Verified: the pending launch_id becomes the incarnation's launch_witness.
     if (ready) { row.launch_witness = row.launch_id; delete row.launch_id; }
@@ -706,6 +756,10 @@ export async function suspendAndStop(evidence: FailureEvidence, request: Transac
     }
     launchPhase(`Stopping ${session} for replacement`, true);
     const original = record.replacement_registry_entry ?? null;
+    if (original) {
+      refuseSharedSelfStop([[evidence.handle, original]], "tap session restart", false, env);
+      assertSharedStopCleared(evidence.selection.rootReal, original);
+    }
     if (request.kind === "new" && !record.kill_backup_required && original && string(original.pane_id)) {
       if (await destructiveTarget(original, session, env, signal) !== session &&
           (await hasSession(session, env, signal) || !await entryObservedDead(original, env, signal))) {
@@ -715,6 +769,7 @@ export async function suspendAndStop(evidence: FailureEvidence, request: Transac
     if (record.ensure_vessel === "shell" && await hasSession(session, env, signal) && await classifySession(session, env, signal) !== "shell") {
       throw new TransactionError(`refusing to absorb ${session}: state changed mid-ensure; re-run to re-evaluate`);
     }
+    if (original) quiesceSharedSession(original, evidence.selection.rootReal, evidence.handle, { env });
     const live = request.kind === "restart" ? request.incumbent_live === true : await hasSession(session, env, signal);
     if (live && evidence.backup.status === "not-needed") {
       const backupRecord = { ...record, replaces_session: session };
@@ -855,11 +910,11 @@ export function bindFingerprintOf(row: Row): string {
   return JSON.stringify([row.registered_at ?? null, row.harness_session_id ?? null, row.identity_capture_result ?? null, row.transcript_path ?? null, row.pane_current_command ?? null]);
 }
 
-/** The Claude readiness signal: this launch's SessionStart bind has landed.
+/** The readiness signal for a launch whose SessionStart bind has landed.
  * Lockless and read-only — the hook's `tap in` needs the registry lock to write
  * the very row this polls, so a locked read would starve the signal. A read or
  * parse failure means "no signal yet" and is never a readiness failure. */
-export function claudeBindSignal(evidence: FailureEvidence, snapshot: string): (facts: PaneFacts) => Promise<boolean> {
+export function sessionBindSignal(evidence: FailureEvidence, snapshot: string): (facts: PaneFacts) => Promise<boolean> {
   let lastPoll = -Infinity;
   return async () => {
     if (performance.now() - lastPoll < 250) return false;
@@ -867,6 +922,7 @@ export function claudeBindSignal(evidence: FailureEvidence, snapshot: string): (
     try {
       const row = seatRows(loadDoc(evidence.selection.registryLocation))[evidence.handle];
       if (!isDict(row) || row.launch_id !== evidence.token || typeof row.harness_session_id !== "string" || row.harness_session_id === "") return false;
+      if (evidence.record.harness === "opencode" && row.harness_session_id !== evidence.record.harness_session_id) return false;
       return bindFingerprintOf(row) !== snapshot;
     } catch { return false; }
   };
@@ -879,7 +935,7 @@ export function claudeBindSignal(evidence: FailureEvidence, snapshot: string): (
  * the respawn, so a hook that lands during the respawn window reads as a change
  * from that baseline — a baseline taken after the respawn could already
  * include the bind and then never signal. */
-export function claudeBaselineAfterPlaceholderBind(evidence: FailureEvidence): string | null {
+export function bindBaselineAfterPlaceholderBind(evidence: FailureEvidence): string | null {
   try {
     const row = seatRows(loadDoc(evidence.selection.registryLocation))[evidence.handle];
     if (!isDict(row)) return null;
@@ -887,18 +943,30 @@ export function claudeBaselineAfterPlaceholderBind(evidence: FailureEvidence): s
   } catch { return null; }
 }
 function harnessReadySignal(evidence: FailureEvidence, codexObserved: ((facts: PaneFacts) => Promise<StartupObservation>) | null,
-  claudeBaseline: string | null, env: NodeJS.ProcessEnv, signal?: AbortSignal,
+  bindBaseline: string | null, env: NodeJS.ProcessEnv, signal?: AbortSignal,
 ): ((facts: PaneFacts) => Promise<boolean>) | undefined {
   if (evidence.record.harness === "claude") {
-    if (claudeBaseline === null) return undefined;
-    return claudeBindSignal(evidence, claudeBaseline);
+    if (bindBaseline === null) return undefined;
+    return sessionBindSignal(evidence, bindBaseline);
   }
+  // A prepared private TUI waits for plugin setup before painting a composer.
+  // Its verified root-session bind can signal independently of that paint.
+  if (evidence.record.harness === "opencode" && evidence.record.opencode_server_mode !== "shared"
+    && evidence.record.harness_session_id && bindBaseline !== null)
+    return sessionBindSignal(evidence, bindBaseline);
   if (evidence.record.harness === "codex" && codexObserved) return async facts => {
     const { screen, title } = await codexObserved(facts);
     return codexComposerIdle(screen, title);
   };
   // OpenCode owns its capture (plain physical rows, no title read); every
   // failure inside is no signal, never a thrown rollback.
+  if (evidence.record.harness === "opencode" && evidence.record.opencode_server_mode === "shared") return async facts => {
+    try {
+      prepareSharedActivation(evidence.record, facts, env, { root: evidence.selection.rootReal,
+        bus: evidence.selection.busHome, socket: evidence.vessel?.socket ?? physicalSocketPath(env) });
+      return true;
+    } catch { signal?.throwIfAborted(); return false; }
+  };
   if (evidence.record.harness === "opencode") return facts => opencodeReadySignal(facts, env, signal);
   return undefined;
 }
@@ -949,9 +1017,9 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     const placeholder = await paneFacts(vessel.pane, env, signal);
     if (!placeholder) throw new TransactionError(`could not inspect placeholder pane for ${record.name}`);
     await bindTransaction(evidence, placeholder, false, env, signal);
-    // Snapshot the Claude baseline while the row still shows only the
+    // Snapshot the bind baseline while the row still shows only the
     // placeholder bind — before the respawn can race a fast hook.
-    const claudeBaseline = claudeBaselineAfterPlaceholderBind(evidence);
+    const bindBaseline = bindBaselineAfterPlaceholderBind(evidence);
     startupTrace("respawn_pane", { session: record.name, pane: vessel.pane, launch_id: evidence.token });
     // Anchored where respawn_pane is traced, so ms_since_respawn is directly
     // comparable to the r2c delta (launch_complete − respawn_pane).
@@ -970,7 +1038,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     // by the Codex blocker regexes and the composer signal; Claude reads the
     // registry. OpenCode captures plain physical rows inside its own signal.
     const codexObserved = record.harness === "codex" ? memoizedStartupObservation(env, signal) : null;
-    const readySignal = harnessReadySignal(evidence, codexObserved, claudeBaseline, env, signal);
+    const readySignal = harnessReadySignal(evidence, codexObserved, bindBaseline, env, signal);
     const result = await awaitStableHarness(async () => {
       const observed = await launchTmux(["display-message", "-p", "-t", vessel.pane, VESSEL_FORMAT], env, signal);
       if (!sameVessel(vessel, parseVessel(observed.stdout))) throw new TransactionError("created pane identity changed during readiness");
@@ -1041,8 +1109,17 @@ export async function cursorMintSession(cwd: string, env: NodeJS.ProcessEnv, sig
   } catch (error) { signal?.throwIfAborted(); return null; }
 }
 
-export async function mintLaunchSessionId(record: LaunchRecord, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<LaunchRecord> {
-  if (record.harness_session_id || record.harness !== "cursor") return record;
+export async function mintLaunchSessionId(record: LaunchRecord, env: NodeJS.ProcessEnv, signal?: AbortSignal, notices = new Notices()): Promise<LaunchRecord> {
+  if (record.harness_session_id && (record.harness !== "opencode" || openCodeServerMode(record, env) !== "shared")) return record;
+  if (record.harness === "opencode") {
+    const invocation = applyInvocationEnv({ argv: [], env: {} }, record, new Notices(() => {}), env, false);
+    const childEnv = { ...env, ...invocation.env };
+    for (const key of invocation.unset_env ?? []) delete childEnv[key];
+    if (env.TAP_JSON === "1") notices.suppress(true);
+    const id = await prepareOpenCodeSession(record, childEnv, signal, notices);
+    return id ? { ...record, harness_session_id: id, identity_capture_action: "new" } : record;
+  }
+  if (record.harness !== "cursor") return record;
   const id = await cursorMintSession(launchWorkdir(record), env, signal);
   return id ? { ...record, harness_session_id: id, identity_capture_action: "new" } : record;
 }
@@ -1074,6 +1151,15 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   if (request.json) notices.suppress(true);
   const operation = request.kind === "restart" ? "session restart" : request.kind === "new" ? "session launch" : "session resume";
   assertReset(selection, operation, env);
+  const incumbent = seatRows(loadDoc(selection.registryLocation))[launchHandle(record)];
+  if (request.approved_restart_row && !restartRowMatches(request.approved_restart_row, plain(incumbent))) {
+    throw new TransactionError(`tap team up: '${launchHandle(record)}' changed after restart preview; nothing resumed for this seat`, undefined,
+      "seat_changed", "retry tap team up --last");
+  }
+  if (isDict(incumbent)) {
+    refuseSharedSelfStop([[launchHandle(record), incumbent]], `tap ${operation}`, false, env);
+    assertSharedStopCleared(selection.rootReal, incumbent);
+  }
   record.last_launched ||= now();
   if (request.kind === "restart" && request.incumbent_live) record.replaces_session = record.name;
   const action = request.kind === "new" ? record.ensure_action ?? "new" : "resume";
@@ -1087,7 +1173,11 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   // the working seat had been killed and its row suspended, a Cursor launch had
   // already minted a chat, and a fork had already written its reservation).
   if (request.kind === "new") launchInvocation(action, record, notices, { env, nativeQuery: undefined, resume: UNBOUND_RESUME_IDENTITY, notify: false, receipts: discardReceipts });
-  if (action === "new" && !request.dry_run) Object.assign(record, await mintLaunchSessionId(record, env, signal));
+  if (!request.dry_run && record.harness === "opencode" && record.harness_session_id) requireOpenCode2(env, launchWorkdir(record));
+  if (!request.dry_run && (action === "new" || (record.harness === "opencode" && (!record.harness_session_id || openCodeServerMode(record, env) === "shared")))) {
+    if (action !== "new") launchInvocation(action, record, notices, { env, notify: false, receipts: discardReceipts });
+    Object.assign(record, await mintLaunchSessionId(record, env, signal, notices));
+  }
   // tap-we6b rework: seat-up used to bind the RAW stored id here, bypassing
   // the resume resolver — a cursor id whose chat store never appeared came
   // back as `--resume <stale-id>`. Bind through the same gate the resume door
@@ -1105,10 +1195,9 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   // fresh (cursor) or at a picker, and the operator must see that before acting.
   const idlessResumeWarning = () => {
     if (request.kind === "resume" && !record.harness_session_id && !["opencode", "hermes"].includes(record.harness)) {
-      process.stderr.write(record.harness === "cursor"
-        // tap-we6b: cursor never opens its picker; an id-less resume starts fresh.
-        ? `tap session: WARNING: ${record.name} has no native cursor chat id; starting a fresh conversation\n`
-        : `tap session: WARNING: ${record.name} has no native ${record.harness} session id; falling back to the native picker\n`);
+      // tap-we6b: cursor and agy open no picker at startup; an id-less resume starts fresh.
+      process.stderr.write(`${idlessFreshWarning(record)
+        ?? `tap session: WARNING: ${record.name} has no native ${record.harness} session id; falling back to the native picker`}\n`);
     }
   };
   if (request.dry_run) {

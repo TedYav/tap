@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 import { armSelfRecovery } from "../self-rebrief";
 // `tap refresh` — native seat refresh cutover (tap-3xj1, Diagnostics U3b).
 //
@@ -402,7 +403,7 @@ export async function cmdSeatRefresh(argv: string[], scriptsDir: string): Promis
   } catch {
     selfHandle = "";
   }
-  if (!handle) handle = process.env.TAP_SELF || selfHandle;
+  if (!handle) handle = inheritedActor() || selfHandle;
   if (!handle) {
     // The incumbent's generation_unverifiable self-refusal stands on the REAL
     // resolver path too, not only the TAP_SELF_REFUSAL test hook: an

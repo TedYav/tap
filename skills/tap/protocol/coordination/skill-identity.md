@@ -14,7 +14,7 @@ from the canonical source directory.
 
 Flat skill catalogs use `tap-<name>` wrappers, plus `tap` for the all-seat floor.
 They start with `tap`, `tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard`,
-and `tap-help`. The `skills.full_kit` boolean controls their optional skills.
+`tap-help`, and `tap-extend`. The `skills.full_kit` boolean controls their optional skills.
 Setup accepts `fullKit` in its JSON patch and asks a default-No terminal question.
 Omission makes no change; candidate and dry-run decisions leave installation
 untouched. This preference does not refresh or reduce the native plugin.

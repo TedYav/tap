@@ -100,7 +100,7 @@ run_install; run_install
 for home_label in "$HHOME:Hermes" "$OHOME:OpenCode" "$CURHOME:Cursor-agent"; do
   home="${home_label%%:*}"
   label="${home_label#*:}"
-  for s in tap tap-in tap-send tap-escalate tap-config-wizard tap-help; do
+  for s in tap tap-in tap-send tap-escalate tap-config-wizard tap-help tap-extend; do
     [ -L "$home/skills/$s" ] || { echo "bin-tap: (4) skill '$s' not linked into the $label home" >&2; exit 1; }
     # The flat names resolve to the installer's alias wrappers; only tap is the checkout itself.
     want="$IHOME/tap-index/skill-aliases/$s"; [ "$s" = tap ] && want="$ROOT/skills/tap"

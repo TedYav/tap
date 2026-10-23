@@ -259,10 +259,13 @@ function stable(value: unknown): unknown {
   return value;
 }
 
-// Authorized deviation from the frozen Python capture: Codex launches carry `--no-daemon` (tap-21bdj).
-function withNoDaemon<T extends { argv?: unknown }>(row: T): T {
+// Defaults added since the frozen Python capture: Codex isolation (tap-21bdj)
+// and OpenCode's per-seat tabs-off inline config.
+function withLaunchDefaults<T extends { argv?: unknown; env: Record<string, string> }>(row: T): T {
   const argv = row.argv;
-  return Array.isArray(argv) && argv[0] === "codex" ? { ...row, argv: [argv[0], "--no-daemon", ...argv.slice(1)] } : row;
+  if (Array.isArray(argv) && argv[0] === "codex") return { ...row, argv: [argv[0], "--no-daemon", ...argv.slice(1)] };
+  if (Array.isArray(argv) && argv[0] === "opencode") return { ...row, env: { ...row.env, OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' } };
+  return row;
 }
 
 describe("G4 plan --json differential", () => {
@@ -275,7 +278,7 @@ describe("G4 plan --json differential", () => {
     const mismatches: string[] = [];
     for (const row of oracle) {
       const bun = bunPlan(row.id, env);
-      const py = withNoDaemon(comparable(row));
+      const py = withLaunchDefaults(comparable(row));
       const { revive_tier: _tier, ...resume } = bun.resume;
       const bunCmp = {
         argv: bun.argv,

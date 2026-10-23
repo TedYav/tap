@@ -966,6 +966,8 @@ function cmdAdminDashboard(args: string[], scriptsDir: string, engine?: ObserveE
       if (seat.delivery !== "poll") {
         if (seat.paneAlive === false) {
           reasons.push(`pane dead while registry status is still active${registeredAge(seat.registeredAt, now)}`);
+        } else if (seat.paneReason === "pane_session_conflict") {
+          reasons.push("pane binding conflicts with another session (pane_session_conflict)");
         } else if (seat.seatState === "blocked-on-approval") {
           reasons.push(`blocked on an approval prompt; needs you: tap attach ${team.index.name}/${seat.handle}`);
         } else if (seat.seatState === "wedged" || seat.seatState === "rate-limited-error") {

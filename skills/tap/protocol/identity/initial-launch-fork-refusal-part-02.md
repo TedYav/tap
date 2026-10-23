@@ -91,11 +91,7 @@ socket-keyed machine lock. Existing servers are never replaced or reconfigured.
 never bootstrap. Daemon startup strips harness, TAP and Git identity variables
 and uses a stable system PATH. Unknown socket state refuses with `tap doctor`.
 
-`tap session resume --all` / `tap team up` recreates every relaunchable stopped acting-registry seat whose exact tmux name is absent, including a pane-backed row stored as `pane_gone`, `session_replaced`, `repair_failed`, or `restart_failed` when its recorded `boot_id` or `server_epoch` is positively stale versus a readable current observation; crew, poll, `user_removed`, same-boot `pane_gone`, and any row whose boot/generation cannot be compared stay excluded; a live occupant of that canonical name on the current server is unverified and is skipped (bulk) or refused before registration (named resume).
-
-This membership decision never rewrites a retained failure reason. Both socket
-provenance and readable current server generation are required; an unavailable
-server is not proof that its prior generation is gone.
+Team startup and restart cohort recovery are specified in [team up](./team-up-last.md).
 
 **Developer lifecycle diagnostics:** `[diagnostics] level = "verbose"` in machine
 config enables file-only lifecycle details in `<TAP_INDEX_HOME>/logs/launch-debug.jsonl`.

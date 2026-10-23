@@ -55,10 +55,6 @@ test("resource verbs read the artifact root, not the compiled module's virtual d
   expect(completion.status, completion.stderr).toBe(0);
   expect(completion.stdout).toContain(readFileSync(join(root, "completions/_tap"), "utf8").trim().split("\n")[0]!);
 
-  const models = tap(["models"], cwd);
-  expect(models.status, models.stderr).toBe(0);
-  expect(models.stdout).toContain("opus");
-
   const help = tap(["help", "skill", "tap-send"], cwd);
   expect(help.status, help.stderr).toBe(0);
   expect(realpathSync(help.stdout.trim())).toBe(realpathSync(join(root, "skills/send/SKILL.md")));

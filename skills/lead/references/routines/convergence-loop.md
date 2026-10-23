@@ -8,21 +8,21 @@ contract: convergence-loop/draft
 packet_extensions: []
 ---
 
-# Convergence loop — two decorrelated seats converge on a drained ledger
+# Convergence loop — decorrelated seats converge on a drained ledger
 
 DRAFT — surfaced as draft in any shelf selection until ratified to /v1 after at least one live rep
-in this repo. `packet_extensions` is deliberately empty: the loop rides TAP payloads between two
-seats, not lead packets; schema promotion is a /v1 question decided from the live-rep record.
+in this repo. `packet_extensions` is deliberately empty: the loop rides TAP payloads between the
+driver and its peers, not lead packets; schema promotion is a /v1 question decided from the live-rep record.
 
 Transport is **not restated here**. `/tap` owns poll-first, settle-what-you-handle,
 end-the-turn-and-let-the-courier-wake-you, and `tap outstanding` before rest. This routine is
-only the convergence logic layered on top: what makes two seats' agreement mean something.
+only the convergence logic layered on top: what makes the seats' agreement mean something.
 
 ## Goals
 
-Run a bounded, decorrelated loop between two seats — over a plan, a review, or one bounded
-question — until a **driver-owned issue ledger drains**. Two seats from different model
-families catch what one cannot; that counterpoint is the entire value, and without it you are
+Run a bounded, decorrelated loop between a driver and one or more peers — over a plan, a
+review, or one bounded question — until a **driver-owned issue ledger drains**. Seats from
+different model families catch what one cannot; that counterpoint is the entire value, and without it you are
 talking to a mirror.
 
 Use it when the artifact is contested, the stakes reward a second lens, and you want the
@@ -31,16 +31,16 @@ head.
 
 ## The convergence definition (MUST — the invariant the routine exists to hold)
 
-**Convergence is the ledger draining. It is never both seats sounding satisfied.**
+**Convergence is the ledger draining. It is never the seats sounding satisfied.**
 
 Every finding, objection, and open question enters the ledger as an item. The loop converges
 when every item is dispositioned — resolved, rejected with a recorded reason, deferred, or
-escalated — and no proposal from the peer is still unfolded. A peer saying "looks good" is a
+escalated — and no proposal from any peer is still unfolded. A peer saying "looks good" is a
 *propose-close*, not convergence; the LEADER reading the thread and feeling aligned is not
 convergence either.
 
 The reason this is an invariant and not a preference: mutual satisfaction is the one
-convergence signal that gets cheaper the longer two agents talk. A drained ledger costs the
+convergence signal that gets cheaper the longer agents talk. A drained ledger costs the
 same on round one and round eight.
 
 ## Driver and peer — the propose → fold asymmetry (MUST)
@@ -131,7 +131,7 @@ that converges and stays quiet leaves the peer polling a drained thread with no 
 stop, which reads to a human as an unresponsive seat. That false-unresponsive failure is the
 one this routine's ancestor was built to kill; do not reintroduce it.
 
-A `converged` terminal attests that two seats aligned on **a named version** of the artifact.
+A `converged` terminal attests that the seats aligned on **a named version** of the artifact.
 It is not a freeze, not execution permission, and never a substitute for a human decision —
 it is a cited synthesis, subordinate to the evidence it cites. Editing the artifact afterward
 is allowed; the terminal simply does not cover the edit.
@@ -201,7 +201,7 @@ Rules:
   option with no citation is a preference wearing an option's clothes.
 - **The blocked list is mandatory** — naming what stalls until the answer arrives is how the
   human prices the delay.
-- The packet is a cited synthesis: authoritative for "here is what the two seats found and
+- The packet is a cited synthesis: authoritative for "here is what the seats found and
   where they landed", subordinate to the human's call. The answer comes back as a ledger
   disposition and closes the escalated items.
 
@@ -211,7 +211,7 @@ Rules:
    been the working default; resolve a concrete number before a heavy run.
 2. **Seed the ledger** — the driver enters the open questions or findings as items, each with
    its evidence class and citation.
-3. **Exchange.** Each cycle: the peer reads, reasons, and sends its dispositions as proposals,
+3. **Exchange.** Each cycle: each peer reads, reasons, and sends its dispositions as proposals,
    then ends the turn. The driver folds them, disposes its own items, and replies. Transport
    discipline is `/tap`'s, unchanged.
 4. **Check convergence** — the driver, each cycle, over **both** planes: is the ledger
@@ -245,7 +245,9 @@ and each mistake is dangerous in its own direction.
   appointment.
 - The **anti-sycophancy guard** above, including its read-time replay.
 - **Proposal folding** and the **convergence check** over both planes (drained ledger and no
-  unfolded proposal), plus the round counter.
+  unfolded proposal), plus the round counter. With several peers, `fold.sh` reports a
+  cross-sender contest as `CONFLICT` and `dispose.sh` records the driver's disposition of an op
+  that must not apply (`/tap:discuss` § n peers).
 
 This routine used to prescribe a separate, sequence-anchored TAP ledger under
 `skills/tap/scripts/ledger/`. It never recorded a live event and was removed; `/tap:discuss` is
@@ -266,6 +268,6 @@ decision packet.
 - No reversal of a rejected `evidence_bearing` item except by citing in-thread evidence newer
   than the rejection and not already on the table, and no quietly reclassifying an
   inconvenient item as `judgment` to reach the exemption.
-- No stop-list class settled inside the loop, however confident both seats are. Two agreeing
-  agents is not a higher authority than one.
+- No stop-list class settled inside the loop, however confident the seats are. Agreeing
+  agents are not a higher authority than one.
 - No silent give-up: the loop ends in a terminal or a decision packet, never in silence.

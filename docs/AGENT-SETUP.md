@@ -285,7 +285,11 @@ terminal wizard:
 1. **Find the harnesses.** Check for the six supported executables and tell the
    human which you found: `claude`, `codex`, `cursor-agent`, `agy`
    (Antigravity), `opencode` and `hermes`. Anything else is unsupported today;
-   invite them to request it at <https://github.com/TedYav/tap/issues>.
+   OpenCode requires **2.x**: check `opencode --version` and upgrade 1.x before
+   continuing. TAP launches it with a private server (`--standalone`); hand-started
+   TAP seats need that flag too.
+   Invite them to request another harness at <https://github.com/TedYav/tap/issues>, or
+   to have an agent add it later with `tap help skill extend`.
 2. **Ask how they want to launch.** Presets for the common models of each
    harness they use, one preset to try the idea, or bare harnesses with
    configuration later. All three are fine first choices; bare is the shortest

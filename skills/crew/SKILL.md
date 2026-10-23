@@ -1,7 +1,7 @@
 ---
 name: crew
 description: "For a consult, review, or discussion needing follow-up but no durable lane, manage a short-lived TAP crew seat in this tmux session."
-argument-hint: 'add <preset|harness> [name] [--model <m>] [--env KEY=VALUE] [--cwd <path>] | list | shutdown [<crew>|--owner <handle>]'
+argument-hint: 'add <preset|harness> [name] [--model <m>] [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-args] | list | shutdown [<crew>|--owner <handle>]'
 allowed-tools: 'Bash'
 role: maker
 ---
@@ -9,8 +9,8 @@ role: maker
 # /tap:crew — ephemeral consult in this session
 
 ```bash
-tap crew add <model-bearing-preset> [name] [--cwd <path>]
-tap crew add <harness> [name] --model <model> [--env KEY=VALUE] [--cwd <path>]
+tap crew add <model-bearing-preset> [name] [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-args]
+tap crew add <harness> [name] --model <model> [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-args]
 tap crew list
 tap crew shutdown <crew>              # one crew seat
 tap crew shutdown [--owner <handle>]  # an owner's whole crew; bare = your own
@@ -27,7 +27,7 @@ Do not export `TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE` — `tap crew add` alread
 
 `tap crew list` renders only CREW rows. `tap crew shutdown <crew>` is the one-command dismissal: the same local obligation gate as `tap out`, then the registry row and the recorded crew pane together (`remove <crew>` is its alias). `tap crew shutdown` with no argument stops your own crew; `--owner <handle>` or `<team>/<handle>` names another owner. It stops only that recorded pane, never a sibling split, another tmux server's pane, or a session's last pane. Plain `tap out <handle>` removes only the row and prints the `tmux kill-window` follow-up; `tap out <handle> --kill` is refused for crew because it is session-scoped. There is no `crew up`/`down`: crew rows exist only while live.
 
-`--preset <name>` takes tuning from the catalog (`tap presets` lists it); crew keeps the handle, window, and cwd. A preset is complete, so combining it with `--model`/`--env` refuses, as does a preset whose harness disagrees with the POSITIONAL harness. The preset goes in the FIRST position (`tap crew add opus reviewer` runs preset `opus`); a compatibility harness is only checked when you name one explicitly alongside it, as in `tap crew add codex --preset opus`, which refuses because `opus` is a claude preset. `--harness` is retired and refuses `retired_flag` naming the positional form, so it cannot reach the mismatch check at all.
+`--preset <name>` takes tuning from the catalog (`tap presets` lists it); crew keeps the handle, window, and cwd. A preset owns its model, so combining it with `--model` refuses, as does a preset whose harness disagrees with the POSITIONAL harness. `--env`, `--unset-env` and `--` still apply, as with `tap session launch`: `tap crew add astra reviewer --env CODEX_LOG=debug -- --search` keeps the preset and adds one variable and one harness flag. They persist in the crew recipe, so `tap crew relaunch` keeps them; `tap session relaunch <crew> --env ...` adds more. A crew seat always starts a fresh conversation, so conversation selectors (`--resume`, `--continue`, `--conversation`, Codex `resume`/`fork`) refuse. The preset goes in the FIRST position (`tap crew add opus reviewer` runs preset `opus`); a compatibility harness is only checked when you name one explicitly alongside it, as in `tap crew add codex --preset opus`, which refuses because `opus` is a claude preset. `--harness` is retired and refuses `retired_flag` naming the positional form, so it cannot reach the mismatch check at all.
 
 ## Crew, ask, subagent, or team seat
 

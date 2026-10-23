@@ -1,4 +1,5 @@
-import { TapError, observeCallingPane, refuseUnanchoredPane, requireActingRegistry } from "../context";
+import { inheritedActor } from "../context";
+import { TapError, observeCallerIdentity, refuseUnanchoredPane, requireActingRegistry } from "../context";
 import { applyTeamOverride } from "../team-override";
 import { resolveSelection } from "../team-selection";
 import { assertResetUnfenced } from "../reset";
@@ -6,7 +7,7 @@ import { outstanding } from "../slices/outstanding";
 import { exchangeSelf } from "../exchange-self";
 
 export function cmdOutstanding(argv: string[]): number {
-  let me = process.env.TAP_SELF || "", positional = false, machine = false, stale = "", team = "";
+  let me = "", positional = false, machine = false, stale = "", team = "";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--json") { machine = true; process.env.TAP_JSON = "1"; }
@@ -42,7 +43,7 @@ export function cmdOutstanding(argv: string[]): number {
     const ctx = resolveSelection(callerPin, team);
     if (ctx.busRule !== "env") requireActingRegistry(ctx, 4);
     assertResetUnfenced(ctx.bus.home, "tap outstanding");
-    if (!me) me = exchangeSelf(ctx, "outstanding");
+    if (!me) me = inheritedActor() || exchangeSelf(ctx, "outstanding");
     ctx.bus.ensureDirs();
     // A live flip marker means this machine is the sending instance; older
     // sender instances' payloads are then another instance's obligations.
@@ -54,7 +55,7 @@ export function cmdOutstanding(argv: string[]): number {
     // With an explicit --team the caller named their bus; the pane arm is only
     // for a cwd-derived scan that found no acting registry.
     if (team || !(error instanceof TapError) || error.errorClass !== "unanchored_bus") throw error;
-    const seen = observeCallingPane();
+    const seen = observeCallerIdentity();
     if (seen.state === "inside") {
       refuseUnanchoredPane(seen.paneId, process.cwd(), 4,
         { session: seen.session, serverEpoch: seen.serverEpoch }, process.env, seen.paneId, true);

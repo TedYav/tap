@@ -719,7 +719,7 @@ open(path, "w").write(json.dumps(reg, indent=2) + "\n")
 PY
 rc="$(FAKE_LEAD_HARNESS=codex run_rc "$WORK/codex-self" "$TAP" compact lead -m "preserve the codex self refusal")"
 [ "$rc" -eq 1 ] || { cat "$WORK/codex-self.stderr" >&2; fail "a codex initiator must be refused with exit 1 (got $rc)"; }
-grep -q 'tap self compact --handoff' "$WORK/codex-self.stderr" \
+grep -q '/tap:self compact' "$WORK/codex-self.stderr" \
   || fail "codex self refusal did not name the supported tap self command"
 [ ! -s "$FAKE_TMUX_STATE/send-log" ] || fail "codex self refusal touched a pane"
 python3 -B - "$REG" <<'PY'
@@ -731,13 +731,7 @@ open(path, "w").write(json.dumps(reg, indent=2) + "\n")
 PY
 echo "command-mode: a codex initiator is pointed at tap self compact --handoff: ok"
 
-# The Claude self route now queues before any pane input: arming
-# validates identity first and only spawns the detached worker — which owns
-# every pane effect — once that passes. This fixture row has no seat
-# instance, so arming fails validation before anything is queued or typed;
-# that is a clean refusal (1), not the old submit-then-arm degrade (was 6,
-# retired with exit 7 — nothing was submitted, so there is nothing
-# degraded to report).
+# Every self alias refuses before reaching the arming engine, on Claude too.
 reset_state
 python3 -B - "$REG" <<'UNSTAMP'
 import json, sys
@@ -745,10 +739,10 @@ path = sys.argv[1]; reg = json.load(open(path)); reg["seats"]["lead"].pop("insta
 UNSTAMP
 rc="$(run_rc "$WORK/claude-self" "$TAP" compact lead -m "preserve the claude self route")"
 [ "$rc" -eq 1 ] || { cat "$WORK/claude-self.stderr" >&2; fail "claude self compact with incomplete seat identity must exit 1 (got $rc)"; }
-grep -q 'seat identity is incomplete' "$WORK/claude-self.stderr" \
-  || { cat "$WORK/claude-self.stderr" >&2; fail "claude self route did not report the identity refusal"; }
+grep -q '/tap:self compact' "$WORK/claude-self.stderr" \
+  || { cat "$WORK/claude-self.stderr" >&2; fail "claude self route did not name the authoring skill"; }
 [ ! -s "$FAKE_TMUX_STATE/send-log" ] || { cat "$FAKE_TMUX_STATE/send-log" >&2; fail "claude self route touched a pane before arming validated identity"; }
-echo "command-mode: a claude initiator compacts itself through tap self in-process: ok"
+echo "command-mode: a claude initiator gets the authored self-compaction route: ok"
 
 python3 -B - "$REG" <<'RESTAMP'
 import json, sys

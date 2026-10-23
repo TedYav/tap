@@ -1,5 +1,5 @@
-// The OpenCode arm of the resume-identity gate (tap-dt6kf). OpenCode 1.18.33
-// exits `Session not found` on a `--session` id its store lacks, so a resume
+// The OpenCode arm of the resume-identity gate (tap-dt6kf). OpenCode 2.1.2
+// starts an empty session for a `--session` id its store lacks, so a resume
 // whose captured id is provably gone from a readable store refuses with
 // no_exact_resume_identity. The row is never touched and no other id is
 // nominated; a store that cannot answer fails open to today's launch.
@@ -26,12 +26,12 @@ const STORED = "ses_f01a79c25ffef1g3lh8VcPxzUm";
 const OTHER = "ses_f01ab57bfffeGl4o5oe4vUKwbz";
 const RESUME_KINDS = ["resume", "resume-all", "restart", "seat-up"] as const;
 
-/** A WAL store shaped like OpenCode's: a `session` table keyed by id. */
+/** A WAL store shaped like OpenCode's: a `session_v2` table keyed by id. */
 function plantStore(path: string, ids: string[]): string {
   mkdirSync(join(path, ".."), { recursive: true });
   const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL; CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL)");
-  for (const id of ids) db.query("INSERT INTO session (id, directory) VALUES (?, '/tmp/wt')").run(id);
+  db.exec("PRAGMA journal_mode = WAL; CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT NOT NULL)");
+  for (const id of ids) db.query("INSERT INTO session_v2 (id, directory) VALUES (?, '/tmp/wt')").run(id);
   db.close();
   return path;
 }
@@ -134,7 +134,7 @@ test("locked store: the short busy timeout yields unknown and resume proceeds", 
   const path = storeAt();
   mkdirSync(dirname(path), { recursive: true });
   const writer = new Database(path, { create: true });
-  writer.exec("PRAGMA journal_mode = DELETE; CREATE TABLE session (id TEXT PRIMARY KEY); BEGIN EXCLUSIVE; INSERT INTO session VALUES ('x')");
+  writer.exec("PRAGMA journal_mode = DELETE; CREATE TABLE session_v2 (id TEXT PRIMARY KEY); BEGIN EXCLUSIVE; INSERT INTO session_v2 VALUES ('x')");
   try {
     expect(opencodeStoredSession(STORED, storeEnv(path))).toBe("unknown");
     expect(refusal("resume", record(), storeEnv(path))).toBeNull();

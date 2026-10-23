@@ -7,15 +7,17 @@ Transport is TAP (`tap send`/`reply`/`read`/`poll`/`outstanding`/`nudge`); the d
 ## Round 0 — blind seed, then candidates
 
 The first driver payload is an ask with the thread, mode, round cap, question,
-sources and relevant on-disk state. It requests the peer's own gap list or
-position. It contains no driver candidates or review findings, including in a
-linked briefing file. The review target itself remains available as evidence.
-The peer sends one `tap reply <seed-id> -f <position.md>` with its independent view.
+sources and relevant on-disk state. It requests each peer's own gap list or
+position; with several peers, the same body goes to each. It contains no driver
+candidates or review findings, including in a linked briefing file. The review
+target itself remains available as evidence. Each peer sends one
+`tap reply <seed-id> -f <position.md>` with its independent view.
 
-Only after that reply lands does the driver send the second ask, containing its
-candidates and triage questions. The peer answers that ask with one proposal turn.
-If candidates were already exposed, report that limit instead of claiming a blind
-pass. These two seed payloads span different turns because the second depends on
+Only after every reply lands (or the driver records a coverage decision for a peer
+that has not answered, SKILL.md § n peers) does the driver send the second ask,
+containing its candidates, triage questions and, with several peers, every
+position. Each peer answers that ask with one proposal turn. If candidates were
+already exposed to a peer, record that limit instead of claiming a blind pass. These two seed payloads span different turns because the second depends on
 the peer's reply; they comply with `/tap`'s batching floor. No round-counter
 change is needed: seed at round 0 and increment after each proposal/response cycle.
 
@@ -29,9 +31,9 @@ change is needed: seed at round 0 and increment after each proposal/response cyc
 - **Settle what you handle.** After acting on an inbound payload, `tap reply <id> -f <file>` answers an ask and settles it in one; `tap read <id>` settles a note. An unsettled inbound is unfinished work, not a read receipt.
 - **Re-poll at the rest boundary.** Immediately BEFORE ending a turn to rest, re-run `tap poll <me>` for unhandled mail; if you are the driver, also fold any unprocessed proposal file (`fold.sh`). Work can arrive mid-turn, so poll-first-at-entry is not enough. If anything appears, handle it and do not rest (fail closed).
 - **After a reply-expecting send, END THE TURN.** `tap send`/`tap reply`, then stop — the courier wakes your pane on the peer's reply. NEVER poll-sleep, busy-wait, or loop on `tap poll` inside one turn. Ending the turn IS how you wait; the golden rule ("after you send, END YOUR TURN") is the whole wait contract.
-- **Drain before you rest.** Before any rest, run `tap outstanding <me>`. An outstanding send means the `.done` has not come back — you still owe supervision or a terminal. Do not go dormant with unsettled sends.
-- **Driver: fold before a ledger-dependent reply or terminal.** Fold pending proposals through the ledger guard before any reply/`converged`/`decision_packet` whose content depends on ledger state — otherwise the anti-sycophancy check never runs on the peer's reversal and the terminal reports a stale ledger.
-- **Driver sends the terminal.** If you opened the thread, you send the `converged`/`decision_packet` — never leave the peer to time out (L8). Convergence is `is-converged.sh` exit 0, not a peer saying "looks good."
+- **Drain before you rest.** Before any rest, run `tap outstanding <me>`. An entry you owe (an unanswered inbound, an unsent terminal, an unfolded proposal) is work. An entry a peer owes you (your ask awaiting its reply) is what the courier wakes you for: note it and end the turn. Do not go dormant with work you owe.
+- **Driver: fold before a ledger-dependent reply or terminal.** Fold the round's pending proposals, in one invocation, through the ledger guard before any reply/`converged`/`decision_packet` whose content depends on ledger state — otherwise the anti-sycophancy check never runs on a peer's reversal and the terminal reports a stale ledger. A `CONFLICT` you have not adjudicated and disposed keeps the thread open.
+- **Driver sends the terminal.** If you opened the thread, you send the `converged`/`decision_packet` to every peer — never leave a peer to time out (L8). Convergence is `is-converged.sh` exit 0, not a peer saying "looks good."
 - **Silence is not death.** On a quiet pane, do NOT declare the peer dead. `tap nudge <peer>` once to re-submit a stuck sentinel, then re-poll on the next wake. Escalate to the human only after repeated quiet cycles — and keep polling.
 
 ### SHOULD — strong defaults (skip only with a stated reason)
@@ -47,17 +49,17 @@ change is needed: seed at round 0 and increment after each proposal/response cyc
 
 | Tempting thought | What to actually do |
 | --- | --- |
-| "I sent my message, my turn is over." | Sending ≠ done. For a reply-expecting send, ending the turn IS the wait — but run `tap outstanding <me>` first, and never rest with unsettled sends. |
+| "I sent my message, my turn is over." | Sending ≠ done. For a reply-expecting send, ending the turn IS the wait — but run `tap outstanding <me>` first, and rest only when every remaining entry is one a peer owes you, not one you owe. |
 | "Nothing's probably arrived yet." | Run `tap poll <me>`. Never narrate an inbox you have not just polled this turn. |
 | "I'll poll in a loop until it replies." | Never poll-sleep. `tap send`/`reply`, then END THE TURN — the courier re-invokes your pane on the reply. |
 | "I'll rest and re-check next turn." | Re-poll at the rest boundary; driver also folds any unprocessed proposal. If anything is pending, handle it and do not rest. |
 | "The peer said 'done,' so we're done." | Only `is-converged.sh` exit 0 plus a sent terminal is done. A peer's "done" is a propose-close, not convergence. |
 | "It's quiet, so the peer is dead." | `tap nudge <peer>` once, then keep polling; surface to the human after repeated quiet cycles. Silence is not death. |
-| DRIVER-DORMANCY: "I folded the proposals and sent my turn — I can rest." | Driver: run `tap outstanding <me>` and re-poll first. An unsettled send means you still owe the terminal or supervision. A driver that sends then rests without this check is surfaced, not silently dormant — that dormancy is the exact hole this row closes. |
+| DRIVER-DORMANCY: "I folded the proposals and sent my turn — I can rest." | Driver: run `tap outstanding <me>` and re-poll first. An entry you owe means you still owe the terminal or supervision. A driver that sends then rests without this check is surfaced, not silently dormant — that dormancy is the exact hole this row closes. |
 
 ## Handles, thread, role (role is derived, not symmetric)
 
-- `me` = your handle (`tap whoami`, e.g. `claude` / `codex`). `peer` = the other.
+- `me` = your handle (`tap whoami`, e.g. `claude` / `codex`). `peer` = each other participant; with several, the driver lists them in `metadata.json` `peers` (SKILL.md § n peers).
 - `thread` = the `thread_id` for this collaboration. The **driver opens it** by writing `threads/<t>/metadata.json` with `{"opened_by": "<me>"}` (plus the `messages/` and `proposals/` subdirs). That `opened_by` handle IS the driver identity every sink checks. The peer **adopts and echoes** that thread_id on every message; it never mints a parallel id.
 - `role` is **derived from `opened_by`**: the **driver** is whoever opened the thread and owns its shared state; the other agent is a **peer**. This is asymmetric, not symmetric — see below.
 
@@ -106,7 +108,7 @@ a terminal does not. There is no second acknowledgement or one-receipt-per-op lo
 
 The driver saves the complete canonical payload under
 `threads/<tid>/proposals/<id>.md`, keeping its frontmatter. `fold.sh <tid>
-<proposal-file>… --by <driver>` verifies the copy's body, from and kind against the
+<proposal-file>… --by <driver>` verifies the copy's body, from, kind and from_team against the
 canonical `path`, then derives time from the matching courier `.placed` receipt's
 high-resolution mtime. Neither a supplied `at` nor a chosen payload ID proves
 freshness. A damaged copy is repaired by recopying the canonical bytes.
@@ -119,6 +121,27 @@ the original message, never an op bookmark, and a batch cannot cite itself as ne
 reversal evidence. A whole-payload bookmark is written only once every op applied.
 The fold receipt names each applied, rejected, malformed or skipped op; an
 unattempted tail remains pending and the fold exits nonzero.
+
+When `peers` is declared the fold also preflights the batch. Two senders moving
+one item to different statuses in one invocation, or a payload contradicting an
+event folded after the payload was placed, is a `CONFLICT`: none of those ops applies, each is reported with the other senders'
+positions, and they stay pending; like a rejected op, a conflict stops its payload's
+ordered tail. The driver adjudicates with its own transition citing both op keys,
+runs `dispose.sh <tid> <payload>#<i> --reason <text> --by <driver>` for each
+conflicted op, and re-folds so the tails resume. The reason lands in
+`threads/<tid>/dispositions.ndjson` before the op's bookmark, and `fold.sh` and
+`is-converged.sh` read both, so a crash between the two writes still recovers.
+`dispose.sh` disposes only an op a fold has refused (fold records each rejected or
+conflicted op in `threads/<tid>/refusals.ndjson` before reporting it), holds the
+saved copy to fold's provenance bar (body, from, kind and from_team equal to the
+canonical payload, with its placed receipt), refuses a blank reason, and every
+reader validates each record (this thread, this driver, the op's payload, a reason;
+disagreeing records for one op fail loud). Disposing closes processing of one op, never the
+finding behind it; a duplicate add whose content already landed under another
+sender's id is disposed the same way, and its tail resumes on re-fold. When `peers`
+is declared, an `add` must use the sender's `<alias>-` prefix and a sender outside
+the map cannot add. A thread without `peers` keeps free-form ids and
+last-writer-wins, exactly as before: every n-party rule is switched on by `peers`.
 
 This is ordered partial application, not a rollback transaction. Re-folding uses
 both the validated ledger source stamps and the bookmark file, so a crash after
@@ -140,8 +163,8 @@ On a quiet pane, do NOT declare the peer dead:
 
 Each cycle the **driver** bumps the round (`round-count.sh <tid> --increment --by <me>`), then runs `is-converged.sh <tid> <round-cap> --by <me>`:
 
-- exit 0 (converged: ledger drained AND no unprocessed proposal) → send the terminal `converged` naming the artifact version, then stop.
-- exit 2 (cap reached, items still open) → assemble a `decision_packet` (see `decision-packet.md`) and send it; stop. Never silently give up.
+- exit 0 (converged: ledger drained AND no unprocessed proposal) → account for participation (SKILL.md § n peers), then send the terminal `converged` naming the artifact version to every peer (a reply to each open ask, a note otherwise), then stop.
+- exit 2 (cap reached, items still open) → assemble a `decision_packet` (see `decision-packet.md`) and send it to every peer; stop. Never silently give up.
 - exit 1 (open) → continue: fold any pending proposals, reply with your turn, END THE TURN, loop on the next wake.
 - exit 3 (ERROR) → a non-driver tried to enumerate convergence, or thread state is unreadable — an unreadable ledger, or an unapplied proposal that cannot be parsed. Fail loud, never treat as OPEN: an unreadable proposal is a teammate's disposition that has not been recorded, and converging over it discards their dissent. Repair it and re-fold at the same path and id; if it cannot be repaired, ask the sender to re-send, and if neither is possible escalate it as a `human_decision`. **Deleting the file is not a disposition** — it is the same content loss the bookmark-on-failure defect caused, spelled differently, and it leaves no record that a proposal existed.
 
@@ -149,4 +172,4 @@ Each cycle the **driver** bumps the round (`round-count.sh <tid> --increment --b
 
 ## Always send the terminal message (L8)
 
-The **driver** converges and MUST send the terminal `converged`/`decision_packet`. Otherwise the peer keeps polling a drained thread with no signal to stop — the exact "30-min, moving on" false-unresponsive failure this convergence engine exists to kill.
+The **driver** converges and MUST send the terminal `converged`/`decision_packet`. Otherwise a peer keeps polling a drained thread with no signal to stop — the exact "30-min, moving on" false-unresponsive failure this convergence engine exists to kill.

@@ -48,6 +48,9 @@ LOGIN_SHELL
 # the way a matching registration would, then idles under the harness's name.
 cat > "$WORK/bin/claude" <<'HARNESS'
 #!/bin/sh
+if [ "${0##*/}" = opencode ]; then
+  case "$1" in --version|api) exec "${TAP_SMOKE_BUN:?}" "$OPENCODE_FIXTURE" "$@" ;; esac
+fi
 { printf 'TAP_CLEAR_ID=%s\nTAP_HOME=%s\n' "${TAP_CLEAR_ID:-}" "${TAP_HOME:-}"; printf '%s\n' "$@"; } > "$LAUNCHES/$$"
 if [ -n "${TAP_CLEAR_ID:-}" ]; then
   python3 - "$REG" "$TAP_CLEAR_ID" <<'PY'
@@ -63,6 +66,7 @@ fi
 exec "$IDLE/${0##*/}" 600
 HARNESS
 cp "$WORK/bin/claude" "$WORK/bin/opencode"
+export OPENCODE_FIXTURE="$ROOT/runtime/bun/test/support/opencode-cli.ts"
 ln -s /bin/sleep "$WORK/idle/claude"; ln -s /bin/sleep "$WORK/idle/opencode"; export IDLE="$WORK/idle"
 chmod +x "$WORK/bin/tmux" "$WORK/bin/ps" "$WORK/bin/sh" "$WORK/bin/claude" "$WORK/bin/opencode"
 export PATH="$WORK/bin:$PATH" TAP_LAUNCH_SHELL="$WORK/bin/sh"

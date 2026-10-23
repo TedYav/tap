@@ -40,8 +40,8 @@ export function captureCompactionBoundary(mode: ProofMode, seat: Seat, now = Dat
   } else {
     const db = new Database(path, { readonly: true });
     try {
-      if (!db.query("SELECT id FROM session WHERE id = ?").get(session)) throw new Error("compaction session is absent from the bound store");
-      offset = (db.query("SELECT COALESCE(MAX(rowid), 0) AS n FROM message").get() as { n: number }).n;
+      if (!db.query("SELECT id FROM session_v2 WHERE id = ?").get(session)) throw new Error("compaction session is absent from the bound store");
+      offset = (db.query("SELECT COALESCE(MAX(seq), 0) AS n FROM session_message WHERE session_id = ?").get(session) as { n: number }).n;
     } finally { db.close(); }
   }
   return { mode, path, session, since: now, dev: stat.dev, ino: stat.ino, offset, anchor };
@@ -60,26 +60,15 @@ export function compactionEnterEffects(mode: ProofMode, seat: Seat, base: PaneEf
   } };
 }
 
-/**
- * Session-bounded: `m.session_id = ?` rides `message_session_time_created_id_idx`, `rowid > ?` is
- * answered from the index entry, and the parent is a primary-key lookup, so no row of another
- * session is read or JSON-decoded (tap-2zzft; the test pins the plan).
- */
-export const OPENCODE_COMPACTION_SQL = `SELECT json_extract(m.data, '$.time.completed') AS completed
-  FROM message m INDEXED BY message_session_time_created_id_idx JOIN message parent ON parent.id = json_extract(m.data, '$.parentID')
-  WHERE m.session_id = ? AND parent.session_id = m.session_id
-    AND m.rowid > ? AND parent.rowid > ?
-    AND json_extract(parent.data, '$.role') = 'user'
-    AND json_extract(m.data, '$.role') = 'assistant'
-    AND json_extract(m.data, '$.summary') = 1
-    AND json_extract(m.data, '$.finish') = 'stop'
-    AND json_extract(m.data, '$.error') IS NULL
-    AND json_extract(parent.data, '$.time.created') > ?
-    AND json_extract(m.data, '$.time.created') > ?
-    AND json_extract(m.data, '$.time.completed') > ?
-    AND EXISTS (SELECT 1 FROM part p INDEXED BY part_message_id_id_idx WHERE p.message_id = parent.id
-      AND p.session_id = m.session_id AND json_extract(p.data, '$.type') = 'compaction')
-  ORDER BY m.rowid LIMIT 1`;
+/** A completed v2 compaction row is the witness; its sequence must follow Enter. */
+export const OPENCODE_COMPACTION_SQL = `SELECT time_updated AS completed
+  FROM session_message INDEXED BY session_message_session_type_seq_idx
+  WHERE session_id = ? AND type = 'compaction' AND seq > ?
+    AND json_extract(data, '$.status') = 'completed'
+    AND json_extract(data, '$.reason') = 'manual'
+    AND json_extract(data, '$.error') IS NULL
+    AND time_created > ? AND time_updated > ?
+  ORDER BY seq LIMIT 1`;
 
 export function readCompactionProof(boundary: CompactionBoundary): CompactionProof | null {
   const { path, session, since, offset, mode } = boundary;
@@ -90,9 +79,8 @@ export function readCompactionProof(boundary: CompactionBoundary): CompactionPro
     if (mode === "opencode") {
       const db = new Database(path, { readonly: true });
       try {
-        // OpenCode consumes a summary only when its parent has a compaction part
-        // and the summary has finished without an error. A request alone is not proof.
-        const row = db.query(OPENCODE_COMPACTION_SQL).get(session, offset, offset, since, since, since) as { completed: number } | null;
+        // A running or failed compaction is not a completed replacement window.
+        const row = db.query(OPENCODE_COMPACTION_SQL).get(session, offset, since, since) as { completed: number } | null;
         return row && typeof row.completed === "number" && Number.isFinite(row.completed)
           ? { evidence: "store-proven", compactedAt: new Date(row.completed).toISOString() } : null;
       } finally { db.close(); }

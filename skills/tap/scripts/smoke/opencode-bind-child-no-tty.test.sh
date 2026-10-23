@@ -65,15 +65,30 @@ printf '%s\n' "$TAP_TEST_ROOT"
 STUB
 chmod +x "$WORK/bin/resolver"
 
+cat > "$WORK/bin/ps" <<'STUB'
+#!/usr/bin/env bash
+if [ "$2" = "$TAP_SMOKE_SERVER_PID" ]; then
+  printf '%s\n' 'opencode serve --stdio --port 0'
+else
+  printf '%s\n' 'opencode --standalone -s ses_smoke_bind_tty'
+fi
+STUB
+chmod +x "$WORK/bin/ps"
 cat > "$WORK/harness.ts" <<'TS'
 import { $ } from "bun"
 const which = process.argv[2]
+process.env.TAP_SMOKE_SERVER_PID=String(process.pid)
 const mod = await import(process.env.TAP_TEST_PLUGIN!)
-await mod.default({ directory: process.env.TAP_TEST_ROOT!, worktree: "", $ })
+const directory=process.env.TAP_TEST_ROOT!
+const stop=await mod.default.setup({app:{version:"2.1.2"},location:{directory},
+  session:{get:async({sessionID})=>({id:sessionID,location:{directory}}),hook:async()=>{},synthetic:async()=>{}},
+  storage:{get:async()=>undefined,set:async()=>{}},
+  event:{async *subscribe({signal}){await new Promise(resolve=>signal.addEventListener("abort",resolve))}},
+})
 if (which === "control") {
-  // Same `$`, same stub, no redirect: what the plugin's child inherits by default.
   await $`bash ${process.env.TAP_TEST_STUB!} control`.quiet().nothrow()
 }
+await stop?.()
 TS
 
 # Run one arm inside a fresh pty so the harness has a real controlling tty.

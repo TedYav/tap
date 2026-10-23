@@ -11,7 +11,7 @@ export const WAITER_SOURCES: readonly string[] = [
   "events.ts", "existing-sentinel.ts", "forwarding.ts", "fsatomic.ts", "git-root.ts", "harness-families.ts",
   "harness-queue.ts", "ids.ts", "index-home.ts", "index-snapshot.ts", "injection-behavior.ts", "input-backup.ts", "input-protection.ts", "invocation-memo.ts",
   "lock-attribution.ts", "lossless-json.ts", "native-error.ts", "notice-submit.ts", "notice.ts",
-  "observe-gather.ts", "observe.ts", "opencode-composer.ts", "opencode-store.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts",
+  "observe-gather.ts", "observe.ts", "opencode-composer.ts", "opencode-service.ts", "opencode-shared-seat.ts", "opencode-shared.ts", "opencode-store.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts",
   "pane/draft.ts", "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "proc-row.ts", "process-ancestry.ts", "pyint.ts",
   "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
   "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "retry.ts", "scripts-dir.ts", "selector.ts",

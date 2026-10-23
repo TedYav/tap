@@ -39,6 +39,10 @@ export const HELP_TOMBSTONES: Record<string, { stderr: string }> = {
     stderr:
       "tap admin prune: tap admin prune is now: tap admin refresh plus tap admin retire <team>; next: tap admin refresh   # or: tap admin retire <team>\n",
   },
+  models: {
+    stderr:
+      "tap models: tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l); next: tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated\n",
+  },
   done: {
     stderr:
       "tap done: tap done is retired and settles nothing; an ask settles when you answer it, a note when you read it; next: tap reply <id> --by <you> -f <file>   # a note settles on: tap read <id>\n",
@@ -295,23 +299,38 @@ SEE ALSO
   tap self — harness self-control for the calling seat
 
 USAGE
-  tap self compact [--handoff <file>] [--pane <tmux-target>] [--harness <name>] [--] <focus>
+  tap self compact --handoff <file> [--notify <seat>] [--pane <tmux-target>] [--harness <name>] [--] <focus>
   tap self goal [--pane <tmux-target>] [--harness <name>] [--] <objective>
   tap self loop [--interval <N><s|m|h|d>] [--pane <tmux-target>] [--harness <name>] [--] <prompt>
-  tap self clear [--handoff <file>] [--charter <file>] [--notify <seat>] [--pane <tmux-target>] [--harness <name>]
-  tap self rebrief --handoff <file> --notify <seat> [--charter <file>] [--pane <tmux-target>] [--harness <name>]
+  tap self clear --handoff <file> [--charter <file>] [--notify <seat>] [--pane <tmux-target>] [--harness <name>]
+  tap self rebrief --handoff <file> [--notify <seat>] [--charter <file>] [--pane <tmux-target>] [--harness <name>]
 
 DESCRIPTION
   Driven by the /tap:self skill: the agent composes the text and this verb enforces the allowlist before any pane effect. It sets or strengthens only: no goal clearing, loop canceling, slash injection, deixis, or exclusive compact focus. It acts on the calling seat, which must be registered.
 
-THE THREE GROUPS
-  compact          All three harnesses arm a detached worker that submits /compact after the initiating turn ends and sends the resume note only after fresh compaction proof. Claude puts the focus on the /compact line; Codex (handoff required) and opencode submit bare /compact and carry the focus in the resume note. --handoff is compact only: the file is copied to the bus before any pane effect, because /compact consumes the turn this runs in. Focus is at most 2000 characters.
-  goal, loop       Submit the typed /goal or /loop command. A goal must name a plan path, artifact or quoted objective, completion evidence, and a stop condition or bound; goal text is at most 4000 characters including the prefix and verification marker. --interval is loop only.
-  clear, rebrief   Arm the native reset observer, which submits the harness clear itself. rebrief requires --handoff and --notify, a different active teammate who continues recovery; --charter requires --handoff. Both need the seat's native session and transcript identity.
+CHOOSE
+  compact          Keep this TAP instance and its obligations; the harness summarizes the conversation. You author the checkpoint and additive focus.
+  rebrief          Keep this TAP instance and its obligations; start fresh context from your authored role, priming and selected state. History remains retrievable.
+  clear            Deprecated alias of rebrief. The handoff form prints a migration line; bare clear refuses and points to /tap:self rebrief.
+  new workstream   The requester uses peer tap clear <seat> -m, tap refresh <seat> --fresh, or a new seat.
+
+OPTIONS
+  --handoff FILE   Required for compact, rebrief and clear on every supported harness. A readable, nonempty regular file is copied durably before arming. Use /tap:self to author it from intent; the CLI never fabricates a summary or guesses a role.
+  --charter FILE   Optional separate charter for rebrief/clear, copied before the handoff.
+  --notify SEAT    Optional outcome audience for compact/rebrief/clear; a different active teammate. No supervision or obligation transfer. Omitted: no peer is selected or messaged; the resumed seat reports in its own conversation. If asynchronous failure prevents recovery, only the receipt/log records it. Explicit invalid, self or inactive recipients refuse before effects.
+  --pane TARGET   Resolve the calling seat by tmux target.
+  --harness NAME  Must match the registered harness.
+  --interval N    Loop only: a duration such as 5m.
+
+BEHAVIOR
+  Compact arms one detached worker; fresh native compaction proof precedes the resume note. Claude carries additive focus on /compact; Codex and OpenCode carry it in the resume note. Focus is at most 2000 characters.
+  Rebrief/clear arm the native reset observer. Both require bound native session/transcript identity; neither retires the TAP instance.
+  Recovery reads the whole brief, including holds, Keep scope and live scheduler ids, before loading role skills as guidance without replaying initialization. Reconcile live state and obligations, then follow Next step, including wait for orders. Only the resumed agent reports successful reading; the worker sends no second success notice. Failure notices go only to explicit notify; notification failure is recorded separately and never replays the operation.
+  Goal/loop submit the typed command unchanged. Goal must name a plan, artifact or quoted objective, completion evidence and a bound; at most 4000 characters including prefix and marker. No clearing, cancelling or weakening.
 
 SUPPORT
                   claude   codex                   opencode
-  compact         yes      yes (--handoff needed)  yes
+  compact         yes      yes                     yes
   goal            yes      yes                     exit 6
   loop            yes      exit 6                  exit 6
   clear, rebrief  yes      yes                     exit 6
@@ -321,7 +340,8 @@ EXAMPLES
   tap self compact --handoff tmp/me/handoff.md -- "Preserve: open review state; plan in docs/plan.md"
   tap self goal -- "Objective: land docs/plan.md; done when its checks exit 0; stop after 20 turns"
   tap self loop --interval 5m -- "Check the CI run for this branch's pull request and report"
-  tap self rebrief --handoff tmp/me/handoff.md --notify lead
+  tap self rebrief --handoff tmp/me/handoff.md
+  tap self compact --handoff tmp/me/handoff.md --notify lead -- "Preserve: review holds and next step"
 
 EXIT CODES: armed and submitted are not completed recovery
   0  goal/loop: submitted and verified. compact: queued or armed, completion unverified; end your turn and let the resume note arrive
@@ -360,16 +380,16 @@ BY HARNESS (peer seats)
   others     degraded (exit 6); the message names a manual keep-list route
 
 YOURSELF
-  Allowed, but -m is required: the focus is the one thing a self-compaction adds that the default summarizer cannot, and you are the only caller who knows it. This routes to tap self compact, which only ARMS a worker: "armed (self; completion unverified)" is not a finished compaction. End your turn and let the resume note arrive. See tap help self.
+  Every self target refuses before input. Use /tap:self compact: the skill authors the required handoff and invokes tap self compact --handoff FILE -- FOCUS. Peer compaction and --all keep their existing lifecycle.
 
 EXAMPLES
   tap compact reviewer
   tap compact reviewer builder -m "Preserve: open review state; plan in docs/plan.md"
   tap compact --all
-  tap compact <your-handle> -m "Preserve: open asks, branch name, next test to run"
+  tap self compact --handoff tmp/me/handoff.md -- "Preserve: open asks, branch name, next test"
 
 EXIT CODES
-  0  every seat compacted and its resume sent (yourself: armed, completion unverified), or --all had nothing to compact
+  0  every peer compacted and its resume sent, or --all had nothing to compact
   6  degraded only: an unsupported harness, or the compact landed but its resume wake did not (that seat may stop; any inbound message restarts it: tap send <seat> --wake -f <resume-file>). A focus that did not arrive is printed so you can re-send it: tap send <seat> -f <focus-file> --fyi --wake.
   1  any hard failure. When the message says compaction or its follow-up is unverified, do not retry /compact: inspect the seat, the handoff and the receipt it names.
 
@@ -547,8 +567,8 @@ DESCRIPTION
     "USAGE",
     "  tap nudge <to> | --to <to> [--message <text>] [--no-interrupt] [--dry-run]",
     "  tap nudge [<to>] --pane <tmux-target> [--dry-run]",
-    "  tap nudge --harness <family> [--team <team>|'*'] [--message <text>] [--no-interrupt]",
-    "    [--dry-run] [--yes]",
+    "  tap nudge --harness <family> [--team <team>|'*'] [--active-within <duration>]",
+    "    [--message <text>] [--no-interrupt] [--dry-run] [--yes]",
     "",
     "DESCRIPTION",
     "  One pass down a ladder, at most one action per rung; every key is recorded in a recovery",
@@ -588,6 +608,13 @@ DESCRIPTION
     "    agy) on --team (default: yours; '*' for all), skipping you and seats that are offline,",
     "    suspended, gone or poll-only. More than one target, or '*', asks y/N at a terminal or",
     "    needs --yes; a declined answer sends nothing and exits 0.",
+    "  --active-within <duration> keeps only the fan-out seats whose harness was active within",
+    "    the duration (90s, 30m, 2h or 1d; a bare number refuses) by its own record: the",
+    "    transcript's last write (claude, codex) or the newest OpenCode message. Seats idle",
+    "    longer, or with no record TAP can read (cursor, hermes, agy), are skipped and listed.",
+    "    A long-idle seat's prompt cache has likely expired, so waking it re-reads its whole",
+    "    context at full price. Activity is read once, when seats are selected. Only the",
+    "    --harness form takes it.",
     "",
     "  Retired, refused with nothing sent: --interrupt (now the default), --reason (use",
     "    --message), --aggressiveness (use --dry-run), --from (nudges have no sender), -m and -f",
@@ -604,6 +631,8 @@ DESCRIPTION
     "  tap nudge tap/fable --dry-run",
     "  # Wake every codex seat after a usage reset",
     "  tap nudge --harness codex --team '*' --yes",
+    "  # Wake codex seats active in the last 30 minutes, without ending a running turn",
+    "  tap nudge --harness codex --active-within 30m --no-interrupt --yes",
     "",
     "EXIT CODES",
     "  0  done: dismissed and continued, submitted, delivered, requeued, or nothing to do",
@@ -615,7 +644,8 @@ DESCRIPTION
     "",
     "SEE ALSO",
     "  Details: skills/tap/protocol/delivery/nudge.md (the ladder, its recovery-run evidence, the",
-    "    doorbell grammar, the OpenCode repaint, identity re-checks, fan-out skips).",
+    "    doorbell grammar, the OpenCode repaint, identity re-checks) and nudge-fanout.md beside it",
+    "    (fan-out selection, skips, --active-within).",
   ),
   "outstanding": lines(
     "NAME",
@@ -628,7 +658,7 @@ DESCRIPTION
     "  <me> defaults to TAP_SELF, then the caller's verified registered identity. If the caller cannot be observed, pass the positional handle: tap outstanding <handle>.",
     "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal: any row means you still owe supervision. Exit 0 whether or not sends are open (open sends are state, not an error; branch on `--json` `outstanding` and `spool_conditions` (parked sends can collapse into a backlog condition); nothing is owed only when both are empty); non-zero only for a usage error or a bus that cannot be read. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
   ),
-  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets · models              saved launches and model guidance\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
+  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets                       saved launch recipes\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap models → tap presets or tap launch; tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
   "peek": "NAME\n  tap peek — read a teammate's pane without touching it\n\nUSAGE\n  tap peek <handle> [--pane <tmux-target>] [--json]\n\nDESCRIPTION\n  Supervision read. Prints the seat's input_state and a transcript tail with the\n  ACTIVE INPUT REGION STRIPPED, so a draft your teammate has not submitted is never\n  quoted back at them. It sends nothing, submits nothing, and wakes nobody.\n\n  <handle> names a seat on your team. `help` can never be a registered handle, so\n  the bare `tap peek help` is unambiguous and prints this page.\n\nOPTIONS\n  --pane   read an explicit tmux target instead of the handle's registered pane\n  --json   emit {handle, pane, harness, input_state, transcript}\n\nEXIT CODES\n  0  read\n  1  usage error, or the handle is not registered\n  3  the seat's pane is gone — re-register it against a live target\n\nSEE ALSO\n  tap team (who exists) · tap health (liveness) · tap nudge (recover a stuck sentinel)\n",
   "poll": lines(
     "NAME",
@@ -652,7 +682,7 @@ DESCRIPTION
     "  List saved launch recipes: name, harness, family, model, primary roles, and the catalog's one-line description. Answers 'which combinations have I saved?' without grepping the config.",
     "",
     "  Read-only: it writes nothing and reads no bus, registry, or repo state.",
-    "  These are optional saved recipes, not installed models or verified access; tap models has model guidance, and a combination you use often is worth saving.",
+    "  These are optional saved recipes, not installed models or verified access; save a combination you use often.",
     "  Catalog: the file printed in the output, normally ${XDG_CONFIG_HOME:-$HOME/.config}/tap/config.toml; an existing presets.toml is also read when config presets are absent or empty.",
     "  FAMILY is vendor lineage: the preset's `metadata.model_family`, else the vendor a claude, codex or agy harness implies, else `-`.",
     "  No saved presets is a normal empty state: launch directly with tap launch claude newcomer; tap setup --machine optionally saves presets. An unreadable, malformed or insecure catalog keeps its path and repair advice. Both cases exit 0 and print notices on stderr.",
@@ -723,7 +753,7 @@ CHOOSE
   tap refresh   start a fresh conversation, then recap the obligations the seat inherited; --fresh also retires the instance
 
 DESCRIPTION
-  Refresh a seat: clear its context, re-register it, and let its rebind recap re-point it at the obligations it inherited. A leader may refresh a TEAMMATE (the target pays only the injected recap, never the choreography); a seat may refresh itself. It is a frontend over tap clear (peer) and /tap:self clear (self), with no second implementation. tap clear is the same mechanism without the policy layer and stays reachable for a stuck harness.
+  Refresh a seat: clear its context, re-register it, and let its rebind recap re-point it at the obligations it inherited. A leader may refresh a TEAMMATE (the target pays only the injected recap, never the choreography); a self refresh refuses before reset because refresh has no authored-handoff input. Use /tap:self rebrief for your own continuing role. The peer frontend uses tap clear; the self route shares rebrief's required-brief guard. tap clear is the same mechanism without the policy layer and stays reachable for a stuck harness.
   --fresh also RETIRES the current instance, with the machinery tap out uses: payloads never move, and tap in <handle> --restore <instance> still works. A fresh instance inherits no obligations, so --fresh REFUSES by id while any are unsettled, parked spool sends included. --fresh --force proceeds and notifies each waiting sender once (cross-team senders addressed <team>/<handle>). --force without --fresh is a usage error.
   Everything that resolves the seat's registry row happens BEFORE the instance is retired, and retirement mints a new instance in place rather than deleting the row, so a clear that fails leaves the seat completely unchanged.
 
@@ -731,7 +761,7 @@ EXAMPLES
   tap refresh builder
   tap refresh builder --fresh
   tap refresh builder --fresh --force
-  tap refresh                  (refresh yourself)
+  tap self rebrief --handoff tmp/me/handoff.md  (your continuing role)
 
 EXIT CODES                        next safe action
   0   refreshed
@@ -740,7 +770,7 @@ EXIT CODES                        next safe action
   6   refreshed, but a sender notice FAILED: those peers are still waiting and do not know   tell them directly
   7   the clear COMPLETED and retirement was refused: context is gone and the instance is retained (also when the retirement spool scan is unstable)   read the refusal; do not clear again
   8   the mechanism replaced the process and could not confirm it came back   the pane is the authority: look at it; this is not a refusal to retry
-  9   SELF only: the native clear/recovery observer is armed and the reset is unverified at return; nothing was retired. Under --fresh this is structural, not per-run: a self refresh can never retire its instance   end your turn and inspect the receipt (Claude/Codex with bound transcripts only); to retire, after recovery completes a peer runs tap refresh <seat> --fresh
+  9   reserved self-engine translation: observer armed, reset unverified, nothing retired; current self refresh refuses without a brief before reaching it
   10  SELF only: the clear was submitted but its recovery wake did NOT land, so nothing will start the seat's next turn   send it any message: tap send <seat> --wake -f <resume-file>; do not re-run
   else  the underlying clear's code. Codes refresh claims are TRANSLATED from the engine's, never passed through: tap clear also exits 7, for a different partial state.
 
@@ -858,7 +888,7 @@ SEE ALSO
     "  tap reset",
     "",
     "DESCRIPTION",
-    "  Renamed: use tap team reset [--dry-run] [--yes] [--allow-nonstandard-bus-path] [--kill-self] [--json]. It creates a fenced, complete team checkpoint before reinitializing the acting registry and bus; tap team restore puts that checkpoint back.",
+    "  Renamed: use tap team reset [TEAM] [--only <handles> | --except <handles>] [--dry-run] [--yes] [--json]. It stops and retires selected seats while keeping the team initialized.",
   ),
   "restore": "NAME\n  tap restore — bring back a handle from a recovery archive\n\nUSAGE\n  tap restore <handle> [--archive <id|path>] [--json]\n\nDESCRIPTION\n  Restores identity, inbox contents, and the complete registry row from a\n  teardown archive or an exact COMPLETE picker-kill backup path. A picker-kill\n  restore leaves the row suspended; next: tap session resume <handle>. A forensic\n  picker backup with no prior seat state refuses with archive_no_seat_state.\n  Refuses with error_class=handle_live when any registry row already holds the handle (including suspended rows) —\n  tear that seat down first; restore does not clobber or merge. Default archive is\n  the latest .tap/bus/archive/teardown/*-<handle>.\n\nOPTIONS\n  --archive   teardown archive name or exact teardown/picker-backup path\n  --json      emit {ok, handle, archive} or {ok:false, error_class:handle_live, ...}\n\nEXIT CODES\n  0  restored\n  1  usage error, archive missing/unrestorable, or handle_live refusal\n\nSEE ALSO\n  tap teardown · tap session resume · tap register · tap unregister\n",
   "roster": lines(
@@ -975,7 +1005,7 @@ SEE ALSO
     "",
     "  Harness guidance is user-level (./install.sh from the TAP primary); setup will not write a repo-level hook.",
     "  Claude and Codex use the complete tap plugin (tap:lead, tap:drive). Other hosts initially expose",
-    "  tap, tap-in, tap-send, tap-escalate, tap-config-wizard, tap-help; fullKit controls their optional skills.",
+    "  tap, tap-in, tap-send, tap-escalate, tap-config-wizard, tap-help, tap-extend; fullKit controls their optional skills.",
     "  ./install.sh leaves disabled plugins unrefreshed. Codex refresh uses native add, which enables",
     "  the plugin; keep its enabled setting unchanged during that command.",
     "",
@@ -1088,8 +1118,8 @@ SEE ALSO
     "  tap team <operation> [options]",
     "",
     "DESCRIPTION",
-    "  Bare `tap team` prints THIS team's roster: handle, harness, state, family,",
-    "  context, model and preset. `tap team roster <team>` prints another enrolled team's",
+    "  Bare `tap team` prints THIS team's roster: handle, harness, state, context,",
+    "  family, model and preset. `tap team roster <team>` prints another enrolled team's",
     "  roster from any checkout. Columns, filters and JSON: `tap help team roster`.",
     "",
     "OPERATIONS (details: tap help team <operation>)",
@@ -1098,13 +1128,13 @@ SEE ALSO
     "  attach       Open iTerm viewers onto live seats. Never launches or resumes.",
     "  detach       Disconnect tmux clients. Seats keep running.",
     "  down         Stop sessions and keep the roster.",
-    "  up           Resume stopped sessions after down or restore.",
+    "  up           Resume stopped sessions after down.",
     "  out          Retire parent families and keep the team initialized.",
-    "  refresh      Trim roster rows whose sessions are gone.",
+    "  refresh      Trim roster rows whose sessions or recorded panes are gone.",
     "  shutdown     Stop sessions and remove their rows; a full one deletes the registry.",
-    "  reset        Checkpoint the team's state, then reboot it blank.",
-    "  restore      Put a reset checkpoint back.",
-    "  purge        Delete one reset archive.",
+    "  reset        Stop and retire seats; keep the team initialized.",
+    "  restore      Removed; historical checkpoints are left untouched.",
+    "  purge        Removed; historical checkpoints are left untouched.",
     "  list         Machine-wide team summary, not this roster; `tap help teams`.",
     "               `tap team list <name>` shows that team's roster.",
     "",
@@ -1114,9 +1144,9 @@ SEE ALSO
     "  Retire roster rows, keep the team initialized   out (processes keep running",
     "                                                  unless --kill or --hard)",
     "  Stop sessions, remove their rows                shutdown (a full one deletes the registry)",
-    "  Checkpoint team state, start blank              reset, then restore or purge",
+    "  Stop seats, keep the team initialized           reset (same as out --hard)",
     "",
-    "  attach, detach, down, shutdown and up take an optional <team> and",
+    "  attach, detach, down, out, reset, shutdown and up take an optional <team> and",
     "  --only/--except seat selectors; each page explains them. `down` and `shutdown`",
     "  also state what --yes and --force do.",
     "",
@@ -1124,18 +1154,48 @@ SEE ALSO
     "  tap teams (machine-wide summary) · tap session (durable sessions) · tap admin",
     "  tap attach <handle> (put THIS terminal in front of ONE seat)",
   ),
-  "team refresh": "NAME\n  tap team refresh — trim gone seats from this team's roster\n\nUSAGE\n  tap team refresh [--hard] [--dry-run] [--json]\n\nDESCRIPTION\n  Deletes only rows whose exact session name is positively absent in a readable\n  current-generation snapshot. Offline and unknown rows are preserved; expired\n  pending reservations trim after grace. Poll-mode seats are skipped. --hard\n  additionally removes suspended and offline rows only when their exact session\n  is not live; this includes poll delivery. Recognized no-server proves the\n  namespace empty, while every other snapshot failure keeps all hard candidates.\n  --dry-run previews the identical receipt set without mutation. `team up` can\n  resurrect a suspended row only before --hard removes it; afterward use a\n  fresh launch or `tap in` to restore membership.\n\n  Distinct from `tap refresh`, which clears a seat's context.\n\nOPTIONS\n  --hard     cut parked (suspended/offline) rows whose session is not live\n  --dry-run  preview the identical receipt set without mutation\n  --json     emit the receipt as JSON\n\nSEE ALSO\n  tap help team · tap team up · tap help refresh\n",
-  "team up": "NAME\n  tap team up — resume this team's stopped sessions after down or restore\n\nUSAGE\n  tap team up [<team>] [--dry-run] [--json | --attach [--tabs]] [--only [h,...] | --except [h,...]] [--yes]\n\nOPTIONS\n  --dry-run       preview the sessions that would resume\n  --json          emit launcher receipts as JSON; requires exact targets;\n                   not with --attach\n  --yes           skip the final [Y/n] confirmation after a picker\n  --only <h,...>  act on the named handles and spare every other seat\n  --except <h,...>\n                   spare the named handles and act on every other seat\n  --attach        after the cohort, open viewers onto exactly the seats that\n                   came up: a new iTerm window when iTerm automation is\n                   available, else the tmux attach commands are printed.\n                   Team up's exit code stands unless the attach itself fails.\n                   Not with --json: the attach prints human receipts\n  --tabs          with --attach, one viewer tab per seat instead of a grid\n                   (8 or more seats always use tabs)\n\n  Selector values are comma-separated bare team-local handles. Omit a value\n  on a terminal to select parents interactively. Crew rows are not selectable;\n  up does not recreate crews after a parent harness ends.\n  --only and --except cannot be combined or repeated. A supplied list stays\n  exact, and --yes never selects a target. Picker actions preview first;\n  dry-run previews without consent or effects.\n\n  <team> names an enrolled team to resume from its own checkout, resolved\n  like `tap team roster <team>`; bare, this team.\n\n  Seats launch concurrently, up to 4 at a time; result lines and summaries\n  print in roster order, while per-seat progress on stderr may interleave.\n\n  --attach attaches only seats that resumed successfully this run — never\n  failed or manual_attention seats — with viewers ordered by session name, as\n  tap team attach plans them. An interrupt (Ctrl-C) opens no viewers. Nothing\n  came up: one receipt line and team up's own exit code. --dry-run --attach previews the\n  viewer plan and the AppleScript, and opens nothing.\n",
+  "team refresh": "NAME\n  tap team refresh — trim gone seats from this team's roster\n\nUSAGE\n  tap team refresh [--hard] [--dry-run] [--json]\n\nDESCRIPTION\n  Deletes only rows whose session is positively absent, or whose recorded pane\n  ID is absent from a readable pane set in its current, epoch-matched session.\n  A reused address, pane visible in another session, launching marker,\n  missing epoch, or unreadable snapshot preserves the row.\n  Offline and unknown rows are preserved; expired\n  pending reservations trim after grace. Poll-mode seats are skipped. --hard\n  additionally removes suspended and offline rows only when their exact session\n  is not live; this includes poll delivery. Recognized no-server proves the\n  namespace empty, while every other snapshot failure keeps all hard candidates.\n  --dry-run previews the identical receipt set without mutation. `team up` can\n  resurrect a suspended row only before --hard removes it; afterward use a\n  fresh launch or `tap in` to restore membership.\n\n  Distinct from `tap refresh`, which clears a seat's context.\n\nOPTIONS\n  --hard     cut parked (suspended/offline) rows whose session is not live\n  --dry-run  preview the identical receipt set without mutation\n  --json     emit the receipt as JSON\n\nSEE ALSO\n  tap help team · tap team up · tap help refresh\n",
+  "team up": "NAME\n  tap team up — resume this team's stopped sessions after down or restore\n\nUSAGE\n  tap team up [<team>] [--dry-run] [--json | --attach [--tabs]] [--last | --only [h,...] | --except [h,...]] [--yes]\n\nOPTIONS\n  --dry-run       preview the sessions that would resume\n  --json          emit launcher receipts as JSON; requires exact targets;\n                   not with --attach\n  --last, -       preview and resume the newest prior tmux generation;\n                   excludes deliberate stops, retirement and all crews\n  --yes           confirm a restart cohort or skip the picker confirmation\n  --only <h,...>  act on the named handles and spare every other seat\n  --except <h,...>\n                   spare the named handles and act on every other seat\n  --attach        after the cohort, open viewers onto exactly the seats that\n                   came up: a new iTerm window when iTerm automation is\n                   available, else the tmux attach commands are printed.\n                   Team up's exit code stands unless the attach itself fails.\n                   Not with --json: the attach prints human receipts\n  --tabs          with --attach, one viewer tab per seat instead of a grid\n                   (8 or more seats always use tabs)\n\n  Selector values are comma-separated bare team-local handles. Omit a value\n  on a terminal to select parents interactively. Crew rows are not selectable;\n  up does not recreate crews after a parent harness ends.\n\n  --last selects the newest prior generation before filtering eligibility;\n  it never falls back through a deliberately stopped generation. Unknown row\n  generations are skipped; unreadable current boot/tmux evidence refuses.\n  A confirmed absent server works without starting one for dry-run; an\n  empty live server still requires readable current-generation evidence.\n  Each selected row is pinned through preview and launch. Outside a terminal,\n  a real --last requires --yes. No cohort is a successful empty result.\n  It cannot combine with --only or --except. For individual exits on the same\n  server, name handles explicitly; exit-observation times do not group deaths.\n  --last --attach opens viewers only for the seats that actually return.\n  --only and --except cannot be combined or repeated. A supplied list stays\n  exact, and --yes never selects a target. Picker actions preview first;\n  dry-run previews without consent or effects.\n\n  <team> names an enrolled team to resume from its own checkout, resolved\n  like `tap team roster <team>`; bare, this team.\n\n  Seats launch concurrently, up to 4 at a time; result lines and summaries\n  print in roster order, while per-seat progress on stderr may interleave.\n\n  --attach attaches only seats that resumed successfully this run — never\n  failed or manual_attention seats — with viewers ordered by session name, as\n  tap team attach plans them. An interrupt (Ctrl-C) opens no viewers. Nothing\n  came up: one receipt line and team up's own exit code. --dry-run --attach previews the\n  viewer plan and the AppleScript, and opens nothing.\n",
   "teams": lines(
     "NAME",
     "  tap teams — summarize every enrolled team on this machine",
     "",
     "USAGE",
     "  tap teams [<name>] [--all] [--details]",
+    "  tap teams --seats [--all] [--json] [--wide]",
     "  tap teams refresh [--dry-run] [--json]",
     "",
     "DESCRIPTION",
     "  Read-only machine-wide team summary: TEAM | SEATS | STATUS, with SEATS=<active>/<total> and tap-team status dots. --details adds ATTACHED | WARN | WORKDIR; --all adds dormant teams. Unknown seats count as lifecycle-active but are ignored for the status dot. Fail-soft on an empty index; an absent index refuses unanchored_bus (next: tap init  OR  tap session launch). Aliased as 'tap team list'. refresh is the alias of tap admin refresh.",
+    "",
+    "  --seats groups active seats under team headings with seat counts and roots.",
+    "  Teams and their seats show soonest warm cache expiry first. Cold seats follow,",
+    "  then unknown. --all adds dormant teams and inactive seats; tap team --all's",
+    "  diagnostic columns stay unchanged. context uses the same marker as tap team.",
+    "  A named team uses tap teams <name>; --seats is machine-wide only.",
+    "",
+    "OPTIONS",
+    "  --seats    Nest machine-wide seats under teams; alternative to --details.",
+    "  --all      Include dormant teams (and inactive seats with --seats).",
+    "  --details  Team-summary detail columns; not with --seats.",
+    "  --json     With --seats, one flat {ok:true,scope:\"machine\",agents:[...],",
+    "             unobserved_teams:[...]} object (team names that could not be read).",
+    "             Each agent has the team roster JSON fields plus team (string).",
+    "             Cache schema: tap help team roster. Seats retain flat expiry order.",
+    "  --wide     With --seats, keep all columns on narrow terminals.",
+    "",
+    "EXAMPLES",
+    "  tap teams --seats",
+    "  tap teams --seats --all --json",
+    "",
+    "EXIT CODES",
+    "  0  Listed, including an empty result. Unreadable teams are named in one",
+    "     stderr warning (JSON: unobserved_teams); healthy seats remain visible.",
+    "  1  Seat-view usage error or machine index unavailable; --json emits",
+    "     {ok:false,error_class,action,detail}.",
+    "",
+    "SEE ALSO",
+    "  tap help team roster · tap team list --seats · tap help teams refresh",
   ),
   "teardown": "NAME\n  tap teardown — permanently archive one handle's TAP-visible residue\n\nUSAGE\n  tap teardown <handle> [--yes] [--json]\n\nDESCRIPTION\n  The permanent tier opposite light `tap unregister`. Archives every TAP-visible\n  store that names <handle> into .tap/bus/archive/teardown/<utc>-<handle>/, then\n  frees the registry row. Reopening the same handle must be TAP-indistinguishable\n  from a first-ever registration: no seat_history, inbox 0, empty outstanding, and\n  no collision chooser.\n\n  Does NOT delete Claude/Codex/opencode transcript files — they are outside TAP's\n  authority. The receipt always names that residue. registry-events.log and collab\n  opened_by are not rewritten (audit / thread provenance) but must not SURFACE on\n  reopen. Non-interactive callers need --yes.\n\nOPTIONS\n  --yes    confirm permanent teardown without a TTY prompt\n  --json   emit {ok, handle, archive, archive_path, not_removed}\n\nEXIT CODES\n  0  archived and registry row removed\n  1  usage error, handle not registered, or confirmation refused\n\nSEE ALSO\n  tap restore · tap unregister · tap team reset\n",
   "watch": `NAME
@@ -1267,6 +1327,57 @@ EXIT CODES
 };
 
 
+PAGES["calibrate"] = lines(
+  "NAME",
+  "  tap calibrate — record and read per-route seat observations",
+  "",
+  "USAGE",
+  "  tap calibrate [<handle|team/handle|harness/model>] [--all] [--json]",
+  "  tap calibrate <handle|route> -f <note.md|-> [--ref <source>] [--effort <level>] [--json]",
+  "",
+  "DESCRIPTION",
+  "  Machine scope: ~/.tap/calibration/observations.jsonl, under the writer's HOME.",
+  "  Disabled by default. Enable with: tap config set calibration.enabled true",
+  "  When disabled, all reads and writes exit 1 with one stderr line and no stdout,",
+  "  including --json; no route resolution or store effects occur.",
+  "  A handle resolves to its observed harness/model, falling back to stored launch",
+  "  tuning. A literal route must occur in a machine roster or launch record.",
+  "  Writes require a registered caller; by is team/handle and ref defaults to its",
+  "  registered harness session ID. Use --ref for a PR, bead or source path.",
+  "  Append-only observations, not rankings. Nothing reads this store to choose a",
+  "  model, launch a seat, or inject a pane. No example observations are seeded.",
+  "  When writing: what you saw, then what a briefer should do.",
+  "  A route view shows newest first in at most 10 lines / about 220 tokens.",
+  "  Complete newest notes use the available budget; older notes are omitted first.",
+  "  Bare calibrate shows up to two newest notes per roster/preset route in 25",
+  "  lines; omitted notes/routes have expansion pointers. Session IDs",
+  "  are suppressed in human views. One advisory suggests tap help skill calibrate-gc when",
+  "  any row is older than 90 days or the file exceeds 16 KB; no row expires.",
+  "",
+  "OPTIONS",
+  "  -f <file|->       literal UTF-8 observation body; - reads stdin",
+  "  --ref <source>    override the writer session reference (write only)",
+  "  --effort <level>  only when the observation is effort-specific (write only)",
+  "  --all            full notes for a route; bare digest still shows two per route",
+  "  --json           read: full selected row array; write: the appended row",
+  "                   enabled refusals: {ok:false,error_class,action,detail}",
+  "  -h, --help       this page without reading config or state",
+  "  --               remaining operand is literal",
+  "",
+  "EXAMPLES",
+  "  tap calibrate",
+  "  tap calibrate reviewer --all",
+  "  tap calibrate reviewer -f observation.md --ref tap-example --effort high",
+  "  tap calibrate codex/example-model --json",
+  "",
+  "EXIT CODES",
+  "  0  observation appended or read completed, including no notes",
+  "  1  disabled, invalid input, unknown_route, identity, config or store refusal",
+  "",
+  "SEE ALSO",
+  "  tap config · tap team · tap presets · tap help skill calibrate-gc (separate skill)",
+);
+
 PAGES["config"] = lines(
   "NAME",
   "  tap config — read and edit the machine config file",
@@ -1285,6 +1396,7 @@ PAGES["config"] = lines(
   "",
   "  The one array exception: notifications.command takes a TOML string array with a nonempty executable, e.g. tap config set notifications.command '[\"my-notifier\", \"--\", \"{body}\"]'; any other value for it refuses and writes nothing. notifications.* takes effect on the next escalation; see tap help escalate.",
   "  First key: sentinel.preview (sentinel display previews). injection.behavior picks what arriving mail does to a human draft: clobber (default: after the draft grace and any WAIT snooze, the draft is saved and cleared; TAP keeps the text it can capture, pasting it back is conditional, and when it does not happen `tap draft` recovers it. OpenCode drafts always need that, and pasted content or images may not be captured) or wait (drafts are never cleared; mail waits until the composer is empty). warn is the older spelling of wait.",
+  "  calibration.enabled defaults to false; tap config set calibration.enabled true enables explicit tap calibrate reads and writes on the next invocation.",
   "  The receipt prints '<key>: <old> -> <new>' and when it takes effect — sentinel.* and injection.* on the next delivery; delivery.* on the next delivery or roster read; presets.*, harness.*, roles.*, intelligences.*, notes.*, version on the next launch; recovery.* on the next nudge, detective, recovery run, or Antigravity delivery; onboarding.* on the next command in a project not yet initialized; skills.* on the next install, sync, or interactive setup.",
   "",
   "EXAMPLES",
@@ -1495,10 +1607,12 @@ PAGES["down"] = lines(
   "  tap down — stop one durable session and keep its roster row",
   "",
   "USAGE",
-  "  tap down <seat|team/seat> [--team <team>] [--dry-run] [--json]",
+  "  tap down <seat|team/seat> [--team <team>] [--skip-quiesce] [--dry-run] [--json]",
   "",
   "DESCRIPTION",
   "  Stop one verified durable session, retaining its roster row, instance, launch settings and pending mail. Owned crew rows/windows are removed; up does not recreate them. Already-stopped seats are unchanged. Crew, poll seats, unknown names and mismatched live session identity refuse. Self-stop prints stop_requested after saving the retained row, before stopping its own session.",
+  "",
+  "  Shared OpenCode seats first interrupt their native root and child sessions and confirm idle work. If that fails, down refuses before stopping the pane. --skip-quiesce applies only to shared OpenCode: it records unquiesced work before stopping the pane, retains the suspended row and holds the worktree. Repeat ordinary down after the session is idle or the service has been deliberately restarted to clear the hold. Shared self-stop refuses; run down from another pane. Team operations that include a shared caller refuse before changing any member.",
 );
 
 PAGES["incapable"] = lines(
@@ -1535,41 +1649,7 @@ PAGES["withdraw"] = lines(
   "  tap withdraw <old-id> --superseded-by <new-id> -m \"corrected head\"",
 );
 
-PAGES["launch"] = "NAME\n  tap launch — start a durable agent seat in this project\n\nUSAGE\n  tap launch <harness|preset> [name] [options] [-- harness-arguments...]\n  tap session launch <harness|preset> [name] [options]\n\nDESCRIPTION\n  Launch and register a seat, then attach from a foreground plain terminal.\n  A fresh project offers tap init; noninteractive callers must initialize first.\n  From an agent or without a terminal, use tap attach <team/seat> to visit it.\n  Bare harnesses: claude, codex, opencode, cursor, agy, hermes.\n  Choose with tap models; presets optionally save a combination you use often.\n  Preset model/effort cannot be overridden (preset_not_composable).\n\n  A name already in use offers resume, new, fork, kill or quit when available.\n  Without a terminal or with --json, collisions refuse (session_exists or\n  session_record_exists). --fresh replaces the existing seat without asking.\n  Saved overrides persist for resume and restart; machine policy is re-read.\n  Unknown flags warn, forward to the harness and persist across resume/restart.\n  Use -- before intentional harness flags.\n\nOPTIONS\n  --model <model> --effort <level>  bare-harness tuning; account access varies\n  --preset <name>                  saved launch; tuning stays preset-owned;\n                                   --env, --unset-env and -- still apply\n  --workdir <path>                 existing worktree of the enrolled repository;\n                                   run from the team root; --cwd is not an alias\n  --env KEY=VALUE --unset-env KEY  repeatable overrides; same key in both refuses\n  --tag <name> --unique <session>  named seat or exact session name\n  --new                           choose a fresh sibling name on collision\n  --fresh                         replace the existing seat with a fresh session\n  --resume[=<id>]                 claude and codex: open the harness's conversation picker (or resume\n                                   <id>) in the new seat; the conversation becomes its identity at\n                                   SessionStart. <id> must be unheld; --resume <id> reads <id> as the name.\n  --attach                        request attachment; terminal checks still apply\n  --dry-run [--json]               preview without creating a seat\n  -h, --help                      this page before any harness option\n  --                              following arguments go literally to the harness;\n                                   cannot combine with top-level --effort\n\nEXAMPLES\n  tap launch claude\n  tap launch codex reviewer\n  tap launch codex reviewer --model <available-model> --effort high\n  tap launch codex lane --workdir ../Lane\n  tap launch claude installer --resume   pick an existing conversation for the new seat\n  tap launch codex -- --help       explicitly request the harness's own help\n\nEXIT CODES\n  0  launch succeeded (may remain detached), help, or successful preview\n  1/2  usage, configuration, or lifecycle refusal; read the reported next step\n  127  command not found during execution\n  130/143  interrupted by SIGINT/SIGTERM\n\nSEE ALSO\n  tap attach · tap team · tap presets · tap help session\n  docs/attach-launch-reference.md#launch-policy-and-naming\n    Harness effort levels, saved recipes, machine policy, workdirs and naming.\n";
-PAGES["models"] = `NAME
-  tap models — model guidance from personal calibration or the shipped reference
-
-USAGE
-  tap models [<model|harness/model|handle>] [--all] [--full|--verbose]
-
-DESCRIPTION
-  A personal seat-calibration ledger wins when present. Only its absence enables
-  the checked-in model reference, labeled reference; access unverified. Reference
-  variants keep effort, service mode, context and environment qualifications
-  separate. Neither saved recipes nor reference rows prove account access.
-  Malformed or unreadable existing ledgers refuse. Views never write config,
-  import presets, seed a ledger, query providers or launch a harness.
-
-OPTIONS
-  <model|harness/model>  exact reference model and its qualified launch examples
-  <handle>              personal ledger row (or optional reference recipe name)
-  --all                 all reference guidance or personal ledger dispositions
-  --full, --verbose     personal ledger only; refuses when absent
-
-EXAMPLES
-  tap models
-  tap models fable
-  tap launch claude reviewer --model fable --effort high
-  tap team calibration --strongest
-
-EXIT CODES
-  0  view rendered
-  1  ledger/reference unreadable or selector unknown
-  2  invalid options
-
-SEE ALSO
-  tap help launch · tap team calibration · tap presets
-`;
+PAGES["launch"] = "NAME\n  tap launch — start a durable agent seat in this project\n\nUSAGE\n  tap launch <harness|preset> [name] [options] [-- harness-arguments...]\n  tap session launch <harness|preset> [name] [options]\n\nDESCRIPTION\n  Launch and register a seat, then attach from a foreground plain terminal.\n  A fresh project offers tap init; noninteractive callers must initialize first.\n  From an agent or without a terminal, use tap attach <team/seat> to visit it.\n  Bare harnesses: claude, codex, opencode (2.x required), cursor, agy, hermes.\n  Use tap presets for saved recipes, or launch a supported model directly with --model (and --effort where supported).\n  Preset model/effort cannot be overridden (preset_not_composable).\n  A name already in use offers resume, new, fork, kill or quit when available.\n  [r] attaches running seats (switching clients inside tmux) or resumes stopped seats.\n  Fork validates its saved chat after [f].\n  Without a terminal or with --json, collisions refuse (session_exists or\n  session_record_exists). --fresh replaces the existing seat without asking.\n  Saved overrides persist for resume and restart; machine policy is re-read.\n  Unknown flags warn, forward to the harness and persist across resume/restart.\n  Use -- before intentional harness flags.\n\nOPTIONS\n  --model <model> --effort <level>  bare-harness tuning; OpenCode effort selects a variant\n  --preset <name>                  saved launch; tuning stays preset-owned;\n                                   --env, --unset-env and -- still apply\n  --workdir <path>                 existing worktree of the enrolled repository;\n                                   run from the team root; --cwd is not an alias\n  --env KEY=VALUE --unset-env KEY  repeatable overrides; same key in both refuses\n  --tag <name> --unique <session>  named seat or exact session name\n  --new                           choose a fresh sibling name on collision\n  --fresh                         replace the existing seat with a fresh session\n  --resume[=<id>]                 claude and codex: open the harness's conversation picker (or resume\n                                   <id>) in the new seat; the conversation becomes its identity at\n                                   SessionStart. <id> must be unheld; --resume <id> reads <id> as the name.\n  --attach                        request attachment; terminal checks still apply\n  --dry-run [--json]               preview without creating a seat\n  -h, --help                      this page before any harness option\n  --                              following arguments go literally to the harness;\n                                   cannot combine with top-level --effort\n\nEXAMPLES\n  tap launch claude\n  tap launch codex reviewer --model <available-model> --effort high\n  tap launch codex lane --workdir ../Lane\n  tap launch claude installer --resume   pick an existing conversation for the new seat\n  tap launch codex -- --help       explicitly request the harness's own help\n\nEXIT CODES\n  0  launch succeeded (may remain detached), help, or successful preview\n  1/2  usage, configuration, or lifecycle refusal; read the reported next step\n  127  command not found during execution\n  130/143  interrupted by SIGINT/SIGTERM\n\nSEE ALSO\n  tap attach · tap team · tap presets · tap help session\n  docs/attach-launch-reference.md#launch-policy-and-naming\n    Harness effort levels, saved recipes, machine policy, workdirs and naming.\n";
 PAGES["session launch"] = PAGES["launch"]!;
 export const FORK_USAGE = "usage: tap session fork <seat> [<new-name>] [--dry-run] [--json]";
 /** Served by `tap help session fork` and `tap session fork --help`. */
@@ -1588,7 +1668,7 @@ DESCRIPTION
 
     claude    claude --resume <id> --fork-session --session-id <new-id>
     codex     codex fork <id>
-    opencode  opencode --session <id> --fork
+    opencode  TUI fork unavailable in 2.x (tap-ki7uw); start a fresh seat
     cursor, agy: no CLI fork; run /fork inside the seat instead.
 
   <seat> is a handle on this team, or <team>/<handle> naming this team.
@@ -1773,7 +1853,8 @@ DESCRIPTION
   Poll rows, inactive rows and the caller's own pane are excluded, even when
   named by handle; inactive seats belong to resume or team up. With no eligible
   candidate the command exits 0 without replacing anything. Crew seats have no conversation: they relaunch fresh in their
-  own pane, and -m, --env, --unset-env and harness flags do not apply to them.
+  own pane. --env, --unset-env and harness flags update and persist their
+  recipe; -m and --workdir do not apply to them.
 
   -m <instruction> rides the harness's own resume prompt as an argument; no
   keystroke is simulated. Hermes has no such channel, so -m on a hermes seat is
@@ -1946,7 +2027,7 @@ const REGISTER_HELP = lines(
   "",
   "  Other recovery commands do different work:",
   "    tap restore <handle> --archive <archive>   restore a handle's archived state",
-  "    tap team restore                           restore a team checkpoint",
+  "    tap team reset                             stop and retire seats; keep the team",
   "    tap session resume <handle>                bring a stopped process back",
   "",
   "  --override-worktree registers a pane whose current directory is outside this",
@@ -1985,8 +2066,8 @@ const SESSION_HELP = lines(
   "",
   "TUNING",
   "  With a preset, model and effort come from the preset and cannot be",
-  "  overridden. With a bare harness, use --model and --effort; tap models lists",
-  "  what is available. OpenCode and Cursor take --model only. --env,",
+  "  overridden. With a bare harness, use --model and --effort; tap presets lists",
+  "  saved recipes. OpenCode 2 takes model and variant; Cursor takes model only. --env,",
   "  --unset-env and -- apply either way. Resume and restart reuse the recorded",
   "  launch recipe.",
   "",
@@ -2006,7 +2087,7 @@ const SESSION_HELP = lines(
   "  zsh-only, through the internal read-only tap session complete producer.",
   "",
   "SEE ALSO",
-  "  tap launch · tap attach · tap presets · tap models · tap clear · tap team up",
+  "  tap launch · tap attach · tap presets · tap clear · tap team up",
 );
 
 /** Served by `tap help unregister` and its alias `tap help out`. */
@@ -2017,10 +2098,20 @@ USAGE
   tap out [<name|team/name>] [--team <team>] [--pane <t>] [--json]                 remove the registry row, free the handle
   tap out [<name|team/name>] [--team <team>] [--pane <t>] --kill|--hard [--json]   also stop the tmux session
   tap out [<source>] --forward-to <successor> [--json]                             hand the seat's mail to a teammate, then leave
+  tap out --last [--team <team>] [--json]                                         remove the most recently exited seat; - is an alias
   tap unregister …                                                                 same verb; out is the usual spelling
 
 DESCRIPTION
   Name another team's seat as <team>/<handle> or with --team <team>; naming it both ways is refused (selector_conflict).
+
+  --last (alias -) selects the latest exited_at among pane-backed active rows or delivery-marked pane_gone rows
+  whose session or recorded pane is positively absent, using team refresh's
+  shared classifier. Live, launching, pending, poll, deliberately suspended
+  and foreign-namespace rows are excluded. Unreadable snapshots and tied timestamps refuse; missing exit
+  stamps are recorded when absence is first observed. Selection and absence
+  are checked again before retirement. Recognized no-server replies count as
+  empty, as in team refresh --hard; any recorded socket must match the queried
+  socket. Other failures refuse. If /exit is still shutting down, wait and retry. --last cannot be combined with a name, --pane, --kill or --forward-to.
 
   Four different actions share the verb. Choose by what should happen afterward:
     leave only          plain out. The row is deleted and the handle is free; a live
@@ -2061,6 +2152,7 @@ DESCRIPTION
 
 EXAMPLES
   tap out
+  tap out --last
   tap out fable --kill
   tap out fable --forward-to luna
 
@@ -2073,7 +2165,8 @@ export const CREW_HELP = `NAME
   tap crew — short-lived helper seats bound to their parent's lifetime
 
 USAGE
-  tap crew add <preset|harness> [name] [--preset <name>] [--model <m>] [--env KEY=VALUE] [--cwd <path>]
+  tap crew add <preset|harness> [name] [--preset <name>] [--model <m>]
+               [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-args...]
   tap crew list
   tap crew shutdown [<crew>|<owner>|--owner <handle|team/handle>]
   tap crew relaunch <crew>
@@ -2112,9 +2205,21 @@ DESCRIPTION
   (crew_registry_mismatch) before any pane, registration or keypress. A permitted
   outside-worktree cwd still gets the standard --override-worktree warning.
 
+  Overrides work as in tap session launch, with or without a preset: --env
+  KEY=VALUE overrides preset environment and --unset-env KEY removes a variable
+  even if shell startup exports it (both repeatable; one key in both refuses).
+  Arguments after -- go literally to the harness, appended last. A preset keeps
+  its model, so --preset with --model refuses. A crew seat always starts fresh:
+  conversation selectors such as --resume or codex resume refuse. Overrides
+  persist in the crew recipe;
+  tap crew relaunch replays them, and tap session relaunch --env, --unset-env
+  and -- add to them.
+
 EXAMPLES
   tap crew add codex reviewer --model gpt-6-astra   start a codex helper named reviewer
   tap crew add astra reviewer              same, from a preset that carries its model
+  tap crew add astra reviewer --env CODEX_LOG=debug -- --search
+                                           a preset plus an env var and a harness flag
   tap crew list                            show crew rows only
   tap crew shutdown reviewer               stop that one helper
   tap crew shutdown --owner fable          stop every helper that fable owns
@@ -2193,10 +2298,17 @@ PAGES["team roster"] = lines(
   "           preset's `metadata.model_family`, else what a claude, codex or agy",
   "           harness implies. `-` for other harnesses without the key. A preset",
   "           matched from the handle text is not claimed. JSON `family` is null.",
-  "  context  Used tokens / cap, for example 145k / 380k. Claude uses its running",
+  "  context  Used tokens/cap, for example 145k/380k. Claude uses its running",
   "           environment override and Codex its session-reported window; when",
   "           unspecified, the cap defaults to 1M. Unavailable counts and caps stay",
   "           unknown.",
+  "           Claude adds ●4m or ●59m (minutes until estimated expiry),",
+  "           or a bare ● once the estimate expires. Response timing",
+  "           can overstate time left, and server availability is not observed.",
+  "           Cache markers are blue at 15m or more, yellow under 15m, red under",
+  "           5m; the expired dot is dark red. Color requires a TTY, NO_COLOR",
+  "           absent and TERM other than dumb.",
+  "           No marker means unsupported or insufficient evidence (Codex included).",
   "  model    model@effort observed from the bound transcript for claude/codex seats,",
   "           falling back to the stored launch choice, marked (launch). Other",
   "           harnesses stay on the launch snapshot.",
@@ -2204,7 +2316,7 @@ PAGES["team roster"] = lines(
   "           when matched from the handle text rather than read from a record.",
   "",
   "  On a terminal too narrow for the row, whole columns drop from the right",
-  "  (preset, model, context, family, then harness); `handle` and `state` always",
+  "  (preset, model, family, context, then harness); `handle` and `state` always",
   "  stay, and one stderr line names what was hidden. `--wide` keeps every column.",
   "  Pipes, `--json` and `--names` are never fitted and never hint.",
   "",
@@ -2215,6 +2327,16 @@ PAGES["team roster"] = lines(
   "              optional preset/metadata. `context_tokens` holds exact counts, cap,",
   "              sources and usage time, or null with context_unknown_reason",
   "              saying why; legacy footer percentage fields remain.",
+  "              prompt_cache is null without a Claude cache sample, otherwise:",
+  "              {state: warm|cold|none|unknown, ttl_seconds: 300|3600|null,",
+  "              last_activity_at, expires_at: ISO strings or null,",
+  "              remaining_seconds: nonnegative integer or null,",
+  "              source: claude_transcript, basis: assistant_timestamp,",
+  "              unknown_reason: string or null}. warm/cold are clock estimates;",
+  "              none means no caching observed, unknown means insufficient TTL",
+  "              evidence. A newer write selects the TTL; hits refresh it. Mixed",
+  "              writes use 5m. Compaction clears the estimate; TTL is never",
+  "              inherited across models. See docs/roster-cache.md for limits.",
   "              model and effort stay null when unknown; launch_tuning keeps named,",
   "              non-secret composed-argv qualifiers, and current preset definitions",
   "              never replace that identity.",
@@ -2251,18 +2373,12 @@ PAGES["team roster"] = lines(
   "              Not available on `tap team list`.",
   "  --stale-after <secs>  The idle threshold for --stalled; a positive integer,",
   "              default 600, inclusive. Refused without --stalled.",
-  "  --refresh-models  Fetch OpenCode model context windows (`opencode models",
-  "              --verbose --pure`, once per distinct session project directory),",
-  "              save them under the index home, then print the roster. The roster",
-  "              itself never runs opencode: an OpenCode seat whose model is not",
-  "              saved shows `<count> / ?` and a stderr footer naming it. `tap session",
-  "              launch` saves the launched model's window too. When every fetch",
-  "              fails the command exits 1 (JSON: one error object) and prints no",
-  "              roster. Refused with `--names`: the two output modes are exclusive.",
-  "              Under `--json` stderr stays empty.",
+  "  --refresh-models  Retired. Running OpenCode 2 seats publish their model windows.",
+  "              Prints a notice and the ordinary read-only roster; starts no server.",
+  "              Missing windows stay `<count> / ?`. Refused with --names.",
+  "              Under --json stderr stays empty.",
   "",
   "EXAMPLES",
-  "  tap team --refresh-models                   fill in `/ ?` context denominators for OpenCode seats",
   "  tap team --stalled                          who is idle 10+ minutes on an unanswered ask",
   "  tap team --stalled --stale-after 900 --json  the same at 15 minutes, machine-readable",
   "",
@@ -2312,8 +2428,7 @@ PAGES["team calibration"] = lines(
   "               qualifies, it exits 1 with no handles.",
   "",
   "SEE ALSO",
-  "  tap models (the catalog question: what models are calibrated at all; this page",
-  "  is the team-scoped one) · tap help team roster · tap help team",
+  "  tap presets · tap team · tap help team roster · tap help team",
 );
 
 PAGES["team doctor"] = lines(
@@ -2508,7 +2623,7 @@ PAGES["team shutdown"] = lines(
   "  --keep-self spares the caller's session and retains spared seats in-file.",
   "",
   "  Shutdown differs from `tap team down`, which retains the roster, and from",
-  "  `tap team reset`, which leaves a blank registry plus a restorable archive.",
+  "  `tap team reset`, which retires seats and keeps the team initialized.",
   "",
   "TARGET",
   "  <team> names an enrolled team, resolved through the machine index and never",
@@ -2543,99 +2658,70 @@ PAGES["team shutdown"] = lines(
 
 PAGES["team reset"] = lines(
   "NAME",
-  "  tap team reset — checkpoint the team's state, then reboot it blank",
+  "  tap team reset — stop and retire seats; keep the team initialized",
   "",
   "USAGE",
-  "  tap team reset [--dry-run] [--allow-nonstandard-bus-path] [--kill-self] [--json] [--yes]",
+  "  tap team reset [TEAM] [--only [h,...] | --except [h,...]] [--dry-run] [--json] [--yes]",
   "",
   "DESCRIPTION",
-  "  A fenced copy-verify-cut into archive/team-reset/<bundle>/, marked COMPLETE",
-  "  last. The checkpoint holds payloads, receipts, the registry (and its lock), the",
-  "  entire spool (including parked entries), watch, goalie, collab, seat-state,",
-  "  pane-effects, drafts, handoff and input-backups. Reset discards and recreates",
-  "  tmp, and preserves prior archive/, registry-events.log (and its lock) and",
-  "  tap-deliver.log.",
+  "  Same engine, receipts and refusals as `tap team out --hard`. Retires selected",
+  "  parent families with per-seat history and stops their exact sessions and bound",
+  "  crew panes. Keeps the registry document, enrollment, bus, mail, watch state and",
+  "  existing archives, even when the roster becomes empty. Launch fresh seats next.",
   "",
-  "  After the cut, the acting team registry is BLANK, so launch works immediately.",
-  "  A top-level component reset cannot classify refuses before any session stops.",
-  "  Archives are durable: `tap team restore` puts one back and `tap team purge`",
-  "  deletes one.",
+  "  All seats are selected by default, INCLUDING YOUR OWN SEAT. The caller's family",
+  "  runs last and its receipt precedes its own stop. To keep yourself running:",
+  "  `tap team reset --except <your-handle> --yes`.",
   "",
   "OPTIONS",
-  "  --dry-run                      Preview without effects.",
-  "  --kill-self                    After the cut, stop the caller's own session. It",
-  "                                 is skipped, with a stderr line, when the caller's",
-  "                                 identity is unobservable or no longer authorized.",
-  "  --allow-nonstandard-bus-path   Override the path-shape check for a noncanonical",
-  "                                 TAP_HOME.",
-  "  --yes                          Accepted and ignored: reset never prompts.",
-  "  --json                         Emit the receipt as JSON.",
-  "  --force and --keep-registry are removed; --force refuses as an unknown option.",
-  "  To keep the roster, use `tap team down`.",
+  "  TEAM           One enrolled team; defaults to the caller's team.",
+  "  --only <h,...> Select parent handles; spare all others.",
+  "  --except <h,...> Spare parent handles; select all others.",
+  "                 Omit the list on a terminal to pick parents interactively.",
+  "  --dry-run      Validate and preview the same targets without mutation.",
+  "  --json         Emit the team-out receipt as JSON; requires exact targets.",
+  "  --yes          Confirm the full-team or picker preview without prompting.",
+  "                 Full-team/picker retirement needs --yes without a terminal.",
+  "                 Supplied --only/--except lists act without a prompt.",
+  "",
+  "  --kill-self and --allow-nonstandard-bus-path are removed and refuse before",
+  "  resolving a team. The checkpoint cut, team restore and team purge are retired;",
+  "  historical archives remain untouched. --force and --keep-registry refuse.",
+  "",
+  "EXAMPLES",
+  "  tap team reset --dry-run",
+  "  tap team reset --except my-seat --dry-run",
+  "  tap team reset --except my-seat --yes",
+  "  tap team reset api --yes",
+  "",
+  "EXIT CODES",
+  "  0  Selected families retired, successful preview, empty roster or cancellation.",
+  "  1  Usage, missing consent, identity refusal or partial retirement; inspect receipt.",
+  "  130  Interrupted during target discovery or confirmation.",
   "",
   "SEE ALSO",
-  "  tap help team restore · tap help team purge · tap help team shutdown ·",
-  "  tap help team",
+  "  tap help team out · tap help team down · tap help team shutdown · tap help team",
 );
 
-PAGES["team restore"] = lines(
+for (const verb of ["restore", "purge"]) PAGES[`team ${verb}`] = lines(
   "NAME",
-  "  tap team restore — put a team-reset checkpoint back",
+  `  tap team ${verb} — removed checkpoint operation`,
   "",
   "USAGE",
-  "  tap team restore [--archive <id|path>] [--dry-run] [--json] [--again]",
+  `  tap team ${verb}`,
   "",
   "DESCRIPTION",
-  "  Restores a COMPLETE team-reset checkpoint's state; it launches nothing. Every",
-  "  restored row is suspended with status_reason=restored_from_archive. Next:",
-  "  `tap team up`.",
+  "  The team checkpoint lifecycle is retired. This command refuses without reading",
+  "  or changing team state or archives. Historical archive/team-reset/ bundles stay",
+  "  untouched; retain them for manual inspection. Use `tap team reset` to stop and",
+  "  retire seats while keeping the team initialized, or `tap team down` to retain",
+  "  the roster for `tap team up`.",
   "",
-  "  Restore accepts only the pristine state `tap team reset` leaves behind: the",
-  "  reset generation must still be pristine and name this checkpoint, every live",
-  "  component the checkpoint covers must be empty (a blank acting registry counts",
-  "  as empty), and no live tmux session may share a name with an archived seat.",
-  "  Otherwise it refuses with the failed check named. The checkpoint must belong to",
-  "  this team. If a restore fails after it began writing, it keeps its fence and",
-  "  reports `restore_partial`; rerun the same command to resume.",
-  "",
-  "OPTIONS",
-  "  --archive <id|path>  The checkpoint's bundle name under archive/team-reset/, or a",
-  "                       path inside that directory. Default: the latest COMPLETE",
-  "                       checkpoint.",
-  "  --dry-run            Validate every check and print what would be restored.",
-  "  --again              Skip only the `already_restored` refusal. Every other check",
-  "                       still applies, and a completed restore leaves the reset",
-  "                       generation no longer pristine, so --again does not replay",
-  "                       one onto a live team.",
-  "  --json               Emit the receipt as JSON.",
+  "EXIT CODES",
+  "  1  Removed operation (error_class=renamed_verb).",
   "",
   "SEE ALSO",
-  "  tap help team reset · tap team up · tap restore (one handle from a teardown",
-  "  archive) · tap help team",
-);
-
-PAGES["team purge"] = lines(
-  "NAME",
-  "  tap team purge — delete one team-reset archive",
-  "",
-  "USAGE",
-  "  tap team purge <archive> [--dry-run] [--yes]",
-  "",
-  "DESCRIPTION",
-  "  Deletes ONE named archive under archive/team-reset/, the only deletion path for",
-  "  what `tap team reset` creates. <archive> is an exact archive name, not a path.",
-  "  A symlinked entry is removed as a link; its target is left alone.",
-  "",
-  "OPTIONS",
-  "  --dry-run  Print the file count and size that would be deleted; deletes nothing",
-  "             and needs no consent.",
-  "  --yes      Delete without asking. Without --yes, a terminal is asked to confirm;",
-  "             a declined answer says so and exits 0 with the archive intact; no",
-  "             answer (EOF) refuses (`aborted`, exit 1), and",
-  "             a non-interactive caller refuses (`confirmation_required`).",
-  "",
-  "SEE ALSO",
-  "  tap help team reset · tap help team restore · tap help team",
+  "  tap help team reset · tap help team down · tap help team",
 );
 
 export const OVERVIEW = PAGES["overview"]!;

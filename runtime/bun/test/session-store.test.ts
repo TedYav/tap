@@ -187,7 +187,7 @@ test("opencode store is opened read-only", () => {
   const hm = home();
   const db = opencode(hm, [["sess-1", WT, 10]]);
   const conn = new Database(db, { readonly: true });
-  expect(() => conn.run("INSERT INTO session (id, directory) VALUES ('x','y')")).toThrow();
+  expect(() => conn.run("INSERT INTO session_v2 (id, directory) VALUES ('x','y')")).toThrow();
   conn.close();
 });
 

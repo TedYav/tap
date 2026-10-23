@@ -1,7 +1,7 @@
 // Shared harness recognition for delivery and command callers.
 export const AGENT_FAMILIES = new Set(["claude", "codex", "opencode", "cursor", "hermes", "agy"]);
 /** Families whose CLI forks a stored conversation (`tap session fork`); the rest fork only in-session. */
-export const FORKABLE_HARNESSES: readonly string[] = ["claude", "codex", "opencode"];
+export const FORKABLE_HARNESSES: readonly string[] = ["claude", "codex"];
 /** Flags that select a conversation: inherited from the source, they would fight the fork's own. */
 const FORK_OWNED: Record<string, string[]> = {
   claude: ["--session-id", "--resume", "-r", "--continue", "-c", "--fork-session"],
@@ -34,7 +34,7 @@ export const SESSION_CONTEXT: Record<string, string> = {
   cursor: "hooks/tap-cursor-session-start.sh",
   opencode: "hooks/tap-opencode-session-start.ts",
   hermes: "limit: no native session-start surface; launch briefing + repo context files carry protocol",
-  agy: "limit: no native session-start surface (native plugin import declined, tap-luae); launch briefing + repo context files carry protocol",
+  agy: "limit: native invocation hooks capture identity; launch briefing + repo context files carry protocol",
 };
 export const DENYLIST = new Set([
   "bash", "zsh", "sh", "fish", "dash", "ksh", "tcsh", "less", "more", "man",

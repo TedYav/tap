@@ -749,7 +749,8 @@ tap_install_sync_primary() {
     done <<< "$unique_paths"
     if [ -n "$not_regen" ]; then
       echo "install: REFUSED --sync — [stranded-commits] primary has unique commits that touch paths that are not regenerable ($not_regen); that is stranded work, not a fast-forward" >&2
-      echo "install: next: ask the bus who owns the in-flight files on the shared primary before resetting or pulling (tap-hl8i); do not git reset" >&2
+      printf -v quoted_primary '%q' "$primary"
+      echo "install: next: if these commits are your own customizations, update with: git -C $quoted_primary fetch origin && git -C $quoted_primary rebase origin/main && bash $quoted_primary/install.sh (tap help skill extend); otherwise ask the bus who owns them before resetting or pulling (tap-hl8i); do not git reset" >&2
       exit 1
     fi
   fi
@@ -1230,14 +1231,9 @@ elif [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && ! tap_install_harness_skipped cursor; t
 fi
 
 # --- OpenCode session plugins ------------------------------------------------
-# Global local plugins are auto-loaded from ~/.config/opencode/plugins. Three
-# small plugins, one concern each, plus the session-id helper the session-start
-# plugin shells out to at init (tap-cpfu):
-#   - session-env:   shell.env -> OPENCODE_SESSION_ID (per-tool-shell identity)
-#   - session-start: event() -> bare `tap in` ensure-bound (SessionStart-equivalent,
-#                    tap-9kvd) plus the shared session-start context posted into
-#                    new root sessions as one noReply message (tap-sh9g).
-#   - tmux-guard:    tool.execute.before -> shared native command classifier
+# OpenCode 2 loads two global plugins from ~/.config/opencode/plugins:
+# session-start binds private-server panes and admits shared context; tmux-guard
+# checks shell commands. OpenCode 2 supplies OPENCODE_SESSION_ID natively.
 #
 # This block OVERWRITES ~/.config/opencode/plugins/tap-opencode-session-start.ts
 # (and its siblings) from THIS checkout every install. A live probe of an
@@ -1257,7 +1253,7 @@ fi
 # step is checked explicitly.
 tap_install_opencode_plugins() {
   local plugins="$OPENCODE_HOME/plugins" stage="" name
-  local -a names=(tap-opencode-session-env.ts tap-opencode-session-start.ts tap-opencode-tmux-guard.ts
+  local -a names=(tap-opencode-session-start.ts tap-opencode-tmux-guard.ts
     tap-shell-body-guard tap-opencode-session-id tap-resolve-session-root tap-session-context tap)
   OPENCODE_FAIL_TARGET="$plugins"
   OPENCODE_REMEDY="fix the error above (permissions or free space under $plugins) and rerun ./install.sh"
@@ -1284,12 +1280,18 @@ tap_install_opencode_plugins() {
     fi
   done
   rm -rf "${stage:?}"
+  # Retire only TAP's former environment plugin. Its v1 factory fails to load
+  # on OpenCode 2; the native shell now supplies the same session identity.
+  OPENCODE_FAIL_TARGET="$plugins/tap-opencode-session-env.ts"
+  OPENCODE_REMEDY="remove the retired TAP file $plugins/tap-opencode-session-env.ts and rerun ./install.sh"
+  if ! rm -f "${OPENCODE_HOME:?}/plugins/tap-opencode-session-env.ts"; then
+    OPENCODE_PARTIAL=1
+    return 1
+  fi
 }
 
 tap_install_opencode_stage() {
   local stage="$1"
-  OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-opencode-session-env.ts"
-  cp "$REPO/hooks/tap-opencode-session-env.ts" "$stage/tap-opencode-session-env.ts" || return 1
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-opencode-session-start.ts"
   cp "$REPO/hooks/tap-opencode-session-start.ts" "$stage/tap-opencode-session-start.ts" || return 1
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-opencode-tmux-guard.ts"
@@ -1337,9 +1339,13 @@ EOF
 }
 
 if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && tap_install_harness_wired opencode; then
+  tap_opencode_version="$(opencode --version 2>/dev/null)" || tap_opencode_version=""
+  if ! [[ "$tap_opencode_version" =~ ^(opencode[[:space:]]+)?v?2\.[0-9]+\.[0-9]+ ]]; then
+    echo "install: WARNING: TAP requires OpenCode 2.x; install or upgrade OpenCode and confirm opencode --version before launching a TAP seat (1.x is no longer supported)" >&2
+  fi
   OPENCODE_FAIL_TARGET="" OPENCODE_REMEDY="" OPENCODE_PARTIAL=0
   if tap_install_opencode_plugins; then
-    echo "install: installed OpenCode plugins at $OPENCODE_HOME/plugins/ (session-env + session-start + tmux-guard + helpers)"
+    echo "install: installed OpenCode plugins at $OPENCODE_HOME/plugins/ (OpenCode 2: session-start + tmux-guard + helpers)"
   elif [ "$OPENCODE_PARTIAL" = 1 ]; then
     echo "install: WARNING: OpenCode session plugins may be partially updated — could not replace $OPENCODE_FAIL_TARGET; next: $OPENCODE_REMEDY (OpenCode integration NOT confirmed installed)" >&2
   else
@@ -1362,6 +1368,7 @@ link_user_skills Antigravity "$GEMINI_HOME"
 if [ "${TAP_INSTALL_HOOK:-1}" = 1 ] && tap_install_harness_wired gemini; then
   mkdir -p "$GEMINI_HOME/config"
   tap_bun "$REPO/runtime/bun/src/install-hooks.ts" gemini "$GEMINI_HOME/config/hooks.json" "$TAP_SHELL_BODY_GUARD"
+  tap_bun "$REPO/runtime/bun/src/install-hooks.ts" agy-identity "$GEMINI_HOME/config/hooks.json" "$REPO/hooks/tap-agy-identity.sh"
 fi
 
 link_user_skills Cursor-agent "$CURSOR_AGENT_HOME"

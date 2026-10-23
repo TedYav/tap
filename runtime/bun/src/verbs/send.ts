@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 import { CODEX_HOOK_TRUST_REASON } from "../agent-state";
 import { activeInputForPane, protectionDetail, updateInputProtection } from "../input-protection";
 import { readDisplayState } from "../spool-readiness";
@@ -40,7 +41,7 @@ import { authorizePaneEffect, boundBootRefusal, canonicalPlaceLocked, evaluateBo
 import { stagedIdleEvidence, type InterruptFact } from "../submit-phase";
 import { stagedIdleWindowSeconds } from "../spool-publication";
 import { noticeExpiredAtSendDoor } from "../clear-fence";
-import { TapError, callingPane, observeCallingPane, refuseUnanchoredPane, resolveContext, resolveSelf, teamRootFromBus, type ResolvedContext } from "../context";
+import { TapError, callingPane, observeCallerIdentity, refuseUnanchoredPane, resolveContext, resolveSelf, teamRootFromBus, type ResolvedContext } from "../context";
 import { COURIER_IDENTITY, HELP_HANDLE, USER_IDENTITY, WATCH_IDENTITY, utcStamp, validToken } from "../ids";
 import { forwardingRoute } from "../forwarding";
 import { listHandleHistory } from "./register";
@@ -77,6 +78,10 @@ export interface SendOutcome {
   // (tap-pkh9c): `tap nudge --interrupt` reports "interrupted" from this, and
   // never reports queued or unverified deliveries as recovery.
   interrupt?: InterruptFact;
+}
+/** A caller may wait on authorization only when the send proves no effect. */
+export class SendAuthorizationPending extends Error {
+  effect: "none" | "possible" = "possible";
 }
 interface SendOptions {
   inReplyTo?: string; noAutoReplyTo?: boolean; quiet?: boolean;
@@ -139,6 +144,7 @@ export function cmdSendOutcome(
   try {
     return cmdSendOutcomeBody(argv, scriptsDir, agentFamilies, opts, stage);
   } catch (error) {
+    if (error instanceof SendAuthorizationPending) error.effect=stage.preEffect ? "none" : "possible";
     const refusal = error instanceof ServerUnresponsive && stage.preEffect
       ? new TapError(1, error.tapErrorClass, "wait for the tmux server to answer, then repeat this command",
         `${error.message.replace(/; outcome unknown$/, "")}; refused before placement or any pane effect`, undefined, "none")
@@ -233,7 +239,7 @@ function cmdSendOutcomeBody(
     ctx = opts?.senderContext ?? resolveContext(process.cwd(), process.env, opts?.explicitTeam || teamFlag ? { explicitTeam: opts?.explicitTeam || teamFlag } : undefined);
   } catch (error) {
     if (opts?.explicitTeam || !(error instanceof TapError) || error.errorClass !== "unanchored_bus") throw error;
-    const seen = observeCallingPane();
+    const seen = observeCallerIdentity();
     if (seen.state === "inside") {
       refuseUnanchoredPane(seen.paneId, process.cwd(), 1,
         { session: seen.session, serverEpoch: seen.serverEpoch }, process.env, seen.paneId, true);
@@ -246,7 +252,7 @@ function cmdSendOutcomeBody(
   // `from` = --from > TAP_SELF > pane-derived handle > fail loud. The resolved
   // sender must name an ACTIVE seat: an unknown --from is refused rather than
   // stamped, because a forged author is invisible to every downstream reader.
-  if (!from) from = process.env.TAP_SELF || "";
+  if (!from) from = inheritedActor();
   if (!from) {
     const pane = callingPane();
     if (!pane) {

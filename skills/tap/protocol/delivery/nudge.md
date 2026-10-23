@@ -6,7 +6,7 @@ carries usage, examples and exits; [CLI surface](./cli-surface-the-whole-thing-p
 ```text
 tap nudge <to> | --to <to> [--message <text>] [--no-interrupt] [--dry-run]
 tap nudge [<to>] --pane <tmux-target> [--dry-run]
-tap nudge --harness <family> [--team <team>|'*'] [--message <text>] [--no-interrupt] [--dry-run] [--yes]
+tap nudge --harness <family> ...   # fan-out: see nudge-fanout.md
 ```
 
 Superseded 2026-10-05 (tap-xe42x): the `--interrupt` form and its urgent note, the operator
@@ -178,15 +178,5 @@ after its repaint.
 
 ## Fan-out
 
-Wakes every live seat of one harness family, for example after a usage limit resets. `--team`
-defaults to the caller's team; `'*'` is every enrolled team. Seats are the ones `tap team` reports
-active; poll, offline, suspended and gone seats and the caller's own seat are skipped and listed,
-and a team whose registry cannot be read is reported and fails the run. Each target runs the
-ladder above with the same `--message` and `--no-interrupt`; `--to` and `--pane` refuse.
-
-Each seat's `instance` is pinned at selection and its harness, delivery mode and active status
-are rechecked just before its nudge (`target_changed`). More than one target, or `'*'`, needs a
-y/N confirmation at a terminal or `--yes` without one (`confirmation_required`). `--dry-run`
-previews the targets, skips, unreadable teams and the wire, and presses nothing. A held seat is
-listed and never stops the others. Exit 5 when any seat ended with a possible effect (inspect it
-with `tap peek`; do not re-run), else 1 when any was held or failed, else 0.
+`tap nudge --harness <family>` runs this ladder on every live seat of one family. Selection,
+skips, `--active-within`, confirmation and exits live on [the fan-out page](./nudge-fanout.md).

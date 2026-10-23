@@ -544,6 +544,7 @@ export interface ObservePayload {
 }
 
 export interface Snapshot {
+  sessionScope: string;
   sessionsMode: SessionsMode;
   sharedEpoch: string;
   sessions: ReadonlyMap<string, SessionInfo>;
@@ -576,6 +577,7 @@ export function buildSnapshot(payload: ObservePayload, env: NodeJS.ProcessEnv = 
   }
   const psOk = Number(payload.ps_rc ?? 1) === 0;
   return {
+    sessionScope: scope,
     sessionsMode: sessions.mode,
     sharedEpoch: sessions.sharedEpoch,
     sessions: sessions.sessions,
@@ -619,6 +621,15 @@ export function classifyRow(row: RowInput, snap: Snapshot, env: NodeJS.ProcessEn
   const failed = (state: string, reason: string): string =>
     recovering ? record("offline", "server_restarted", "", "", "", "") : record(state, reason, "", "", "", "");
 
+  const absenceConflict = (): string => {
+    let elsewhere = false;
+    for (const [name, entries] of snap.panesBySession) for (const entry of entries) {
+      if ("_bad" in entry) return "pane_set_poisoned";
+      if (paneId && name !== session && entry.pane_id === paneId) elsewhere = true;
+    }
+    return elsewhere ? "pane_session_conflict" : "";
+  };
+
   if (status === "pending" && pendingReservationExpired(
     session, registeredAt,
     snap.sessionsMode === "ok" || snap.sessionsMode === "empty",
@@ -659,6 +670,8 @@ export function classifyRow(row: RowInput, snap: Snapshot, env: NodeJS.ProcessEn
       if (!observedEpoch) return failed("unknown", "server_epoch_unobservable");
       if (rowEpoch !== observedEpoch) return failed("offline", "server_epoch_stale");
     }
+    const conflict = absenceConflict();
+    if (conflict) return failed("unknown", conflict);
     return failed("gone", "session_absent");
   }
   observedEpoch = info.epoch;
@@ -695,7 +708,14 @@ export function classifyRow(row: RowInput, snap: Snapshot, env: NodeJS.ProcessEn
       // The recorded address now names a DIFFERENT pane: the window moved
       // under the seat. Not death, and not this pane — refuse to resolve.
       if (addressId && addressId !== paneId) return record("unknown", "address_rebound", "", "", "", "");
-      if (!selectedId) return record("unknown", "designated_pane_missing", "", "", "", "");
+      if (!selectedId) {
+        const conflict = absenceConflict();
+        if (conflict) return failed("unknown", conflict);
+        // A scoped scan cannot rule out this pane having moved to another session.
+        return !snap.sessionScope && rowEpoch && isPaneId(paneId) && storedReason !== "launching"
+          ? record("gone", "pane_absent", "", "", "", "")
+          : record("unknown", "designated_pane_missing", "", "", "", "");
+      }
     } else if (!addressId) return record("unknown", "designated_pane_missing", "", "", "", "");
   }
 

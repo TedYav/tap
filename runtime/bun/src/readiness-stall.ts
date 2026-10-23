@@ -143,21 +143,19 @@ function transcriptEvidence(path: string, scan: (lines: readonly string[]) => Tu
 }
 
 /**
- * One index seek on `message_session_time_created_id_idx (session_id, time_created, id)`:
+ * One index seek on `session_message_session_seq_idx (session_id, seq)`:
  * the operator's store is ~100 GB, so filtering or ordering on `json_extract` would
  * decode every row of every session (tap-2zzft). JSON stays in the SELECT list only.
  * INDEXED BY makes a store without that index fail (unknown evidence) instead of silently scanning.
  */
-export const OPENCODE_EVIDENCE_SQL = `SELECT json_extract(data, '$.role') AS role, json_extract(data, '$.finish') AS finish,
-    COALESCE(json_extract(data, '$.time.created'), time_created) AS created, json_extract(data, '$.time.completed') AS completed
-  FROM message INDEXED BY message_session_time_created_id_idx WHERE session_id = ?
-  ORDER BY time_created DESC, id DESC LIMIT 1`;
+export const OPENCODE_EVIDENCE_SQL = `SELECT type, time_created AS created, json_extract(data, '$.time.completed') AS completed
+  FROM session_message INDEXED BY session_message_session_seq_idx WHERE session_id = ?
+  ORDER BY seq DESC LIMIT 1`;
 
 /**
- * OpenCode: the session's newest message of ANY role must be an assistant message
- * that completed with `finish: "stop"`. A newer user message, a `tool-calls`
- * finish or an open message is work. (`opencodeTurnState` is deliberately not
- * reused: it reads only the newest assistant row and calls a tool-calls finish idle.)
+ * OpenCode 2 ends a turn with an `idle` row, for any outcome. A newer row of
+ * any other type is work, including input queued after that marker. The marker's
+ * native creation time dates the end; an assistant finish alone is not proof.
  */
 export function opencodeEvidence(sessionId: string, env: NodeJS.ProcessEnv): HarnessEvidence | null {
   if (!sessionId) return null;
@@ -167,11 +165,11 @@ export function opencodeEvidence(sessionId: string, env: NodeJS.ProcessEnv): Har
   try {
     db = new Database(path, { readonly: true });
     const row = db.query(OPENCODE_EVIDENCE_SQL).get(sessionId) as
-      { role: unknown; finish: unknown; created: unknown; completed: unknown } | null;
+      { type: unknown; created: unknown; completed: unknown } | null;
     if (!row || typeof row.created !== "number" || !Number.isFinite(row.created)) return null;
     const completed = typeof row.completed === "number" && Number.isFinite(row.completed) ? row.completed : null;
-    const ended = row.role === "assistant" && row.finish === "stop" && completed !== null;
-    return { ended, lastActivity: Math.max(row.created, completed ?? 0) / 1000, at: ended ? completed! / 1000 : null };
+    const ended = row.type === "idle";
+    return { ended, lastActivity: Math.max(row.created, completed ?? 0) / 1000, at: ended ? row.created / 1000 : null };
   } catch { return null; } finally { db?.close(); }
 }
 

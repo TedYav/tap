@@ -7,7 +7,7 @@ import { NOT_A_SEAT, promptNewCollision, promptOffRosterTmuxCollision,
   promptSessionExists, type ForkUnavailable } from "../src/launcher/collision";
 import { choiceRows, type ChoiceOption } from "../src/launcher/prompt";
 
-const TIERS = ["exact", "picker", "latest", "fresh", "stale", "unknown-tier"];
+const TIERS = ["exact", "picker", "fresh", "stale", "unknown-tier"];
 // new.ts forkUnavailable()'s reasons, pinned end to end by launcher-new-oracle's [f]
 // cases; the longest fork-owned flag (harness-families.ts) bounds the conflict one.
 const REASONS = [NOT_A_SEAT, "harness cannot fork", "no saved chat to fork", "uses --fork-session", "uses --session-id"];

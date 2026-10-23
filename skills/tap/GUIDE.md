@@ -30,11 +30,12 @@ rg -n -i -C 2 'term|alias' <tap-skill-dir>/GUIDE.md <tap-skill-dir>/protocol
 | temporary reviewer, consult, durable lane | [getting started](guide/getting-started.md) | `tap help ask`, `tap help crew`, `tap help session` |
 | roster, teams summary, status dots, `--details` | [team CLI](protocol/delivery/cli-surface-the-whole-thing-part-09.md) | `tap help team`, `tap help teams` |
 | registry schema, identity authority | [registry](protocol/identity/registry-unit-1-part-01.md) | `tap help team`, `tap help whoami` |
-| reset, restore, archive, shutdown | [admin and reset](protocol/identity/admin-namespace-tap-admin-machine-wide-operator-verbs-v0-4-part-01.md) | `tap help team` |
+| reset, historical checkpoints, shutdown | [admin and reset](protocol/identity/admin-namespace-tap-admin-machine-wide-operator-verbs-v0-4-part-01.md) | `tap help team` |
 | shared worktree, writer token, lane custody | [worktrees and handoffs](../tap/references/worktrees-and-handoffs.md) | explicit TAP custody handoff |
 | smoke isolation, full gate, sandbox | [gates and testing](protocol/gates/README.md) | repository `AGENTS.md` |
 | driver behavior, pane effects, submit verify | [delivery and recovery index](protocol/delivery/README.md) | `tap help advisory` |
 | skill that uses TAP, fallback, no tmux, cloud, CI, `.tap-fallback.md` | [writing TAP skills](guide/writing-tap-skills.md) | `tap help whoami` |
+| customize TAP, launch default, new harness, new command, fork | [extend skill](../extend/SKILL.md) | `tap help skill extend` |
 
 ## Browse by area
 

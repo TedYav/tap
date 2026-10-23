@@ -6,6 +6,7 @@ import { teamFixture, flushScratch, payloads, NATIVE_SEND } from "./support/send
 
 afterEach(() => flushScratch(), 40_000);
 const recoveryModule = new URL("../src/self-rebrief.ts", import.meta.url).pathname;
+const sendModule = new URL("../src/verbs/send.ts", import.meta.url).pathname;
 function fixture(fence = false) {
   const fx = teamFixture({ fence });
   const request = { id: "recovery", registry: join(fx.wt, ".tap/team-registry.json"), bus: fx.bus,
@@ -19,9 +20,12 @@ function fixture(fence = false) {
   writeFileSync(legacy, "old unrelated body\n");
   const shellCall = join(fx.root, "unexpected-shell");
   writeFileSync(join(fx.root, "bin/bash"), `#!/bin/sh\nprintf called > '${shellCall}'\nexit 77\n`, { mode: 0o755 });
-  const send = (target = "ub", instance = "ub|A", session="old") => Bun.spawnSync([process.execPath, "-e",
-    `import {sendRecovery} from ${JSON.stringify(recoveryModule)}; const request = JSON.parse(process.argv[1]); console.log(JSON.stringify(sendRecovery(request, process.argv[2], "Read /durable/brief.md first", "ub-20260919T000000Z-123456789abc", process.argv[3])));`,
-    JSON.stringify({ ...request, bound: { ...request.bound, instance } }), target, session],
+  const send = (target = "ub", instance = "ub|A", session="old", guard: boolean | "pending" | "after-copy"=false) => Bun.spawnSync([process.execPath, "-e",
+    `import {sendRecovery} from ${JSON.stringify(recoveryModule)}; import {SendAuthorizationPending} from ${JSON.stringify(sendModule)}; import {existsSync} from "node:fs";
+const request=JSON.parse(process.argv[1]),mode=process.argv[4];
+const authorize=()=>{if(mode==="after-copy" && existsSync(process.env.FAKE_IN_MODE))return;if(mode==="pending" || mode==="after-copy")throw new SendAuthorizationPending("bootstrap pending");throw new Error("bootstrap proof changed before placement");};
+try{console.log(JSON.stringify(sendRecovery(request,process.argv[2],"Read /durable/brief.md first","ub-20260919T000000Z-123456789abc",process.argv[3],mode?authorize:undefined)));}catch(error){console.error(error.message+"; effect="+error.effect);process.exit(1);}`,
+    JSON.stringify({ ...request, bound: { ...request.bound, instance } }), target, session,guard===true?"guard":guard||""],
     { cwd: fx.wt, env: fx.env, stdout: "pipe", stderr: "pipe", timeout: 10000 });
   return { ...fx, legacy, shellCall, send };
 }
@@ -63,6 +67,25 @@ test("recovery placement rechecks the captured native conversation",()=>{
   expect(result.stderr.toString()).toContain("native session changed before recovery placement");
   expect(payloads(fx.bus)).toHaveLength(0);
   expect(existsSync(fx.shellCall)).toBe(false);
+});
+
+test("a changed bootstrap proof refuses inside placement before publishing recovery",()=>{
+  const fx=fixture(), result=fx.send("ub","ub|A","old",true);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain("bootstrap proof changed before placement");
+  expect(payloads(fx.bus)).toHaveLength(0);
+  expect(existsSync(fx.shellCall)).toBe(false);
+});
+
+for(const mode of ["pending","after-copy"] as const)test(`pending authorization stamps actual send effects at ${mode}`,()=>{
+  const fx=fixture();
+  if(mode==="after-copy")writeFileSync(fx.env.FAKE_IN_MODE!,"1");
+  const result=fx.send("ub","ub|A","old",mode);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain(`effect=${mode==="pending"?"none":"possible"}`);
+  expect(payloads(fx.bus)).toHaveLength(0);
+  expect(existsSync(join(fx.bus,"receipts","ub-20260919T000000Z-123456789abc.attempted"))).toBe(mode==="after-copy");
+  expect(existsSync(fx.env.FAKE_IN_MODE!)).toBe(false);
 });
 
 test("native driver selection preserves defaults, explicit preferences and source refusals", () => {

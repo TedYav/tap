@@ -7,6 +7,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { bindTransaction, launchTransaction, RestartResumeFailure, type LaunchRecord } from "../src/launcher/transaction";
 import { paneFacts } from "../src/launcher/readiness";
+import { cmdTeam } from "../src/verbs/team";
+import { bootId } from "../src/tmux";
+import { tapScriptsDir } from "../src/scripts-dir";
 
 const original = { ...process.env }, tmux = Bun.which("tmux")!;
 const sockets: string[] = [];
@@ -36,7 +39,7 @@ function fixture(harness: string, binary = "/bin/sleep") {
   const executable = harness === "cursor" ? "cursor-agent" : harness;
   const real = join(root, "real", executable);
   if (process.platform === "linux") copyFileSync(binary, real); else symlinkSync(binary, real);
-  writeFileSync(join(root, "bin", executable), `#!/bin/sh\nif [ "$1" = create-chat ]; then echo create-chat >> '${root}/create-chat-calls'; echo 550e8400-e29b-41d4-a716-446655440000; exit 0; fi\nprintf '%s\\n' "$@" > '${root}/argv'\nprintf '%s\\n' "$FEATURE" > '${root}/env'\nexec '${real}' ${binary === "/bin/sleep" ? "600" : ""}\n`);
+  writeFileSync(join(root, "bin", executable), `#!/bin/sh\n${harness === "opencode" ? `if [ "$1" = --version ]; then echo 2.1.2; exit 0; fi\nif [ "$1" = api ]; then echo '{"data":{"id":"ses_prepared","location":{"directory":"${root}"}}}'; exit 0; fi\n` : ""}if [ "$1" = create-chat ]; then echo create-chat >> '${root}/create-chat-calls'; echo 550e8400-e29b-41d4-a716-446655440000; exit 0; fi\nprintf '%s\\n' "$@" > '${root}/argv'\nprintf '%s\\n' "$FEATURE" > '${root}/env'\nexec '${real}' ${binary === "/bin/sleep" ? "600" : ""}\n`);
   chmodSync(join(root, "bin", executable), 0o755);
   const record: LaunchRecord = { name: "fixture/seat", harness, cwd: root, base: "fixture", tag: "seat", index: 1, ensure_action: "new",
     harness_env: { FEATURE: "literal $HOME" }, harness_tail: ["literal $(touch SHOULD_NOT_EXIST)"], harness_passthrough: [], harness_unset_env: [] };
@@ -110,7 +113,6 @@ test.each(["claude", "codex", "opencode", "cursor", "agy", "hermes"])("shared fr
 test.each([
   ["claude", ["--resume", "source-id", "--fork-session", "--session-id", "fork-minted-id"]],
   ["codex", ["fork", "source-id"]],
-  ["opencode", ["--session", "source-id"]],
 ] as const)("shared fork transaction launches %s with its native fork", async (harness, expected) => {
   const f = fixture(harness);
   Object.assign(process.env, f.env);
@@ -133,8 +135,6 @@ test.each([
   const at = argv.indexOf(expected[0]);
   expect(at).toBeGreaterThanOrEqual(0);
   expect(argv.slice(at, at + expected.length)).toEqual([...expected]);
-  // The composer's session pin moves opencode's --session after the tail; --fork stays.
-  if (harness === "opencode") expect(argv).toContain("--fork");
   expect(JSON.parse(readFileSync(f.registry, "utf8")).seats.seat.status).toBe("active");
 }, 20_000);
 
@@ -163,6 +163,29 @@ function incumbent(f: ReturnType<typeof fixture>, extra: Record<string, unknown>
   writeFileSync(f.registry, JSON.stringify(doc));
   return row;
 }
+
+test.each([false, true])("team up --last --yes recreates the pinned parent after private-server loss (json=%p)", async json => {
+  const f = fixture("claude");
+  incumbent(f, { boot_id: bootId(f.env), server_socket: f.socket });
+  const stopped = spawnSync(tmux, ["-S", f.socket, "kill-server"], { env: f.env, encoding: "utf8" });
+  expect(stopped.status, stopped.stderr).toBe(0);
+  let output = "";
+  const stdout = spyOn(process.stdout, "write").mockImplementation(chunk => { output += String(chunk); return true; });
+  let result: number;
+  try { result = await cmdTeam(["up", "fixture", "--last", "--yes", ...(json ? ["--json"] : [])], tapScriptsDir()); }
+  finally { stdout.mockRestore(); }
+  expect(result).toBe(0);
+  const seats = JSON.parse(readFileSync(f.registry, "utf8")).seats;
+  expect(seats.seat.status).toBe("active");
+  expect(seats.seat.status_reason).toBe("");
+  expect(seats.seat.pane_id).toMatch(/^%\d+$/);
+  expect(readFileSync(join(f.root, "argv"), "utf8")).toContain("--resume");
+  if (json) {
+    const records = output.trim().split("\n").map(line => JSON.parse(line));
+    expect(records.some(record => record.outcome === "would_resume")).toBe(false);
+    expect(records.at(-1)).toMatchObject({ outcome: "resumed", resumed: 1, total: 1 });
+  }
+}, 30_000);
 
 // The created pane, as the ready bind recorded it.
 const boundPaneId = (f: { registry: string; record: { name: string } }): string =>
@@ -359,20 +382,24 @@ test.each(["new", "adopted", "resume", "resume-all", "restart", "replacement", "
     // owner): a cursor resume-family argv no longer ends in the bare
     // `--resume` picker token — the native door refuses a stale cursor
     // identity upstream and emits nothing when the resolved identity is null.
+    // Id-less agy deviation: an id-less agy resume no longer ends in
+    // `--continue`; it starts empty and the operator picks with agy's /resume.
     // Strip that one trailing token from the oracle side for exactly those
     // cells so the differential still pins every other byte. A live-id cell
     // is untouched: its token is followed by the id, so it is never last.
     const RESUME_FAMILY = new Set(["adopted", "resume", "resume-all", "restart", "seat-up"]);
-    if (harness === "cursor" && RESUME_FAMILY.has(kind) && typeof oldState.argv === "string") {
+    const FRESH_IDLESS: Record<string, string> = { cursor: "--resume", agy: "--continue" };
+    const idlessToken = FRESH_IDLESS[harness];
+    if (idlessToken && RESUME_FAMILY.has(kind) && typeof oldState.argv === "string") {
       const lines = oldState.argv.split("\n");
-      if (lines.length > 1 && lines[lines.length - 2] === "--resume" && lines[lines.length - 1] === "") lines.splice(lines.length - 2, 1);
-      else if (lines[lines.length - 1] === "--resume") lines.pop();
+      if (lines.length > 1 && lines[lines.length - 2] === idlessToken && lines[lines.length - 1] === "") lines.splice(lines.length - 2, 1);
+      else if (lines[lines.length - 1] === idlessToken) lines.pop();
       oldState.argv = lines.join("\n");
     }
-    // Second deviation, same cells: an id-less cursor resume starts a fresh
+    // Second deviation, same cells: an id-less cursor or agy resume starts a fresh
     // conversation, so it is captured as launcher_new (as id-less OpenCode is),
     // not the oracle's untrusted_resume that quarantines the new SessionStart id.
-    if (harness === "cursor" && RESUME_FAMILY.has(kind)) {
+    if (idlessToken && RESUME_FAMILY.has(kind)) {
       for (const row of Object.values((oldState.registry as any).seats) as Record<string, any>[]) {
         if (row.identity_capture?.mode === "untrusted_resume" && !row.identity_capture.expected_harness_session_id) row.identity_capture.mode = "launcher_new";
       }
@@ -397,6 +424,18 @@ test.each(["new", "adopted", "resume", "resume-all", "restart", "replacement", "
     if (harness === "codex" && typeof oldState.argv === "string" && oldState.argv.length > 0) {
       oldState.argv = `--no-daemon\n${oldState.argv}`;
     }
+    // OpenCode 2 uses a private TUI and prepares a native conversation before
+    // an id-less launch. Pin the explicit new argv and expected native identity;
+    // all unrelated fields and the untouched sibling stay under the oracle.
+    if (harness === "opencode" && typeof oldState.argv === "string" && oldState.argv) {
+      const args = oldState.argv.trimEnd() ? oldState.argv.trimEnd().split("\n") : [], prepared = !args.includes("--session");
+      oldState.argv = ["--standalone", ...args, ...(prepared ? ["--session", "ses_prepared"] : [])].join("\n") + "\n";
+      if (prepared) for (const [name,row] of Object.entries((oldState.registry as any).seats) as [string,any][]) {
+        if (name === "sibling") continue;
+        row.harness_session_id = "ses_prepared";
+        row.identity_capture = {mode: kind === "new" || kind === "replacement" ? "launcher_new" : "exact_resume", expected_harness_session_id:"ses_prepared"};
+      }
+    }
     // Fourth deviation (tap-6c1me): Cursor and AGY permissions are now launcher-owned
     // like Claude's and Codex's, so a launched row records the resolved mode (the
     // default, bypass). The pinned owner never touched those rows' permissions, so
@@ -420,6 +459,12 @@ test.each(["new", "adopted", "resume", "resume-all", "restart", "replacement", "
         expect(row.launch_tuning, JSON.stringify({ kind, harness, name })).toEqual({ model: null, effort: null, qualifiers: {}, environment: {} });
       }
       delete row.launch_tuning;
+      // New recipes pin the default so a later experimental opt-in cannot
+      // silently migrate a private seat. The pre-cut oracle has no mode field.
+      if (harness === "opencode" && "opencode_server_mode" in row) {
+        expect(row.opencode_server_mode, JSON.stringify({ kind, harness, name })).toBe("private");
+        delete row.opencode_server_mode;
+      }
       // The oracle also predates launch_witness (launch-evidence.ts): a verified
       // launch promotes its launch_id there; an untouched sibling never gains it.
       if (name === "sibling" || !("launch_witness" in row)) continue;

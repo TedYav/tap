@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Notices } from "../src/launcher/catalog-notices";
-import { allocatedIndex, parseSessionName, registerResumedSession, registryEntry, seatIsReclaimableCorpse, unexpiredSeats, type ResumeDeps } from "../src/launcher/resume";
+import { allocatedIndex, holdsFreshStartWarning, parseSessionName, registerResumedSession, registryEntry, seatIsReclaimableCorpse, unexpiredSeats, type ResumeDeps } from "../src/launcher/resume";
 import { registryState, SCRIPTS, withRecordDefaults } from "../src/launcher/resume-prelude";
 import { PANE_FACTS_FORMAT } from "../src/launcher/readiness";
 import { reviveTier } from "../src/launcher/resume-identity";
@@ -238,6 +238,33 @@ test("an id-less Cursor resume discloses its fresh start under --dry-run too (ta
   expect(result.err).toContain("tap session: WARNING: repo/planner has no native cursor chat id; starting a fresh conversation\n");
 });
 
+test("an id-less agy resume starts empty and points at agy's /resume, never --continue's guess", async () => {
+  const world = fixture({ registry: { schema: "0.20", team: { name: "repo" }, seats: {} } });
+  world.writeRegistry({ schema: "0.20", team: { name: "repo", worktree_root: world.root }, seats: { porter: {
+    status: "active", delivery: "pane", session: "repo/porter", harness: "agy",
+    session_attribution_trust: "env", registered_from_worktree: world.root } } });
+  const events: Event[] = [];
+  const result = await resume(world.root, options({ key: "porter", dryRun: true, json: true }), { ...recorder().deps, run: dryRunTransaction(events) });
+  expect(result.error).toBeNull();
+  expect(result.code).toBe(0);
+  expect(result.err).toContain("tap session: WARNING: repo/porter has no captured agy conversation id; starting an empty conversation. Use agy's /resume picker to select the conversation you want\n");
+  expect(result.err).not.toContain("native picker");
+  const argv = JSON.parse(result.out).argv as string[];
+  expect(argv[0]).toBe("agy");
+  expect(argv).not.toContain("--continue");
+  expect(argv).not.toContain("--conversation");
+});
+
+test("only a resume attach of an id-less fresh-start seat holds its warning on screen", () => {
+  const seat = (harness: string, id: string | null) => withRecordDefaults({ name: "repo/s", harness, cwd: "/w", base: "repo", tag: "s", index: 1, model: null,
+    last_launched: "t", ...(id ? { harness_session_id: id } : {}) });
+  expect(holdsFreshStartWarning("resume", seat("agy", null))).toBe(true);
+  expect(holdsFreshStartWarning("resume", seat("cursor", null))).toBe(true);
+  expect(holdsFreshStartWarning("launch", seat("agy", null))).toBe(false);
+  expect(holdsFreshStartWarning("resume", seat("agy", "conv-1"))).toBe(false);
+  expect(holdsFreshStartWarning("resume", seat("claude", null))).toBe(false);
+});
+
 test("an id-less Cursor adopted resume says it starts fresh, never that it opens a picker (tap-we6b)", async () => {
   const world = fixture({ registry: { schema: "0.20", team: { name: "repo" }, seats: {} } });
   const { deps } = recorder();
@@ -374,7 +401,7 @@ test("an adopted-shell resume receipt names how each harness revives its convers
   // test_native_revive_mode_cursor_with_id_is_resume_not_new: the context string is resume.ts's.
   const cursorId = "550e8400-e29b-41d4-a716-446655440000";
   const cases: [string, string | null, string][] = [
-    ["agy", null, "agy native latest (--continue)"],
+    ["agy", null, "no conversation id on record; pick one with agy's /resume"],
     ["agy", "agy-id", "agy resume agy-id"],
     ["opencode", "ses_previous", "opencode resume ses_previous"],
     ["opencode", null, "no conversation to resume"],
@@ -401,7 +428,7 @@ test("an adopted-shell resume receipt names how each harness revives its convers
     }
   }
   // The tier half of test_agy_revive_tier_and_mode (Python revive_tier is retired; its native owner remains).
-  expect([reviveTier("agy", "some-id"), reviveTier("agy", null)]).toEqual(["exact", "latest"]);
+  expect([reviveTier("agy", "some-id"), reviveTier("agy", null)]).toEqual(["exact", "fresh"]);
   // A non-adopted resume prints no such receipt.
   const world = fixture({ registry: { schema: "0.20", team: { name: "repo" }, seats: { scout: { status: "active", delivery: "pane", harness: "agy", session: "repo/scout", pane: "", pane_id: "" } } } });
   const plain = await resume(world.root, options({ key: "scout" }), recorder().deps);

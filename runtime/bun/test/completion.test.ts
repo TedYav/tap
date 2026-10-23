@@ -8,6 +8,15 @@ const repo = resolve(import.meta.dir, "../../..");
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
+test("calibrate completes handles, options and note files without reading the calibration store", () => {
+  const f = fixture();
+  const env = { ...process.env, TAP_INDEX_HOME: f.index };
+  expect(completionCandidates(["tap", "calibrate", "al"], 3, env, f.alpha).map(x => x.value)).toContain("alice");
+  expect(completionCandidates(["tap", "calibrate", "--"], 3, env, f.alpha).map(x => x.value)).toContain("--all");
+  expect(completionCandidates(["tap", "calibrate", "alice", "-f", ""], 5, env, f.alpha).map(x => x.description)).toEqual(["file position"]);
+  expect(completionCandidates(["tap", "calibrate", "alice", "--ref", ""], 5, env, f.alpha)).toEqual([]);
+});
+
 function fixture() {
   const root = mkdtempSync(join(process.env.HOME!, "completion-"));
   roots.push(root);
@@ -34,6 +43,20 @@ function fixture() {
 }
 
 const values = (rows: ReturnType<typeof completionCandidates>) => rows.map(row => row.value);
+
+test("machine seat flags complete on both public spellings", () => {
+  const f = fixture();
+  for (const words of [["tap","teams","--"],["tap","team","list","--"]]) {
+    expect(values(completionCandidates(words,words.length,f.env,f.alpha))).toEqual(expect.arrayContaining(["--seats","--wide"]));
+  }
+});
+
+test("top-level completion omits retired models and keeps presets", () => {
+  const f = fixture();
+  const top = values(completionCandidates(["tap", ""], 2, f.env, f.alpha));
+  expect(top).not.toContain("models");
+  expect(top).toContain("presets");
+});
 
 test("native candidates follow target positions and comma selection eligibility", () => {
   const f = fixture();

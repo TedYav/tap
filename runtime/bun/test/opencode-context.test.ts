@@ -3,27 +3,27 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createOpenCodeContextReader, parseOpenCodeModels } from "../src/opencode-context";
+import { createOpenCodeContextReader } from "../src/opencode-context";
 import type { WindowMap } from "../src/opencode-model-windows";
 import { removeScratchTree } from "./support/scratch";
 const root = mkdtempSync(join(tmpdir(), "opencode-context-"));
 afterAll(() => removeScratchTree(root));
 let number = 0;
 const model = {id:"glm",providerID:"provider",limit:{context:420000}};
-const mapOf = (windows: Record<string, number>, directory = root): WindowMap => ({version:"1.0.0",directories:{[directory]:{fetched_at:1,windows}}});
+const mapOf = (windows: Record<string, number>, directory = root): WindowMap => ({version:"2.1.2",directories:{[directory]:{fetched_at:1,windows}}});
 const catalog = () => mapOf({"provider/glm":420000});
 function fixture() {
   const path = join(root, `${number++}.db`);
   const db = new Database(path);
-  db.exec(`CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, revert TEXT);
-    CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
-    CREATE INDEX message_session_time ON message(session_id,time_created,id);`);
-  db.query("INSERT INTO session VALUES (?, ?, NULL)").run("seat",root);
+  db.exec(`CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT, revert TEXT);
+    CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, time_created INTEGER, data TEXT);
+    CREATE INDEX session_message_session_seq_idx ON session_message(session_id,seq);`);
+  db.query("INSERT INTO session_v2 VALUES (?, ?, NULL)").run("seat",root);
   const add = (time: number, change: Record<string, unknown> = {}, session = "seat") => {
-    const data = {role:"assistant",modelID:"glm",providerID:"provider",
+    const {type = "assistant", ...data} = {type:"assistant",model:{id:"glm",providerID:"provider"},
       time:{created:time,completed:time+1},tokens:{input:131,output:89,reasoning:30,total:999999,
         cache:{read:101696,write:12}},...change};
-    db.query("INSERT INTO message VALUES (?, ?, ?, ?)").run(`${time}`,session,time,JSON.stringify(data));
+    db.query("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?)").run(`${time}`,session,type,time,time,JSON.stringify(data));
   };
   return {path,db,add};
 }
@@ -38,7 +38,7 @@ test("latest completed request includes cache once, ignores session totals and o
   f.db.close();
 });
 test("compaction summary hides old input until a subsequent completed request", () => {
-  const f=fixture(); f.add(100); f.add(200,{summary:true});
+  const f=fixture(); f.add(100); f.add(200,{type:"compaction",status:"completed"});
   const read=createOpenCodeContextReader(catalog);
   expect(read("seat",f.path).unknown_reason).toBe("awaiting_usage_after_compact");
   f.add(300,{time:{created:300}});
@@ -66,19 +66,14 @@ test("invalid usage, wrong identity, revert and absent stores stay unknown", () 
   expect(read("seat",join(root,"absent.db")).input_tokens).toBeNull();
   expect(read("seat","relative").unknown_reason).toBe("unbound_transcript");
   f.add(200,{sessionID:"other"}); expect(read("seat",f.path).unknown_reason).toBe("session_mismatch");
-  f.db.query("UPDATE session SET revert = '{}' WHERE id = 'seat'").run();
+  f.db.query("UPDATE session_v2 SET revert = '{}' WHERE id = 'seat'").run();
   expect(read("seat",f.path).unknown_reason).toBe("awaiting_usage_after_revert"); f.db.close();
-});
-test("model CLI headings bind the parsed metadata to its provider and model", () => {
-  const text=`provider/glm\n${JSON.stringify(model,null,2)}\nwrong/model\n${JSON.stringify(model,null,2)}\n`;
-  expect([...parseOpenCodeModels(text).keys()]).toEqual(["provider/glm"]);
-  expect(parseOpenCodeModels("unexpected output").size).toBe(0);
 });
 test("the same model keeps a separate window per project directory", () => {
   const a=join(root,"project-a"), b=join(root,"project-b");
-  const map:WindowMap={version:"1.0.0",directories:{[a]:{fetched_at:1,windows:{"provider/glm":200000}},[b]:{fetched_at:1,windows:{"provider/glm":900000}}}};
-  const f=fixture(); f.add(100); f.db.query("UPDATE session SET directory = ?").run(a);
+  const map:WindowMap={version:"2.1.2",directories:{[a]:{fetched_at:1,windows:{"provider/glm":200000}},[b]:{fetched_at:1,windows:{"provider/glm":900000}}}};
+  const f=fixture(); f.add(100); f.db.query("UPDATE session_v2 SET directory = ?").run(a);
   expect(createOpenCodeContextReader(() => map)("seat",f.path).window_tokens).toBe(200000);
-  f.db.query("UPDATE session SET directory = ?").run(b);
+  f.db.query("UPDATE session_v2 SET directory = ?").run(b);
   expect(createOpenCodeContextReader(() => map)("seat",f.path).window_tokens).toBe(900000); f.db.close();
 });

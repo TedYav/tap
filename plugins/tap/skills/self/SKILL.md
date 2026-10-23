@@ -1,8 +1,8 @@
 ---
 name: self
 description: "When invoking compact, rebrief, goal, loop, or clear on this seat, inject a supported harness control into its pane."
-argument-hint: 'rebrief|compact [--handoff]|goal|loop|clear'
-allowed-tools: 'Bash, Read, Grep, Glob'
+argument-hint: 'compact|rebrief|clear [--notify <seat>]|goal|loop'
+allowed-tools: 'Bash, Read, Grep, Glob, Write'
 role: maker
 ---
 

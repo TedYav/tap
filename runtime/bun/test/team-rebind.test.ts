@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
+import { createOpenCodeStore, addSession } from "./support/opencode-store";
 import { createHash } from "node:crypto";
 import { cmdTeamDoctor, observeBinding, boundStoreMatches, type Binding } from "../src/team/doctor";
 import { harnessWorkdir } from "../src/launcher/workdir";
@@ -167,10 +168,9 @@ for (const harness of ["opencode", "cursor"]) test(`${harness} doctor checks the
   let path: string;
   if (harness === "opencode") {
     path = join(root,"opencode.db");
-    const db = new Database(path);
-    db.exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, revert TEXT); CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT)");
-    db.query("INSERT INTO session VALUES (?, ?, NULL)").run(id,root);
-    db.query("INSERT INTO session VALUES (?, ?, NULL)").run("ses_other",root);
+    const db = createOpenCodeStore(path);
+    addSession(db,id,root);
+    addSession(db,"ses_other",root);
     db.close();
   } else {
     const dir = join(home,".cursor/chats",createHash("md5").update(root).digest("hex"),id);
@@ -193,7 +193,7 @@ esac
   expect(report.findings[0].detail.outcome).toBe("unchanged");
   expect(f.raw()).toBe(before);
   if (harness === "opencode") {
-    const db = new Database(path); db.exec("DROP TABLE message"); db.close();
+    const db = new Database(path); db.exec("DROP TABLE session_message"); db.close();
     const invalid = spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--json"],{encoding:"utf8",env:process.env,cwd:root});
     const bad = JSON.parse(invalid.stdout);
     expect(bad.findings[0].detail.outcome).toBe("invalid");
@@ -211,13 +211,12 @@ test("OpenCode worktree identity does not collapse a symlink alias", () => {
   fixture();
   const root = process.cwd(), alias = join(root,"alias"), path = join(root,"opencode.db");
   symlinkSync(root,alias);
-  const db = new Database(path);
-  db.exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, revert TEXT); CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT)");
-  db.query("INSERT INTO session VALUES ('ses_fixture', ?, NULL)").run(alias);
+  const db = createOpenCodeStore(path);
+  addSession(db,"ses_fixture",alias);
   const row = {harness:"opencode",harness_session_id:"ses_fixture",registered_from_worktree:root,session_store_path:path};
   try {
     expect(boundStoreMatches(row)).toBe(false);
-    db.query("UPDATE session SET directory = ?").run(root + "/./");
+    db.query("UPDATE session_v2 SET directory = ?").run(root + "/./");
     expect(boundStoreMatches(row)).toBe(true);
   } finally { db.close(); }
 });

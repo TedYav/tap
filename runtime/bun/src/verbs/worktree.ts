@@ -32,6 +32,7 @@ import { ensureAscii } from "../fsatomic";
 import { globalRegistryPath, isRegularFile, readIndexJson } from "../index-home";
 import { teamRegistryRefusal } from "../register-authority";
 import { REGISTRY_MAX_BUFFER, spawnOutcome } from "../spawn";
+import { sharedWorktreeHold } from "../opencode-shared-stop";
 
 const USAGE = "tap help worktree";
 const USAGE_LINE = "usage: tap worktree check <path>... [--json]\n       tap worktree branch <path>... [--json]";
@@ -148,6 +149,8 @@ function checkPath(target: string, question: Question): Row {
   if (gd.out === common.out) return row("refuse", "primary checkout");
 
   const claim = indexClaim(target);
+  const sharedHold = sharedWorktreeHold(target);
+  if (sharedHold) return row("hold", sharedHold);
   if (claim === null) return row("keep", "machine index unreadable (fail-closed)");
   if (claim !== "") return row("refuse", claim);
 

@@ -22,9 +22,8 @@ bring the judgment.
 Install TAP once, initialize your project, launch Claude and Codex, and ask
 one to talk to the other.
 
-Release archives bundle Bun. The [release artifact guide](docs/RELEASE-ARTIFACTS.md)
-contains the build procedure and bootstrap one-liner for a future release;
-downloadable assets are not published yet.
+TAP installs as a plain Git clone of this repository, so your install is the
+source: readable, changeable, and yours to fork. See [Make it yours](#make-it-yours).
 
 1. **Install once.** Copy the "Have your agent install it" prompt from the
    [landing page](https://tedyav.github.io/tap/#agent-install) into any agent you run; it
@@ -103,6 +102,23 @@ dashboard, a hosted service or agents across machines,
 [the tool comparison](docs/TAP-LEVELS.md#when-another-tool-fits)
 points to tools built for that.
 
+## Make it yours
+
+TAP is deliberately small: a file bus, a courier that wakes tmux panes, and a
+launcher. Because the install is a Git clone, there is no bundle to patch. Want
+a launch default, a harness TAP does not support yet, or a command of your own?
+Ask your agent to change TAP and commit the change, or fork the repository and
+run your own version. The `extend` skill (`tap help skill extend`) gives your
+agent the map: settings first, then the source, plus how to keep your changes
+across updates. The repository also ships TAP's development docs and sanitized
+engineering learnings (`docs/ARCHITECTURE.md`, `docs/PHILOSOPHY.md`,
+`CONCEPTS.md` and `docs/solutions/`), so your agent can get up to speed before
+it changes anything.
+
+Release archives, a future option, bundle Bun and a compiled router; the
+[release artifact guide](docs/RELEASE-ARTIFACTS.md) has the procedure. Use a
+clone when you want to change TAP.
+
 ## Advanced
 
 ### Larger teams
@@ -118,8 +134,8 @@ Claude and Codex load one TAP marketplace plugin. Its skills use names such as
 The installer registers the plugin from the installed TAP checkout and refreshes
 it during `./install.sh --sync`. The plugin requires the installed `tap` CLI.
 
-Other harnesses use prefixed names such as `tap-lead`. They start with six skills:
-`tap`, `tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard` and `tap-help`.
+Other harnesses use prefixed names such as `tap-lead`. They start with seven skills:
+`tap`, `tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard`, `tap-help` and `tap-extend`.
 [Easy Mode](docs/EASY-MODE.md#2-save-simple-machine-settings) explains their full-kit
 choice. `tap help skill lead`, `tap help skill tap:lead` and `tap help skill tap-lead`
 resolve the same instructions. Start with the first exchange before adding these tools.
@@ -143,16 +159,39 @@ for stateless questions, temporary helpers, context management and cross-team wo
 
 ### Saved settings and notifications
 
-Use `tap models` to choose model and effort. It reads your personal calibration
-when present; otherwise it shows qualified reference guidance, with access
-unverified. Launch directly with `tap launch claude model-reviewer --model fable
---effort high`, using a model your account supports. OpenCode and Cursor accept
-model only. `tap help launch` lists supported effort levels.
+Use `tap presets` for saved recipes and `tap team` for who is seated.
+Launch a model your account supports directly with
+`tap launch claude model-reviewer --model fable --effort high`.
+OpenCode requires version 2.x; upgrade 1.x before launching a TAP seat.
+Use `--model provider/model --effort variant` for an available OpenCode variant.
+Cursor accepts model only. `tap help launch` lists supported tuning.
 
 Presets save a combination you use often and are optional.
 [Easy Mode](docs/EASY-MODE.md#after-the-first-answer)
 covers saved choices and shell shortcuts. The installation runbook also covers
 [human notifications](docs/AGENT-SETUP.md#human-notification-setup).
+
+### OpenCode session tabs
+
+TAP defaults OpenCode's `tabs.mode` to `"off"`: OpenCode shares its open-session
+tabs per worktree, so a tab switch can move a seat away from its assigned session.
+TAP deep-merges this default into `OPENCODE_CLI_CONFIG_CONTENT`, preserving other
+inline settings. An explicit tabs setting in the environment or launch recipe
+wins; for example:
+
+```bash
+tap launch opencode reviewer --env 'OPENCODE_CLI_CONFIG_CONTENT={"tabs":{"mode":"on"}}'
+```
+
+To override in TAP's config, set
+`harness.opencode.env.OPENCODE_CLI_CONFIG_CONTENT = '{"tabs":{"mode":"on"}}'`.
+`--unset-env OPENCODE_CLI_CONFIG_CONTENT` removes the entire inline config,
+including TAP's default, leaving OpenCode's file settings in effect.
+The launch notice reports `tabs.mode`; `--dry-run --json` shows the composed env.
+This is a TUI setting; a separate OpenCode server does not isolate it. The Ctrl+P
+settings dialog still writes your real `cli.json`. TAP leaves that file unchanged,
+so your own sessions outside TAP keep your tabs preference. Multiple OpenCode
+TUIs sharing a worktree outside TAP have the same shared-tabs hazard.
 
 ### How messages arrive
 

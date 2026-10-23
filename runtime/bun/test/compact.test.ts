@@ -51,7 +51,6 @@ const { cmdCompact } = await import(${JSON.stringify(join(root, "runtime/bun/src
 import { runNative } from ${JSON.stringify(join(root, "runtime/bun/main.ts"))};
 const alias = process.argv[2] === 'alias';
 // The self path is \`tap self compact\` in-process; its own behavior is covered by self-gate and self.test.sh.
-const selfCompact = async (focus: string) => { process.stdout.write(\`self:compact -- \${focus}\\n\`); return Number(process.env.SELF_RC ?? 0); };
 // The peer submit is the courier in production; here the controlled stub runs as a cancellable child.
 const peerSubmit = async (r: any, run: (command: string[]) => Promise<{ code: number }>) => {
   if (process.env.EXPECT_STORE && r.transcript !== process.env.EXPECT_STORE) throw new Error("peer request lost registered store");
@@ -69,7 +68,7 @@ const peerSubmit = async (r: any, run: (command: string[]) => Promise<{ code: nu
     handoff: r.handoff, evidence: r.family === "opencode" ? "store-proven" : "transcript-proven", compactedAt: new Date().toISOString() }));
   return wake ? 6 : 0;
 };
-process.exitCode = await runNative(alias ? 'command' : 'compact', argv => cmdCompact(argv, ${JSON.stringify(scripts)}, alias, selfCompact, peerSubmit), process.argv.slice(3));\n`);
+process.exitCode = await runNative(alias ? 'command' : 'compact', argv => cmdCompact(argv, ${JSON.stringify(scripts)}, alias, peerSubmit), process.argv.slice(3));\n`);
   writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: { fixture: { root: dir, registry_location: registry, state: "registered" } } }));
   const env: NodeJS.ProcessEnv = { ...process.env, TAP_HOME: bus, TAP_INDEX_HOME: index, TAP_LOCK_DIR: join(index, "locks"), FIXTURE: dir, PATH: `${join(dir, "bin")}:${process.env.PATH}`, TAP_COURIER_SCRIPT: join(dir, "courier-stand-in.sh") };
   delete env.TAP_CONTEXT_ENTRY;
@@ -205,9 +204,10 @@ test("submit park is hard failure; live Codex beats the row; self mappings and d
     const codex = await f.run(["a"], { LIVE_HARNESS: "codex" });
     expect(codex.code).toBe(1); expect(codex.err).toContain("self-trigger");
     expect(readFileSync(join(f.dir, "submits"), "utf8").trim().split("\n").length).toBe(2);
-    for (const [code, expected] of [[0, 0], [6, 6], [7, 1], [4, 1]]) {
-      const self = await f.run(["alias", "-m", "keep work"], { SELF_RC: String(code) });
-      expect(self.code).toBe(expected!); expect(self.out).toContain("self:compact -- keep work");
+    for (const target of ["lead", "alias"]) {
+      const self = await f.run([target, "-m", "keep work"]);
+      expect(self.code).toBe(1); expect(self.err).toContain("/tap:self compact");
+      expect(readFileSync(join(f.dir, "submits"), "utf8").trim().split("\n")).toHaveLength(2);
     }
     const unsupported = await f.run(["a"], { TAP_JSON: "1", LIVE_HARNESS: "cursor" });
     expect(unsupported.code).toBe(6); expect(unsupported.out).toBe(""); expect(unsupported.err).toContain("degraded");

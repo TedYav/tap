@@ -9,6 +9,49 @@ from pathlib import Path
 
 
 ID_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+OP_KEY_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]*(#(0|[1-9][0-9]*))?\Z")
+
+
+def load_dispositions(thread_dir: str, tid: str, driver: str) -> dict[str, dict]:
+    """Validated {op_key: record} from threads/<tid>/dispositions.ndjson.
+
+    dispose.sh writes a record before the op's bookmark, so fold.sh and
+    is-converged.sh treat a recorded op as processed. A record is authority to
+    clear work, so every field it promises is checked here, in one place: the
+    op key shape, this thread, this driver, the payload the op belongs to, and a
+    reason. An identical repeated record is tolerated (a crash-retry); two records
+    for one op that disagree are a contradiction and fail loud.
+    """
+    path = Path(thread_dir) / "dispositions.ndjson"
+    out: dict[str, dict] = {}
+    if not path.exists():
+        return out
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        where = f"{path}:{number}"
+        try:
+            record = json.loads(line)
+        except ValueError as exc:
+            raise ValueError(f"malformed disposition record {where}: {exc}") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"disposition record {where} is not an object")
+        op_key = record.get("op")
+        if not isinstance(op_key, str) or not OP_KEY_RE.match(op_key):
+            raise ValueError(f"disposition record {where} has no valid op key")
+        if record.get("thread_id") != tid:
+            raise ValueError(f"disposition record {where} belongs to thread {record.get('thread_id')!r}, not {tid!r}")
+        if record.get("by") != driver:
+            raise ValueError(f"disposition record {where} was written by {record.get('by')!r}, not the driver {driver!r}")
+        if record.get("payload_id") != op_key.split("#", 1)[0]:
+            raise ValueError(f"disposition record {where} names payload {record.get('payload_id')!r} for op {op_key!r}")
+        reason = record.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"disposition record {where} has no reason")
+        if op_key in out and out[op_key] != record:
+            raise ValueError(f"disposition record {where} contradicts an earlier record for {op_key!r}")
+        out[op_key] = record
+    return out
 
 
 def proposal_ops(body: str, payload_id: str) -> list[tuple[str, object]]:
@@ -53,7 +96,7 @@ def derive_at(payload_id: str, body: str, metadata: dict[str, str]) -> str | Non
             return None
         if canonical_body != body:
             return None
-        if any((canonical_metadata.get(field) or "") != (metadata.get(field) or "") for field in ("from", "kind")):
+        if any((canonical_metadata.get(field) or "") != (metadata.get(field) or "") for field in ("from", "kind", "from_team")):
             return None
         receipt_path = canonical.parent.parent / "receipts" / f"{payload_id}.placed"
         receipt = json.loads(receipt_path.read_text())

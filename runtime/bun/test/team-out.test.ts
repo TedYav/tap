@@ -44,12 +44,21 @@ function fixture(seats: Record<string, unknown>) {
       { cwd: root, env, stdout: "pipe", stderr: "pipe" });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   };
+  const runOperator = (...argv: string[]) => {
+    const result = Bun.spawnSync(["python3", join(import.meta.dir, "support/pty-caller.py"), "15",
+      process.execPath, join(import.meta.dir, "support/team-out-operator.ts"), MAIN, ...argv],
+    { cwd: root, env, stdout: "pipe", stderr: "pipe", timeout: 20000 });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    const report = JSON.parse(result.stdout.toString());
+    expect(report.timedOut).toBe(false);
+    return { code: report.code as number, out: (report.output as string).replace(/\r\n/g, "\n"), err: "" };
+  };
   const doc = () => JSON.parse(readFileSync(registry, "utf8")) as Record<string, unknown>;
   const history = () => {
     const path = join(root, ".tap", "team-history");
     return existsSync(path) ? readdirSync(path) : [];
   };
-  return { run, runCommand, doc, history, registry, bus, index, base, root, env };
+  return { run, runCommand, runOperator, doc, history, registry, bus, index, base, root, env };
 }
 
 const poll = (instance: string) => ({ instance, delivery: "poll", status: "active" });
@@ -374,6 +383,35 @@ function stopFamilyHelper(f: ReturnType<typeof liveFamily>): void {
   });
 }
 
+for (const observation of ["no-terminal", "unreadable"] as const) test(`hard out refuses a ${observation} caller with a live private server`, () => {
+  const f = liveFamily();
+  try {
+    const bin = join(f.base, "caller-bin");
+    mkdirSync(bin);
+    // Only the caller's tty-aware observation changes. Target ancestry and
+    // lifetime proofs still use real ps against the live private server.
+    writeFileSync(join(bin, "ps"), `#!/bin/sh
+case "$*" in
+  '-o ppid= -o tty= -p '*) ${observation === "no-terminal" ? "printf '1 ??\\n'" : "exit 1"} ;;
+  *) exec /bin/ps "$@" ;;
+esac
+`, { mode: 0o755 });
+    f.env.PATH = `${bin}:${f.env.PATH}`;
+    const before = readFileSync(f.registry, "utf8");
+    const result = f.run("--only", "parent", "--hard", "--json");
+    expect(result.code, result.out + result.err).toBe(1);
+    const receipt = JSON.parse(result.out);
+    expect(receipt.error_class).toBe("caller_identity_unobservable");
+    expect(receipt.detail).toContain(observation === "no-terminal"
+      ? "process ancestry ended before finding a tmux pane" : "process observation unavailable");
+    expect(receipt.action).toContain("terminal");
+    expect(readFileSync(f.registry, "utf8")).toBe(before);
+    expect(f.history()).toHaveLength(0);
+    expect(f.read("display-message", "-p", "-t", f.parentPane, "#{pane_id}")).toBe(f.parentPane);
+    expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
+  } finally { f.tmux("kill-server"); }
+}, 30000);
+
 test("plain family dry-run validates live crew without arming its helper", () => {
   const f = liveFamily();
   try {
@@ -491,7 +529,7 @@ async function waitFor(predicate: () => boolean, max = 5000): Promise<boolean> {
   return false;
 }
 
-test("plain family out keeps both processes, then parent exit ends the retired child", async () => {
+test("plain family out keeps both processes of a legacy crew, then parent exit ends the retired child", async () => {
   const f = liveFamily();
   try {
     const result = f.run("--only", "parent", "--json");
@@ -529,7 +567,7 @@ for (const fault of ["save", "stop"] as const) test(`hard orphan ${fault} failur
     writeFileSync(f.registry, JSON.stringify({ ...f.doc(), seats: { child } }));
     if (fault === "save") f.env.TAP_TEST_UNREGISTER_SAVE_FAIL = "1";
     else f.env.TAP_TEST_TEAM_OUT_CREW_STOP_FAIL = "child";
-    const result = f.run("--yes", "--hard", "--json");
+    const result = f.runOperator("--yes", "--hard", "--json");
     expect(result.code).toBe(1);
     expect((f.doc().seats as Record<string, unknown>).child).toEqual(child);
     expect(f.history()).toHaveLength(2);
@@ -541,7 +579,7 @@ for (const fault of ["save", "stop"] as const) test(`hard orphan ${fault} failur
 test("hard family out stops exact parent and child while retaining the team envelope", () => {
   const f = liveFamily();
   try {
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(0);
     expect(f.doc().seats).toEqual({});
     expect(f.history()).toHaveLength(2);
@@ -555,7 +593,7 @@ test("hard family save failure leaves every process and registration intact", ()
   const f = liveFamily();
   try {
     f.env.TAP_TEST_UNREGISTER_SAVE_FAIL = "1";
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(1);
     expect(Object.keys(f.doc().seats as object).sort()).toEqual(["child", "parent"]);
     expect(f.history()).toHaveLength(0);
@@ -569,7 +607,7 @@ for (const stoppedPart of ["child", "parent"] as const) test(`hard family ${stop
   try {
     if (stoppedPart === "child") f.env.TAP_TEST_TEAM_OUT_CREW_STOP_FAIL = "child";
     else f.env.TAP_TEST_TEAM_OUT_PARENT_STOP_FAIL = "1";
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(1);
     const receipt = JSON.parse(result.out.trim());
     expect(receipt.ok).toBe(false);
@@ -586,7 +624,7 @@ test("hard family rechecks parent generation after crew stop and restores its su
   const f = liveFamily();
   try {
     f.env.TAP_TEST_TEAM_OUT_PARENT_GENERATION_CHANGE_AFTER_CREW = "1";
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(1);
     const receipt = JSON.parse(result.out.trim());
     expect(receipt.ok).toBe(false);
@@ -606,7 +644,7 @@ test("failed survivor restoration retains published history after a partial stop
   try {
     f.env.TAP_TEST_TEAM_OUT_PARENT_STOP_FAIL = "1";
     f.env.TAP_TEST_UNREGISTER_RESTORE_FAIL = "1";
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(1);
     const receipt = JSON.parse(result.out.trim());
     expect(receipt.families[0].detail).toContain("restore failed; history retained");
@@ -632,7 +670,7 @@ test("hard out stops an exact parent shell after its harness exited without crew
     } }));
     f.env.TAP_TMUX_SOCKET_PATH = socket;
     delete f.env.TAP_TMUX_SOCKET;
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(0);
     expect(f.doc().seats).toEqual({});
     expect(f.history()).toHaveLength(1);
@@ -641,7 +679,7 @@ test("hard out stops an exact parent shell after its harness exited without crew
   } finally { tmux("kill-server"); }
 }, 30000);
 
-test("hard out from the selected parent pane publishes stop_requested before ending its family", async () => {
+test.each(["out", "reset"])("%s from the selected parent pane publishes stop_requested before ending its family", async verb => {
   const f = fixture({});
   const socket = join(f.base, "tmux.sock");
   const tmux = (...args: string[]) => spawnSync("tmux", ["-S", socket, ...args], { encoding: "utf8", timeout: 5000 });
@@ -652,13 +690,14 @@ test("hard out from the selected parent pane publishes stop_requested before end
   };
   const go = join(f.base, "go"), receipt = join(f.base, "self-receipt.jsonl");
   const harness = join(f.base, "codex-self.ts");
-  const config = { main: MAIN, cwd: f.root, env: f.env, go, receipt, socket };
+  const config = { main: MAIN, cwd: f.root, env: f.env, go, receipt, socket, verb };
   writeFileSync(harness, `import { existsSync, openSync } from "node:fs";
 import { spawn } from "node:child_process";
 const config = ${JSON.stringify(config)};
 while (!existsSync(config.go)) Bun.sleepSync(50);
 const output = openSync(config.receipt, "w");
-const child = spawn(process.execPath, [config.main, "team", "out", "t", "--only", "parent", "--kill", "--yes", "--json"], {
+const args = config.verb === "reset" ? ["reset", "t", "--yes", "--json"] : ["out", "t", "--only", "parent", "--kill", "--yes", "--json"];
+const child = spawn(process.execPath, [config.main, "team", ...args], {
   cwd: config.cwd, env: { ...process.env, ...config.env, TAP_TMUX_SOCKET_PATH: config.socket },
   stdio: ["inherit", output, output],
 });
@@ -755,7 +794,7 @@ test("hard out refuses an unapproved pane in the selected parent session", async
   const f = liveFamily();
   try {
     expect(f.tmux("new-window", "-d", "-t", "t/parent", "-n", "foreign", "sleep 600").status).toBe(0);
-    const result = f.run("--only", "parent", "--hard", "--json");
+    const result = f.runOperator("--only", "parent", "--hard", "--json");
     expect(result.code).toBe(1);
     expect(result.out).toContain("unapproved pane");
     expect((f.doc().seats as Record<string, unknown>).parent).toBeDefined();

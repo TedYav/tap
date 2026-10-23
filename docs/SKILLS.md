@@ -13,6 +13,7 @@ ask your agent to load the named skill if its harness uses another spelling.
 |---|---|
 | [tap:help](../skills/help/SKILL.md) | Get started, or diagnose something that seems off. Getting started gets two harnesses exchanging a real reply, then chooses the next useful capability. Diagnosis starts from your symptom (mail not arriving, a stuck seat, copy or Shift+Enter not working, odd colors), runs checks that leave your setup alone, and changes nothing without your yes. Type it as `/tap:help`; bare `/help` is the harness's own help. |
 | [tap:config-wizard](../skills/config-wizard/SKILL.md) | Help you configure TAP, including advanced settings, presets, permissions and notifications. |
+| [tap:extend](../skills/extend/SKILL.md) | Customize your installed TAP: a launch default, a new harness, a new command or any changed behavior. It tries your settings first, then changes TAP's source in your clone, and helps you keep or share the change. |
 | [tap:lead](../skills/lead/SKILL.md) | Lead the team: choose a strategy, staff the work and ensure it gets an independent review. |
 | [tap:self](../skills/self/SKILL.md) | Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal, loop and clear support depends on the harness; the skill handles required handoffs. |
 | [tap:collab](../skills/collab/SKILL.md) | Work with another agent on a task as equal collaborators. They agree who writes, challenges and decides, then use pair or discuss. |
@@ -75,8 +76,9 @@ tap help skill lead
 ```
 
 Open the returned file before using the skill. Namespaced and flat names resolve
-there too. The native plugin exposes all 23 skills. Flat hosts start with `tap`,
-`tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard` and `tap-help`; the
+there too. The native plugin exposes all 24 skills. Flat hosts start with `tap`,
+`tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard`, `tap-help` and
+`tap-extend`; the
 full-kit setting adds the rest. Skills guide agent behavior; TAP transports
 messages rather than enforcing a fixed workflow.
 

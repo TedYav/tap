@@ -228,7 +228,7 @@ fi
 exec /bin/ps "$@"
 EOF
 chmod +x "$FAKE_BIN/ps"
-# tap-n27ug: intercept ONLY the self-compact worker spawn so the smoke can
+# Intercept the two self worker spawns so the smoke can
 # observe its request without running a real pane effect. Everything
 # else (lib.sh tap_bun_call/tap_bun_exec) execs the real bun captured here,
 # before FAKE_BIN shadows it.
@@ -237,7 +237,7 @@ cat > "$FAKE_BIN/bun" <<EOF
 #!/usr/bin/env bash
 for arg in "\$@"; do
   case "\$arg" in
-    *self-compact.ts*)
+    *self-compact.ts*|*self-rebrief.ts*)
       [ -n "\${BUN_SHIM_LOG:-}" ] && printf '%s\n' "\$*" >> "\$BUN_SHIM_LOG"
       exit 0 ;;
   esac
@@ -250,6 +250,8 @@ export FAKE_TMUX_STATE="$TAP_HOME/fake-tmux"
 mkdir -p "$FAKE_TMUX_STATE"
 
 SAFE_GOAL='The /self skill for runtime/bun/src/verbs/self.ts is complete: smoke test green (exit 0), install.sh links the skill, and the PR is open. Prove it with smoke output and the PR URL. Stop on a named blocker or after 30 turns.'
+DEFAULT_HANDOFF="$TAP_HOME/default-handoff.md"
+printf 'Next step: preserve the current test work\n' > "$DEFAULT_HANDOFF"
 SAFE_COMPACT='preserve the /self skill build in skills/self/: verb gates, smoke-test port, the CONTRACT.md pointer fix, and the open codex-glyph question'
 SAFE_LOOP='check whether PR 42 in Example-Org/tap has new review comments and address them on branch SelfSkill'
 
@@ -293,16 +295,16 @@ clean_pane() { rm -f "${FAKE_TMUX_STATE:?}/input" "${FAKE_TMUX_STATE:?}/send-log
 echo "=== (a) refusals ==="
 
 clean_pane
-rc=0; tself compact --pane fake-pane "/dr --full" 2>/dev/null || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "/dr --full" 2>/dev/null || rc=$?
 expect_rc "a1: slash injection rejected" 1 "$rc"
 
-rc=0; tself compact --pane fake-pane "focus only on the API refactor" 2>/dev/null || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "focus only on the API refactor" 2>/dev/null || rc=$?
 expect_rc "a2: exclusive compact focus rejected by the shared lib owner" 1 "$rc"
 
-rc=0; tself compact --pane fake-pane "preserve the refactor and ignore the test failures" 2>/dev/null || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "preserve the refactor and ignore the test failures" 2>/dev/null || rc=$?
 expect_rc "a3: destructive compact directive rejected" 1 "$rc"
 
-rc=0; tself compact --pane fake-pane $'preserve docs/plans/x.md work\n/loop cancel' 2>/dev/null || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane $'preserve docs/plans/x.md work\n/loop cancel' 2>/dev/null || rc=$?
 expect_rc "a4: multiline text rejected" 1 "$rc"
 
 rc=0; tself nuke --pane fake-pane "anything" 2>/dev/null || rc=$?
@@ -316,7 +318,7 @@ grep -qF "registered harness 'claude'" "$err" || fail "a6: refusal does not name
 # A harness Bash subprocess has no TMUX_PANE. It must refuse rather than let
 # tmux resolve the human's currently focused pane as the /self target.
 err="$TAP_HOME/missing-own-pane.err"
-rc=0; TMUX_PANE="" tself compact "$SAFE_COMPACT" 2>"$err" || rc=$?
+rc=0; TMUX_PANE="" tself compact --handoff "$DEFAULT_HANDOFF" "$SAFE_COMPACT" 2>"$err" || rc=$?
 expect_rc "a7: missing TMUX_PANE refuses default pane resolution" 1 "$rc"
 grep -qF 'TMUX_PANE' "$err" || fail "a7: refusal did not name TMUX_PANE"
 grep -qF 'inside tmux' "$err" || fail "a7: refusal did not name the inside-tmux recovery"
@@ -328,7 +330,7 @@ python3 -B - "$OWNER_REG" <<'PY'
 import json, sys
 doc = json.load(open(sys.argv[1])); doc["seats"]["subject"]["pane_id"] = "%9999"; json.dump(doc, open(sys.argv[1], "w"))
 PY
-rc=0; tself compact --pane fake-pane "$SAFE_COMPACT" 2>"$TAP_HOME/unregistered.err" || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "$SAFE_COMPACT" 2>"$TAP_HOME/unregistered.err" || rc=$?
 expect_rc "a8: unregistered pane refused" 1 "$rc"
 seat_reset claude
 rc=0; FAKE_TMUX_GONE=1 tself goal --pane fake-pane "$SAFE_GOAL" 2>/dev/null || rc=$?
@@ -350,12 +352,45 @@ for pair in "loop codex" "goal opencode" "compact cursor-agent"; do
   set -- $pair
   seat_reset "$2"
   case "$1" in goal) text="$SAFE_GOAL" ;; compact) text="$SAFE_COMPACT" ;; *) text="$SAFE_LOOP" ;; esac
-  rc=0; tself "$1" --pane fake-pane "$text" 2>"$TAP_HOME/degraded.err" || rc=$?
+  extra=(); [ "$1" != compact ] || extra=(--handoff "$DEFAULT_HANDOFF")
+  rc=0; tself "$1" ${extra[@]+"${extra[@]}"} --pane fake-pane "$text" 2>"$TAP_HOME/degraded.err" || rc=$?
   expect_rc "a9: $1 on $2 degrades" 6 "$rc"
   grep -qF 'DEGRADED' "$TAP_HOME/degraded.err" || fail "a9: $1 on $2 did not say DEGRADED"
 done
 seat_reset claude
 [ ! -e "$FAKE_TMUX_STATE/send-log" ] || fail "a9: a degraded verb injected into the pane"
+
+# Every self reset validates an explicit audience before copying or arming.
+python3 -B - "$OWNER_REG" <<'PYREG'
+import json, sys
+p=sys.argv[1]; r=json.load(open(p)); r["seats"]["inactive"]={**r["seats"]["subject"],"status":"gone"}; json.dump(r,open(p,"w"))
+PYREG
+for verb in compact rebrief clear; do
+  for recipient in absent subject inactive; do
+    args=("$verb" --pane fake-pane --handoff "$DEFAULT_HANDOFF" --notify "$recipient")
+    [ "$verb" != compact ] || args+=(-- "$SAFE_COMPACT")
+    rc=0; tself "${args[@]}" 2>"$TAP_HOME/notify.err" || rc=$?
+    expect_rc "notify: $verb rejects $recipient" 1 "$rc"
+    grep -qF 'different active teammate' "$TAP_HOME/notify.err" || fail "notify: wrong refusal"
+  done
+done
+[ ! -d "$OWNER_BUS/handoff" ] || fail "notify refusal copied or armed a reset"
+[ ! -e "$FAKE_TMUX_STATE/send-log" ] || fail "notify refusal injected input"
+
+# An operator-only reset arms with no outcome audience and preserves its verb.
+for verb in rebrief clear; do
+  rc=0; tself "$verb" --pane fake-pane --handoff "$DEFAULT_HANDOFF" 2>"$TAP_HOME/$verb-arm.err" || rc=$?
+  expect_rc "operator-only: $verb arms with no notify" 8 "$rc"
+  grep -qF "$verb recovery ARMED" "$TAP_HOME/$verb-arm.err" || fail "operator-only: invoked verb lost"
+done
+grep -qF 'clear is deprecated' "$TAP_HOME/clear-arm.err" || fail "clear alias lacks migration line"
+python3 -B - "$OWNER_BUS/handoff" <<'REQUESTS'
+import json, pathlib, sys
+requests=[json.loads(p.read_text()) for p in pathlib.Path(sys.argv[1]).glob('*.json') if not p.name.endswith('.receipt.json')]
+assert {r['verb'] for r in requests} == {'clear', 'rebrief'}, requests
+assert all('notify' not in r and pathlib.Path(r['handoff']).read_text().strip() for r in requests), requests
+REQUESTS
+[ ! -e "$FAKE_TMUX_STATE/send-log" ] || fail "caller reset input before detached worker"
 
 # --- (c) submit-verify integration ------------------------------------------------
 echo "=== (c) submit-verify integration ==="
@@ -364,7 +399,7 @@ echo "=== (c) submit-verify integration ==="
 # normalized in the actual producer before it reaches the durable request.
 clean_pane
 : > "$TAP_HOME/bun-shim.log"
-rc=0; BUN_SHIM_LOG="$TAP_HOME/bun-shim.log" tself compact --pane fake-pane "$SAFE_COMPACT   " 2>"$TAP_HOME/queued.err" || rc=$?
+rc=0; BUN_SHIM_LOG="$TAP_HOME/bun-shim.log" tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "$SAFE_COMPACT   " 2>"$TAP_HOME/queued.err" || rc=$?
 expect_rc "c1: Claude compact queues its worker" 0 "$rc"
 grep -q 'compact QUEUED' "$TAP_HOME/queued.err" || fail "c1b: queued outcome not reported"
 [ ! -s "$FAKE_TMUX_STATE/send-log" ] || fail "c1c: caller typed before the worker"
@@ -383,7 +418,7 @@ QUEUED
 # A human draft is never cleared or fused by the caller while it arms a wait.
 clean_pane
 printf 'human draft still being composed' > "$FAKE_TMUX_STATE/input"
-rc=0; tself compact --pane fake-pane "$SAFE_COMPACT" 2>/dev/null || rc=$?
+rc=0; tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "$SAFE_COMPACT" 2>/dev/null || rc=$?
 expect_rc "c1f: compact queues behind a human draft" 0 "$rc"
 [ "$(cat "$FAKE_TMUX_STATE/input")" = 'human draft still being composed' ] || fail "c1f: caller changed the draft"
 [ ! -s "$FAKE_TMUX_STATE/send-log" ] || fail "c1f: caller typed into the draft"
@@ -479,7 +514,7 @@ rc=0
   TAP_CALLER_SELECTED_PANE=fake-pane TAP_CALLER_SELECTED_PANE_ID='%4242' \
   TAP_CALLER_SELECTED_SESSION='fixture/subject' TAP_CALLER_SELECTED_EPOCH='srv:fixture' TAP_CALLER_SELECTED_SOCKET='/fixture/tmux.sock' \
   BUN_SHIM_LOG="$C3J_SHIM" \
-  tself compact --pane fake-pane "$SAFE_COMPACT") \
+  tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "$SAFE_COMPACT") \
   >/dev/null 2>"$TAP_HOME/owner-inline.err" || rc=$?
 expect_rc "c3j: compact with owner witness queues the worker" 0 "$rc"
 # The worker binds the registered seat itself and rechecks it before the resume.
@@ -512,7 +547,7 @@ rc=0
 (TAP_CALLER_SELECTED_HANDLE=subject TAP_CALLER_SELECTED_INSTANCE='subject|old' \
   TAP_CALLER_SELECTED_PANE=fake-pane TAP_CALLER_SELECTED_PANE_ID='%4242' \
   TAP_CALLER_SELECTED_SESSION='fixture/subject' TAP_CALLER_SELECTED_EPOCH='srv:fixture' \
-  FAKE_TMUX_CMD=opencode tself compact --pane fake-pane "$SAFE_COMPACT") >/dev/null 2>"$TAP_HOME/owner-deferred.err" || rc=$?
+  FAKE_TMUX_CMD=opencode tself compact --handoff "$DEFAULT_HANDOFF" --pane fake-pane "$SAFE_COMPACT") >/dev/null 2>"$TAP_HOME/owner-deferred.err" || rc=$?
 expect_rc "c3k: deferred compact arm refuses a replaced owner" 1 "$rc"
 grep -qF 'owner changed' "$TAP_HOME/owner-deferred.err" || fail "c3k: refusal does not name the owner change: $(cat "$TAP_HOME/owner-deferred.err")"
 [ -z "$(find "$OWNER_BUS/handoff" -maxdepth 1 -name '*.compact.json' 2>/dev/null)" ] || fail "c3k: a worker was armed for a replaced owner"
@@ -535,7 +570,7 @@ err="$TAP_HOME/codex-no-handoff.err"
 rc=0; FAKE_TMUX_CMD="codex" BUN_SHIM_LOG="$TAP_HOME/bun-shim.log" \
   tself compact --pane fake-pane "$SAFE_COMPACT" 2>"$err" || rc=$?
 expect_rc "c6: codex compact without a handoff refuses" 1 "$rc"
-grep -qF "tap self compact --handoff" "$err" || fail "c6b: refusal does not name the supported command"
+grep -qF "/tap:self compact" "$err" || fail "c6b: refusal does not name the supported command"
 [ ! -e "$FAKE_TMUX_STATE/send-log" ] || fail "c6c: refusal still injected into the pane"
 grep -qF 'self-compact.ts' "$TAP_HOME/bun-shim.log" && fail "c6d: refusal still reached the Bun worker"
 
@@ -551,7 +586,7 @@ grep -qF 'identity is unverified' "$TAP_HOME/codex-handoff.err" || fail "c7b: ar
 copied="$(find "$OWNER_BUS/handoff" -maxdepth 1 -name 'subject-*.md' | head -1)"
 [ -n "$copied" ] || fail "c7c: handoff was not copied to the bus before the arm"
 grep -qF 'in-flight: verify the codex compact handoff gate' "$copied" || fail "c7d: handoff copy lost the body"
-grep -qF '# TAP compaction handoff — subject' "$copied" || fail "c7e: handoff copy lacks its header"
+grep -qF '# Authored compact brief' "$copied" || fail "c7e: handoff copy lacks its header"
 [ ! -e "$FAKE_TMUX_STATE/send-log" ] || fail "c7f: codex path injected into the pane before the worker owns effects"
 seat_reset claude
 

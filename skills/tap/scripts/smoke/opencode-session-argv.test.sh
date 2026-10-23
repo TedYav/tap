@@ -87,7 +87,7 @@ err = open(sys.argv[2]).read()
 rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
 assert sorted(row["name"] for row in rows) == ["repo/glm", "repo/scout"], rows
 opencode = next(row for row in rows if row["name"] == "repo/glm")
-assert opencode["argv"] == ["opencode", "--session", "ses_previous"], opencode
+assert opencode["argv"] == ["opencode", "--standalone", "--session", "ses_previous"], opencode
 assert "starting a fresh conversation" not in err, err
 assert "starting a fresh conversation" not in raw, raw
 print("opencode-session-argv: captured-id mixed cohort plans exact OpenCode + Claude: ok")
@@ -102,7 +102,7 @@ python3 -B - "$WORK/out" "$WORK/err" <<'PY'
 import json, sys
 plan = json.loads(open(sys.argv[1]).read().strip())
 err = open(sys.argv[2]).read()
-assert plan["argv"] == ["opencode", "--session", "ses_previous"], plan
+assert plan["argv"] == ["opencode", "--standalone", "--session", "ses_previous"], plan
 assert "starting a fresh conversation" not in err, err
 print("opencode-session-argv: captured-id restart plans the exact OpenCode session: ok")
 PY
@@ -122,7 +122,7 @@ err = open(sys.argv[2]).read()
 rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
 assert sorted(row["name"] for row in rows) == ["repo/glm", "repo/scout"], rows
 opencode = next(row for row in rows if row["name"] == "repo/glm")
-assert opencode["argv"] == ["opencode"], opencode
+assert opencode["argv"] == ["opencode", "--standalone"], opencode
 assert err.count("starting a fresh conversation") == 1, err
 assert "native continuation" not in err and "OpenCode session id; falling back" not in err, err
 assert "starting a fresh conversation" not in raw, raw
@@ -138,7 +138,7 @@ python3 -B - "$WORK/out" "$WORK/err" <<'PY'
 import json, sys
 plan = json.loads(open(sys.argv[1]).read().strip())
 err = open(sys.argv[2]).read()
-assert plan["argv"] == ["opencode"], plan
+assert plan["argv"] == ["opencode", "--standalone"], plan
 assert err.count("starting a fresh conversation") == 1, err
 print("opencode-session-argv: id-less restart starts fresh with one notice: ok")
 PY

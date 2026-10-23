@@ -568,7 +568,7 @@ export async function setupMachine(ask: Prompt, detected?: string[], json = fals
     const found = detected ?? Object.keys(binaries).filter(h=>Bun.which(binaries[h]!,{PATH:searchPath()}));
     log("Pre-release beta: expect bugs; send bug reports and feature requests to ted@tedyav.com.");
     log(`Detected executables: ${found.join(", ") || "none"}. This does not verify login or model access.`);
-    if (!found.length) { log(`No supported CLI detected (${Object.values(binaries).join(", ")}); install and sign in before running tap setup --machine. To request another harness: https://github.com/TedYav/tap/issues`); return 0; }
+    if (!found.length) { log(`No supported CLI detected (${Object.values(binaries).join(", ")}); install and sign in before running tap setup --machine. To request another harness: https://github.com/TedYav/tap/issues, or have your agent add it with tap help skill extend`); return 0; }
     const snapshot = setupSnapshot();
     const choices = await collectSetupChoices(ask,snapshot,found,log,notes);
     if (!choices) return 0;

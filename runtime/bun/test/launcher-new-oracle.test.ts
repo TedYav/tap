@@ -80,6 +80,24 @@ function both(key: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}, at 
   // Python oracle intact and assert each new byte string explicitly.
   const expected = { ...incumbentOutcome<Outcome>(key) };
   const baseKey = key.replace(/ --json$/, "");
+  // Preserve the frozen oracle; only the retired checkpoint remedy changes.
+  if (baseKey === "live reset fence") expected.stderr = expected.stderr.replace(
+    "next: tap team reset", "next: wait for the reset owner (or until identity is readable)",
+  );
+  // OpenCode 2 adds private-server TUI launches; TAP also defaults session tabs
+  // off. Preserve the historical fixture and pin each intended output change.
+  if (baseKey === "opencode") {
+    if (key.endsWith(" --json")) {
+      expected.stdout = expected.stdout.replace('"argv":["opencode"', '"argv":["opencode","--standalone"');
+      const preview = JSON.parse(expected.stdout);
+      preview.env.OPENCODE_CLI_CONFIG_CONTENT = '{"tabs":{"mode":"off"}}';
+      expected.stdout = JSON.stringify(preview) + "\n";
+    } else expected.stderr = "tap session: OpenCode tabs.mode=off\n";
+  }
+  if (baseKey === "--effort unsupported") {
+    expected.stdout = expected.stdout.replaceAll("agy, claude, codex, hermes)", "agy, claude, codex, hermes, opencode)");
+    expected.stderr = expected.stderr.replaceAll("agy, claude, codex, hermes)", "agy, claude, codex, hermes, opencode)");
+  }
   const warningFlag = ({ "passthrough flag": "-c", "preset with passthrough": "-c", "--effort with passthrough": "--verbose" } as Record<string, string>)[baseKey];
   if (warningFlag && !(key.endsWith(" --json") && expected.status !== 0)) expected.stderr = `tap session launch: warning: ${warningFlag} is not a TAP launch option; it and following arguments are forwarded to the harness. Use -- before intentional harness arguments.\n` + expected.stderr;
   // Every local Codex launch now carries --no-daemon (tap-21bdj); the recorded incumbent predates it.
@@ -388,6 +406,11 @@ function choose(title: string, setup: () => void, args: string[], expectText: Re
       const recorded = incumbentOutcome<ReturnType<typeof pty>>(`chooser: ${title}`);
       const expected = { ...recorded, output: menuOf(recorded.output, forkReason) };
       expect(expected.output).not.toBe(recorded.output);
+      // Live-name menus defer harness classification until a key is selected.
+      if (title.startsWith("a live seated harness")) {
+        expected.output = expected.output.replace("live, running detached", "session name is live")
+          .replace(/(\[r\] resume +)[^\r]+/, "$1Attach if running; otherwise resume");
+      }
       const actual = pty(["bun", native, ...args]);
       expect(actual).toEqual(expected);
       expect(expected.exit).toBe(2);
@@ -397,9 +420,9 @@ function choose(title: string, setup: () => void, args: string[], expectText: Re
 }
 
 choose("a live seated harness offers reattach", () => enroll({ harn: { harness: "claude", session: "fixture/harn", status: "active" } }),
-  ["claude", "harn"], /'fixture\/harn' \(claude\): live, running detached · registered as harn/, SEAT);
+  ["claude", "harn"], /'fixture\/harn' \(claude\): session name is live · registered as harn/, SEAT);
 choose("a live seated harness with a record discloses its resume tier", () => enroll({ harn: seatedLive("harn") }),
-  ["claude", "harn"], /No usable ID; open the native picker/, SEAT);
+  ["claude", "harn"], /Attach if running; otherwise resume/, SEAT);
 choose("a handle live in another session", () => {
   const pane = tmux("display-message", "-p", "-t", "=fixture/other:", "#{pane_id}").stdout.trim();
   enroll({ roam: { harness: "claude", pane_id: pane, session: "fixture/other", status: "active" } });
@@ -451,6 +474,66 @@ function scripted(choices: string[], args: string[], extra: NodeJS.ProcessEnv = 
   };
 }
 const seatedHarn = () => enroll({ harn: seatedLive("harn") });
+
+// Count work at the choice boundary rather than asserting a host-dependent deadline.
+function observedMenu(keys: string[], args = ["claude", "harn"], extra: NodeJS.ProcessEnv = {}) {
+  const run = spawnSync("bun", [join(import.meta.dir, "support/launch-menu-observed.ts"), keys.join(","), ...args], {
+    cwd, env: { ...env, PATH: `${join(root, "bin")}:${env.PATH}`, ...extra }, encoding: "utf8", timeout: 30_000,
+  });
+  const menus = run.stdout.split("\n").filter(line => line.startsWith("MENU ")).map(line => JSON.parse(line.slice(5)));
+  return { ...run, menus };
+}
+
+test("live collision: menu defers process, native-store, sibling and lifecycle work", () => {
+  enroll({ harn: seatedLive("harn", "claude", { harness_session_id: "missing-chat" }) });
+  try {
+    const out = observedMenu(["q"]);
+    expect(out.status).toBe(2);
+    expect(out.menus).toHaveLength(1);
+    const events: string[] = out.menus[0].events;
+    expect(events.some(event => event === "native-store" || event.startsWith("ps "))).toBe(false);
+    expect(events.filter(event => event.startsWith("tmux "))).toHaveLength(1);
+    expect(events.filter(event => event.startsWith("tmux "))[0]).toContain("list-sessions");
+    expect(events.some(event => /startup-trace|lifecycle/.test(event))).toBe(false);
+    expect(out.menus[0].options.find((option: string[]) => option[0] === "f")[3]).toBeUndefined();
+    expect(out.stdout).not.toContain("RUN ");
+  } finally { enroll(); }
+});
+
+test("live collision: r uses qualified attach-only without starting or registering a seat", () => {
+  enroll({ harn: seatedLive("harn") });
+  try {
+    const out = observedMenu(["r"]);
+    expect(out.status).toBe(0);
+    expect(out.stdout).toContain("ATTACH fixture/harn");
+    expect(out.stdout).not.toContain("RUN ");
+  } finally { enroll(); }
+});
+
+test("live collision: a real attach refusal renders cleanly at the module boundary", () => {
+  enroll({ harn: seatedLive("harn", "claude", { status: "suspended", status_reason: "incapable" }) });
+  try {
+    const out = observedMenu(["r"], ["claude", "harn"], { SCRIPTED_REAL_ATTACH: "1" });
+    expect(out.status).toBe(1);
+    expect(out.stderr.trim().split("\n")).toHaveLength(1);
+    expect(out.stderr).toContain("suspended (incapable)");
+    expect(out.stderr).not.toContain(" at ");
+    expect(out.stdout).not.toContain("RUN ");
+  } finally { enroll(); }
+});
+
+test("live-name collision: r finding a shell asks again before any replacement", () => {
+  enroll({ shelly: seatedLive("shelly") });
+  try {
+    const out = observedMenu(["r", "q"], ["claude", "shelly"]);
+    expect(out.status).toBe(2);
+    expect(out.menus).toHaveLength(2);
+    expect(out.menus[1].question).toContain("unattended shell");
+    expect(out.stdout).not.toContain("RUN ");
+    expect(out.stdout).not.toContain("ATTACH ");
+    expect(tmux("has-session", "-t", "=fixture/shelly").status).toBe(0);
+  } finally { enroll(); }
+});
 
 test("scripted: [q] launches nothing and exits 2", () => {
   seatedHarn();
@@ -613,7 +696,7 @@ test("scripted: --new keeps the allocated suffix without asking", () => {
   } finally { enroll(); }
 });
 
-test("scripted: [f] is listed in every menu and enabled only when a fork can succeed", () => {
+test("scripted: [f] discloses row-only refusals before native conversation validation", () => {
   const cases: [string, () => void, string[], (string | boolean)[]][] = [
     ["codex seat with a stored id", () => enroll({ harn: seatedLive("harn", "codex", { harness_session_id: "sid-1" }) }), ["claude", "harn"],
       ["f", "fork", "Fork a new session with this history"]],

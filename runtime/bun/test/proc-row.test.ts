@@ -1,10 +1,20 @@
 // The libproc process-row fallback used when `ps` cannot run (Codex auto sandbox; tap-21bdj).
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { libprocRow, type Libc } from "../src/proc-row";
+import { libprocRow, libprocIdentity, type Libc } from "../src/proc-row";
+import { basename } from "node:path";
 import { observeCallingPane } from "../src/context";
 
 const darwin = process.platform === "darwin";
+
+test.skipIf(!darwin)("kernel identity returns executable, parent and birth without ps", () => {
+  const own = libprocIdentity(process.pid);
+  expect(own?.ppid).toBe(process.ppid);
+  expect(own?.command).toBe(basename(process.execPath));
+  expect(own?.start).toBeGreaterThan(0);
+  expect(own?.start).toBeLessThanOrEqual(Date.now());
+  expect(libprocIdentity(0x7ffffff0)).toBeNull();
+});
 
 test.skipIf(!darwin)("libprocRow matches `ps` for this process and its parent", () => {
   for (const pid of [process.pid, process.ppid]) {

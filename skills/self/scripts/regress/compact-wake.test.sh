@@ -301,29 +301,18 @@ reset
 rc=0; FAKE_TMUX_CMD=claude FAKE_PANE_PATH="$WORK/withbeads" BEADS_DIR= tself compact \
   --pane fake-pane --handoff "$HANDOFF" "$FOCUS" 2>/dev/null || rc=$?
 expect_rc "h3d: compact from a beads pane succeeds" 0 "$rc"
-# Product emits 'bd ready' only when command -v bd AND beadsReachable (compact-focus.ts).
-# GHA has .beads and no bd; gate the ping-content arm, not the file.
-if command -v bd >/dev/null 2>&1; then
-  case "$(armed resumePing)" in
-    *"bd ready"*) ok "h3d: beads-backed pane DOES get the bd-ready instruction" ;;
-    *) fail "h3d: ping dropped 'bd ready' where a beads database does resolve" ;;
-  esac
-else
-  echo "SMOKE-SKIP: command-v-bd — h3d bd-ready ping-content; covering tap-mzhs9"
-fi
-
-# Ruling: ALWAYS arm, never conditionally — the agent decides whether work
-# remains, not the arming logic. So a compact with no handoff still gets a ping.
-reset
-rc=0; FAKE_TMUX_CMD=claude tself compact --pane fake-pane "$FOCUS" 2>/dev/null || rc=$?
-expect_rc "h4: compact without --handoff still succeeds" 0 "$rc"
-armed resumePing >/dev/null || fail "h5: always-arm violated — no resume worker was armed without a handoff"
-ok "h5: wake is armed even with no handoff (always-arm)"
 case "$(armed resumePing)" in
-  *"treat your summary as lossy"*) ;;
-  *) fail "h6: no-handoff ping does not say the summary is lossy" ;;
+  *"Next step"*) ok "h3d: recovery defers work selection to the authored Next step" ;;
+  *) fail "h3d: recovery omitted the authored Next step" ;;
 esac
-ok "h6: no-handoff ping states the summary is lossy rather than implying completeness"
+
+# No family may arm a self compact without the authored continuation.
+reset
+rc=0; FAKE_TMUX_CMD=claude tself compact --pane fake-pane "$FOCUS" 2>"$WORK/no-handoff.err" || rc=$?
+expect_rc "h4: compact without --handoff refuses" 1 "$rc"
+worker_spawned && fail "h5: no-handoff refusal spawned a worker"
+grep -qF '/tap:self compact' "$WORK/no-handoff.err" || fail "h6: refusal lacks the authoring skill pointer"
+ok "h5/h6: no worker and an actionable skill pointer"
 
 # An EMPTY handoff is worse than none: it survives the compaction and reads as a
 # positive statement that nothing was in flight. A false negative wearing an
@@ -408,18 +397,21 @@ ok "c3: tap self sent nothing into a codex pane"
 # --- (c-oc) OpenCode arms the same worker -------------------------------------
 # No staging: the worker waits for two idle reads and submits bare /compact itself,
 # so tap self sends nothing into the pane.
+"$REAL_BUN" - "$ROOT" "$WORK/opencode.db" <<'BUNOC'
+const { createOpenCodeStore, addSession } = await import(`${process.argv[2]}/runtime/bun/test/support/opencode-store.ts`);
+const db = createOpenCodeStore(process.argv[3]);
+addSession(db, "oc-session", process.cwd());
+db.close();
+BUNOC
 python3 -B - "$WORK/opencode.db" "$TAP_REGISTRY" <<'PYOC'
-import json, sqlite3, sys
-db = sqlite3.connect(sys.argv[1])
-db.executescript("CREATE TABLE session (id TEXT); INSERT INTO session VALUES ('oc-session'); CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL); CREATE INDEX message_session_time_created_id_idx ON message (session_id, time_created, id); CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, session_id TEXT NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL); CREATE INDEX part_message_id_id_idx ON part (message_id, id);")
-db.close()
+import json, sys
 doc = json.load(open(sys.argv[2]))
 doc["seats"]["subject"].update(harness="opencode", harness_session_id="oc-session", transcript_path=sys.argv[1])
 json.dump(doc, open(sys.argv[2], "w"))
 PYOC
 reset
-rc=0; FAKE_TMUX_CMD=opencode tself compact --pane fake-pane --handoff "$HANDOFF" "$FOCUS" 2>/dev/null || rc=$?
-expect_rc "c-oc1: opencode compact arms the worker" 0 "$rc"
+rc=0; FAKE_TMUX_CMD=opencode tself compact --pane fake-pane --handoff "$HANDOFF" "$FOCUS" 2>"$WORK/opencode-arm.err" || rc=$?
+expect_rc "c-oc1: opencode compact arms the worker ($(cat "$WORK/opencode-arm.err"))" 0 "$rc"
 [ "$(armed mode)" = opencode ] || fail "c-oc2: worker is not in opencode mode: $(armed mode)"
 case "$(armed resumePing)" in
   *"Post-compaction resume check."*"$FOCUS"*|*"$FOCUS"*"Post-compaction resume check."*) ;;

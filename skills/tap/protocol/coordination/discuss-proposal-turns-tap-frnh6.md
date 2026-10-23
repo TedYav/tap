@@ -25,7 +25,7 @@ ask, use `tap send <driver> --ask --kind proposal -f <file>`. The driver's singl
 reply combines per-op fold results and the next turn or terminal. A continuing
 turn requests a reply; a terminal does not. No per-op TAP receipts are owed.
 
-`fold.sh` validates canonical body/from/kind and courier placement provenance,
+`fold.sh` validates canonical body/from/kind/from_team and courier placement provenance,
 then applies operations in order through `skills/discuss/scripts/ledger.sh`.
 Batch op `i` uses `<payload-id>#<i>` (zero-based) as the successful event's
 `source_msg_id` and its entry in `processed_payload_ids`; legacy single-op bodies
@@ -35,6 +35,28 @@ and returns nonzero with per-op results. Successful prefix operations stay appli
 Only a fully applied batch earns a whole-payload bookmark. Re-fold and
 `is-converged.sh` use validated ledger source IDs as well as saved bookmarks to
 recover after a crash between append and bookmark save. Missing or malformed
-operations never count as completion. Thread state and these semantics belong to
-the discussion consumer; the separate TAP collaboration ledger below is unchanged.
+operations never count as completion.
+
+Several senders may propose on one thread. When `metadata.json` declares `peers`
+(a map of handle to hyphen-free alias, the driver included), an `add` must use the
+sender's `<alias>-` prefix and an add from a sender outside the map is refused;
+without `peers`, ids are free-form and contests are last-writer-wins as before.
+`fold.sh` applies one invocation's payloads in courier placed order and, with
+`peers` declared, preflights them: two senders moving one item to different
+statuses, or a payload contradicting an event folded after the payload was placed,
+is a `CONFLICT`. None of those ops applies,
+each is reported with the other senders' positions, and they stay pending; like a
+rejected op, a conflict stops its payload's ordered tail. `fold.sh` records every rejected or conflicted op in
+`threads/<tid>/refusals.ndjson` before reporting it. The driver adjudicates with
+its own transition and runs `dispose.sh <tid> <payload-id>#<i> --reason <text> --by
+<driver>`, which requires that refusal record, verifies the saved copy against the
+canonical payload and its placed receipt as `fold.sh` does, refuses a blank reason,
+then appends the reason to
+`threads/<tid>/dispositions.ndjson` before writing the op's bookmark. `fold.sh` and
+`is-converged.sh` read that file with the ledger source ids and saved bookmarks,
+validating each record (thread, driver, payload, non-empty reason; two disagreeing
+records for one op fail loud). A dispose of an applied, already disposed, unknown,
+never-refused or provenance-less op is refused. The fold exits nonzero while any op is conflicted. Thread
+state and these semantics belong to the discussion consumer; the separate TAP
+collaboration ledger below is unchanged.
 

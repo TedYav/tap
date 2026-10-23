@@ -1,8 +1,9 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, unlinkSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { copyBrief, parseOptions, clearCommand, freshIdentity, sameSeat, transcriptIdentity, runRecovery, type Request, type Receipt, type Effects } from "../src/self-rebrief";
+import { armSelfRecovery, validateNotify, copyBrief, parseOptions, clearCommand, freshIdentity, sameSeat, transcriptIdentity, runRecovery, type Request, type Receipt, type Effects } from "../src/self-rebrief";
+import { SendAuthorizationPending } from "../src/verbs/send";
 import { removeScratchTree } from "./support/scratch";
 import type { Seat } from "../src/registry";
 const root = mkdtempSync(join(tmpdir(), "self-rebrief-"));
@@ -15,8 +16,12 @@ function fixture(overrides: Partial<Effects> = {}) {
   const fx: Effects = {row:()=>seat,idle:()=>true,submit:()=>{log.push("clear");return{status:"injected"};},send:(to,body,id)=>{log.push(`send:${to}`);if(id)recoveryId=id;expect(body).not.toContain("rebrief succeeded");return{rc:0,disposition:"queued-spool"};},record:r=>receipts.push(r),fresh:()=>({session:"new",transcript:join(root,"new.jsonl")}),firstInput:()=>recoveryId?`[[TAP v0.23 note ${recoveryId}]]`:null,now:()=>time,wait:async()=>{time+=1000;},...overrides};
   return {fx,log,receipts};
 }
-test("required authored inputs and owner; plain clear accepts no free text",()=>{
-  expect(()=>parseOptions(["rebrief","--handoff","x"])).toThrow("--notify");
+test("authored inputs are required; outcome audience is optional",()=>{
+  for (const verb of ["clear", "rebrief"]) {
+    expect(parseOptions([verb,"--handoff","x"])).toMatchObject({verb,handoff:"x"});
+    expect(()=>parseOptions([verb])).toThrow("/tap:self rebrief");
+    expect(()=>armSelfRecovery({verb: verb as "clear" | "rebrief"})).toThrow("/tap:self rebrief");
+  }
   expect(()=>parseOptions(["clear","surprise"])).toThrow("unexpected");
   expect(()=>parseOptions(["clear","--charter","x"])).toThrow("--handoff");
   expect(()=>parseOptions(["clear","--handoff","x","--handoff","y"])).toThrow("duplicate");
@@ -69,8 +74,8 @@ test("clear spellings preserve supported family mapping and refuse unknown",()=>
 
 test("tap self rejects malformed rebrief before resolving any seat",()=>{
   const path=new URL("../main.ts",import.meta.url).pathname;
-  const result=Bun.spawnSync([process.execPath,path,"self","rebrief","--handoff","absent"],{env:{...process.env},stdout:"pipe",stderr:"pipe"});
-  expect(result.exitCode).toBe(1);expect(result.stderr.toString()).toContain("requires --handoff FILE and --notify");
+  const result=Bun.spawnSync([process.execPath,path,"self","rebrief"],{env:{...process.env},stdout:"pipe",stderr:"pipe"});
+  expect(result.exitCode).toBe(1);expect(result.stderr.toString()).toContain("/tap:self rebrief");
 });
 
 test("the shared native submit path accepts a bare clear without a sentinel marker",async()=>{
@@ -155,29 +160,72 @@ test("observed Codex clear menu owns only the exact command and submits at most 
   }
 });
 
-test("Codex bootstrap requires positive fresh UI, not missing old content",async()=>{
-  const {codexUiTransition}=await import("../src/self-rebrief");
-  // Reset header/footer transcribed from the live 12:28:23Z capture; placeholder paint constructed.
-  const before="prior conversation\n› \x1b[2mAsk Codex to do anything\x1b[0m\nContext 71% left";
-  const after="│ >_ OpenAI Codex (v0.155.0) │\nTo continue this session, run codex resume, then select Review (old)\n› \x1b[2mAsk Codex to do anything\x1b[0m\n  gpt-6-astra xhigh · Context 100% left";
-  expect(codexUiTransition(before,after,"old")).toBe(true);
-  for(const frame of ["",before,after.replace("100%","71%"),after.replace("(old)","(other)"),after.replace("OpenAI Codex","Other CLI"),after.replace("\x1b[2m","")])
-    expect(codexUiTransition(before,frame,"old")).toBe(false);
-  expect(codexUiTransition(after,after,"old")).toBe(false);
-});
-
 test("Codex bootstrap waits for native identity and recovery-first input; read remains unverified",async()=>{
-  const f=fixture({fresh:()=>f.log.includes("send:worker")?{session:"new",transcript:"/new"}:null,uiTransition:()=>true});
+  const f=fixture({fresh:()=>f.log.includes("send:worker")?{session:"new",transcript:"/new"}:null,resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})});
   await runRecovery(request,f.fx,5000);
   expect(f.log).toEqual(["clear","send:worker"]);
   expect(f.receipts.map(r=>r.state)).toEqual(["submitted","recovery-pending-proof","reset-observed","recovery-accepted"]);
-  expect(f.receipts.at(-1)).toMatchObject({witness:"codex-ui-transition",newSession:"new"});
+  expect(f.receipts.at(-1)).toMatchObject({witness:"codex-thread-start",newSession:"new"});
   expect(f.receipts.at(-1)?.detail).toContain("recipient brief read remains unverified");
+});
+
+test("Codex bootstrap waits when a rollout already exists before registry binding",async()=>{
+  const f=fixture({fresh:()=>null,resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"}),bootstrapSafe:()=>false} as Partial<Effects>);
+  await runRecovery(request,f.fx,4000);
+  expect(f.log).toContain("clear");
+  expect(f.log.includes("send:worker")).toBe(false);
+  expect(f.receipts.at(-1)?.detail).toContain("waiting for native bind; recovery not placed");
+});
+
+test("pre-effect bootstrap contention waits and places recovery only once",async()=>{
+  const f=fixture({resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})});
+  f.fx.fresh=()=>f.log.includes("send:worker")?{session:"new",transcript:"/new"}:null;
+  const send=f.fx.send;let attempts=0;
+  f.fx.send=(...args)=>{if(++attempts===1){const pending=new SendAuthorizationPending("coordination pending before placement");pending.effect="none";throw pending;}return send(...args);};
+  await runRecovery(request,f.fx,8000);
+  expect(attempts).toBe(2);
+  expect(f.log).toEqual(["clear","send:worker"]);
+  expect(f.receipts.at(-1)?.state).toBe("recovery-accepted");
+});
+
+test("bootstrap contention after a possible send effect never re-enters delivery",async()=>{
+  const f=fixture({fresh:()=>null,resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})});
+  const send=f.fx.send;let attempts=0;
+  f.fx.send=(to,...args)=>{if(to==="worker"){attempts++;throw new SendAuthorizationPending("effect possible");}return send(to,...args);};
+  await runRecovery(request,f.fx,8000);
+  expect(attempts).toBe(1);
+  expect(f.log).toEqual(["clear","send:owner"]);
+  expect(f.receipts.at(-1)?.state).toBe("incomplete");
+});
+
+test("Codex native thread start bootstraps recovery before the rollout exists",async()=>{
+  const f=fixture({fresh:()=>f.log.includes("send:worker")?{session:"new",transcript:"/new"}:null,
+    resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})} as Partial<Effects>);
+  await runRecovery(request,f.fx,5000);
+  expect(f.log).toEqual(["clear","send:worker"]);
+  expect(f.receipts.at(-1)).toMatchObject({state:"recovery-accepted",witness:"codex-thread-start",newSession:"new"});
+});
+
+test("Codex thread witness cannot accept a different post-input native conversation",async()=>{
+  const f=fixture({fresh:()=>f.log.includes("send:worker")?{session:"other",transcript:"/other"}:null,
+    resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})} as Partial<Effects>);
+  await runRecovery(request,f.fx,5000);
+  expect(f.log).toEqual(["clear","send:worker","send:owner"]);
+  expect(f.receipts.at(-1)?.state).toBe("delivery-miss");
+});
+
+test("pre-submit native observation waits through a transient unreadable store without resetting",async()=>{
+  let observations=0;
+  const f=fixture({prepareSubmit:()=>++observations>=3} as Partial<Effects>);
+  await runRecovery(request,f.fx,8000);
+  expect(observations).toBe(3);
+  expect(f.log).toEqual(["clear","send:worker"]);
+  expect(f.fx.now()).toBeGreaterThanOrEqual(3000);
 });
 
 test("Codex post-input mismatch reports delivery-miss; absent native proof times out without resetting again",async()=>{
   for(const proof of ["wrong-input","no-native"]){
-    const f=fixture({uiTransition:()=>true,firstInput:()=>"unrelated work",fresh:()=>
+    const f=fixture({resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"}),firstInput:()=>"unrelated work",fresh:()=>
       proof==="wrong-input"&&f.log.includes("send:worker")?{session:"new",transcript:"/new"}:null});
     await runRecovery(request,f.fx,4000);
     expect(f.log).toEqual(["clear","send:worker","send:owner"]);
@@ -185,9 +233,9 @@ test("Codex post-input mismatch reports delivery-miss; absent native proof times
   }
 });
 
-test("Claude keeps native pre-delivery witness and never takes Codex UI bootstrap",async()=>{
+test("Claude keeps native pre-delivery witness and never takes Codex thread bootstrap",async()=>{
   const claudeRequest={...request,bound:{...request.bound,harness:"claude"}};
-  const f=fixture({row:()=>({...seat,harness:"claude"}),fresh:()=>null,uiTransition:()=>true});
+  const f=fixture({row:()=>({...seat,harness:"claude"}),fresh:()=>null,resetThread:()=>({session:"new",logId:10,loggedAt:123,writerLock:"would-block"})});
   await runRecovery(claudeRequest,f.fx,3000);
   expect(f.log).toEqual(["clear","send:owner"]);
   const pass=fixture({row:()=>({...seat,harness:"claude"}),firstInput:()=>"not consulted"});
@@ -220,4 +268,69 @@ test("first Codex input skips startup records and never skips unrelated first wo
   expect(firstCodexInput(path)).toBe("unrelated first");
   writeFileSync(path,JSON.stringify({type:"event_msg",payload:{type:"user_message",message:"event-format first"}}));
   expect(firstCodexInput(path)).toBe("event-format first");
+});
+
+for (const verb of ["clear", "rebrief"] as const) {
+  test(`${verb} without notify succeeds and leaves reporting to the recovered operator conversation`, async () => {
+    const f=fixture(); let body=""; const send=f.fx.send;
+    f.fx.send=(to,text,...args)=>{body=text;return send(to,text,...args);};
+    await runRecovery({...request,verb,notify:undefined},f.fx,8000);
+    expect(f.log).toEqual(["clear","send:worker"]);
+    expect(f.receipts.at(-1)?.state).toBe("recovery-accepted");
+    expect(body).toContain("whole brief");
+    expect(body).toContain("without replaying");
+    expect(body).toContain("Next step");
+    expect(body).toContain("own conversation");
+    expect(body).not.toContain("continue the standing mission");
+  });
+  test(`${verb} timeout without notify never chooses a bystander`, async () => {
+    const f=fixture({fresh:()=>null});
+    await runRecovery({...request,verb,notify:undefined},f.fx,3000);
+    expect(f.log).toEqual(["clear"]);
+    expect(f.receipts.at(-1)?.state).toBe("incomplete");
+  });
+}
+
+test("clear failure names clear and notification failure leaves the reset receipt distinct", async () => {
+  const failure={...request,id:"notify-failed",verb:"clear" as const};
+  let notice="";
+  const f=fixture({fresh:()=>null,send:(_to,body)=>{notice=body;throw new Error("notify unavailable");}});
+  await runRecovery(failure,f.fx,3000);
+  expect(notice).toContain("Clear incomplete");
+  expect(notice).toContain("notify-failed.receipt.json");
+  expect(f.receipts.at(-1)?.detail).toContain("fresh native session/transcript not observed");
+  expect(JSON.parse(readFileSync(join(root,"handoff/notify-failed.receipt.json.notify.json"),"utf8"))).toMatchObject({recipient:"owner",status:"failed",detail:"notify unavailable"});
+});
+
+test("both direct reset arms refuse missing, empty and non-regular handoffs before resolving a seat", async () => {
+  const { armSelfCompact } = await import("../src/self-compact");
+  const empty=join(root,"empty.md");writeFileSync(empty," \n");
+  for(const handoff of [undefined,join(root,"absent.md"),empty,root]) {
+    expect(()=>armSelfRecovery({verb:"rebrief",handoff})).toThrow("/tap:self rebrief");
+    expect(()=>armSelfCompact({pane:"%5",focus:"preserve work",handoffPath:handoff})).toThrow("/tap:self compact");
+  }
+});
+// Root can read mode-000 files, so that environment cannot supply this fixture.
+test.skipIf(process.getuid?.() === 0)("both direct reset arms reject permission-denied handoffs", async () => {
+  const { armSelfCompact } = await import("../src/self-compact");
+  const handoff=join(root,"unreadable.md");writeFileSync(handoff,"private brief");chmodSync(handoff,0);
+  try {
+    expect(()=>armSelfRecovery({verb:"rebrief",handoff})).toThrow("/tap:self rebrief");
+    expect(()=>armSelfCompact({pane:"%5",focus:"preserve work",handoffPath:handoff})).toThrow("/tap:self compact");
+  } finally { chmodSync(handoff,0o600); }
+});
+test("every copied brief survives source replacement and removal", () => {
+  for(const verb of ["compact","rebrief"] as const) {
+    const source=join(root,`${verb}-source.md`);writeFileSync(source,"Role: expert\nKeep scope: three lanes\nNext step: wait for orders");
+    const copy=copyBrief(root,`${verb}-copy`,source,undefined,verb);
+    writeFileSync(source,"replacement");unlinkSync(source);
+    expect(readFileSync(copy,"utf8")).toContain("Next step: wait for orders");
+    expect(readFileSync(copy,"utf8")).not.toContain("replacement");
+  }
+});
+test("only an explicit different active outcome recipient is accepted; absence never selects a peer", () => {
+  const seats={worker:seat,peer:{...seat,status:"active"},inactive:{...seat,status:"gone"}};
+  expect(()=>validateNotify(undefined,"worker",seats)).not.toThrow();
+  expect(()=>validateNotify("peer","worker",seats)).not.toThrow();
+  for(const notify of ["", "absent", "worker", "inactive", "toString", "__proto__"])expect(()=>validateNotify(notify,"worker",seats)).toThrow("different active teammate");
 });

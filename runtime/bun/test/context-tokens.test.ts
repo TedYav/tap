@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readContextTokens, withClaudeWindow, formatContextTokens } from "../src/context-tokens";
 import { removeScratchTree } from "./support/scratch";
+import { claudePromptCache, formatPromptCache } from "../src/prompt-cache";
 const root = mkdtempSync(join(tmpdir(), "context-tokens-"));
 afterAll(() => removeScratchTree(root));
 const at = "2026-09-19T09:00:00Z";
@@ -30,8 +31,8 @@ test("Claude adds input cache buckets once and permits exceeding the compaction 
   expect(result.input_tokens).toBe(340046);
   expect(result.window_tokens).toBeNull();
   expect(formatContextTokens(result)).toBe("340k");
-  expect(formatContextTokens(withClaudeWindow(result,null))).toBe("340k / 1M");
-  expect(formatContextTokens(withClaudeWindow(result,"300000"))).toBe("340k / 300k");
+  expect(formatContextTokens(withClaudeWindow(result,null))).toBe("340k/1M");
+  expect(formatContextTokens(withClaudeWindow(result,"300000"))).toBe("340k/300k");
   for (const value of ["350k","NaN","0","99999999"]) expect(withClaudeWindow(result,value).window_tokens).toBeNull();
   expect(sample("claude",[claude(),{type:"system",subtype:"compact_boundary",sessionId:"seat"}]).input_tokens).toBeNull();
 });
@@ -55,10 +56,10 @@ test("an unsampled Codex transcript cannot establish a mismatched session", () =
 test("Codex defaults an unspecified cap to 1M but does not replace a reported or invalid cap", () => {
   const event = codex(145000);
   const header = {type:"session_meta",payload:{id:"seat"}};
-  expect(formatContextTokens(sample("codex",[header,event]))).toBe("145k / 380k");
+  expect(formatContextTokens(sample("codex",[header,event]))).toBe("145k/380k");
   delete (event.payload.info as {model_context_window?:number}).model_context_window;
   expect(sample("codex",[header,event])).toMatchObject({window_tokens:1000000,window_source:"default_1m"});
-  expect(formatContextTokens(sample("codex",[header,event]))).toBe("145k / 1M");
+  expect(formatContextTokens(sample("codex",[header,event]))).toBe("145k/1M");
   event.payload.info.model_context_window = 0;
   expect(sample("codex",[header,event]).window_tokens).toBeNull();
 });
@@ -99,7 +100,7 @@ test("a synthetic Claude record keeps the prior real count rather than reporting
   expect(sample("claude",[synthetic()])).toMatchObject({input_tokens:null,unknown_reason:"usage_not_in_tail"});
   expect(sample("claude",[claude(),{type:"system",subtype:"compact_boundary",sessionId:"seat"},synthetic()]))
     .toMatchObject({input_tokens:null,unknown_reason:"awaiting_usage_after_compact"});
-  expect(formatContextTokens(withClaudeWindow(sample("claude",[claude(),synthetic()]),null))).toBe("340k / 1M");
+  expect(formatContextTokens(withClaudeWindow(sample("claude",[claude(),synthetic()]),null))).toBe("340k/1M");
 });
 test("Codex's zeroed post-compaction token_count awaits real usage rather than reporting zero", () => {
   const header = {type:"session_meta",payload:{id:"seat"}};
@@ -117,4 +118,78 @@ test("a genuine small count stays measured", () => {
   expect(sample("codex",[header,codex(1200)])).toMatchObject({input_tokens:1200,used_percent:0,unknown_reason:null});
   const small = {type:"assistant",sessionId:"seat",timestamp:at,message:{model:"claude-x",usage:{input_tokens:3,output_tokens:1}}};
   expect(sample("claude",[small])).toMatchObject({input_tokens:3,unknown_reason:null});
+});
+
+test("Claude cache TTL follows the latest write, read-only hits refresh it, and compaction drops it", () => {
+  const cached = (timestamp: string, oneHour: number, fiveMinutes: number, read = 0) => ({
+    ...claude(),timestamp,message:{model:"claude-opus",usage:{input_tokens:10,
+      cache_creation_input_tokens:oneHour+fiveMinutes,cache_read_input_tokens:read,
+      cache_creation:{ephemeral_1h_input_tokens:oneHour,ephemeral_5m_input_tokens:fiveMinutes}}},
+  });
+  const events = [cached("2026-10-22T08:00:00Z",100,0),cached("2026-10-22T08:01:00Z",0,100),cached("2026-10-22T08:02:00Z",0,0,100)];
+  expect(sample("claude",events).prompt_cache).toMatchObject({ttl_seconds:300,last_activity_at:"2026-10-22T08:02:00Z",expires_at:"2026-10-22T08:07:00.000Z",basis:"assistant_timestamp"});
+  expect(sample("claude",[events[2]]).prompt_cache).toMatchObject({state:"unknown",unknown_reason:"ttl_not_in_tail"});
+  expect(sample("claude",[...events,{type:"system",subtype:"compact_boundary",sessionId:"seat"}]).prompt_cache).toBeNull();
+  expect(sample("claude",[cached("2026-10-22T08:00:00Z",100,100)]).prompt_cache?.ttl_seconds).toBe(300);
+  expect(sample("codex",[{type:"session_meta",payload:{id:"seat"}},codex()]).prompt_cache).toBeNull();
+});
+
+test("cache evidence excludes synthetic, sidechain and other sessions and distinguishes none from unknown", () => {
+  const write = {...claude(),message:{model:"claude-opus",id:"m1",usage:{input_tokens:1,cache_creation_input_tokens:100,
+    cache_read_input_tokens:0,cache_creation:{ephemeral_1h_input_tokens:100,ephemeral_5m_input_tokens:0}}}};
+  const five = {...write,timestamp:"2026-09-19T09:01:00Z",message:{...write.message,usage:{...write.message.usage,cache_creation:{ephemeral_1h_input_tokens:0,ephemeral_5m_input_tokens:100}}}};
+  const result = sample("claude",[write,synthetic(),{...five,isSidechain:true},{...five,sessionId:"other"}]);
+  expect(result.prompt_cache).toMatchObject({ttl_seconds:3600,last_activity_at:at});
+  expect(sample("claude",[{...claude(),message:{usage:{input_tokens:1,cache_creation_input_tokens:0,cache_read_input_tokens:0}}}]).prompt_cache?.state).toBe("none");
+  expect(sample("claude",[{...write,message:{...write.message,usage:{...write.message.usage,cache_creation:undefined}}}]).prompt_cache?.state).toBe("unknown");
+  expect(sample("claude",[write,{...five,message:{...five.message,model:"different",usage:{input_tokens:1,cache_creation_input_tokens:0,cache_read_input_tokens:100}}}]).prompt_cache?.state).toBe("unknown");
+});
+
+test("cache display separates clock-expired, absent and unknown states", () => {
+  const event = {...claude(),message:{model:"claude-opus",usage:{cache_read_input_tokens:100,cache_creation_input_tokens:100,
+    cache_creation:{ephemeral_1h_input_tokens:100,ephemeral_5m_input_tokens:0}}}};
+  const start = Date.parse(at)/1000;
+  const warm = claudePromptCache([event],"seat",start+60);
+  expect(warm?.state).toBe("warm");
+  expect(formatPromptCache(warm,false,start+60)).toBe("●59m");
+  const cold = claudePromptCache([event],"seat",start+3600);
+  expect(cold).toMatchObject({state:"cold",remaining_seconds:0});
+  expect(formatPromptCache(cold)).toBe("●");
+  expect(formatPromptCache(null)).toBe("");
+  expect(formatPromptCache({...warm!,state:"none"})).toBe("");
+  expect(formatPromptCache({...warm!,state:"unknown"})).toBe("");
+});
+
+test("the documented native compact attachment fences cache and usage together", () => {
+  for (const field of ["hookName","hookEvent"]) {
+    const compact = {type:"attachment",sessionId:"seat",attachment:{[field]:"SessionStart:compact"}};
+    const result = sample("claude",[claude(),compact]);
+    expect(result.prompt_cache).toBeNull();
+    expect(result.input_tokens).toBeNull();
+  }
+});
+
+
+test("cache marker rounds before coloring and never guesses unknown expiry", () => {
+  const base = {state:"warm",ttl_seconds:3600,last_activity_at:at,expires_at:new Date(Date.parse(at)+60000).toISOString(),
+    remaining_seconds:60,source:"claude_transcript",basis:"assistant_timestamp",unknown_reason:null} as const;
+  for (const [seconds, minutes, color] of [[1,1,31],[59,1,31],[240,4,31],[241,5,33],[300,5,33],[840,14,33],[841,15,94],[900,15,94]]) {
+    const cache = {...base,remaining_seconds:seconds!,expires_at:new Date(Date.parse(at)+seconds!*1000).toISOString()};
+    expect(formatPromptCache(cache,false,Date.parse(at)/1000)).toBe(`●${minutes}m`);
+    expect(formatPromptCache(cache,true,Date.parse(at)/1000)).toBe(`\x1b[${color}m●${minutes}m\x1b[0m`);
+  }
+  expect(formatPromptCache({...base,state:"cold",remaining_seconds:0},true)).toBe("\x1b[38;5;88m●\x1b[0m");
+  expect(formatPromptCache({...base,state:"cold",remaining_seconds:0})).toBe("●");
+  for (const remaining_seconds of [null,NaN,Infinity])
+    expect(formatPromptCache({...base,remaining_seconds},true,Date.parse(at)/1000)).toBe("");
+  expect(formatPromptCache({...base,expires_at:null},true)).toBe("");
+});
+
+
+test("cache display rounds the deadline before the JSON seconds floor", () => {
+  const now = Date.parse(at)/1000;
+  const cache = {state:"warm",ttl_seconds:3600,last_activity_at:at,
+    expires_at:new Date((now+840.5)*1000).toISOString(),remaining_seconds:840,
+    source:"claude_transcript",basis:"assistant_timestamp",unknown_reason:null} as const;
+  expect(formatPromptCache(cache,true,now)).toBe("\x1b[94m●15m\x1b[0m");
 });

@@ -99,3 +99,42 @@ test("machine policy overrides the agent-view default", () => {
   const got = applyLaunchEnv({ argv: ["claude"], env: {} }, seat, env);
   expect(got.env.CLAUDE_CODE_DISABLE_AGENT_VIEW).toBe("0");
 });
+
+test("OpenCode tabs default off without changing the stored seat recipe", () => {
+  const record = { ...seat, harness: "opencode", harness_env: {} };
+  const got = applyLaunchEnv({ argv: ["opencode"], env: {} }, record, machine("version=3\n"));
+  expect(JSON.parse(got.env.OPENCODE_CLI_CONFIG_CONTENT!)).toEqual({ tabs: { mode: "off" } });
+  expect(record.harness_env).toEqual({});
+});
+
+test("OpenCode inline JSON deep-merges through ambient, policy, invocation and seat tiers", () => {
+  const env = { ...machine(`version=3\n[harness.opencode.env]\nOPENCODE_CLI_CONFIG_CONTENT='{"theme":{"mode":"dark"},"tabs":{"scope":"cwd"}}'\n`),
+    OPENCODE_CLI_CONFIG_CONTENT: '{"theme":{"name":"ambient"},"keys":["old"],"tabs":{"mode":"auto"}}' };
+  const record = { ...seat, harness: "opencode", harness_env: {
+    OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"on"},"keys":["seat"]}' } };
+  const got = applyLaunchEnv({ argv: ["opencode"], env: {
+    OPENCODE_CLI_CONFIG_CONTENT: '{"theme":{"name":"invocation"}}' } }, record, env);
+  expect(JSON.parse(got.env.OPENCODE_CLI_CONFIG_CONTENT!)).toEqual({
+    tabs: { mode: "on", scope: "cwd" }, theme: { name: "invocation", mode: "dark" }, keys: ["seat"],
+  });
+});
+
+test("an unrelated OpenCode seat override retains tabs off and existing inline settings", () => {
+  const env = { ...machine("version=3\n"), OPENCODE_CLI_CONFIG_CONTENT: '{"theme":{"name":"keep"}}' };
+  const got = applyLaunchEnv({ argv: ["opencode"], env: {} }, { ...seat, harness: "opencode",
+    harness_env: { OPENCODE_CLI_CONFIG_CONTENT: '{"theme":{"mode":"dark"}}' } }, env);
+  expect(JSON.parse(got.env.OPENCODE_CLI_CONFIG_CONTENT!)).toEqual({
+    tabs: { mode: "off" }, theme: { name: "keep", mode: "dark" },
+  });
+});
+
+test.each(['{"secret":"do-not-print",', '[]', 'null', '"text"'])("invalid OpenCode inline config refuses without leaking its value: %s", value => {
+  const env = { ...machine("version=3\n"), OPENCODE_CLI_CONFIG_CONTENT: value };
+  expect(() => applyLaunchEnv({ argv: ["opencode"], env: {} }, { ...seat, harness: "opencode" }, env))
+    .toThrow("OPENCODE_CLI_CONFIG_CONTENT must be a JSON object");
+});
+
+test("non-OpenCode seats do not receive the CLI config default", () => {
+  expect(applyLaunchEnv({ argv: ["claude"], env: {} }, seat, machine("version=3\n")).env)
+    .not.toHaveProperty("OPENCODE_CLI_CONFIG_CONTENT");
+});

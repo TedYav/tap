@@ -190,22 +190,13 @@ grep -q 'IDLE is tmux window activity — a hint' <<<"$out" \
 [ "$(printf '%s\n' "$strong" | sort | tr '\n' ' ')" = "fable-docs fable-subagent " ] \
   || fail "--strongest must name exactly the frontier targets, once each; got: $strong"
 
-# --- tap models is CATALOG ONLY ---------------------------------------------
-cat_out="$("$TAP" models 2>&1)" || fail "tap models failed: $cat_out"
-for seat in opus-lieutenant opus-leader-2 fable-docs glm53-buddy qx7k-hoist; do
-  grep -q "$seat" <<<"$cat_out" \
-    && fail "tap models is catalog-only but rendered seat '$seat':\n$cat_out"
-done
-grep -q 'STATUS' <<<"$cat_out" \
-  && fail "tap models must not carry a seat STATUS column:\n$cat_out"
-grep -q 'tap team calibration' <<<"$cat_out" \
-  || fail "tap models must point at the team-scoped surface:\n$cat_out"
-# The native catalog's registry-independent behavior, including the Bash-selected
-# door, is exercised by runtime/bun/test/routing.test.ts. Its old shell wrapper
-# is deleted; a source grep against that file no longer guards this behavior.
-if "$TAP" models --strongest >/dev/null 2>&1; then
-  fail "--strongest moved to 'tap team calibration'; the catalog must not accept it"
-fi
+# --- retired catalog is a tombstone with separate streams -------------------
+models_tombstone='tap models: tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l); next: tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated'
+models_rc=0
+"$TAP" models >"$WORK/models.out" 2>"$WORK/models.err" || models_rc=$?
+[ "$models_rc" -eq 1 ] || fail "retired catalog must exit 1, got $models_rc"
+[ ! -s "$WORK/models.out" ] || fail "retired catalog wrote stdout"
+[ "$(cat "$WORK/models.err")" = "$models_tombstone" ] || fail "wrong catalog tombstone"
 
 # --- a name-only join whose HARNESS contradicts the row is NOT inherited ----
 # The silent-downgrade defect inverted into a silent UPGRADE, and worse in kind:
@@ -420,8 +411,10 @@ grep -qi 'hint' <<<"$strip_disclaimer" \
 if disclaims_convention <<<"$strip_disclaimer"; then
   fail "negative control: help without the disclaimer must fail the discoverability check"
 fi
-help_models="$("$TAP" help models 2>&1)" || fail "tap help models failed"
-grep -q 'tap team calibration' <<<"$help_models" \
-  || fail "tap help models must route the roster question to team calibration"
+models_rc=0
+"$TAP" help models >"$WORK/models-help.out" 2>"$WORK/models-help.err" || models_rc=$?
+[ "$models_rc" -eq 1 ] || fail "retired catalog help must exit 1, got $models_rc"
+[ ! -s "$WORK/models-help.out" ] || fail "retired catalog help wrote stdout"
+[ "$(cat "$WORK/models-help.err")" = "$models_tombstone" ] || fail "wrong catalog help tombstone"
 
 echo "team-calibration: ok"

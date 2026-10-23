@@ -6,7 +6,7 @@
 //
 // Exit: 0 resolved | 1 usage / not in tmux | 2 pane not registered.
 
-import { TapError, callerObservationReason, displayCwd, observeCallingPane, observeHarnessSessionPane, resolveContext, resolveSelf, observeSelfPane, refuseUnanchoredPane, type ResolvedContext, type IdentityPaneObservation } from "../context";
+import { TapError, callerObservationReason, displayCwd, observeCallerIdentity, observeHarnessSessionPane, resolveContext, resolveSelf, observeSelfPane, refuseUnanchoredPane, type ResolvedContext, type IdentityPaneObservation } from "../context";
 import { missingLocalTeam } from "../onboarding";
 import { LAUNCH_TEAM, noTeamMessage } from "../first-run";
 import { NO_MACHINE_INDEX } from "../selector";
@@ -49,23 +49,23 @@ export function cmdWhoami(argv: string[]): number {
       // --pane <tmux-target>)`. Native carried a fixed sentence instead, so
       // "no tmux server is running" and "your tty maps to two panes" arrived
       // as the same line -- and they have different remedies.
-      // `observeCallingPane` was built to supply that string; this is its
+      // `observeCallerIdentity` was built to supply that string; this is its
       // first consumer.
       //
       // Projecting inline is deliberate: calling `callingPane()` and then
-      // `observeCallingPane()` for the refusal would be a SECOND walk of the
+      // `observeCallerIdentity()` for the refusal would be a SECOND walk of the
       // process ancestry, and tap-316wj is the bead for exactly that -- two
       // observations of a racing world can disagree, and the second one would
       // be the one that names the reason for the first one's answer.
-      const seen = observeCallingPane();
+      const seen = observeCallerIdentity();
       if (seen.state === "inside") {
-        pane = { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch };
+        pane = { status: "ok", ...seen };
       } else if (seen.state === "unobservable" && seen.unverifiable) {
         // Stays a pane observation: `observeSelfPane` turns it into the exit-2
         // `generation_unverifiable` refusal, which the incumbent also raised
         // BEFORE consulting its own refusal string.
         pane = { status: "unverifiable", paneId: seen.paneId ?? "" };
-      } else if (seen.state === "unobservable" && process.env.CLAUDE_JOB_DIR) {
+      } else if (seen.state === "unobservable" && !seen.shared && process.env.CLAUDE_JOB_DIR) {
         // A detached background tool can have no ambient/default tmux server
         // while its validated owner lives on a recorded private socket. The
         // job row may select that socket, but it grants no identity until the
@@ -75,11 +75,10 @@ export function cmdWhoami(argv: string[]): number {
         if (bySession?.status === "ok" && bySession.selectedSocket) {
           const socketEnv: NodeJS.ProcessEnv = { ...process.env, TAP_TMUX_SOCKET_PATH: bySession.selectedSocket };
           delete socketEnv.TAP_TMUX_SOCKET;
-          const selectedSeen = observeCallingPane(socketEnv);
+          const selectedSeen = observeCallerIdentity(socketEnv);
           if (selectedSeen.state === "outside") pane = bySession;
           else if (selectedSeen.state === "inside") {
-            pane = { status: "ok", paneId: selectedSeen.paneId,
-              session: selectedSeen.session, serverEpoch: selectedSeen.serverEpoch };
+            pane = { status: "ok", ...selectedSeen };
           }
         }
         if (!pane) {

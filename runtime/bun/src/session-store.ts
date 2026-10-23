@@ -257,7 +257,7 @@ function listDayDirs(root: string): string[] {
  * directory), can sit under a project whose metadata never names the directory. So a hit here
  * can never certify uniqueness -- see deriveOpencode, which reports hits as ambiguous. */
 export const OPENCODE_SESSION_SQL = (ancestors: number) => `WITH anc(d) AS (VALUES ${Array(ancestors).fill("(?)").join(",")})
-SELECT id FROM session INDEXED BY session_project_idx
+SELECT id FROM session_v2 INDEXED BY session_v2_project_idx
 WHERE directory = ? AND project_id IN (
   SELECT 'global'
   UNION SELECT project_id FROM project_directory WHERE directory IN (SELECT d FROM anc)

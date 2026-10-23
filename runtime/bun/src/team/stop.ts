@@ -53,9 +53,11 @@ import { deenrollTeamWithCapture, restoreTeamEnrollment } from "../index-home";
 import { assertResetUnfenced } from "../reset";
 import { TapError, type ResolvedContext } from "../context";
 import { humanAction, humanLine, errorJson } from "../native-error";
-import { crewSelectGate, rosterGate, selectAny, type Selection } from "./selection";
+import { crewSelectGate, rosterGate, selectAny, spared, type Selection } from "./selection";
+import { refuseSharedSelfStop } from "../opencode-shared-stop";
 import { assertBoundSeats, readDiscoverySeats, type BoundCohort } from "./discovery";
 import type { LifecycleTmux } from "../lifecycle-target";
+import type { Seat } from "../registry";
 
 export interface StopEffects {
   tmux: LifecycleTmux;
@@ -209,6 +211,11 @@ export function runTeamStop(inv: StopInvocation): number {
   const dump = readRowDump(ctx.registryPath, `tap team ${verb}`);
   engine.team = dump.team;
   const rows = dump.rows;
+
+  // Reuse the validated dump: identity refusals and absent/invalid registry
+  // semantics must precede the shared guard, which still precedes effects.
+  if (!parsed.keepSelf) refuseSharedSelfStop(dump.seats.filter(([handle]) => !spared(handle, selection)),
+    `tap team ${verb === "reset-stop" ? "reset" : verb}`, true);
 
   if (rows.length === 0) return zeroRowArm(engine);
 
@@ -633,12 +640,12 @@ function rollbackSuspendSelf(engine: Engine): void {
   }
 }
 
-function readRowDump(registryPath: string, label: string): { team: string; rows: StopRow[] } {
+function readRowDump(registryPath: string, label: string): { team: string; rows: StopRow[]; seats: Array<[string, Seat]> } {
   let doc: unknown;
   try {
     doc = parseJsonPreserving(pyReadUtf8(registryPath));
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { team: "", rows: [] };
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { team: "", rows: [], seats: [] };
     throw new TapError(1, "registry_invalid", "repair_registry", `tap team: registry unreadable (${(e as Error).message})`, label);
   }
   if (!pyIsDict(doc)) {
@@ -660,12 +667,12 @@ function readRowDump(registryPath: string, label: string): { team: string; rows:
   if (axis === null) {
     throw new TapError(1, "registry_invalid", "repair_registry", "tap team: registry unreadable (seat axis is not an object)", label);
   }
-  const lines = Object.entries(axis as Record<string, unknown>)
+  const seats = Object.entries(axis as Record<string, unknown>)
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .filter(([, ent]) => pyIsDict(ent))
-    .map(([handle, ent]) => dumpLine(handle, ent as Record<string, unknown>, label));
+    .filter((entry): entry is [string, Seat] => pyIsDict(entry[1]));
+  const lines = seats.map(([handle, ent]) => dumpLine(handle, ent, label));
   try {
-    return parseRowDump([team, ...lines].join("\n"));
+    return { ...parseRowDump([team, ...lines].join("\n")), seats };
   } catch (e) {
     if (e instanceof TapError && !e.verbLabel) throw new TapError(e.code, e.errorClass, e.action, e.detail, label);
     throw e;

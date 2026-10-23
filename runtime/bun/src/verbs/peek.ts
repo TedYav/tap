@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { TapError, observeCallingPane, refuseUnanchoredPane, requireActingRegistry, resolveContext } from "../context";
+import { TapError, observeCallerIdentity, refuseUnanchoredPane, requireActingRegistry, resolveContext } from "../context";
 import { contextUsedPercent } from "../context-census";
 import { validToken } from "../ids";
 import { errorJson, humanAction, humanLine } from "../native-error";
@@ -119,7 +119,7 @@ function readPeek(argv: string[], scriptsDir: string): Result {
         requireActingRegistry(ctx, 4);
       } catch (error) {
         if (isOldStoreRefusal(error)) throw error;
-        const caller = observeCallingPane(env);
+        const caller = observeCallerIdentity(env);
         if (caller.state === "inside") refuseUnanchoredPane(caller.paneId, process.cwd(), 4, caller, env);
         const reason = caller.state === "outside" ? caller.detail : caller.refusal;
         throw new TapError(4, "unanchored_bus", "run from the enrolled team root",

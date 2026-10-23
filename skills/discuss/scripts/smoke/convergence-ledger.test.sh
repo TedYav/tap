@@ -15,6 +15,7 @@ LEDGER="$SCRIPT_DIR/ledger.sh"
 FOLD="$SCRIPT_DIR/fold.sh"
 CONVERGED="$SCRIPT_DIR/is-converged.sh"
 ROUND="$SCRIPT_DIR/round-count.sh"
+DISPOSE="$SCRIPT_DIR/dispose.sh"
 
 pass=0
 fail=0
@@ -23,13 +24,14 @@ bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }
 
 echo "collab/convergence-ledger test  (single-writer + payload-fold + convergence)"
 
-for helper in "$LEDGER" "$FOLD" "$CONVERGED" "$ROUND"; do
+for helper in "$LEDGER" "$FOLD" "$CONVERGED" "$ROUND" "$DISPOSE"; do
   [ -f "$helper" ] || { echo "FAIL: $helper not found" >&2; exit 1; }
 done
 
 mkdir -p "$REPO_ROOT/tmp"
-SMOKE_DIR="$(mktemp -d "$REPO_ROOT/tmp/discuss-convergence-ledger-smoke.XXXXXX")"
-trap 'rm -rf "$SMOKE_DIR"' EXIT
+SMOKE_DIR="$(mktemp -d "$REPO_ROOT/tmp/discuss-convergence-ledger-smoke.XXXXXX")" || SMOKE_DIR=""
+[ -n "$SMOKE_DIR" ] && [ -d "$SMOKE_DIR" ] || { echo "FAIL: could not allocate a scratch root under $REPO_ROOT/tmp" >&2; exit 1; }
+trap 'rm -rf "${SMOKE_DIR:?}"' EXIT
 export COLLAB_DIR="$SMOKE_DIR/discuss"
 echo "  (COLLAB_DIR=$COLLAB_DIR)"
 
@@ -529,7 +531,7 @@ expect_status "second batch operation consumes the first operation's result" "$T
 expect_rc_text "completed batch converges" 0 "pending=0" bash "$CONVERGED" "$TID_BATCH" 4 --by "$DRIVER"
 expect_rc_text "completed batch re-fold does not reapply" 0 "applied=0" bash "$FOLD" "$TID_BATCH" "$batch_payload" --by "$DRIVER"
 # Model a crash after ledger append and before the fold's bookmark-file save.
-rm -f "$COLLAB_DIR/threads/$TID_BATCH/processed_payload_ids"
+rm -f "${SMOKE_DIR:?}/discuss/threads/$TID_BATCH/processed_payload_ids"
 expect_rc_text "convergence recovers completed per-op ledger bookmarks" 0 "pending=0" \
   bash "$CONVERGED" "$TID_BATCH" 4 --by "$DRIVER"
 expect_rc_text "re-fold recovers completed per-op ledger bookmarks" 0 "applied=0" \
@@ -546,7 +548,7 @@ grep -qx p-partial "$COLLAB_DIR/threads/$TID_PARTIAL/processed_payload_ids" 2>/d
   && bad "partial batch was bookmarked as complete" || ok "partial batch has no whole-payload bookmark"
 expect_rc_text "closed prefix does not hide pending batch tail" 1 "pending=1" \
   bash "$CONVERGED" "$TID_PARTIAL" 4 --by "$DRIVER"
-rm -f "$COLLAB_DIR/threads/$TID_PARTIAL/processed_payload_ids"
+rm -f "${SMOKE_DIR:?}/discuss/threads/$TID_PARTIAL/processed_payload_ids"
 bash "$LEDGER" add "$TID_PARTIAL" later proposed judgment "x" "prerequisite arrives" --by "$DRIVER" >/dev/null 2>&1
 expect_rc_text "partial crash re-fold applies only the remaining tail" 0 "applied=2 rejected=0 malformed=0 skipped=1" \
   bash "$FOLD" "$TID_PARTIAL" "$partial_payload" --by "$DRIVER"
@@ -592,6 +594,357 @@ opkey_payload="$(write_payload "$TID_BATCH_OPKEY" p-batch-opkey '{"ops":[{"op":"
 expect_rc_text "batch cannot cite its own op key as reversal evidence" 1 "REJECTED.*op\[1\]" \
   bash "$FOLD" "$TID_BATCH_OPKEY" "$opkey_payload" --by "$DRIVER"
 expect_status "op-key self-citation leaves the item rejected" "$TID_BATCH_OPKEY" guarded rejected_with_reason
+
+echo "-- (h) n peers: prefixed adds, collision disposition, cross-sender conflict, order independence --"
+# One driver, several proposing senders. The sender is the payload's `from`; a thread
+# may declare `peers` (handle -> alias) in metadata.json. Nothing in (h) changes a
+# thread that declares no peers: (h1) runs on such a thread.
+write_peer_payload() { # <tid> <pid> <from> <body>
+  local tid="$1" pid="$2" from="$3" body="$4"
+  local pdir="$COLLAB_DIR/threads/$tid/proposals"
+  local bus="$SMOKE_DIR/bus-$tid"
+  local canonical="$bus/payloads/$pid.md"
+  local path="$pdir/$pid.md"
+  mkdir -p "$pdir" "$bus/payloads" "$bus/receipts"
+  {
+    printf '%s\n' "---"
+    printf 'id: %s\n' "$pid"
+    printf 'from: %s\n' "$from"
+    printf 'to: %s\n' "$DRIVER"
+    printf '%s\n' "kind: proposal"
+    printf 'path: %s\n' "$canonical"
+    printf '%s\n' "reply: expected"
+    printf '%s\n' "---"
+    printf '%s\n' "$body"
+  } >"$path"
+  if [ ! -f "$canonical" ]; then
+    cp "$path" "$canonical"
+    printf '{"id":"%s","via":"courier","at":"%s"}\n' "$pid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$bus/receipts/$pid.placed"
+  fi
+  printf '%s\n' "$path"
+}
+create_peer_thread() { # <tid> <peers-json: {"handle":"alias",...}>; the driver is added under its handle
+  local tid="$1" peers="$2"
+  local tdir="$COLLAB_DIR/threads/$tid"
+  mkdir -p "$tdir/messages" "$tdir/proposals"
+  python3 - "$tdir/metadata.json" "$DRIVER" "$peers" <<'PY'
+import json, sys
+path, opened_by, peers = sys.argv[1:4]
+mapping = json.loads(peers)
+mapping.setdefault(opened_by, opened_by)
+with open(path, "w") as fh:
+    json.dump({"opened_by": opened_by, "peers": mapping}, fh)
+PY
+}
+settle() { # <tid> <item>... : close open items so only pending proposals can keep a thread open
+  local tid="$1"; shift
+  local item
+  for item in "$@"; do
+    bash "$LEDGER" transition "$tid" "$item" resolved_by_revision "" "closed" --by "$DRIVER" >/dev/null 2>&1
+  done
+}
+
+# (h1) The calibrate-thread wedge (discuss-2026-10-19-calibrate, 2026-10-20): two senders
+# add the same id in one cycle. The second add is rejected and its tail skipped, and
+# nothing can clear it: the copy may not be edited (provenance), may not be deleted
+# (content loss), and a re-fold re-rejects. dispose.sh is the driver's way out, and
+# it records why.
+TID_COLLIDE=t-nparty-collide
+create_thread "$TID_COLLIDE"   # no peers declared: free-form ids, as today
+bash "$LEDGER" add "$TID_COLLIDE" seed1 proposed judgment "x" "seeded" --by "$DRIVER" >/dev/null 2>&1
+collide_alpha_id=alpha-20261022T000001Z-aaaaaaaaaaaa
+collide_beta_id=beta-20261022T000002Z-bbbbbbbbbbbb
+alpha_add="$(write_peer_payload "$TID_COLLIDE" "$collide_alpha_id" alpha '{"ops":[{"op":"add","item_id":"D8","evidence_class":"judgment","evidence":"a","rationale":"alpha D8"}]}')"
+beta_add="$(write_peer_payload "$TID_COLLIDE" "$collide_beta_id" beta '{"ops":[{"op":"transition","item_id":"seed1","new_status":"accepted","rationale":"agree"},{"op":"add","item_id":"D8","evidence_class":"judgment","evidence":"b","rationale":"beta D8"},{"op":"add","item_id":"D9","evidence_class":"judgment","evidence":"b","rationale":"beta D9"}]}')"
+expect_rc_text "second sender's duplicate add is rejected and its tail is not attempted" 1 "REJECTED.*op\[1\].*already exists" \
+  bash "$FOLD" "$TID_COLLIDE" "$alpha_add" "$beta_add" --by "$DRIVER"
+expect_status "first sender's add landed" "$TID_COLLIDE" D8 proposed
+expect_status "second sender's transition ahead of the collision landed" "$TID_COLLIDE" seed1 accepted
+[ -z "$(ledger_status "$TID_COLLIDE" D9)" ] && ok "tail behind the duplicate add did not run" || bad "D9 ran past the duplicate add"
+settle "$TID_COLLIDE" seed1 D8
+expect_rc_text "a closed ledger still cannot converge over the wedged tail" 1 "pending=1" bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+expect_rc_text "re-fold cannot clear a duplicate add" 1 "REJECTED.*op\[1\]" bash "$FOLD" "$TID_COLLIDE" "$beta_add" --by "$DRIVER"
+expect_fail_text "dispose without a reason is refused" "reason" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --by "$DRIVER"
+expect_fail_text "a blank reason is refused before anything is written" "blank|reason" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --reason "   " --by "$DRIVER"
+[ ! -e "$COLLAB_DIR/threads/$TID_COLLIDE/dispositions.ndjson" ] && ok "a refused blank reason wrote no disposition record" || bad "blank reason left a disposition record"
+expect_fail_text "non-driver dispose is rejected" "driver|opened_by|single-writer|refused" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --reason "x" --by "$SIDE"
+expect_fail_text "an unattempted tail op cannot be disposed" "no fold has refused" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#2" --reason "x" --by "$DRIVER"
+untouched="$(write_peer_payload "$TID_COLLIDE" gamma-20261022T000030Z-aaaaaaaa0001 gamma '{"ops":[{"op":"add","item_id":"gamma-1","evidence_class":"judgment","evidence":"g","rationale":"never folded"}]}')"
+expect_fail_text "an op no fold has attempted cannot be disposed" "no fold has refused" \
+  bash "$DISPOSE" "$TID_COLLIDE" "gamma-20261022T000030Z-aaaaaaaa0001#0" --reason "x" --by "$DRIVER"
+bash "$FOLD" "$TID_COLLIDE" "$untouched" --by "$DRIVER" >/dev/null 2>&1   # fold it so it is no longer pending
+settle "$TID_COLLIDE" gamma-1
+grep -q "\"$collide_beta_id#1\"" "$COLLAB_DIR/threads/$TID_COLLIDE/refusals.ndjson" 2>/dev/null \
+  && ok "the fold recorded its refusal of the duplicate add" || bad "refusals.ndjson lacks the rejected op"
+expect_fail_text "disposing an op that already applied is refused" "applied|already" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#0" --reason "x" --by "$DRIVER"
+expect_fail_text "disposing an op key that is not on a saved proposal is refused" "no such|not found|unknown|out of range" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#7" --reason "x" --by "$DRIVER"
+cp "$beta_add" "$beta_add.orig"
+tamper_payload_copy "$beta_add" body '{"ops":[{"op":"transition","item_id":"seed1","new_status":"accepted"},{"op":"add","item_id":"D8","evidence_class":"judgment"},{"op":"add","item_id":"D9","evidence_class":"judgment"}]}'
+expect_fail_text "a valid-JSON copy that differs from the canonical payload cannot be disposed" "provenance|canonical" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --reason "x" --by "$DRIVER"
+mv "$beta_add.orig" "$beta_add"
+expect_rc_text "driver disposes the duplicate add with a reason" 0 "DISPOSED.*op\[1\]" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --reason "duplicate of alpha's D8; same content" --by "$DRIVER"
+grep -q "\"$collide_beta_id#1\"" "$COLLAB_DIR/threads/$TID_COLLIDE/dispositions.ndjson" 2>/dev/null \
+  && ok "the disposition and its reason are recorded" || bad "dispositions.ndjson lacks the disposed op"
+expect_fail_text "disposing the same op twice is refused" "already" \
+  bash "$DISPOSE" "$TID_COLLIDE" "$collide_beta_id#1" --reason "again" --by "$DRIVER"
+expect_rc_text "re-fold after the disposition applies the remaining tail" 0 "applied=1 rejected=0 malformed=0 skipped=2" \
+  bash "$FOLD" "$TID_COLLIDE" "$beta_add" --by "$DRIVER"
+expect_status "the tail add lands after the disposition" "$TID_COLLIDE" D9 proposed
+settle "$TID_COLLIDE" D9
+expect_rc "a disposed op no longer blocks convergence" 0 bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+rm -f "${SMOKE_DIR:?}/discuss/threads/$TID_COLLIDE/processed_payload_ids"
+expect_rc "convergence recovers a disposition after the bookmark file is lost" 0 bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+expect_rc_text "re-fold after bookmark loss re-applies nothing" 0 "applied=0" bash "$FOLD" "$TID_COLLIDE" "$beta_add" --by "$DRIVER"
+# A disposition record is authority to clear work, so an incomplete, wrong-thread or
+# contradictory record fails every reader loud instead of converging over it.
+dispositions_file="$COLLAB_DIR/threads/$TID_COLLIDE/dispositions.ndjson"
+cp "$dispositions_file" "$dispositions_file.orig"
+printf '{"op":"%s#2"}\n' "$collide_beta_id" >>"$dispositions_file"
+expect_rc_text "an op-only disposition record makes convergence fail loud" 3 "reason|thread|driver|payload" bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+expect_fail_text "an op-only disposition record makes the fold fail loud" "reason|thread|driver|payload" bash "$FOLD" "$TID_COLLIDE" "$beta_add" --by "$DRIVER"
+cp "$dispositions_file.orig" "$dispositions_file"
+python3 - "$dispositions_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+record = json.loads(open(path).read().splitlines()[0])
+record["thread_id"] = "some-other-thread"
+with open(path, "a") as fh:
+    fh.write(json.dumps(record) + "\n")
+PY
+expect_rc_text "a wrong-thread disposition record makes convergence fail loud" 3 "thread|contradicts" bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+cp "$dispositions_file.orig" "$dispositions_file"
+python3 - "$dispositions_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+record = json.loads(open(path).read().splitlines()[0])
+record["reason"] = "a different reason for the same op"
+with open(path, "a") as fh:
+    fh.write(json.dumps(record) + "\n")
+PY
+expect_rc_text "two disagreeing records for one op make convergence fail loud" 3 "contradicts" bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+cp "$dispositions_file.orig" "$dispositions_file"
+cat "$dispositions_file.orig" >>"$dispositions_file"   # an identical repeat is a crash-retry, not a contradiction
+expect_rc "an identical repeated disposition record is tolerated" 0 bash "$CONVERGED" "$TID_COLLIDE" 9 --by "$DRIVER"
+cp "$dispositions_file.orig" "$dispositions_file"
+
+# (h2) Prefixed ids, opt-in through `peers`. A sender's add must start with its alias
+# (the declared alias, else its bare handle) followed by '-'. Transitions name any item.
+TID_PREFIX=t-nparty-prefix
+create_peer_thread "$TID_PREFIX" '{"alpha":"alpha","beta":"b"}'
+own_add="$(write_peer_payload "$TID_PREFIX" alpha-20261022T000003Z-cccccccccccc alpha '{"ops":[{"op":"add","item_id":"alpha-1","evidence_class":"judgment","evidence":"a","rationale":"own prefix"}]}')"
+expect_rc_text "a peer add under its own alias applies" 0 "applied=1" bash "$FOLD" "$TID_PREFIX" "$own_add" --by "$DRIVER"
+alias_add="$(write_peer_payload "$TID_PREFIX" beta-20261022T000004Z-dddddddddddd beta '{"ops":[{"op":"add","item_id":"b-1","evidence_class":"judgment","evidence":"b","rationale":"driver-assigned alias"}]}')"
+expect_rc_text "a peer add under its driver-assigned alias applies" 0 "applied=1" bash "$FOLD" "$TID_PREFIX" "$alias_add" --by "$DRIVER"
+other_add="$(write_peer_payload "$TID_PREFIX" beta-20261022T000005Z-eeeeeeeeeeee beta '{"ops":[{"op":"add","item_id":"alpha-2","evidence_class":"judgment","evidence":"b","rationale":"another peer prefix"}]}')"
+expect_rc_text "a peer add under another peer's prefix is rejected before the ledger" 1 "REJECTED.*alpha-2.*prefix" bash "$FOLD" "$TID_PREFIX" "$other_add" --by "$DRIVER"
+[ -z "$(ledger_status "$TID_PREFIX" alpha-2)" ] && ok "a mis-prefixed add never reaches the ledger" || bad "mis-prefixed add landed"
+bare_add="$(write_peer_payload "$TID_PREFIX" beta-20261022T000006Z-ffffffffffff beta '{"ops":[{"op":"add","item_id":"D8","evidence_class":"judgment","evidence":"b","rationale":"legacy free-form id"}]}')"
+expect_rc_text "a free-form add is rejected once peers are declared" 1 "REJECTED.*D8.*prefix" bash "$FOLD" "$TID_PREFIX" "$bare_add" --by "$DRIVER"
+late_add="$(write_peer_payload "$TID_PREFIX" gamma-20261022T000007Z-999999999999 gamma '{"ops":[{"op":"add","item_id":"gamma-1","evidence_class":"judgment","evidence":"g","rationale":"undeclared sender"}]}')"
+expect_rc_text "an add from a sender outside the peers map is refused until the driver maps it" 1 "REJECTED.*gamma-1.*outside" bash "$FOLD" "$TID_PREFIX" "$late_add" --by "$DRIVER"
+python3 - "$COLLAB_DIR/threads/$TID_PREFIX/metadata.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as fh:
+    metadata = json.load(fh)
+metadata["peers"]["gamma"] = "g"
+with open(path, "w") as fh:
+    json.dump(metadata, fh)
+PY
+expect_rc_text "a mapped late joiner still cannot add under its bare hyphenated handle" 1 "REJECTED.*gamma-1.*prefix" bash "$FOLD" "$TID_PREFIX" "$late_add" --by "$DRIVER"
+joiner_add="$(write_peer_payload "$TID_PREFIX" gamma-20261022T000019Z-999999999998 gamma '{"ops":[{"op":"add","item_id":"g-1","evidence_class":"judgment","evidence":"g","rationale":"late joiner under its alias"}]}')"
+expect_rc_text "a mapped late joiner adds under its alias" 0 "applied=1" bash "$FOLD" "$TID_PREFIX" "$joiner_add" --by "$DRIVER"
+TID_NODRIVER=t-nparty-nodriver
+mkdir -p "$COLLAB_DIR/threads/$TID_NODRIVER/messages" "$COLLAB_DIR/threads/$TID_NODRIVER/proposals"
+printf '{"opened_by":"%s","peers":{"alpha":"alpha"}}\n' "$DRIVER" >"$COLLAB_DIR/threads/$TID_NODRIVER/metadata.json"
+nodriver_add="$(write_peer_payload "$TID_NODRIVER" alpha-20261022T000020Z-999999999997 alpha '{"ops":[{"op":"add","item_id":"alpha-1","evidence_class":"judgment","evidence":"a","rationale":"x"}]}')"
+expect_fail_text "a peers map without the driver fails the fold loud" "include the driver" bash "$FOLD" "$TID_NODRIVER" "$nodriver_add" --by "$DRIVER"
+TID_LIST=t-nparty-list
+mkdir -p "$COLLAB_DIR/threads/$TID_LIST/messages" "$COLLAB_DIR/threads/$TID_LIST/proposals"
+printf '{"opened_by":"%s","peers":["alpha"]}\n' "$DRIVER" >"$COLLAB_DIR/threads/$TID_LIST/metadata.json"
+list_add="$(write_peer_payload "$TID_LIST" alpha-20261022T000021Z-999999999996 alpha '{"ops":[{"op":"add","item_id":"alpha-1","evidence_class":"judgment","evidence":"a","rationale":"x"}]}')"
+expect_fail_text "a peers list is refused, one shape only" "object mapping|one shape" bash "$FOLD" "$TID_LIST" "$list_add" --by "$DRIVER"
+TID_NULL=t-nparty-null
+mkdir -p "$COLLAB_DIR/threads/$TID_NULL/messages" "$COLLAB_DIR/threads/$TID_NULL/proposals"
+printf '{"opened_by":"%s","peers":null}\n' "$DRIVER" >"$COLLAB_DIR/threads/$TID_NULL/metadata.json"
+null_add="$(write_peer_payload "$TID_NULL" alpha-20261022T000022Z-999999999995 alpha '{"ops":[{"op":"add","item_id":"D1","evidence_class":"judgment","evidence":"a","rationale":"x"}]}')"
+expect_fail_text "an explicit null peers value is malformed, not legacy mode" "object mapping|one shape" bash "$FOLD" "$TID_NULL" "$null_add" --by "$DRIVER"
+cross_transition="$(write_peer_payload "$TID_PREFIX" beta-20261022T000008Z-888888888888 beta '{"ops":[{"op":"transition","item_id":"alpha-1","new_status":"accepted","rationale":"transitions name any item"}]}')"
+expect_rc_text "a peer transition may name another peer's item" 0 "applied=1" bash "$FOLD" "$TID_PREFIX" "$cross_transition" --by "$DRIVER"
+expect_status "legacy thread without peers still accepted a free-form peer id" "$TID_COLLIDE" D8 resolved_by_revision
+
+# (h3) Cross-sender conflict: two senders move one item to different statuses, and the
+# later-folded sender had not seen the earlier event (its payload was placed before
+# that event was written). Fold order must not decide the item (calibrate D3 was
+# decided by fold order against placement order), and the anti-sycophancy guard must
+# not read a peer's first position as a reversal. A conflicted op is reported and
+# left pending; the driver adjudicates with its own transition and disposes the
+# conflicted ops. Same-status transitions from several senders all apply, so each
+# seat's agreement is on the record.
+TID_CONFLICT=t-nparty-conflict
+create_peer_thread "$TID_CONFLICT" '{"alpha":"alpha","beta":"beta"}'
+bash "$LEDGER" add "$TID_CONFLICT" c1 proposed evidence_bearing "driver-note" "contested" --by "$DRIVER" >/dev/null 2>&1
+bash "$LEDGER" add "$TID_CONFLICT" c2 proposed judgment "driver-note" "agreed" --by "$DRIVER" >/dev/null 2>&1
+conflict_alpha_id=alpha-20261022T000009Z-111111111111
+conflict_beta_id=beta-20261022T000010Z-222222222222
+alpha_c="$(write_peer_payload "$TID_CONFLICT" "$conflict_alpha_id" alpha '{"ops":[{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"alpha agrees"},{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"alpha accepts"},{"op":"add","item_id":"alpha-1","evidence_class":"judgment","evidence":"a","rationale":"independent of the contest"}]}')"
+beta_c="$(write_peer_payload "$TID_CONFLICT" "$conflict_beta_id" beta '{"ops":[{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"beta agrees"},{"op":"transition","item_id":"c1","new_status":"rejected_with_reason","rationale":"beta rejects"}]}')"
+expect_rc_text "cross-sender conflicting transitions in one fold are reported, not applied" 1 "CONFLICT.*c1" \
+  bash "$FOLD" "$TID_CONFLICT" "$alpha_c" "$beta_c" --by "$DRIVER"
+expect_status "a contested item keeps its pre-fold status" "$TID_CONFLICT" c1 proposed
+expect_status "same-status transitions from two senders both apply" "$TID_CONFLICT" c2 accepted
+[ "$(ledger_source_count "$TID_CONFLICT" "$conflict_alpha_id#0")" -eq 1 ] && [ "$(ledger_source_count "$TID_CONFLICT" "$conflict_beta_id#0")" -eq 1 ] \
+  && ok "each sender's agreement is stamped on the ledger" || bad "per-seat agreement stamps missing"
+[ -z "$(ledger_status "$TID_CONFLICT" alpha-1)" ] && ok "a conflicted op stops its payload's ordered tail" || bad "an op behind a conflicted op applied"
+expect_rc_text "conflicted ops stay pending" 1 "pending=2" bash "$CONVERGED" "$TID_CONFLICT" 9 --by "$DRIVER"
+expect_rc_text "re-fold reports the same conflict and applies nothing new" 1 "CONFLICT.*c1" bash "$FOLD" "$TID_CONFLICT" "$alpha_c" "$beta_c" --by "$DRIVER"
+expect_fail_text "a conflicted op cannot be disposed before the driver adjudicates the item" "not adjudicated" \
+  bash "$DISPOSE" "$TID_CONFLICT" "$conflict_alpha_id#1" --reason "premature" --by "$DRIVER"
+bash "$LEDGER" transition "$TID_CONFLICT" c1 rejected_with_reason "" "driver adjudicates: beta's reason holds ($conflict_alpha_id#1 vs $conflict_beta_id#1)" --by "$DRIVER" >/dev/null 2>&1
+expect_rc_text "driver disposes the first conflicted op" 0 "DISPOSED" bash "$DISPOSE" "$TID_CONFLICT" "$conflict_alpha_id#1" --reason "conflict adjudicated by driver transition" --by "$DRIVER"
+expect_rc_text "driver disposes the second conflicted op" 0 "DISPOSED" bash "$DISPOSE" "$TID_CONFLICT" "$conflict_beta_id#1" --reason "conflict adjudicated by driver transition" --by "$DRIVER"
+expect_rc_text "re-fold after the dispositions resumes the stopped tail" 0 "applied=1" bash "$FOLD" "$TID_CONFLICT" "$alpha_c" "$beta_c" --by "$DRIVER"
+expect_status "the op behind the conflict lands after the disposition" "$TID_CONFLICT" alpha-1 proposed
+settle "$TID_CONFLICT" c2 alpha-1
+expect_rc "an adjudicated and disposed conflict converges" 0 bash "$CONVERGED" "$TID_CONFLICT" 9 --by "$DRIVER"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+later_reversal="$(write_peer_payload "$TID_CONFLICT" alpha-20261022T000011Z-333333333333 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"placed after the adjudication, so a reversal"}]}')"
+expect_rc_text "a reversal placed after the adjudication still meets the anti-sycophancy guard" 1 "REJECTED.*(newer than|new evidence|anti-sycophancy|reversal)" \
+  bash "$FOLD" "$TID_CONFLICT" "$later_reversal" --by "$DRIVER"
+
+# Without `peers`, a same-batch contest is not detected: the thread folds as before.
+TID_LEGACY_BATCH=t-legacy-batch
+create_thread "$TID_LEGACY_BATCH"
+bash "$LEDGER" add "$TID_LEGACY_BATCH" c1 proposed judgment "driver-note" "legacy" --by "$DRIVER" >/dev/null 2>&1
+legacy_a="$(write_peer_payload "$TID_LEGACY_BATCH" alpha-20261022T000023Z-444444444445 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"alpha"}]}')"
+legacy_b="$(write_peer_payload "$TID_LEGACY_BATCH" beta-20261022T000024Z-555555555556 beta '{"ops":[{"op":"transition","item_id":"c1","new_status":"deferred","rationale":"beta"}]}')"
+legacy_out="$(bash "$FOLD" "$TID_LEGACY_BATCH" "$legacy_a" "$legacy_b" --by "$DRIVER" 2>&1)"
+legacy_rc=$?
+if [ "$legacy_rc" -eq 0 ] && echo "$legacy_out" | grep -q "applied=2" && echo "$legacy_out" | grep -q "NOTE 2 distinct proposal senders"; then
+  ok "without peers declared, contrary same-batch transitions both apply as before, and the fold notes the unmapped senders"
+else
+  bad "legacy same-batch fold changed (rc=$legacy_rc output=$legacy_out)"
+fi
+expect_status "legacy same-batch contest is last-writer-wins" "$TID_LEGACY_BATCH" c1 deferred
+
+# Without `peers`, argument order is applied as given, as base did: one sender's two
+# payloads supplied in reverse placement order end with the last argument's status,
+# and an add supplied before a transition that was placed earlier still lands first.
+TID_LEGACY_ORDER=t-legacy-order
+create_thread "$TID_LEGACY_ORDER"
+bash "$LEDGER" add "$TID_LEGACY_ORDER" x proposed judgment "driver-note" "legacy order" --by "$DRIVER" >/dev/null 2>&1
+order_p1="$(write_peer_payload "$TID_LEGACY_ORDER" peer-20261022T000025Z-666666666661 peer '{"ops":[{"op":"transition","item_id":"x","new_status":"accepted","rationale":"placed first"}]}')"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+order_p2="$(write_peer_payload "$TID_LEGACY_ORDER" peer-20261022T000026Z-666666666662 peer '{"ops":[{"op":"transition","item_id":"x","new_status":"deferred","rationale":"placed second"}]}')"
+expect_rc_text "without peers declared, a batch applies in argument order" 0 "applied=2" \
+  bash "$FOLD" "$TID_LEGACY_ORDER" "$order_p2" "$order_p1" --by "$DRIVER"
+expect_status "legacy argument order decides the final status, as before" "$TID_LEGACY_ORDER" x accepted
+late_transition="$(write_peer_payload "$TID_LEGACY_ORDER" peer-20261022T000027Z-666666666663 peer '{"ops":[{"op":"transition","item_id":"y","new_status":"accepted","rationale":"placed before its add"}]}')"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+late_add="$(write_peer_payload "$TID_LEGACY_ORDER" peer-20261022T000028Z-666666666664 peer '{"ops":[{"op":"add","item_id":"y","evidence_class":"judgment","evidence":"p","rationale":"placed after the transition"}]}')"
+expect_rc_text "without peers declared, an add supplied before an earlier-placed transition still applies first" 0 "applied=2" \
+  bash "$FOLD" "$TID_LEGACY_ORDER" "$late_add" "$late_transition" --by "$DRIVER"
+expect_status "legacy argument order lets the dependent transition land in one fold" "$TID_LEGACY_ORDER" y accepted
+# With peers declared the same two payloads fold in placed order regardless of argument order.
+TID_PEER_ORDER=t-peer-order
+create_peer_thread "$TID_PEER_ORDER" '{"peer":"peer"}'
+bash "$LEDGER" add "$TID_PEER_ORDER" x proposed judgment "driver-note" "placed order" --by "$DRIVER" >/dev/null 2>&1
+peer_p1="$(write_peer_payload "$TID_PEER_ORDER" peer-20261022T000025Z-666666666661 peer '{"ops":[{"op":"transition","item_id":"x","new_status":"accepted","rationale":"placed first"}]}')"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+peer_p2="$(write_peer_payload "$TID_PEER_ORDER" peer-20261022T000026Z-666666666662 peer '{"ops":[{"op":"transition","item_id":"x","new_status":"deferred","rationale":"placed second"}]}')"
+expect_rc_text "with peers declared, a batch applies in placed order whatever the argument order" 0 "applied=2" \
+  bash "$FOLD" "$TID_PEER_ORDER" "$peer_p2" "$peer_p1" --by "$DRIVER"
+expect_status "placed order decides the final status on an n-party thread" "$TID_PEER_ORDER" x deferred
+
+# Cross-invocation: the late payload was placed before the earlier sender's op was
+# folded, so it is a contest, not a reversal, even though it arrives in its own fold.
+TID_LATE_CONFLICT=t-nparty-late-conflict
+create_peer_thread "$TID_LATE_CONFLICT" '{"alpha":"alpha","beta":"beta"}'
+bash "$LEDGER" add "$TID_LATE_CONFLICT" c1 proposed evidence_bearing "driver-note" "contested" --by "$DRIVER" >/dev/null 2>&1
+late_alpha="$(write_peer_payload "$TID_LATE_CONFLICT" alpha-20261022T000012Z-444444444444 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"alpha accepts"}]}')"
+late_beta="$(write_peer_payload "$TID_LATE_CONFLICT" beta-20261022T000013Z-555555555555 beta '{"ops":[{"op":"transition","item_id":"c1","new_status":"rejected_with_reason","rationale":"beta rejects, unaware of alpha"}]}')"
+expect_rc_text "first sender's transition applies alone" 0 "applied=1" bash "$FOLD" "$TID_LATE_CONFLICT" "$late_alpha" --by "$DRIVER"
+expect_rc_text "a contrary transition placed before that fold is a conflict in a later invocation" 1 "CONFLICT.*c1" bash "$FOLD" "$TID_LATE_CONFLICT" "$late_beta" --by "$DRIVER"
+expect_status "the earlier applied status stands until the driver adjudicates" "$TID_LATE_CONFLICT" c1 accepted
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+seen_beta="$(write_peer_payload "$TID_LATE_CONFLICT" beta-20261022T000014Z-666666666666 beta '{"ops":[{"op":"transition","item_id":"c1","new_status":"rejected_with_reason","rationale":"beta rejects after seeing the accept by alpha"}]}')"
+expect_rc_text "a contrary transition placed after the earlier fold is a position, not a conflict" 0 "applied=1" bash "$FOLD" "$TID_LATE_CONFLICT" "$seen_beta" --by "$DRIVER"
+expect_status "a seen-state disagreement applies as a transition" "$TID_LATE_CONFLICT" c1 rejected_with_reason
+# A driver adjudication is an event too: a peer payload placed before it and folded
+# after it contests the ruling unseen, so it is a conflict, not an overwrite.
+pre_ruling="$(write_peer_payload "$TID_LATE_CONFLICT" alpha-20261022T000017Z-bbbbbbbb2222 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"deferred","rationale":"placed before the driver ruled"}]}')"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+bash "$LEDGER" transition "$TID_LATE_CONFLICT" c1 human_decision "" "driver adjudicates" --by "$DRIVER" >/dev/null 2>&1
+expect_rc_text "a payload placed before a driver ruling conflicts with it instead of overwriting it" 1 "CONFLICT.*c1" \
+  bash "$FOLD" "$TID_LATE_CONFLICT" "$pre_ruling" --by "$DRIVER"
+expect_status "the driver ruling stands" "$TID_LATE_CONFLICT" c1 human_decision
+# The same shape on a thread with no peers declared keeps today's behavior.
+TID_LEGACY_LATE=t-legacy-late
+create_thread "$TID_LEGACY_LATE"
+bash "$LEDGER" add "$TID_LEGACY_LATE" c1 proposed judgment "driver-note" "legacy" --by "$DRIVER" >/dev/null 2>&1
+legacy_late="$(write_peer_payload "$TID_LEGACY_LATE" alpha-20261022T000018Z-cccccccc3333 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"deferred","rationale":"legacy thread"}]}')"
+python3 - <<'PY'
+import time
+time.sleep(0.02)
+PY
+bash "$LEDGER" transition "$TID_LEGACY_LATE" c1 accepted "" "driver" --by "$DRIVER" >/dev/null 2>&1
+expect_rc_text "without peers declared, a late contrary peer transition applies as before" 0 "applied=1" \
+  bash "$FOLD" "$TID_LEGACY_LATE" "$legacy_late" --by "$DRIVER"
+expect_status "legacy thread keeps last-writer-wins" "$TID_LEGACY_LATE" c1 deferred
+
+# (h4) Order independence as a property: both fold orders of one conflicting pair leave
+# an identical ledger and the same conflict report.
+fold_pair() { # <tid> <first> <second> -> prints "<sorted conflict lines>\n--\n<ledger list>"
+  local tid="$1" first="$2" second="$3" out
+  out="$(bash "$FOLD" "$tid" "$first" "$second" --by "$DRIVER" 2>&1)"
+  printf '%s\n' "$out" | grep CONFLICT | sed "s/ $tid - / <tid> - /" | sort
+  printf -- '--\n'
+  bash "$LEDGER" list "$tid" --by "$DRIVER" 2>/dev/null
+}
+TID_ORDER_AB=t-nparty-order-ab
+TID_ORDER_BA=t-nparty-order-ba
+for tid_o in "$TID_ORDER_AB" "$TID_ORDER_BA"; do
+  create_peer_thread "$tid_o" '{"alpha":"alpha","beta":"beta"}'
+  bash "$LEDGER" add "$tid_o" c1 proposed evidence_bearing "driver-note" "contested" --by "$DRIVER" >/dev/null 2>&1
+  bash "$LEDGER" add "$tid_o" c2 proposed judgment "driver-note" "agreed" --by "$DRIVER" >/dev/null 2>&1
+done
+order_a_ab="$(write_peer_payload "$TID_ORDER_AB" alpha-20261022T000015Z-777777777777 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"alpha"},{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"alpha"}]}')"
+order_b_ab="$(write_peer_payload "$TID_ORDER_AB" beta-20261022T000016Z-aaaaaaaa1111 beta '{"ops":[{"op":"transition","item_id":"c1","new_status":"rejected_with_reason","rationale":"beta"},{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"beta"}]}')"
+order_a_ba="$(write_peer_payload "$TID_ORDER_BA" alpha-20261022T000015Z-777777777777 alpha '{"ops":[{"op":"transition","item_id":"c1","new_status":"accepted","rationale":"alpha"},{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"alpha"}]}')"
+order_b_ba="$(write_peer_payload "$TID_ORDER_BA" beta-20261022T000016Z-aaaaaaaa1111 beta '{"ops":[{"op":"transition","item_id":"c1","new_status":"rejected_with_reason","rationale":"beta"},{"op":"transition","item_id":"c2","new_status":"accepted","rationale":"beta"}]}')"
+result_ab="$(fold_pair "$TID_ORDER_AB" "$order_a_ab" "$order_b_ab")"
+result_ba="$(fold_pair "$TID_ORDER_BA" "$order_b_ba" "$order_a_ba")"
+if [ -n "$result_ab" ] && printf '%s\n' "$result_ab" | grep -q CONFLICT && [ "$result_ab" = "$result_ba" ]; then
+  ok "both fold orders of a conflicting pair give the same conflict report and ledger"
+else
+  bad "fold order changed the outcome (ab=$result_ab | ba=$result_ba)"
+fi
 
 echo "collab/convergence-ledger test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -10,6 +10,8 @@ export type SessionRecord = {
   model?: string | null;
   launch_tuning?: import("./tuning").LaunchTuning;
   harness_session_id?: string | null;
+  opencode_server_mode?: "private" | "shared";
+  opencode_service?: import("../opencode-shared").OpenCodeService;
   /** `tap launch --resume` only, consumed by the fresh-launch argv: "picker" opens the harness's native
    *  conversation picker and mints no id; "exact" resumes `harness_session_id`. Never stored on a row, so
    *  restart and relaunch replay the bound conversation and never re-offer the picker. */

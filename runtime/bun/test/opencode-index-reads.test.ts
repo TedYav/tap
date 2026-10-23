@@ -21,16 +21,17 @@ beforeAll(() => { root = mkdtempSync(join(tmpdir(), "opencode-index-reads.")); }
 afterAll(() => { removeScratchTree(root); });
 
 const assistant = (created: number, completed: number | null, finish: string | null) =>
-  ({ role: "assistant", time: { created, completed }, finish });
+  ({ type: "assistant", time: { created, completed }, finish });
 
 /** Three sessions plus noise; `id` order and `time_created` order deliberately disagree for "tie". */
 function store(name: string): string {
   const path = join(root, name);
   const db = createOpenCodeStore(path);
   for (let i = 0; i < 200; i++) addMessage(db, assistant(10 + i, 20 + i, "stop"), { session: `noise-${i % 7}` });
-  addMessage(db, { role: "user", time: { created: 100 } }, { session: "s1" });
+  addMessage(db, { type: "user", time: { created: 100 } }, { session: "s1" });
   addMessage(db, assistant(200, 300, "stop"), { session: "s1" });
-  addMessage(db, { role: "user", time: { created: 400 } }, { session: "s1" });
+  addMessage(db, { type: "idle", time: { created: 350 }, outcome: "succeeded" }, { session: "s1" });
+  addMessage(db, { type: "user", time: { created: 400 } }, { session: "s1" });
   addMessage(db, assistant(50, null, null), { session: "s2" });
   addMessage(db, assistant(500, 600, "stop"), { session: "tie", id: "msg_a" });
   addMessage(db, assistant(500, null, null), { session: "tie", id: "msg_b" });
@@ -45,25 +46,20 @@ describe("query plans", () => {
   const queries: [string, string, unknown[]][] = [
     ["readiness evidence", OPENCODE_EVIDENCE_SQL, ["s1"]],
     ["turn state", turnStateSql("s1"), []],
-    ["compaction proof", OPENCODE_COMPACTION_SQL, ["s1", 0, 0, 0, 0, 0]],
+    ["compaction proof", OPENCODE_COMPACTION_SQL, ["s1", 0, 0, 0]],
   ];
   for (const [name, sql, args] of queries) {
-    test(`${name} seeks message_session_time_created_id_idx and never scans`, () => {
+    test(`${name} seeks the session sequence index and never scans`, () => {
       const db = new Database(store(`${name.replace(/ /g, "-")}.db`), { readonly: true });
       try {
         const plan = planOf(db, sql, ...args);
         expect(plan.join("\n")).not.toMatch(/\bSCAN\b/);
-        expect(plan.some(d => /^SEARCH (message|m) USING INDEX message_session_time_created_id_idx \(session_id=\?\)$/.test(d))).toBe(true);
+        expect(plan.some(d => /^SEARCH session_message USING INDEX session_message_session_(type_)?seq_idx \(session_id=\?/.test(d))).toBe(true);
       } finally { db.close(); }
     });
   }
 
-  test("the compaction part probe uses part_message_id_id_idx, not the whole session's parts", () => {
-    const db = new Database(store("part-plan.db"), { readonly: true });
-    try {
-      expect(planOf(db, OPENCODE_COMPACTION_SQL, "s1", 0, 0, 0, 0, 0).join("\n")).toContain("USING INDEX part_message_id_id_idx (message_id=?)");
-    } finally { db.close(); }
-  });
+
 });
 
 describe("answers on a store whose data omits sessionID", () => {
@@ -74,7 +70,7 @@ describe("answers on a store whose data omits sessionID", () => {
     expect(opencodeEvidence("absent", env)).toBeNull();
   });
 
-  test("a time_created tie resolves to the greater id, in both readers", () => {
+  test("sequence decides the newest row, in both readers", () => {
     const env = { OPENCODE_DB_PATH: store("tie.db") };
     expect(opencodeEvidence("tie", env)?.ended).toBe(false); // msg_b: open
     expect(opencodeTurnState("tie", env)).toBe("in-turn");
@@ -91,7 +87,7 @@ describe("answers on a store whose data omits sessionID", () => {
 describe("a store without the index fails closed instead of scanning", () => {
   const dropIndex = (path: string) => {
     const db = new Database(path);
-    db.exec("DROP INDEX message_session_time_created_id_idx");
+    db.exec("DROP INDEX session_message_session_seq_idx; DROP INDEX session_message_session_type_seq_idx");
     db.close();
   };
 
@@ -112,7 +108,7 @@ describe("a store without the index fails closed instead of scanning", () => {
   });
 });
 
-// tap-0zip2: binding discovery finds a worktree's sessions through session_project_idx, never a
+// tap-0zip2: binding discovery finds a worktree's sessions through session_v2_project_idx, never a
 // SCAN of `session`. OpenCode files a session under the project resolved at creation (a git
 // project for repo roots, subdirectories and sandbox worktrees) or `global` (non-git), and
 // reassigns global sessions off `global` only where directory equals the opened root. The
@@ -134,7 +130,7 @@ describe("session by directory", () => {
   };
   const HIT = (candidates: number) => ({ id: "", trust: "derived_ambiguous" as const, candidates, store: "db" });
 
-  test("the plan seeks session_project_idx and never scans session", () => {
+  test("the plan seeks session_v2_project_idx and never scans session", () => {
     const hm = home("plan", (db) => {
       for (let i = 0; i < 300; i++) addSession(db, `noise-${i}`, `/elsewhere/${i}`, { project: `p${i % 9}` });
       addProject(db, "p1", REPO, { opened: [REPO] });
@@ -142,8 +138,8 @@ describe("session by directory", () => {
     const db = new Database(join(hm, ".local", "share", "opencode", "opencode.db"), { readonly: true });
     try {
       const plan = planOf(db, OPENCODE_SESSION_SQL(2), REPO, "/work", REPO);
-      expect(plan).toContain("SEARCH session USING INDEX session_project_idx (project_id=?)");
-      expect(plan.some(d => /^SCAN session\b/.test(d))).toBe(false);
+      expect(plan).toContain("SEARCH session_v2 USING INDEX session_v2_project_idx (project_id=?)");
+      expect(plan.some(d => /^SCAN session_v2\b/.test(d))).toBe(false);
     } finally { db.close(); }
   });
 
@@ -239,9 +235,9 @@ describe("session by directory", () => {
     expect(found(hm, "/trees/unrecorded/sub")).toEqual({ id: "", trust: "none" as const, candidates: 0, store: "db" });
   });
 
-  test("a store without session_project_idx fails closed rather than scanning", () => {
+  test("a store without session_v2_project_idx fails closed rather than scanning", () => {
     const hm = home("no-index", (db) => {
-      db.exec("DROP INDEX session_project_idx");
+      db.exec("DROP INDEX session_v2_project_idx");
       addSession(db, "ses_root", REPO, { project: "global" });
     });
     const r = derive("opencode", REPO, { home: hm, env: {} });

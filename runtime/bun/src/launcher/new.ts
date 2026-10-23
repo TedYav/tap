@@ -1,3 +1,4 @@
+import { requireOpenCode2 } from "./opencode-version";
 import { reservedSeatName, validToken } from "../ids";
 import { validateLaunchWorkdir } from "./workdir";
 // `tap session launch`: the native port of launcher.py's `new` (cmd_new,
@@ -30,7 +31,6 @@ import { NOT_A_SEAT, type ForkUnavailable, describeSessionState, printOffRosterT
 import { cloneRecord, err, Exit, refuseIfFlipAuthority, refuseIfResetFenced, registryAuthority, registryState, render, SCRIPTS,
   withRecordDefaults, type RegistryState } from "./resume-prelude";
 import { durableRecord, launchHandle, launchTransaction, recordFromRow, withLaunchSignals, type LaunchRecord } from "./transaction";
-import { captureModelWindow } from "../opencode-model-windows";
 import { handOffLaunchProgress, launchPhase, launchPhasesDone, progressMode, withLaunchProgress } from "./progress";
 import { resolveCliTuning, type ResolvedTuning } from "./tuning";
 import { freshLaunchSessionId, HERMES_BIN } from "./adapters";
@@ -67,7 +67,7 @@ export interface NewArgs {
 }
 
 /** Harnesses whose CLI opens a conversation picker from a bare resume flag. Cursor's bare picker emission was
- *  removed on purpose (tap-we6b), OpenCode has none, AGY's --continue is "latest" rather than a choice, Hermes has none. */
+ *  removed on purpose (tap-we6b), OpenCode has none, AGY's picker is in-app only (/resume), Hermes has none. */
 export const RESUME_PICKER_HARNESSES: readonly string[] = ["claude", "codex"];
 
 /** A conversation id as the harnesses spell them (UUIDs, thread ids): never option-shaped, never blank or spaced. */
@@ -282,17 +282,24 @@ function resolveAdhocTuning(args: Resolved): ResolvedTuning {
 
 const overridesOf = (args: NewArgs) => ({ env: args.env ?? [], unset_env: args.unset_env ?? [], argv: args.harness_passthrough });
 
+function requireTmuxCommand(): void {
+  if (Bun.which("tmux", { PATH: process.env.PATH ?? "" })) return;
+  throw new LauncherError("missing_prerequisite: tmux was not found on PATH", "missing_prerequisite",
+    "Install tmux, check `tmux -V` in this terminal, then retry", "tmux was not found on PATH");
+}
+
 /** require_launch_commands: absent prerequisites refuse before enrollment or reservation. */
-export function requireLaunchCommands(harness: string): void {
+export function requireLaunchCommands(harness: string, cwd?: string): void {
   const missing = (detail: string, action: string): never => {
     throw new LauncherError(`missing_prerequisite: ${detail}`, "missing_prerequisite", action, detail);
   };
-  if (!Bun.which("tmux", { PATH: process.env.PATH ?? "" })) missing("tmux was not found on PATH", "Install tmux, check `tmux -V` in this terminal, then retry");
+  requireTmuxCommand();
   const executable = ({ cursor: "cursor-agent", hermes: HERMES_BIN } as Record<string, string>)[harness] ?? harness;
   if (!Bun.which(executable, { PATH: process.env.PATH ?? "" })) {
     missing(`${executable} was not found on PATH`,
       `Install the ${harness} CLI, put ${executable} on PATH, and start it in this terminal to complete authentication, then retry`);
   }
+  if (harness === "opencode") requireOpenCode2(process.env, cwd);
 }
 
 /** _bootstrap_if_unenrolled: first launch initializes the root in one go; init owns every decision.
@@ -339,6 +346,8 @@ type LadderOutcome = { choice: "n"; nextName: string; handle: string } | { choic
 type LadderInputs = {
   state: RegistryState; cwd: string; base: string; root: string; tag: string; requestedName: string; presetDerived: boolean;
   seated: boolean; live: boolean; existingRecord: LaunchRecord | null; liveSessions: Set<string>;
+  /** A changed post-choice observation needs the accurate chooser before any replacement. */
+  classified?: boolean;
 };
 
 /**
@@ -361,34 +370,25 @@ export function collisionReviveTier(incumbentHarness: string, storedId: string |
 }
 async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInputs): Promise<LadderOutcome> {
   const { state, cwd, base, root, tag, requestedName: name, presetDerived, seated, existingRecord } = inputs;
-  const existingEntry = registryEntry(root, tag);
-  // Recovery launch commands must retain the preset selection.
+  const existingEntry = state.entries.get(tag) ?? null;
   const launchTarget = presetDerived ? tag : args.harness;
-  const scoped = state.sessions.filter(record => pathIsUnder(record.cwd, root));
-  // The picker's "different handle" door must never offer the incumbent name again.
-  const liveOrSeated = await occupiedSessionNames(base, root);
-  const occupied = new Set([...liveOrSeated, name, ...scoped.map(record => record.name),
-    ...scoped.map(record => sessionNameForHandle(base, launchHandle(record)))]);
-  const nextName = allocateName(base, args.harness, tag, occupied, presetDerived);
-  const nextHandle = slashHandle(nextName, base) || tag;
   const incumbentHarness = existingRecord?.harness ?? (typeof existingEntry?.harness === "string" && existingEntry.harness
     ? existingEntry.harness : args.harness);
-  // A roster seat is live only while its own harness runs; crew windows hold a session, not a seat (tap-9rrat).
-  const classification = !inputs.live ? "absent" : await classifySession(name, process.env, undefined,
-    seated ? { harness: incumbentHarness, crewPanes: crewPanesIn(state.entries, name) } : undefined);
-  let aliveElsewhere: string | null = null;
-  if (existingEntry !== null) {
-    const verified = await verifiedSession(existingEntry, process.env);
-    if (verified !== null && verified !== name) aliveElsewhere = verified;
-  }
-  const entryDead = existingEntry !== null && await entryObservedDead(existingEntry, process.env);
-  // tap-u3bl: [r]'s disclosed tier comes from the same resumability gate the launch uses.
-  // tap-we6b rework: a recorded id that failed the artifact probe is not a fresh
-  // start either — [r] refuses it, so the chooser must not label the seat "fresh".
-  const recordResumable = existingRecord !== null && recordHasResumeArtifact(existingRecord);
-  // Only cursor's resume doors refuse a stale id; other harnesses keep their
-  // own per-harness tier (claude still opens its native picker).
-  const reviveTierWord = collisionReviveTier(incumbentHarness, existingRecord?.harness_session_id ?? null, recordResumable,
+  // Allocation is needed by a name choice or non-interactive guidance, never by [q] or [r].
+  let allocation: { liveOrSeated: Set<string>; nextName: string; nextHandle: string } | undefined;
+  const names = async () => {
+    if (allocation) return allocation;
+    const scoped = state.sessions.filter(record => pathIsUnder(record.cwd, root));
+    const liveOrSeated = await occupiedSessionNames(base, root);
+    const occupied = new Set([...liveOrSeated, name, ...scoped.map(record => record.name),
+      ...scoped.map(record => sessionNameForHandle(base, launchHandle(record)))]);
+    const nextName = allocateName(base, args.harness, tag, occupied, presetDerived);
+    return allocation = { liveOrSeated, nextName, nextHandle: slashHandle(nextName, base) || tag };
+  };
+  let classification = "absent", aliveElsewhere: string | null = null, entryDead = false;
+  let resumable: boolean | undefined;
+  const recordResumable = () => resumable ??= existingRecord !== null && recordHasResumeArtifact(existingRecord);
+  const reviveTier = () => collisionReviveTier(incumbentHarness, existingRecord?.harness_session_id ?? null, recordResumable(),
     inputs.live, classification);
   const entryAddress = () => String(existingEntry?.pane || existingEntry?.pane_id || "no pane on record");
   const undeadFoundState = (): string => {
@@ -411,8 +411,7 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
   // A terminal that --json kept from asking: where the no-terminal fallbacks would act
   // (a shell reseat replaces a session), the flag must not authorize them (tap-wj35h).
   const jsonDeclined = deps.hasTty() && !args.dry_run && json;
-  // [f] runs `tap session fork`; it is enabled exactly when planFork's checks of
-  // the row (harness, stored flags, conversation identity) would pass.
+  // [f] runs `tap session fork`; native conversation checks run after selection.
   // The conversation the menu offered to fork, so the [f] arm can refuse a source
   // that changed while the name prompt waited (planFork's own post-chooser check).
   const forkIdentity = (row: Record<string, unknown> | null | undefined): string | null => {
@@ -421,14 +420,23 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
     const id = source ? resolvedResumeIdentity(source, process.env) : null;
     return id && forkSourceFingerprint(row, id);
   };
-  const forkUnavailable = (): ForkUnavailable => {
+  // The menu can explain row-only refusals without walking any native transcript store.
+  // A selectable [f] validates its saved chat after the keypress, before asking for a name.
+  const forkRowUnavailable = (): ForkUnavailable => {
     const row = state.entries.get(tag);
     if (!row) return NOT_A_SEAT;
     const harness = String(row.harness ?? "");
     if (!FORKABLE_HARNESSES.includes(harness)) return "harness cannot fork";
     const conflict = storedForkConflict(harness, row);
     if (conflict) return `uses ${conflict}`;
-    const source = recordFromRow(tag, row, state.team as Record<string, unknown>, root);
+    if (![row.harness_session_id, row.transcript_path, row.quarantined_harness_session_id, row.quarantined_transcript_path]
+      .some(value => typeof value === "string" && value)) return "no saved chat to fork";
+    return null;
+  };
+  const forkUnavailable = (): ForkUnavailable => {
+    const reason = forkRowUnavailable();
+    if (reason) return reason;
+    const source = recordFromRow(tag, state.entries.get(tag)!, state.team as Record<string, unknown>, root);
     return source && resolvedResumeIdentity(source, process.env) ? null : "no saved chat to fork";
   };
   // Only a chooser's [n] asks for the name; --new and automatic suffixing keep the allocated one.
@@ -436,84 +444,117 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
   const prompted = (answer: string): string => { chosen = true; return answer; };
 
   let choice: string;
-  if (args.new) choice = "n";
-  // Explicit stop authority; the transaction still refuses a conflicting live target.
-  else if (args.fresh) choice = "k";
-  // Only observed-gone preset rows keep automatic suffixing (tap-7r3fn.131).
-  else if (presetDerived && entryDead) choice = "n";
-  else if (aliveElsewhere !== null) {
-    // Fork protection: the handle verifiably lives in another session.
-    if (interactive()) {
-      choice = prompted(promptSessionExists(deps.choose, name, incumbentHarness,
-        describeSessionState(`live in ${aliveElsewhere}`, rosterHandle, null), null, forkUnavailable()));
-    } else {
-      printSessionExists(tag, launchTarget, `${tag} is live in ${aliveElsewhere}`, nextHandle, json);
-      throw new Exit(2);
+  const early = seated && inputs.live && !inputs.classified && !args.new && !args.fresh && interactive();
+  if (early) {
+    choice = prompted(promptSessionExists(deps.choose, name, incumbentHarness,
+      describeSessionState("session name is live", rosterHandle, null), "attach-or-resume", forkRowUnavailable()));
+    if (choice === "r") {
+      classification = await classifySession(name, process.env, undefined,
+        { harness: incumbentHarness, crewPanes: crewPanesIn(state.entries, name) });
+      // The first menu never grants a stop. A shell or recordless gone seat needs
+      // its accurately described second choice before [r] can become replacement.
+      if (["shell", "attached-shell"].includes(classification) || classification === "seat-gone" && existingRecord === null)
+        return ensureLadder(args, deps, { ...inputs, classified: true });
     }
-  } else if (classification === "seat-gone") {
-    // tap-9rrat: the seat's harness exited while crew windows hold its session.
-    // [r] revives it beside them in a new window; nothing is stopped.
-    const held = `${incumbentHarness} exited; other windows still hold the session`;
-    if (!interactive()) {
-      printSessionExists(tag, launchTarget, `${name}: ${held}; revive it with tap session resume ${tag}`, nextHandle, json);
-      throw new Exit(2);
-    }
-    choice = prompted(promptNewCollision(deps.choose, name, incumbentHarness, describeSessionState(held, rosterHandle, incumbentAge()),
-      existingRecord !== null ? reviveTierWord : "fresh", forkUnavailable()));
-    // Only the recordless seat reseats; a recorded one keeps [r] on resume.
-    if (choice === "r" && existingRecord === null) choice = "k";
-  } else if (classification === "shell" && !presetDerived && (existingRecord === null || existingRecord.harness === args.harness)) {
-    // A live shell holds the name: reseat fresh (create-intent, no history restore).
-    if (jsonDeclined) {
-      printSessionExists(tag, launchTarget, `${name} is held by an unattended shell session`, nextHandle, json);
-      throw new Exit(2);
-    }
-    choice = interactive()
-      ? prompted(promptNewCollision(deps.choose, name, incumbentHarness, describeSessionState(undeadFoundState(), rosterHandle, incumbentAge()), "fresh",
-        forkUnavailable()))
-      : "k";
-    if (choice === "r") choice = "k";
-  } else if (classification === "live" && !seated) {
-    // Live tmux, no roster row: a tmux-namespace collision; create never offers resume.
-    const createdLabel = tmuxSessionCreatedLabel(name);
-    if (interactive()) choice = prompted(promptOffRosterTmuxCollision(deps.choose, name, incumbentHarness, createdLabel));
-    else {
-      printOffRosterTmuxExists(name, launchTarget, tag, nextHandle, createdLabel, json);
-      throw new Exit(2);
-    }
-  } else if (entryDead && interactive()) {
-    // A gone row still occupies the name and launch reseats it (tap-jcma):
-    // the reseat chooser, whose [r] relaunches, not the attach chooser.
-    choice = prompted(promptNewCollision(deps.choose, name, incumbentHarness,
-      describeSessionState(undeadFoundState(), rosterHandle, incumbentAge()), existingRecord !== null ? reviveTierWord : "fresh",
-      forkUnavailable()));
-    // Only the recordless gone row reseats; a recorded one keeps [r] on resume.
-    if (choice === "r" && existingRecord === null) choice = "k";
-  } else if (interactive()) {
-    let liveDesc: string | null = null;
-    if (classification === "live") {
-      const attached = sessionAttached(name);
-      const nature = attached === null ? "live" : attached ? "live, attached" : "live, running detached";
-      liveDesc = describeSessionState(nature, rosterHandle, null);
-    }
-    // tap-7r3fn.24: with no record, [r] can only start fresh; say so before the press.
-    choice = prompted(promptSessionExists(deps.choose, name, incumbentHarness, liveDesc, existingRecord !== null ? reviveTierWord : "fresh",
-      forkUnavailable()));
   } else {
-    const stopped = entryDead && (classification === "absent" ||
-      classification === "unknown" && !tmuxSessionsForNamespace().has(name));
-    if (stopped) printStoppedSession(tag, launchTarget, name, json);
-    else printSessionExists(tag, launchTarget, `${name} already exists`, nextHandle, json);
-    throw new Exit(2);
+    classification = !inputs.live ? "absent" : await classifySession(name, process.env, undefined,
+      seated ? { harness: incumbentHarness, crewPanes: crewPanesIn(state.entries, name) } : undefined);
+    if (existingEntry !== null) {
+      const verified = await verifiedSession(existingEntry, process.env);
+      if (verified !== null && verified !== name) aliveElsewhere = verified;
+    }
+    entryDead = existingEntry !== null && await entryObservedDead(existingEntry, process.env);
+    if (args.new) choice = "n";
+    // Explicit stop authority; the transaction still refuses a conflicting live target.
+    else if (args.fresh) choice = "k";
+    // Only observed-gone preset rows keep automatic suffixing (tap-7r3fn.131).
+    else if (presetDerived && entryDead) choice = "n";
+    else if (aliveElsewhere !== null) {
+      // Fork protection: the handle verifiably lives in another session.
+      if (interactive()) {
+        choice = prompted(promptSessionExists(deps.choose, name, incumbentHarness,
+          describeSessionState(`live in ${aliveElsewhere}`, rosterHandle, null), null, forkRowUnavailable()));
+      } else {
+        printSessionExists(tag, launchTarget, `${tag} is live in ${aliveElsewhere}`, (await names()).nextHandle, json);
+        throw new Exit(2);
+      }
+    } else if (classification === "seat-gone") {
+      // tap-9rrat: the seat's harness exited while crew windows hold its session.
+      // [r] revives it beside them in a new window; nothing is stopped.
+      const held = `${incumbentHarness} exited; other windows still hold the session`;
+      if (!interactive()) {
+        printSessionExists(tag, launchTarget, `${name}: ${held}; revive it with tap session resume ${tag}`, (await names()).nextHandle, json);
+        throw new Exit(2);
+      }
+      choice = prompted(promptNewCollision(deps.choose, name, incumbentHarness, describeSessionState(held, rosterHandle, incumbentAge()),
+        existingRecord !== null ? reviveTier() : "fresh", forkRowUnavailable()));
+      // Only the recordless seat reseats; a recorded one keeps [r] on resume.
+      if (choice === "r" && existingRecord === null) choice = "k";
+    } else if (classification === "shell" && !presetDerived && (existingRecord === null || existingRecord.harness === args.harness)) {
+      // A live shell holds the name: reseat fresh (create-intent, no history restore).
+      if (jsonDeclined) {
+        printSessionExists(tag, launchTarget, `${name} is held by an unattended shell session`, (await names()).nextHandle, json);
+        throw new Exit(2);
+      }
+      choice = interactive()
+        ? prompted(promptNewCollision(deps.choose, name, incumbentHarness, describeSessionState(undeadFoundState(), rosterHandle, incumbentAge()), "fresh",
+          forkRowUnavailable()))
+        : "k";
+      if (choice === "r") choice = "k";
+    } else if (classification === "live" && !seated) {
+      // Live tmux, no roster row: a tmux-namespace collision; create never offers resume.
+      const createdLabel = tmuxSessionCreatedLabel(name);
+      if (interactive()) choice = prompted(promptOffRosterTmuxCollision(deps.choose, name, incumbentHarness, createdLabel));
+      else {
+        printOffRosterTmuxExists(name, launchTarget, tag, (await names()).nextHandle, createdLabel, json);
+        throw new Exit(2);
+      }
+    } else if (entryDead && interactive()) {
+      // A gone row still occupies the name and launch reseats it (tap-jcma):
+      // the reseat chooser, whose [r] relaunches, not the attach chooser.
+      choice = prompted(promptNewCollision(deps.choose, name, incumbentHarness,
+        describeSessionState(undeadFoundState(), rosterHandle, incumbentAge()), existingRecord !== null ? reviveTier() : "fresh",
+        forkRowUnavailable()));
+      // Only the recordless gone row reseats; a recorded one keeps [r] on resume.
+      if (choice === "r" && existingRecord === null) choice = "k";
+    } else if (interactive()) {
+      let liveDesc: string | null = null;
+      if (classification === "live") {
+        const attached = sessionAttached(name);
+        const nature = attached === null ? "live" : attached ? "live, attached" : "live, running detached";
+        liveDesc = describeSessionState(nature, rosterHandle, null);
+      }
+      // tap-7r3fn.24: with no record, [r] can only start fresh; say so before the press.
+      choice = prompted(promptSessionExists(deps.choose, name, incumbentHarness, liveDesc, seated && inputs.live && attachableState(classification) ? null : existingRecord !== null ? reviveTier() : "fresh",
+        forkRowUnavailable()));
+    } else {
+      const stopped = entryDead && (classification === "absent" ||
+        classification === "unknown" && !tmuxSessionsForNamespace().has(name));
+      if (stopped) printStoppedSession(tag, launchTarget, name, json);
+      else printSessionExists(tag, launchTarget, `${name} already exists`, (await names()).nextHandle, json);
+      throw new Exit(2);
+    }
   }
 
   if (choice === "r") {
     refuseTuningOnResumeDelegation(args, "the collision chooser's resume arm");
     handOffLaunchProgress();
+    if (!args.dry_run && (aliveElsewhere !== null || seated && inputs.live && attachableState(classification))) {
+      const attach = deps.attach ?? (async (target: string) => (await import("../verbs/attach")).cmdAttach(["--no-resume", target], deps.scriptDir));
+      throw new Exit(await attach(`${String(state.team.name || base)}/${tag}`));
+    }
     throw new Exit(await cmdSessionResume([...(args.dry_run ? ["--dry-run"] : []), "--", incumbentHarness, tag], deps.scriptDir));
   }
-  if (choice === "n" && !chosen) return { choice, nextName, handle: nextHandle };
+  if (choice === "n" && !chosen) {
+    const { nextName, nextHandle } = await names();
+    return { choice, nextName, handle: nextHandle };
+  }
   if (choice === "n" || choice === "f") {
+    if (choice === "f") {
+      const reason = forkUnavailable();
+      if (reason !== null) throw new LauncherError(`fork unavailable: ${reason}`, "fork_unavailable", `tap session fork ${tag} --dry-run`, `[f] cannot fork '${tag}': ${reason}`);
+    }
+    const { liveOrSeated, nextName, nextHandle } = await names();
     // The handle the chooser's arm launches: a seat name, free on this team and in tmux.
     const seats = unexpiredSeats(root, inputs.liveSessions);
     const check: NameCheck = handle => {
@@ -540,8 +581,6 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
       const handle = await ask("Enter a name for the new session: ", nextHandle);
       return { choice, nextName: handle === nextHandle ? nextName : sessionNameForHandle(base, handle), handle };
     }
-    const reason = forkUnavailable();
-    if (reason !== null) throw new LauncherError(`fork unavailable: ${reason}`, "fork_unavailable", `tap session fork ${tag} --dry-run`, `[f] cannot fork '${tag}': ${reason}`);
     refuseTuningOnResumeDelegation(args, "the collision chooser's fork arm", "a fork replays its source's recipe");
     // The fingerprint is taken before the prompt waits: resolving it afterwards
     // could follow a changed fallback (a claude transcript appearing) on both sides.
@@ -561,6 +600,7 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
   if (choice !== "k") throw new Exit(2);
   // [k] is explicit replacement authority: stop by canonical
   // name; backup-before-stop supplies the recovery boundary.
+  if (early) entryDead = existingEntry !== null && await entryObservedDead(existingEntry, process.env);
   const receipts: string[] = [];
   const replacement: Replacement = {
     kill_backup_required: true, replaces_session: name, replaces_manifest_session: existingRecord?.name ?? null,
@@ -571,7 +611,7 @@ async function ensureLadder(args: Resolved, deps: LaunchDeps, inputs: LadderInpu
     if (previous && !history.includes(previous)) history.push(previous);
     replacement.history = history;
     replacement.replacement_record = durableRecord(existingRecord);
-    if (recordResumable && previous) {
+    if (previous && recordResumable()) {
       receipts.push(`reseated ${name} fresh (previous ${existingRecord.harness} conversation ${previous} kept in history)`);
     }
   }
@@ -669,18 +709,25 @@ async function cmdNew(args: NewArgs, cwd: string, notices: Notices, deps: Launch
   }
   resolveAdhocTuning(resolved);
   applyOverrides({}, overridesOf(resolved));
+  if (!resolved.dry_run) requireTmuxCommand();
   const workdir = resolved.workdir === null ? undefined : validateLaunchWorkdir(rootForCwd(cwd), resolved.workdir);
-  if (!resolved.dry_run) {
-    requireLaunchCommands(resolved.harness);
+  const prepare = () => {
+    if (resolved.dry_run || trace.active) return;
+    requireLaunchCommands(resolved.harness, workdir ?? rootForCwd(cwd));
     beginLifecycleOperation({ verb: "new", cwd: process.cwd(), target: null, boot_id: currentBootId() });
     trace.active = true;
-  }
+  };
+  const authority = registryAuthority(rootForCwd(cwd));
+  // First-launch prerequisites still precede enrollment; enrolled collisions can
+  // attach or quit even when their requested harness executable is unavailable.
+  if (authority.status === "absent" || authority.status === "live_unenrolled") prepare();
   refuseIfResetFenced(cwd, "session launch");
   refuseIfFlipAuthority(cwd, "tap session launch", true);
   const previewTeam = bootstrapIfUnenrolled(rootForCwd(cwd), resolved.dry_run, resolved.json || process.env.TAP_JSON === "1");
   const state = registryState(cwd, true);
   if (previewTeam) state.team = { ...state.team, name: previewTeam };
   const record = { ...(await makeNewRecord(resolved, state, cwd, deps)), last_launched: timestamp(), ...(workdir === undefined ? {} : { launch_workdir: workdir }) };
+  prepare();
   // The ladder may have moved a named target ("n" takes the next free name): the id is rechecked against the
   // seat the transaction will actually reserve, before reservation.
   if (record.launch_resume === "exact") assertUniqueResumeIdForLaunch(record.harness_session_id ?? null, record, state, rootForCwd(cwd));
@@ -695,11 +742,6 @@ async function executeFreshLaunch(record: LaunchRecord, args: NewArgs, deps: Lau
   const rc = await deps.run(record);
   if (args.dry_run) return rc;
   if (rc !== 0) return rc;
-  if (record.harness === "opencode" && record.model?.includes("/")) {
-    // Best effort: a seat that launched is never failed by a missing or slow `opencode models`.
-    launchPhase("Reading model context window");
-    try { (deps.captureModelWindow ?? captureModelWindow)(record.model, record.launch_workdir ?? record.cwd); } catch { /* the roster shows an unknown window */ }
-  }
   launchPhasesDone();
   for (const line of record.ensure_receipts ?? []) receipt(line);
   // A notice, so --json (one object, no prose) suppresses it like every other notice.
@@ -717,10 +759,10 @@ export interface LaunchDeps {
   scriptDir: string;
   /** The [n]/[f] name prompt; promptName by default. */
   askName?: AskName;
+  /** The live [r] arm: attach-only, with the ordinary attach identity checks. */
+  attach?: (target: string) => number | Promise<number>;
   /** The [f] arm: `tap session fork` with this argv; cmdSessionFork by default. */
   fork?: (argv: string[], expectedSource: string) => Promise<number>;
-  /** Record an OpenCode seat's model window in the persisted map (tap-8me26); captureModelWindow by default. */
-  captureModelWindow?: (model: string, directory: string) => unknown;
 }
 
 export async function cmdSessionLaunch(argv: string[], scriptDir = SCRIPTS, overrides: Partial<LaunchDeps> = {}): Promise<number> {
@@ -751,7 +793,13 @@ export async function cmdSessionLaunch(argv: string[], scriptDir = SCRIPTS, over
     // The parsed --json, not an occurrence in the harness's argument tail.
     const progress = progressMode(stderrTty, args.json || args.dry_run);
     try { code = await withLaunchProgress(progress, () => { launchPhase("Loading TAP config"); return cmdNew(args, cwd, notices, deps, trace); }); }
-    catch (error) { code = render(error, jsonRequested); }
+    catch (error) {
+      // Attach uses the shared TapError contract; the direct launcher door has
+      // no router above it to turn a refused attach into a clean diagnostic.
+      code = error instanceof TapError
+        ? renderRefusals("tap session", () => { throw error; }, jsonRequested ? { ...process.env, TAP_JSON: "1" } : process.env)
+        : render(error, jsonRequested);
+    }
     if (trace.active) startupTrace(code === 0 ? "launch_complete" : "launch_failure", { exit_code: code });
     if (code === 0) for (const warning of passthroughWarnings) process.stderr.write(`${warning}\n`);
     return code;

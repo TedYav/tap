@@ -1,5 +1,5 @@
 /**
- * `tap team down|shutdown` (and reset's stop phase), natively, against the
+ * `tap team down|shutdown`, natively, against the
  * Bash engine they delete — RUN, not read. The harness is
  * test/helpers/incumbent-oracle.ts; this file is the corpus.
  *
@@ -27,13 +27,20 @@ import {
   TEAMSTOP_ORACLE_PINNED_BASE, tmux,
 } from "./helpers/incumbent-oracle";
 
-type DeviationName = "receipt-names-spared-seats";
+type DeviationName = "receipt-names-spared-seats" | "retired-checkpoint-recovery";
 
 /**
  * Declared departures from the frozen incumbent. Each must fire on the case
  * that declares it, so a stale ratification fails the test.
  */
 const DEVIATIONS: Record<DeviationName, Deviation> = {
+  "retired-checkpoint-recovery": {
+    why: "The checkpoint reset is retired; a live fence owner now advises waiting without looping back to team reset.",
+    apply: s => ({ ...s, stderr: s.stderr.replace(
+      "wait for the reset owner (or until identity is readable), then: tap team reset",
+      "wait for the reset owner (or until identity is readable)",
+    ) }),
+  },
   "receipt-names-spared-seats": {
     why: "The incumbent's spare receipt counted every spared seat but named only the typed selector (tap-25uy). "
       + "The native receipt ends with `(spared: ...)`, the effective spared handles, so a counted seat is always named.",
@@ -43,26 +50,6 @@ const DEVIATIONS: Record<DeviationName, Deviation> = {
     ) }),
   },
 };
-
-/**
- * The frozen incumbent capture predates the approval-timeout reset component: reset-components lists it as
- * `checkpoint`, so every reset's inventory.json carries one more empty entry right after goalie. Insert exactly
- * that entry; a capture that already has it, or lacks the goalie anchor, fails loudly instead of passing quietly.
- */
-function withApprovalTimeoutComponent(effects: Streams["effects"]): Streams["effects"] {
-  const out = { ...effects };
-  for (const [path, body] of Object.entries(out)) {
-    if (!path.endsWith("/inventory.json") || body === null) continue;
-    const inventory = JSON.parse(body) as { components: { files: number; name: string }[] };
-    const after = inventory.components.findIndex(c => c.name === "goalie");
-    if (after < 0 || inventory.components.some(c => c.name === "approval-timeout")) {
-      throw new Error(`frozen ${path} no longer needs the approval-timeout entry; drop this adjustment`);
-    }
-    inventory.components.splice(after + 1, 0, { files: 0, name: "approval-timeout" });
-    out[path] = `${JSON.stringify(inventory, null, 2)}\n`;
-  }
-  return out;
-}
 
 interface CaseSpec extends FixtureSpec {
   name: string;
@@ -195,25 +182,9 @@ const CASES: CaseSpec[] = [
     rows: [{ handle: "alice", live: true }, { handle: "bob", live: true }],
     argv: ["down", "--except", "bob", "--dry-run"],
   },
-  // 10. reset's stop phase through the public reset door.
-  {
-    name: "reset_clean_stops_teammates", team: "demo",
-    rows: [{ handle: "alice", live: true }, { handle: "bob", live: true }],
-    argv: ["reset", "--yes"], env: { TAP_RESET_ARCHIVE_SUFFIX: "resetclean" },
-  },
-  {
-    name: "reset_aborts_on_unverified_pane", team: "demo",
-    rows: [{ handle: "alice", live: true }, { handle: "ghost", live: false }],
-    argv: ["reset", "--yes"], env: { TAP_RESET_ARCHIVE_SUFFIX: "resetghost" },
-  },
-  {
-    name: "reset_spared_poll_row_proceeds", team: "demo",
-    rows: [{ handle: "alice", live: true }, { handle: "polldata", live: false, delivery: "poll" }],
-    argv: ["reset", "--yes"], env: { TAP_RESET_ARCHIVE_SUFFIX: "resetpoll" },
-  },
   // Foreign live fence on the bus: public down refuses before anything else.
   {
-    name: "down_foreign_live_fence_refuses", team: "demo",
+    name: "down_foreign_live_fence_refuses", team: "demo", deviations: ["retired-checkpoint-recovery"],
     rows: [{ handle: "alice", live: true }],
     preFiles: { ".tap/bus/reset.fence.json": "FENCE_STAMP" },
     argv: ["down"],
@@ -277,29 +248,11 @@ for (const spec of CASES) {
       }
       if (!frozen) throw new Error(`case ${spec.name} has no frozen expectation; regenerate with TAP_T1_ORACLE_BASE + TAP_T1_ORACLE_WRITE=1`);
       expected = applyDeviations(DEVIATIONS, canonicalStreams(frozen.expected), spec.deviations, spec.name);
-      const check = (actual: Streams) => {
-        if (!spec.name.startsWith("reset_")) { expect(actual).toEqual(expected); return; }
-        // Reset's retired Bash prefix is not a BIN B contract. Keep the
-        // durable effects and stop result; assert the native receipt's meaning.
-        expect(actual.rc).toBe(expected.rc);
-        // The frozen incumbent capture predates tap-vne2e: reset now takes the archive lock
-        // (takeArchiveLock) and reset-components lists archive.lock as `preserve`, so one empty lock
-        // file survives every reset by design. Add exactly that entry; every other effect must match.
-        expect(actual.effects).toEqual({ ...withApprovalTimeoutComponent(expected.effects), ".tap/bus/archive.lock": "" });
-        if (actual.rc === 0) {
-          expect(actual.stderr).toBe("");
-          expect(actual.stdout).toContain("checkpointed and reinitialized team bus");
-          expect(actual.stdout).toContain("next: tap in");
-        } else {
-          expect(actual.stdout).toBe("");
-          expect(actual.stderr).toContain("tap team reset: reset aborted: 1 stopped, 1 refused");
-        }
-      };
+      const check = (actual: Streams) => { expect(actual).toEqual(expected); };
       const { trace, ...native } = oracle.run("head-native", fixture, argv, doorOptions(fixture));
       check(native);
       // main.ts writes the route trace only after the handler RETURNS; a
       // self-last caller pane is killed before that, so its trace stays empty.
-      // Reset now calls this same stop engine in-process from its native door.
       if (native.rc !== -1) expect(trace).toBe("native team\n");
     } finally {
       // The engine legitimately kills fixture sessions (they are the corpus):

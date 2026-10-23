@@ -87,10 +87,10 @@ tap attach <handle|team/handle>   # bare handle: this team, else the one team th
 tap team down [--only h1,h2]
 tap team up [--only h1,h2]
 tap team reset --dry-run
-tap team restore --archive <id>
+tap team reset --except my-seat --yes
 ```
 
-Reset checkpoints state before reinitializing. Restore returns rows suspended; `team up` resumes them. Use `tap help team` for exact selectors and boundaries.
+Reset stops and retires seats while keeping the team initialized, mail and historical archives intact. It includes your own seat; `--except` spares it. Use down/up to retain and resume the roster. `tap help team` explains selectors and boundaries.
 
 ## Keep work moving
 

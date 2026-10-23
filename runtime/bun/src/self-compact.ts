@@ -23,10 +23,10 @@ import { assertResetUnfenced, resetFenceRefusal } from "./reset";
 import { recoveryHold } from "./recovery/state";
 import { cmdSendOutcome, type SendOutcome } from "./verbs/send";
 import { AGENT_FAMILIES } from "./harness-families";
-import { sameSeat, transcriptIdentity } from "./self-rebrief";
+import { copyBrief, requireHandoff, validateNotify, notifyRecoveryFailure, sendRecovery, sameSeat, transcriptIdentity } from "./self-rebrief";
 import { compactionWitnessPath, captureCompactionBoundary, compactionEnterEffects, waitForCompactionProof, type CompactionBoundary, type CompactionProof } from "./compaction-proof";
 import { checkText } from "./self-gate";
-import { focusNarrowing } from "./compact-focus";
+import { focusNarrowing, handoffPing } from "./compact-focus";
 import { tapScriptsDir, artifactBun, runtimeModule } from "./scripts-dir";
 
 const scripts = tapScriptsDir();
@@ -35,11 +35,11 @@ const TAIL_BYTES = 2 * 1024 * 1024;
 const INTERRUPT_TIMEOUT_MS = 30000;
 const DEFAULT_TIMEOUT_MS = 600000;
 
-export interface Options { handoffPath?: string; pane: string; resumePing?: string; focus: string }
+export interface Options { handoffPath?: string; pane: string; focus: string; notify?: string }
 export interface CompactRequest {
   id: string; registry: string; bus: string; team: string; handle: string; command: string;
   bound: BoundRecipient & { handle: string; instance: string };
-  oldSession: string; oldTranscript: string; handoff: string; focus: string; resumePing?: string;
+  oldSession: string; oldTranscript: string; handoff: string; focus: string; resumePing?: string; notify?: string;
   /** The Codex turn observed at arm time; a different latest turn means new work and refuses every pane effect. */
   turnId: string;
 }
@@ -65,7 +65,7 @@ export interface CompactEffects {
   now(): number;
 }
 
-/** Codex needs a handoff (its worker preserves it on NOT COMPACTED); Claude and OpenCode take one optionally. */
+/** Every self-compaction preserves an authored brief before arming. */
 export function parseOptions(argv: string[]): Options {
   const out: Partial<Options> = {};
   for (let i = 0; i < argv.length; i++) {
@@ -76,15 +76,16 @@ export function parseOptions(argv: string[]): Options {
       out.focus = focus;
       break;
     }
-    if (!["--pane", "--handoff-path", "--resume-ping"].includes(key ?? "")) throw new Error(`unexpected argument: ${key}`);
+    if (!["--pane", "--handoff-path", "--notify"].includes(key ?? "")) throw new Error(`unexpected argument: ${key}`);
     const value = argv[++i];
     if (!value || value.startsWith("--")) throw new Error(`${key} requires a value`);
-    const field = ({ "--pane": "pane", "--handoff-path": "handoffPath", "--resume-ping": "resumePing" } as const)[key!]!;
+    const field = ({ "--pane": "pane", "--handoff-path": "handoffPath", "--notify": "notify" } as const)[key!]!;
     if (out[field] !== undefined) throw new Error(`duplicate ${key}`);
     out[field] = value;
   }
   if (!out.pane) throw new Error("self compact requires --pane <tmux-target>");
   if (!out.focus) throw new Error("focus text is required: run tap self compact --handoff <file> -- '<focus>'");
+  if (!out.handoffPath) throw new Error("an authored --handoff FILE is required; use /tap:self compact to prepare it");
   return out as Options;
 }
 
@@ -369,7 +370,7 @@ export async function runCompact(request: CompactRequest, fx: CompactEffects, ti
     }
     const body = request.resumePing?.trim()
       ? request.resumePing
-      : `Context compacted for ${request.team}/${request.handle}. Read ${request.handoff} first; focus: ${request.focus}. Run 'tap poll ${request.handle}'.`;
+      : handoffPing(request.handoff, request.handle, "", request.focus, process.env, request.notify);
     let outcome: SendOutcome;
     try { outcome = fx.send(body); }
     catch (error) { return finish("resume-miss", `resume send failed: ${msg(error)}; handoff preserved for manual resume`); }
@@ -389,7 +390,8 @@ export type WakeMode = "claude" | "opencode";
 export interface WakeRequest {
   mode: WakeMode; id: string; registry: string; bus: string; team: string; handle: string;
   bound: BoundRecipient & { handle: string; instance: string };
-  handoff?: string; focus: string; resumePing?: string;
+  /** Historical armed requests may lack a brief; every new arm requires one. */
+  handoff?: string; focus: string; resumePing?: string; notify?: string;
   session: string; transcript: string; boundary?: CompactionBoundary;
   /** New Claude submission authority. Older requests with a boundary only observe. */
   queuedAt?: number;
@@ -551,7 +553,7 @@ export async function runWake(request: WakeRequest, fx: WakeEffects, timeout = D
     if (!valid()) return finish("resume-miss", "identity: seat or native session changed before resume; handoff preserved for manual resume");
     const body = request.resumePing?.trim()
       ? request.resumePing
-      : `Context compacted for ${request.team}/${request.handle}.${request.handoff ? ` Read ${request.handoff} first;` : ""} focus: ${request.focus}. Run 'tap poll ${request.handle}'.`;
+      : handoffPing(request.handoff ?? "", request.handle, "", request.focus, process.env, request.notify);
     let outcome: SendOutcome;
     try { outcome = fx.send(body); }
     catch (error) { fx.unverified("resume-send-failed"); return finish("resume-miss", `resume send failed: ${msg(error)}; handoff preserved for manual resume`); }
@@ -588,7 +590,7 @@ function secondsFromEnv(name: string, fallback: number): number {
 
 const indexHome = () => process.env.TAP_INDEX_HOME || join(homedir(), ".tap");
 
-function receiptWriter(path: string, request: { id: string; handoff?: string }, extra: object = {}) {
+function receiptWriter(path: string, request: CompactRequest | WakeRequest, extra: object = {}) {
   const receiptPath = path.slice(0, -5) + ".receipt.json";
   const helperLog = join(indexHome(), "self-helper.log");
   const pointer = (state: string, detail = "") => {
@@ -601,6 +603,9 @@ function receiptWriter(path: string, request: { id: string; handoff?: string }, 
     let previous = {};
     try { previous = JSON.parse(readFileSync(receiptPath, "utf8")); } catch { /* first receipt */ }
     atomicWrite(receiptPath, JSON.stringify({ ...previous, ...receipt, id: request.id, at: new Date().toISOString(), handoff: request.handoff, ...extra }) + "\n");
+    if (TERMINAL.has(receipt.state as CompactState | WakeState) && receipt.state !== "resume-sent") {
+      notifyRecoveryFailure({ ...request, verb: "compact" }, receiptPath, receipt.state, receipt.detail, (to, body) => sendRecovery(request, to, body));
+    }
     if (TERMINAL.has(receipt.state as CompactState | WakeState)) pointer(receipt.state, receipt.state === "not-compacted" ? receipt.detail.replace(/\s+/g, " ").slice(0, 400) : "");
   };
 }
@@ -681,6 +686,8 @@ async function wakeWorker(path: string, request: WakeRequest): Promise<void> {
 
 export async function worker(path: string): Promise<void> {
   const parsed = JSON.parse(readBounded(path, 65536)) as CompactRequest | WakeRequest;
+  // --run consumes an already-armed operation, preserving its saved continuation.
+  // The required-brief gate belongs to new preparation, never a historical replay.
   if ("mode" in parsed && (parsed.mode === "claude" || parsed.mode === "opencode")) return wakeWorker(path, parsed);
   const request = parsed as CompactRequest;
   const record = receiptWriter(path, request, { oldSession: request.oldSession, oldTranscript: request.oldTranscript }) as (receipt: CompactReceipt) => void;
@@ -745,42 +752,35 @@ export function resumeSendArgs(handle: string, bodyPath: string): string[] {
 }
 
 export function armSelfCompact(options: Options, context?: ResolvedContext): number {
+  requireHandoff(options.handoffPath, "compact");
   const bun = artifactBun() ?? Bun.which("bun");
   if (!bun) throw new Error("Bun runtime is unavailable; nothing armed");
   const ctx = context ?? resolveContext();
   assertResetUnfenced(ctx.bus.home, "self compact");
   const self = resolveSelf(ctx, options.pane, 1);
-  const seat = seatMap(loadRegistry(ctx.registryPath))[self.handle];
+  const seats = seatMap(loadRegistry(ctx.registryPath)), seat = seats[self.handle];
   if (!seat) throw new Error("seat is no longer registered; Codex compaction needs a registered seat with a bound rollout");
   const harness = String(seat.harness ?? "");
   const mode: WakeMode | "codex" | null = harness.startsWith("codex") ? "codex" : harness === "claude" ? "claude" : harness === "opencode" ? "opencode" : null;
   if (!mode) {
     throw new TapError(6, "compact_witness_unsupported", "unsupported harness", `self compact worker supports codex, claude and opencode; '${self.handle}' runs '${harness}'`);
   }
-  if (mode === "codex" && !options.handoffPath) {
-    throw new Error("Codex compaction needs a handoff written by you: run tap self compact --handoff <file> -- '<focus>'");
-  }
-  let handoff: string | undefined;
-  if (options.handoffPath) {
-    handoff = resolve(options.handoffPath);
-    let handoffText = "";
-    try { handoffText = readBounded(handoff, 4 * 1024 * 1024); }
-    catch { throw new Error(`handoff is missing or unreadable: ${options.handoffPath}; run tap self compact --handoff <file> -- '<focus>'`); }
-    if (!handoffText.trim()) throw new Error(`handoff is empty: ${options.handoffPath} — refusing, because an empty handoff reads as 'nothing was in progress'`);
-  }
+  validateNotify(options.notify, self.handle, seats);
   if (!seat.instance || !seat.server_epoch) throw new Error("seat identity is incomplete");
   // A background job carries the owner it was started for; a different seat
   // instance in that pane now is not the caller, and gets nothing armed.
   const owner = process.env.TAP_CALLER_SELECTED_INSTANCE;
   if (owner && owner !== seat.instance) throw new Error("background job owner changed before arming; nothing armed");
   const id = `${self.handle}-${new Date().toISOString().replace(/[-:.]/g, "")}-${randomUUID().slice(0, 8)}`;
+  const handoff = copyBrief(ctx.bus.home, `${id}.compact`, options.handoffPath, undefined, "compact");
+  const resumePing = handoffPing(handoff, self.handle, self.paneId, mode === "claude" ? "" : options.focus, process.env, options.notify);
   const bound = { paneId: self.paneId, instance: String(seat.instance), serverEpoch: String(seat.server_epoch), bootId: String(seat.boot_id ?? ""), harness, handle: self.handle };
   if (mode !== "codex") {
     const session = String(seat.harness_session_id ?? ""), transcript = compactionWitnessPath(mode, seat);
     // Validate before arming; the actual freshness boundary is captured at Enter.
     captureCompactionBoundary(mode, seat);
     const request: WakeRequest = { mode, id, registry: ctx.registryPath, bus: ctx.bus.home, team: ctx.team, handle: self.handle,
-      bound, handoff, focus: options.focus, resumePing: options.resumePing, session, transcript,
+      bound, handoff, focus: options.focus, resumePing, notify: options.notify, session, transcript,
       ...(mode === "claude" && { queuedAt: Date.now() }) };
     const receipt = spawnRequest(bun, ctx.bus.home, id, request, { mode, handoff });
     console.error(mode === "claude"
@@ -795,7 +795,7 @@ export function armSelfCompact(options: Options, context?: ResolvedContext): num
   const turnId = latestTurnId(oldTranscript);
   if (!turnId) throw new Error(`cannot prove the current Codex turn from ${oldTranscript}; nothing armed`);
   const request: CompactRequest = { id, registry: ctx.registryPath, bus: ctx.bus.home, team: ctx.team, handle: self.handle, command: "/compact",
-    bound, oldSession, oldTranscript, handoff: handoff!, focus: options.focus, resumePing: options.resumePing, turnId };
+    bound, oldSession, oldTranscript, handoff: handoff!, focus: options.focus, resumePing, notify: options.notify, turnId };
   const receipt = spawnRequest(bun, ctx.bus.home, id, request, { handoff, oldSession, oldTranscript });
   console.error(`self: compaction ARMED; completion unverified; end this turn now. Handoff: ${handoff}. Receipt: ${receipt}`);
   return 0;

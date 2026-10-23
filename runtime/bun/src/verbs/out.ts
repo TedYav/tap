@@ -12,6 +12,7 @@ import { stampEnvelope } from "../envelope";
 import { submitNotice } from "../notice-submit";
 import { AGENT_FAMILIES } from "./team";
 import { cmdOutRetire } from "../out-retire";
+import { assertSharedStopCleared } from "../opencode-shared-stop";
 
 // Test-only process interruption at either side of the atomic registry rename.
 function publicationBarrier(stage: string): void {
@@ -59,6 +60,7 @@ function cmdOutForwarding(argv: string[], scriptsDir: string): number {
     try {
       if (ctx.selection) assertSelectionCurrent(ctx.selection, lock);
       const original = loadRegistry(ctx.registryPath);
+      if (seatMap(original)[source]) assertSharedStopCleared(ctx.root, seatMap(original)[source]!);
       const transition = prepareForwarding(original, source, destination, utcStamp());
       const event = mintId("forward");
       const history = join(ctx.root, ".tap", "team-history", `${source}.${event}.json`);

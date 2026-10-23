@@ -126,7 +126,7 @@ unchanged HEAD or a process census alone does not prove a stall.
 
 Before adding or reassigning a seat, read [staffing](references/staffing.md).
 
-- Start with `tap models` and `tap team calibration`; presets are optional recipes. One bounded answer → `tap ask`; a consult needing
+- Use `tap presets` for saved recipes and `tap team` for who is seated. One bounded answer → `tap ask`; a consult needing
   follow-up → `tap crew add` in the operator's current tmux session; a durable
   lane → `tap session launch`. Use resume for an existing seat. Session launch presets accept `--env`, `--unset-env`, and trailing harness
   arguments; `--model`/`--effort` stay preset-owned. The supplied name is the handle.
@@ -147,10 +147,10 @@ Before adding or reassigning a seat, read [staffing](references/staffing.md).
 
 ## Staffing a seat
 
-`tap models` provides personal calibration or qualified reference guidance (access unverified).
-Choose harness/model@effort, then launch from the intended worktree. Presets optionally save a combination you use often; OpenCode and Cursor support model only.
+Use `tap presets` for saved recipes and `tap team` for who is seated.
+Choose a supported harness/model@effort, then launch from the intended worktree. Presets optionally save a combination you use often; OpenCode and Cursor support model only.
 ```bash
-tap models
+tap presets
 tap launch claude reviewer --model fable --effort high
 tap assign reviewer -f charter.md
 tap team --context

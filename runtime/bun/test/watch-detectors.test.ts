@@ -342,8 +342,8 @@ describe("the production read seams (M6 U1)", () => {
     try {
       const db = join(scratch, "opencode.db");
       const store = createOpenCodeStore(db);
-      addMessage(store, { role: "assistant", sessionID: "busy", time: { created: 1, completed: null }, finish: null });
-      addMessage(store, { role: "assistant", sessionID: "done", time: { created: 2, completed: 5 }, finish: "stop" });
+      addMessage(store, { type: "assistant", sessionID: "busy", time: { created: 1, completed: null }, finish: null });
+      addMessage(store, { type: "assistant", sessionID: "done", time: { created: 2, completed: 5 }, finish: "stop" });
       store.close();
       const s = scratchSeams(scratch, { ...process.env, OPENCODE_DB_PATH: db });
       expect(s.opencodeDbTurnState("busy")).toBe("in-turn");

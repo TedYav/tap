@@ -85,6 +85,28 @@ test("a launch without tmux refuses with the remedy, before any state", async ()
   assertNoPublication(root);
 });
 
+test("an enrolled launch without tmux preserves the prerequisite class and remedy", async () => {
+  const root = stranger([]), cwd = join(root, "stranger");
+  const registry = join(cwd, ".tap/team-registry.json");
+  mkdirSync(join(cwd, ".tap/bus"), { recursive: true });
+  mkdirSync(join(root, "index"));
+  writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "stranger", worktree_root: cwd }, seats: {} }));
+  writeFileSync(join(root, "index/global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
+    stranger: { root: cwd, registry_location: registry },
+  } }));
+  const original = readFileSync(registry, "utf8");
+  for (const json of [false, true]) {
+    const result = await captureLaunch(root, ["claude", "scout", ...(json ? ["--json"] : [])]);
+    expect(result.rc).toBe(2);
+    if (json) {
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({ error_class: "missing_prerequisite", detail: "tmux was not found on PATH" });
+    } else expect(result.stderr).toContain("tmux was not found on PATH");
+    expect(result.stderr + result.stdout).toContain("tmux -V");
+    expect(readFileSync(registry, "utf8")).toBe(original);
+  }
+});
+
 test("a present-but-broken tmux is never executed; the harness refusal carries", async () => {
   const root = stranger([{ name: "tmux", body: NO_TMUX_EFFECT }]);
   for (const [harness, executable] of [["claude", "claude"], ["cursor", "cursor-agent"], ["hermes", "hermes"]] as const) {
@@ -130,31 +152,4 @@ test("custom-session launch receipt points to the actual registered seat", async
   expect(result.stdout).toContain("custom-session is running detached");
   expect(result.stdout).toContain("tap attach stranger/claude");
   expect(result.stdout).not.toContain("tap attach custom-session");
-});
-
-test("an OpenCode launch captures the selected model's window; other launches and failures leave the launch alone", async () => {
-  const fakes = [
-    { name: "tmux", body: "#!/bin/sh\nexit 0\n" },
-    { name: "claude", body: "#!/bin/sh\nexit 99\n" },
-    { name: "opencode", body: "#!/bin/sh\nexit 99\n" },
-  ];
-  const seen: [string, string][] = [];
-  const capture = (model: string, directory: string) => { seen.push([model, directory]); };
-  const launch = (args: string[], captureModelWindow: LaunchDeps["captureModelWindow"] = capture) =>
-    captureLaunch(stranger(fakes), args, { run: async () => 0, captureModelWindow });
-
-  const withModel = await launch(["opencode", "--model", "zai/glm"]);
-  expect(withModel.rc, withModel.stderr).toBe(0);
-  expect(seen).toHaveLength(1);
-  expect(seen[0]![0]).toBe("zai/glm");
-  expect(seen[0]![1]).toMatch(/\/stranger$/);
-
-  await launch(["opencode"]);
-  await launch(["opencode", "--model", "no-provider"]);
-  await launch(["claude", "--model", "zai/glm"]);
-  await launch(["opencode", "--model", "zai/glm", "--dry-run"]);
-  expect(seen).toHaveLength(1);
-
-  const broken = await launch(["opencode", "--model", "zai/glm"], () => { throw new Error("opencode models failed"); });
-  expect(broken.rc, broken.stderr).toBe(0);
 });

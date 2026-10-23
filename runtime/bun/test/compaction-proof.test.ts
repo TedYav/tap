@@ -45,15 +45,15 @@ test("Claude rejects preexisting future records, a partial baseline record, repl
   expect(readCompactionProof(f.boundary)).toBeNull();
 });
 
-test("OpenCode proof requires a fresh completed summary linked to a compaction request", () => {
+test("OpenCode proof requires a fresh completed manual compaction row", () => {
   const f = proofFixture(root, "opencode");
   f.summary(999); f.summary(1000);
-  f.summary(1001, { finish: undefined });
+  f.summary(1001, { status: "running" });
   f.summary(1002, { error: { name: "aborted" } });
-  f.summary(1003, { time: { created: 1003 } });
-  f.summary(1004, { summary: false });
+  f.summary(1003, { status: "failed" });
+  f.summary(1004, { type: "assistant" });
   f.summary(1005, {}, false);
-  f.summary(1006, { parentID: "unrelated" });
+  f.summary(1006, { reason: "auto" });
   expect(readCompactionProof(f.boundary)).toBeNull();
   f.summary(1007);
   expect(readCompactionProof(f.boundary)).toEqual({ evidence: "store-proven", compactedAt: new Date(1008).toISOString() });
@@ -66,7 +66,7 @@ test("OpenCode rejects old summaries with new timestamps, foreign sessions and m
   expect(readCompactionProof(baseline)).toBeNull();
   f.summary(3000);
   const db = new Database(f.path);
-  db.exec("UPDATE message SET session_id = 'foreign'; UPDATE part SET session_id = 'foreign'");
+  db.exec("UPDATE session_message SET session_id = 'foreign'");
   db.close();
   expect(readCompactionProof(baseline)).toBeNull();
   renameSync(f.path, f.path + ".old");

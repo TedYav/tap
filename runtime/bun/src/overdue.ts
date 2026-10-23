@@ -1,3 +1,4 @@
+import { inheritedActor } from "./context";
 // Aged unsettled-inbound reducer and dispatcher advisory.
 //
 // Enumeration is the same current-team / current-recipient-instance filter as
@@ -101,7 +102,8 @@ export function warnOverdueInbound(
       try { handle = resolveSelf(ctx, pane, 2, env).handle; }
       catch { /* TAP_SELF remains the incumbent's best-effort fallback. */ }
     }
-    if (!handle && env.TAP_SELF && dischargeableHandle(ctx.registryPath, env.TAP_SELF)) handle = env.TAP_SELF;
+    const inherited = handle ? "" : inheritedActor(env);
+    if (!handle && inherited && dischargeableHandle(ctx.registryPath, inherited)) handle = inherited;
     if (!handle) return;
 
     const result = overdueInbound(ctx, handle, OVERDUE_THRESHOLD_SECONDS, nowEpoch);

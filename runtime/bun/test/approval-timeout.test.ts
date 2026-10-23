@@ -8,7 +8,7 @@ import {
   type ApprovalSeams, type Episode, type RejectResult, type SeatRow, type SiblingProof,
 } from "../src/approval-timeout";
 import { writePolicy, type ApprovalHarness } from "../src/approval-timeout-policy";
-import { readSiblingProof } from "../src/approval-timeout-real";
+import { realApprovalSeams } from "../src/approval-timeout-real";
 
 const fixtures = join(import.meta.dir, "fixtures", "agent-state");
 const read = (harness: string, name: string) => readFileSync(join(fixtures, harness, name), "utf8");
@@ -298,9 +298,10 @@ describe("approval-timeout pass (tap-rlebf.2)", () => {
     expect(events().map(e => `${e.outcome}:${e.reason ?? ""}`)).toEqual(["no_action:sibling_pending", "verified:"]);
   });
 
-  test("OpenCode on an unproven version records version_unproven and sends nothing", () => {
+  test("OpenCode 2 production proof records version_unproven and sends nothing", () => {
     writePolicy(bus, { enabled: true, by: "lead", at: 1 });
-    const w = world({ proof: "version_unproven" });
+    const w = world();
+    w.seams.siblingProof = realApprovalSeams({bus, scripts:"", registry:join(bus,"missing.json"),env:process.env,now:()=>w.clock.now}).siblingProof;
     w.frames.o = OPENCODE_PROMPT;
     processApprovalTimeouts([row("o", "opencode")], "lead", w.seams);
     w.clock.now = 1601;
@@ -328,29 +329,5 @@ describe("approval-timeout pass (tap-rlebf.2)", () => {
     expect(processApprovalTimeouts([row("c", "codex")], "lead", w.seams)).toBe(1);
     expect(w.lines).toHaveLength(1);
     expect(w.lines[0]).toStartWith("tap watch: approval-timeout:");
-  });
-});
-
-describe("OpenCode sibling proof file (U8 reader)", () => {
-  const write = (state: object) => { const p = join(bus, "oc.json"); require("node:fs").writeFileSync(p, JSON.stringify(state)); return p; };
-  const base = { version: "1.18.33", pid: 4242, ppid: 1, at: 1000, session: "s1", root: true, pending: [{ id: "p1", summary: "/etc" }], other_sessions_pending: 0 };
-  test("one pending root-session request on a fresh heartbeat is single", () => {
-    expect(readSiblingProof(write(base), "4242", "← Access external directory /etc", 1030)).toBe("single");
-    // OpenCode under one wrapper shell: the pane process is its parent.
-    expect(readSiblingProof(write({ ...base, pid: 5000, ppid: 4242 }), "4242", "/etc", 1030)).toBe("single");
-  });
-  test("two pending is pending; stale, foreign pid, child session, mismatch or missing is unproven", () => {
-    expect(readSiblingProof(write({ ...base, pending: [...base.pending, { id: "p2", summary: "/tmp" }] }), "4242", "/etc", 1030)).toBe("pending");
-    expect(readSiblingProof(write(base), "4242", "/etc", 1061)).toBe("unproven");
-    expect(readSiblingProof(write(base), "9999", "/etc", 1030)).toBe("unproven");
-    expect(readSiblingProof(write({ ...base, root: false }), "4242", "/etc", 1030)).toBe("unproven");
-    expect(readSiblingProof(write({ ...base, root: undefined }), "4242", "/etc", 1030)).toBe("unproven");
-    expect(readSiblingProof(write({ ...base, other_sessions_pending: 1 }), "4242", "/etc", 1030)).toBe("unproven");
-    expect(readSiblingProof(write(base), "", "/etc", 1030)).toBe("unproven");
-    expect(readSiblingProof(write(base), "4242", "/home", 1030)).toBe("unproven");
-    expect(readSiblingProof(join(bus, "missing.json"), "4242", "/etc", 1030)).toBe("unproven");
-  });
-  test("a version outside 1.18.x is version_unproven", () => {
-    expect(readSiblingProof(write({ ...base, version: "1.19.0" }), "4242", "/etc", 1030)).toBe("version_unproven");
   });
 });

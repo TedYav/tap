@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { awaitStableHarness, awaitReplacedHarness, codexComposerIdle, opencodeComposerIdle, opencodeReadySignal, memoizedStartupObservation, paneTailLines, PaneObservationTimeout, parsePaneFacts, type PaneFacts } from "../src/launcher/readiness";
-import { bindFingerprintOf, claudeBaselineAfterPlaceholderBind, claudeBindSignal } from "../src/launcher/transaction";
+import { bindFingerprintOf, bindBaselineAfterPlaceholderBind, sessionBindSignal } from "../src/launcher/transaction";
 
 const first:PaneFacts={pane:"fixture/seat:0.0",pane_id:"%1",server_epoch:"srv:1:1",pane_pid:2002,command:"codex",dead:false,path:"/fixture"};
 const makeFacts = (): PaneFacts => ({ ...first });
@@ -292,17 +292,17 @@ test("the claude bind fingerprint moves on the pane command the SessionStart bin
       identity_capture_result: '{"trust":"process"}', transcript_path: "/t/transcript.jsonl",
       pane_current_command: "bash", launch_id: "token-1" };
     writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: { reviewer: row } }));
-    const evidence = { selection: { registryLocation: registry }, handle: "reviewer", token: "token-1" };
+    const evidence = { selection: { registryLocation: registry }, handle: "reviewer", token: "token-1", record: { harness: "claude" } };
     const snapshot = bindFingerprintOf(row);
     // Before the bind's write lands (same second, same ids, command still the
     // placeholder's), a resumed row must NOT signal. Fresh closures: the
     // signal rate-limits successive polls on one closure.
-    const unMoved = await claudeBindSignal(evidence as never, snapshot)(makeFacts());
+    const unMoved = await sessionBindSignal(evidence as never, snapshot)(makeFacts());
     expect(unMoved).toBe(false);
     // The bind rewrites pane_current_command from its own observation.
     row.pane_current_command = "node";
     writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: { reviewer: row } }));
-    const moved = await claudeBindSignal(evidence as never, snapshot)(makeFacts());
+    const moved = await sessionBindSignal(evidence as never, snapshot)(makeFacts());
     expect(moved).toBe(true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -320,23 +320,44 @@ test("the claude baseline is the placeholder row's own fingerprint; a row that m
     const row = { registered_at: "2026-09-28T14:00:00Z", harness_session_id: "", identity_capture_result: "",
       transcript_path: "", pane_current_command: "bash", launch_id: "token-1" };
     writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: { reviewer: row } }));
-    const evidence = { selection: { registryLocation: registry }, handle: "reviewer", token: "token-1" };
-    const baseline = claudeBaselineAfterPlaceholderBind(evidence as never);
+    const evidence = { selection: { registryLocation: registry }, handle: "reviewer", token: "token-1", record: { harness: "claude" } };
+    const baseline = bindBaselineAfterPlaceholderBind(evidence as never);
     expect(baseline).toBe(bindFingerprintOf(row));
     // The row moves after the baseline was taken (the respawn raced a fast
     // hook): the bind landing still reads as a change from the baseline.
     row.pane_current_command = "node"; row.harness_session_id = "sid-after-respawn";
     writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: { reviewer: row } }));
-    expect(await claudeBindSignal(evidence as never, baseline!)(makeFacts())).toBe(true);
+    expect(await sessionBindSignal(evidence as never, baseline!)(makeFacts())).toBe(true);
     // A row the baseline could not read (missing seat, unreadable registry)
     // yields null — no signal, full window.
     writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: {} }));
-    expect(claudeBaselineAfterPlaceholderBind(evidence as never)).toBeNull();
+    expect(bindBaselineAfterPlaceholderBind(evidence as never)).toBeNull();
     rmSync(registry);
-    expect(claudeBaselineAfterPlaceholderBind(evidence as never)).toBeNull();
+    expect(bindBaselineAfterPlaceholderBind(evidence as never)).toBeNull();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("private OpenCode bind readiness requires this launch's exact prepared session and a moved fingerprint", async () => {
+  const dir = mkdtempSync(join(process.env.TMPDIR!, "oc-bind-ready-"));
+  try {
+    const registry = join(dir, "registry.json");
+    const row = { launch_id: "token", harness_session_id: "ses_expected", pane_current_command: "bash" };
+    const save = () => writeFileSync(registry, JSON.stringify({ schema: "0.20", seats: { seat: row } }));
+    const evidence = { selection: { registryLocation: registry }, handle: "seat", token: "token",
+      record: { harness: "opencode", harness_session_id: "ses_expected" } };
+    const snapshot = bindFingerprintOf(row);
+    save();
+    expect(await sessionBindSignal(evidence as never, snapshot)(makeFacts())).toBe(false);
+    row.pane_current_command = "opencode";
+    row.harness_session_id = "ses_other"; save();
+    expect(await sessionBindSignal(evidence as never, snapshot)(makeFacts())).toBe(false);
+    row.harness_session_id = "ses_expected"; row.launch_id = "other-token"; save();
+    expect(await sessionBindSignal(evidence as never, snapshot)(makeFacts())).toBe(false);
+    row.launch_id = "token"; save();
+    expect(await sessionBindSignal(evidence as never, snapshot)(makeFacts())).toBe(true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("paneTailLines returns the last non-empty lines, blank panes, and null on capture failure", async () => {

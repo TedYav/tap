@@ -14,11 +14,18 @@
     "types": [
       "bun"
     ],
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@opencode/plugin": [
+        "./node_modules/@opencode/plugin/dist/promise/index.d.ts"
+      ]
+    }
   },
   "include": [
     "main.ts",
     "src",
-    "test"
+    "test",
+    "../../hooks/tap-opencode-session-start.ts",
+    "../../hooks/tap-opencode-tmux-guard.ts"
   ]
 }

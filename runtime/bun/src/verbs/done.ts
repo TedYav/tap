@@ -1,3 +1,4 @@
+import { inheritedActor } from "../context";
 import { recipientInstance, settlingInstance, unresolvedRecipient } from "../recipient-instance";
 // `tap done <id> [--by me]` — write the authoritative settlement receipt.
 //
@@ -15,7 +16,7 @@ import { recipientInstance, settlingInstance, unresolvedRecipient } from "../rec
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { TapError, callerObservationReason, observeCallingPane, resolveContext, resolveSelf } from "../context";
+import { TapError, callerObservationReason, observeCallerIdentity, resolveContext, resolveSelf } from "../context";
 import { envelopeField, validateEnvelope } from "../envelope";
 import { atomicWrite, jsonObj } from "../fsatomic";
 import { utcStamp, validId, validToken } from "../ids";
@@ -316,9 +317,10 @@ function addressedTo(ctx: Context, id: string, actor: string): boolean {
 /** `retry` is the verb's own `--by` spelling for the no_actor next step (reply is the live caller; `tap done` is a retired tombstone). */
 export function resolveActor(ctx: Context, explicit: string, retry = "tap reply <id> --by <handle> -f <file>"): string {
   if (explicit) return explicit;
-  if (process.env.TAP_SELF) return process.env.TAP_SELF;
-  const seen = observeCallingPane();
-  if (seen.state === "inside") return resolveSelf(ctx, { status: "ok", paneId: seen.paneId, session: seen.session, serverEpoch: seen.serverEpoch }, 1).handle;
+  const inherited = inheritedActor();
+  if (inherited) return inherited;
+  const seen = observeCallerIdentity();
+  if (seen.state === "inside") return resolveSelf(ctx, { status: "ok", ...seen }, 1).handle;
   if (seen.state === "unobservable" && seen.unverifiable) {
     throw new TapError(1, "generation_unverifiable",
       "wait for tmux to answer and retry, or pass --by <handle>",

@@ -71,7 +71,7 @@ function registryRows(path: string): Record<string, Row> {
   for (const [handle, value] of seats) {
     if (!isMap(value)) continue;
     const row: Row = {};
-    for (const field of ["crew", "instance", "pane_id", "session", "server_epoch", "server_socket", "harness"])
+    for (const field of ["crew", "crew_owner", "crew_owner_instance", "instance", "pane_id", "session", "server_epoch", "server_socket", "harness"])
       row[field] = value.get(field);
     out[handle] = row;
   }
@@ -138,16 +138,28 @@ export function crewLifetimeHealth(pane: string): "supervised" | "unsupervised" 
 }
 
 /** A live pane row may be bound only to its unique non-crew session owner. */
-function ownerRows(ctx: FamilyContext, owner: string, crew: string): { parent: Row; child: Row } {
+function ownerRows(ctx: FamilyContext, owner: string, crew: string, requireOwnerLink = false): { parent: Row; child: Row } {
   const all = registryRows(ctx.registryPath);
   const parent = all[owner], child = all[crew];
-  if (!parent || !child || isCrew(parent) || !isCrew(child)) refuse(`owner '${owner}' or crew '${crew}' is not a current family`);
+  if (!parent || !child || isCrew(parent) || !isCrew(child)) refuse(`owner '${owner}' or crew '${crew}' is not a current family; remove and recreate the crew with tap crew remove ${crew}, then tap crew add`);
+  if (requireOwnerLink && (str(child!.crew_owner) !== owner || !str(child!.crew_owner_instance)
+    || str(child!.crew_owner_instance) !== str(parent!.instance))) {
+    refuse(`crew '${crew}' has no matching durable owner link; remove and recreate it with tap crew remove ${crew}, then tap crew add`);
+  }
   const session = str(parent!.session);
   if (!session || str(child!.session) !== session) refuse(`crew '${crew}' no longer shares owner '${owner}' session`);
   const owners = Object.entries(all).filter(([, row]) => !isCrew(row) && str(row.session) === session);
   if (owners.length !== 1 || owners[0]![0] !== owner) refuse(`session '${session}' has no unique durable owner`);
   if (!str(parent!.instance) || !str(child!.instance) || !str(parent!.pane_id) || !str(child!.pane_id)) refuse("family rows lack instance or pane identity");
   return { parent: parent!, child: child! };
+}
+
+/** Eligibility only: no helper arm, process replacement or legacy adoption. */
+export function assertCrewOwnerLink(ctx: FamilyContext, crew: string): void {
+  const child = registryRows(ctx.registryPath)[crew];
+  const owner = str(child?.crew_owner);
+  if (!owner) refuse(`crew '${crew}' lacks a durable owner link; remove and recreate it with tap crew remove ${crew}, then tap crew add`);
+  ownerRows(ctx, owner, crew, true);
 }
 
 function parentIdentity(parent: Row): ProcessIdentity {
@@ -247,8 +259,10 @@ function newBinding(ctx: FamilyContext, owner: string, crew: string, parent: Row
   };
 }
 
-export async function reconcileCrewLifetime(ctx: ResolvedContext, owner: string, crew: string): Promise<CrewLifetimeBinding> {
-  const { parent, child } = ownerRows(ctx, owner, crew);
+// Deliberate family teardown can bind legacy rows while their original live
+// parent is still observed. Creation/rearm pass true; they may not adopt one.
+export async function reconcileCrewLifetime(ctx: ResolvedContext, owner: string, crew: string, requireOwnerLink = false): Promise<CrewLifetimeBinding> {
+  const { parent, child } = ownerRows(ctx, owner, crew, requireOwnerLink);
   const childPane = str(child.pane_id);
   const facts = familyFacts(parent, child);
   const parentProcess = parentIdentity(parent);
@@ -300,7 +314,7 @@ export function survivingCrews(ctx: FamilyContext, owner: string): SurvivingCrew
   if (!parent || isCrew(parent) || !str(parent.instance) || !str(parent.session)) return [];
   const found: SurvivingCrew[] = [];
   for (const [crew, row] of Object.entries(all)) {
-    if (!isCrew(row) || str(row.session) !== str(parent.session) || !str(row.instance) || !/^%\d+$/.test(str(row.pane_id))) continue;
+    if (!isCrew(row) || str(row.crew_owner) !== owner || str(row.crew_owner_instance) !== str(parent.instance) || str(row.session) !== str(parent.session) || !str(row.instance) || !/^%\d+$/.test(str(row.pane_id))) continue;
     const fact = paneFacts(str(row.pane_id));
     const child = fact && fact.id === str(row.pane_id) ? identity(fact.pid, bootId()) : null;
     if (child) found.push({ crew, crewInstance: str(row.instance), crewPane: str(row.pane_id), ownerInstance: str(parent.instance),
@@ -318,7 +332,7 @@ export function survivingCrews(ctx: FamilyContext, owner: string): SurvivingCrew
  * mints a new instance and so can never inherit crews this way.
  */
 export async function reclaimRevivedCrew(ctx: FamilyContext, owner: string, surviving: SurvivingCrew): Promise<CrewLifetimeBinding> {
-  const { parent, child } = ownerRows(ctx, owner, surviving.crew);
+  const { parent, child } = ownerRows(ctx, owner, surviving.crew, true);
   if (str(parent.instance) !== surviving.ownerInstance) refuse(`seat '${owner}' is not the retained instance crew '${surviving.crew}' belonged to`);
   if (str(child.instance) !== surviving.crewInstance || str(child.pane_id) !== surviving.crewPane) refuse(`crew '${surviving.crew}' changed during the revival`);
   const facts = familyFacts(parent, child);
@@ -355,16 +369,16 @@ export async function armNewCrew(ctx: ResolvedContext, callerPane: string, crew:
   const all = registryRows(ctx.registryPath);
   const owners = Object.entries(all).filter(([, row]) => !isCrew(row) && str(row.pane_id) === callerPane);
   if (owners.length !== 1) refuse(`caller pane '${callerPane}' has no unique durable parent row`);
-  return reconcileCrewLifetime(ctx, owners[0]![0], crew);
+  return reconcileCrewLifetime(ctx, owners[0]![0], crew, true);
 }
 
 export async function rearmCrewLifetime(ctx: ResolvedContext, crew: string): Promise<CrewLifetimeBinding> {
   const all = registryRows(ctx.registryPath);
   const child = all[crew];
   if (!child || !isCrew(child) || !str(child.session)) refuse(`crew '${crew}' has no provable registered session`);
-  const owners = Object.entries(all).filter(([, row]) => !isCrew(row) && str(row.session) === str(child!.session));
-  if (owners.length !== 1) refuse(`crew '${crew}' has no unique registered parent`);
-  return reconcileCrewLifetime(ctx, owners[0]![0], crew);
+  const owner = str(child!.crew_owner);
+  if (!owner) refuse(`crew '${crew}' lacks a durable owner link; remove and recreate it with tap crew remove ${crew}, then tap crew add`);
+  return reconcileCrewLifetime(ctx, owner, crew, true);
 }
 
 /** Finish a verified child replacement without adopting a new parent lifetime. */

@@ -3,12 +3,14 @@ import { statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { opencodeStorePath } from "./opencode-store";
 
+// This assistant-step observation predates native idle markers; interrupted-turn
+// outcomes are not classified here. readiness-stall uses the session idle marker.
 export type TurnState = "in-turn" | "idle" | "dirty-end" | "unknown" | "error";
 
 /**
  * The sqlite3 CLI takes no bind parameters; the session id enters the SQL only as a
  * hex blob literal, so no byte of it can break out of the CAST. The seek rides
- * `message_session_time_created_id_idx (session_id, time_created, id)`: `json_extract`
+ * `session_message_session_type_seq_idx (session_id, type, seq)`: `json_extract`
  * in WHERE/ORDER BY would decode every row of a ~100 GB store (tap-2zzft). The role
  * filter runs on rows the index walk visits, newest first, so it stops at the first assistant.
  * INDEXED BY turns a store lacking the index (or columns) into "error" rather than a scan.
@@ -16,9 +18,9 @@ export type TurnState = "in-turn" | "idle" | "dirty-end" | "unknown" | "error";
 export function turnStateSql(sessionId: string): string {
   const hex = Buffer.from(sessionId, "utf8").toString("hex");
   return `SELECT json_extract(data, '$.finish'), json_extract(data, '$.time.completed')
-FROM message INDEXED BY message_session_time_created_id_idx
-WHERE session_id = CAST(x'${hex}' AS TEXT) AND json_extract(data, '$.role') = 'assistant'
-ORDER BY time_created DESC, id DESC
+FROM session_message INDEXED BY session_message_session_type_seq_idx
+WHERE session_id = CAST(x'${hex}' AS TEXT) AND type = 'assistant'
+ORDER BY seq DESC
 LIMIT 1;`;
 }
 

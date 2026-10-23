@@ -1,87 +1,90 @@
-// A fixture of OpenCode's real `session`/`project`/`project_directory`/`message`/`part` tables (the
-// DDL `.schema` prints on a live v1.18.33 store), so the readers' queries run against the same
-// columns and indexes as production. The session table is indexed on project_id, workspace_id and
-// parent_id only -- never on directory.
-// `data` omits id/sessionID exactly as OpenCode's projector stores it: the columns are authoritative.
+// OpenCode 2.1.2 DDL captured from a sandboxed native store. Type and sequence
+// are columns; message JSON contains neither its id nor its type.
 import { Database } from "bun:sqlite";
 
 export const OPENCODE_STORE_DDL = `
-CREATE TABLE project (
-  id text PRIMARY KEY,
-  worktree text NOT NULL,
-  vcs text,
-  name text,
-  icon_url text,
-  icon_url_override text,
-  icon_color text,
-  time_created integer NOT NULL,
-  time_updated integer NOT NULL,
-  time_initialized integer,
-  sandboxes text NOT NULL,
-  commands text
-);
 CREATE TABLE project_directory (
-  project_id text NOT NULL,
-  directory text NOT NULL,
-  type text,
-  strategy text,
-  time_created integer NOT NULL,
-  CONSTRAINT project_directory_pk PRIMARY KEY(project_id, directory),
-  CONSTRAINT fk_project_directory_project_id_project_id_fk FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
-);
-CREATE TABLE session (
-  id text PRIMARY KEY,
-  project_id text NOT NULL,
-  workspace_id text,
-  parent_id text,
-  slug text NOT NULL,
-  directory text NOT NULL,
-  path text,
-  title text NOT NULL,
-  version text NOT NULL,
-  share_url text,
-  summary_additions integer,
-  summary_deletions integer,
-  summary_files integer,
-  summary_diffs text,
-  metadata text,
-  cost real DEFAULT 0 NOT NULL,
-  tokens_input integer DEFAULT 0 NOT NULL,
-  tokens_output integer DEFAULT 0 NOT NULL,
-  tokens_reasoning integer DEFAULT 0 NOT NULL,
-  tokens_cache_read integer DEFAULT 0 NOT NULL,
-  tokens_cache_write integer DEFAULT 0 NOT NULL,
-  revert text,
-  permission text,
-  agent text,
-  model text,
-  time_created integer NOT NULL,
-  time_updated integer NOT NULL,
-  time_compacting integer,
-  time_archived integer,
-  CONSTRAINT fk_session_project_id_project_id_fk FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
-);
-CREATE INDEX session_project_idx ON session (project_id);
-CREATE INDEX session_workspace_idx ON session (workspace_id);
-CREATE INDEX session_parent_idx ON session (parent_id);
-CREATE TABLE message (
-  id text PRIMARY KEY,
-  session_id text NOT NULL,
-  time_created integer NOT NULL,
-  time_updated integer NOT NULL,
-  data text NOT NULL
-);
-CREATE INDEX message_session_time_created_id_idx ON message (session_id, time_created, id);
-CREATE TABLE part (
-  id text PRIMARY KEY,
-  message_id text NOT NULL,
-  session_id text NOT NULL,
-  time_created integer NOT NULL,
-  time_updated integer NOT NULL,
-  data text NOT NULL
-);
-CREATE INDEX part_message_id_id_idx ON part (message_id, id);
-CREATE INDEX part_session_idx ON part (session_id);`;
+          project_id text NOT NULL,
+          directory text NOT NULL,
+          type text,
+          strategy text,
+          time_created integer NOT NULL,
+          CONSTRAINT project_directory_pk PRIMARY KEY(project_id, directory),
+          CONSTRAINT fk_project_directory_project_id_project_id_fk FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
+        );
+CREATE TABLE project (
+          id text PRIMARY KEY,
+          worktree text NOT NULL,
+          vcs text,
+          name text,
+          icon_url text,
+          icon_url_override text,
+          icon_color text,
+          time_created integer NOT NULL,
+          time_updated integer NOT NULL,
+          time_initialized integer,
+          time_active integer DEFAULT 0 NOT NULL,
+          time_archived integer,
+          sandboxes text NOT NULL,
+          commands text
+        );
+CREATE TABLE session_message (
+          id text PRIMARY KEY,
+          session_id text NOT NULL,
+          type text NOT NULL,
+          seq integer NOT NULL,
+          time_created integer NOT NULL,
+          time_updated integer NOT NULL,
+          data text NOT NULL,
+          CONSTRAINT fk_session_message_session_id_session_v2_id_fk FOREIGN KEY (session_id) REFERENCES session_v2(id) ON DELETE CASCADE
+        );
+CREATE TABLE session_v2 (
+          id text PRIMARY KEY,
+          project_id text NOT NULL,
+          workspace_id text,
+          parent_id text,
+          fork_session_id text,
+          fork_boundary text,
+          slug text NOT NULL,
+          directory text NOT NULL,
+          path text,
+          title text,
+          version text NOT NULL,
+          share_url text,
+          summary_additions integer,
+          summary_deletions integer,
+          summary_files integer,
+          summary_diffs text,
+          metadata text,
+          cost real DEFAULT 0 NOT NULL,
+          tokens_input integer DEFAULT 0 NOT NULL,
+          tokens_output integer DEFAULT 0 NOT NULL,
+          tokens_reasoning integer DEFAULT 0 NOT NULL,
+          tokens_cache_read integer DEFAULT 0 NOT NULL,
+          tokens_cache_write integer DEFAULT 0 NOT NULL,
+          revert text,
+          permission text,
+          agent text,
+          model text,
+          time_created integer NOT NULL,
+          time_updated integer NOT NULL,
+          time_idle integer,
+          time_viewed integer,
+          idle_outcome text,
+          time_compacting integer,
+          time_archived integer,
+          time_suspended integer,
+          resume_attempts integer DEFAULT 0 NOT NULL,
+          CONSTRAINT fk_session_v2_project_id_project_id_fk FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
+        );
+CREATE UNIQUE INDEX session_message_session_seq_idx ON session_message (session_id,seq);
+CREATE INDEX session_message_session_type_seq_idx ON session_message (session_id,type,seq);
+CREATE INDEX session_message_session_time_created_id_idx ON session_message (session_id,time_created,id);
+CREATE INDEX session_message_time_created_idx ON session_message (time_created);
+CREATE INDEX session_v2_project_idx ON session_v2 (project_id);
+CREATE INDEX session_v2_workspace_idx ON session_v2 (workspace_id);
+CREATE INDEX session_v2_parent_idx ON session_v2 (parent_id);
+CREATE INDEX session_v2_time_suspended_idx ON session_v2 (time_suspended) WHERE "session_v2"."time_suspended" is not null;`;
 
 export function createOpenCodeStore(path: string): Database {
   const db = new Database(path);
@@ -97,11 +100,12 @@ let seq = 0;
  * `sessionID` (legacy fixture shape); it only picks the column.
  */
 export function addMessage(db: Database, row: Record<string, any>, opts: { id?: string; session?: string } = {}): string {
-  const { sessionID, ...data } = row;
-  const id = opts.id ?? `msg_${String(++seq).padStart(8, "0")}`;
+  const { sessionID, type, ...data } = row;
+  const ordinal = ++seq;
+  const id = opts.id ?? `msg_${String(ordinal).padStart(8, "0")}`;
   const created = typeof data.time?.created === "number" ? data.time.created : seq;
-  db.query("INSERT INTO message VALUES (?, ?, ?, ?, ?)")
-    .run(id, opts.session ?? sessionID ?? "s1", created, created, JSON.stringify(data));
+  db.query("INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, opts.session ?? sessionID ?? "s1", type, seq, created, data.time?.completed ?? created, JSON.stringify(data));
   return id;
 }
 
@@ -114,7 +118,7 @@ export function addSession(
 ): void {
   const created = opts.created ?? 1;
   db.query(
-    "INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated) VALUES (?, ?, ?, ?, 't', '1.18.33', ?, ?)",
+    "INSERT INTO session_v2 (id, project_id, slug, directory, title, version, time_created, time_updated) VALUES (?, ?, ?, ?, 't', '2.1.2', ?, ?)",
   ).run(id, opts.project ?? "global", id, directory, created, opts.updated ?? created);
 }
 

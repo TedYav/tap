@@ -61,7 +61,8 @@ export function parseFork(argv: string[]): ForkOptions {
 
 /** The action that answers "this harness cannot fork from the CLI". */
 function unsupportedAction(harness: string, handle: string): string {
-  return harness === "hermes" ? `tap session launch hermes <new-name> starts a fresh seat`
+  return harness === "opencode" ? `OpenCode 2 TUI has no CLI fork; native API support is tracked in tap-ki7uw. Use the session menu in OpenCode`
+    : harness === "hermes" ? `tap session launch hermes <new-name> starts a fresh seat`
     : `tap attach ${handle}, then run /fork inside the seat`;
 }
 

@@ -17,13 +17,16 @@ removes only the window it created.
 After the revival binds, each crew snapshotted before the launch moves to the
 revived harness generation. This is the one continuation of a crew past its
 original parent generation, and it refuses unless the seat row keeps the same
-instance, the crew's row, pane and process are unchanged, the binding's original
+instance, the crew's durable `crew_owner` and `crew_owner_instance` match that
+seat, the crew's row, pane and process are unchanged, the binding's original
 parent process is provably gone, and its old helper is gone or is stopped
 (TERM, then KILL, of that exact process generation) and confirmed gone. The new
 token voids the old helper's guarded stop. Only this resume path reclaims: a
 fresh replacement stops the session instead, and an unreadable registry or a
 crew that changed since the snapshot refuses. A refused reclaim leaves the crew
-running unsupervised and says so.
+running unsupervised and says so. Legacy crews without a matching durable link
+are excluded from revival; remove and recreate them from the intended parent.
+A missing pane-local binding never permits shared-session ownership inference.
 
 The base crew lifetime contract is in
 [crew process lifetime](./cli-surface-the-whole-thing-part-03.md).

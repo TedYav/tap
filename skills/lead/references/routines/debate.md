@@ -88,7 +88,7 @@ orchestrator conducts the schedule; it never authors the content peers debate (c
   read time over the event stream at every evidence-bearing status transition**, so a forged line cannot
   bypass it. **Judgment/taste items are exempt** — conceding to a better argument is the point. This is
   the N-proposer generalization of that prior ledger loop; the routine owns a
-  minimal file-backed stream, and the two-seat ledger with the same guard is `/tap:discuss`'s
+  minimal file-backed stream, and the driver-owned ledger with the same guard is `/tap:discuss`'s
   `skills/discuss/scripts/ledger.sh`. (Distinct from `deliberation_content`'s
   domain-supplied "third-party ledger", which is chair content, not this guard.)
 - **Pre-registration.** Probes and secret label-maps are scribe-logged **before outcomes are known**;

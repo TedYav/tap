@@ -1,13 +1,10 @@
-// tap-g191v: a team reset copies payloads/ and spool/ as separate components.
-// A drain already past its entry fence check must not move a body between
-// those two copies. Reset runs in a child held at a scratch copy barrier; the
-// drain is the real engine with an executable fake tmux at the pane boundary.
+// Shared reset-custody guards retained for spool writers. The retired team
+// checkpoint copy/cut tests were removed with that implementation.
 import { installSpoolPane } from "./support/spool-pane";
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { componentTable } from "../src/team/reset-components";
 import { drainOnce, withdrawRetiredEntry, type DrainContext } from "../src/spool-drain";
 import { realDrainEffects } from "../src/spool-drain-effects";
 import { terminalize } from "../src/spool-deadline";
@@ -15,10 +12,6 @@ import { acquireObligationLock, acquirePathLock } from "../src/panelock";
 import { RESET_HELD_LOCK_WAIT_MS } from "../src/reset";
 import { retirementNoticeIds } from "../src/spool-retired";
 import { reapStaleSidecars } from "../src/spool-sidecar";
-import { Bus } from "../src/bus";
-import type { ResolvedContext } from "../src/context";
-import { parseResetOptions, runReset } from "../src/team/reset";
-import type { StopEffects } from "../src/team/stop";
 
 const scripts = join(import.meta.dir, "../../../skills/tap/scripts");
 const roots: string[] = [];
@@ -56,65 +49,6 @@ function fixture(submitRc = 0) {
   return { root, home, ctx, env, park, submits };
 }
 
-/** Hold reset after it copies `holdAfter`; every other copy stage passes. */
-function startReset(f: ReturnType<typeof fixture>, holdAfter: string) {
-  const barrier = join(f.root, "reset-barrier");
-  for (const c of componentTable()) if (c.fate === "checkpoint" && c.name !== holdAfter) writeFileSync(`${barrier}.copied-${c.name}.release`, "");
-  const child = Bun.spawn(["bun", join(import.meta.dir, "support", "team-reset-child.ts")], {
-    env: { ...f.env, RESET_CHILD_ROOT: f.root, TAP_RESET_FENCE_TEST_BARRIER: barrier }, stdout: "pipe", stderr: "pipe" });
-  return { child, reached: `${barrier}.copied-${holdAfter}.reached`, release: `${barrier}.copied-${holdAfter}.release` };
-}
-
-function archived(f: ReturnType<typeof fixture>): string {
-  const dir = join(f.home, "archive", "team-reset");
-  return join(dir, readdirSync(dir)[0]!, "bus");
-}
-
-test("a drain that passed its entry check cannot move a body between reset's payloads and spool copies", async () => {
-  const f = fixture(); f.park("a");
-  const drainBarrier = join(f.root, "drain-barrier");
-  f.env.TAP_DRAIN_TEST_BARRIER = drainBarrier; f.env.TAP_DRAIN_TEST_ID = "a";
-  // The drain passes reset.fence.json's entry check, then parks after readiness.
-  const drain = drainOnce(f.ctx, realDrainEffects(f.ctx));
-  await until(`${drainBarrier}.reached`);
-  const reset = startReset(f, "payloads");
-  try { await until(reset.reached, reset.child); }
-  catch (error) { throw new Error(`${error}\n${await new Response(reset.child.stdout).text()}${await new Response(reset.child.stderr).text()}`); }
-  writeFileSync(`${drainBarrier}.release`, "");
-  await drain;
-  writeFileSync(reset.release, "");
-  const [rc, out, err] = await Promise.all([reset.child.exited, new Response(reset.child.stdout).text(), new Response(reset.child.stderr).text()]);
-  expect({ rc, out, err }).toMatchObject({ rc: 0 });
-  const bus = archived(f);
-  const inPayloads = existsSync(join(bus, "payloads", "a.md")), inSpool = existsSync(join(bus, "spool", "a.md"));
-  const live = existsSync(join(f.home, "spool", "a.md")) || existsSync(join(f.home, "payloads", "a.md"));
-  expect({ inPayloads, inSpool, live, submits: f.submits() }).toEqual({ inPayloads: false, inSpool: true, live: false, submits: [] });
-});
-
-test("a fence landing during a single submit keeps the canonical body and its attempt evidence in the checkpoint", async () => {
-  const f = fixture(); f.park("a");
-  const submit = join(f.root, "submit-barrier");
-  f.env.SUBMIT_BARRIER = submit;
-  const drain = Bun.spawn([process.execPath, join(import.meta.dir, "../src/spool-engine.ts"), scripts,
-    "redeliver", "a", "peer", "fixture:0.0", "%401", "fixture", f.ctx.actingRegistry],
-    { env: f.env, stdout: "pipe", stderr: "pipe" });
-  try { await until(`${submit}.reached`, drain); }
-  catch (error) { throw new Error(`${error}\n${await new Response(drain.stdout).text()}${await new Response(drain.stderr).text()}\n${readFileSync(join(f.root, "pane-calls"), "utf8")}`); }
-  // Hold reset after its last spool-side copy, still fenced, while submit returns.
-  const reset = startReset(f, "spool");
-  await until(reset.reached, reset.child);
-  writeFileSync(`${submit}.release`, "");
-  await drain.exited;
-  writeFileSync(reset.release, "");
-  expect(await reset.child.exited).toBe(0);
-  const bus = archived(f);
-  expect({
-    payload: existsSync(join(bus, "payloads", "a.md")), attempted: existsSync(join(bus, "receipts", "a.attempted")),
-    spoolBody: existsSync(join(bus, "spool", "a.md")), submits: f.submits(),
-    fencedEvent: readFileSync(join(f.home, "registry-events.log"), "utf8").includes("stage=post-submit_reason=fenced"),
-  }).toEqual({ payload: true, attempted: true, spoolBody: false, submits: ["a"], fencedEvent: true });
-});
-
 test("a fenced digest leaves every member in spool/ with its attempt evidence and releases its claims", async () => {
   const f = fixture(); f.park("a", "standard"); f.park("b", "standard");
   f.env.SUBMIT_WRITES_FENCE = "1";
@@ -139,28 +73,6 @@ test("under a fence, terminalize leaves the body in spool/ and the Bash-path att
   expect({ rc: mint.exitCode, err: mint.stderr.toString() }).toEqual({ rc: 1, err: "tap: delivery attempt for 'a' refused — reset custody fenced\n" });
   expect(existsSync(join(f.home, "receipts", "a.attempted"))).toBe(false);
 });
-
-test("reset refuses reset_custody_busy within its bound, before any fence, stop or checkpoint", () => {
-  const f = fixture();
-  const held = acquirePathLock(join(f.home, "reset.fence.json.lock"), 1000, f.env)!;
-  const previous = { ...process.env };
-  Object.assign(process.env, { TAP_HOME: f.home, TAP_INDEX_HOME: f.env.TAP_INDEX_HOME, TAP_SCRATCH_ONLY: f.root, TAP_BOOT_ID: "boot:100" });
-  let stopped = false, caught: unknown;
-  const ctx: ResolvedContext = { bus: new Bus(f.home), root: f.root, registryPath: f.ctx.actingRegistry, team: "fixture", marker: "live", busRule: "env" };
-  const effects = { tmux: { hasSession: () => false, paneSession: () => null, sessionPaneIds: () => [] },
-    killSession: () => { stopped = true; }, hasSession: () => false, paneCount: () => 0, observeSpare: () => null,
-    queueSummary: () => { stopped = true; return { unsettled: 0, counts: new Map() }; },
-    watch: { isArmed: () => false, clearTints: () => { stopped = true; }, disarm: () => {} },
-    identity: { tmuxActive: false, callingPaneId: "", selfRefusal: "", resolveSelf: () => null, displaySession: () => "" },
-    runId: "test", eventLog: join(f.home, "registry-events.log"), io: { stdout: () => {}, stderr: () => {}, warn: () => {} } } as unknown as StopEffects;
-  const started = Date.now();
-  try { runReset(ctx, parseResetOptions(["--json"]), effects); } catch (error) { caught = error; }
-  finally { held.release(); process.env = previous; }
-  expect({ klass: (caught as { errorClass?: string })?.errorClass, fence: existsSync(join(f.home, "reset.fence.json")),
-    archive: existsSync(join(f.home, "archive", "team-reset")) && readdirSync(join(f.home, "archive", "team-reset")).length > 0, stopped,
-  }).toEqual({ klass: "reset_custody_busy", fence: false, archive: false, stopped: false });
-  expect(Date.now() - started).toBeLessThan(20_000);
-}, 30_000);
 
 // tap-12ys6: a reset holder waits on nothing but short durable-write locks. A
 // concurrent send, in its own process, must get reset while a metadata writer or a

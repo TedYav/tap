@@ -1,6 +1,6 @@
 import { writeSync } from "node:fs";
 import { join } from "node:path";
-import { TapError } from "./context";
+import { observeCallerIdentity, TapError } from "./context";
 import { registryWriteRefusal } from "./register-authority";
 import { acquireRegistryLock, childBusEnv } from "./panelock";
 import { acquireResetMutationLock, markResetGenerationReused } from "./reset";
@@ -13,13 +13,15 @@ export { liveSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-sto
 import { resumeSelectedSeat, validateSeatUp, withLaunchSignals, LaunchInterrupted, TransactionError } from "./launcher/transaction";
 import { withStartupTrace } from "./startup-trace";
 import { tapScriptsDir } from "./scripts-dir";
+import { assertSharedStopCleared, quiesceSharedSession, refuseSharedSelfStop } from "./opencode-shared-stop";
 
-export interface SeatOptions { target: string; team?: string; json: boolean; dryRun: boolean; selfReported?: boolean }
+export interface SeatOptions { target: string; team?: string; json: boolean; dryRun: boolean; selfReported?: boolean; skipQuiesce?: boolean }
 export function parseSeatOptions(argv: string[]): SeatOptions {
   const options: SeatOptions = { target: "", json: false, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--json") options.json = true;
+    else if (arg === "--skip-quiesce") options.skipQuiesce = true;
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--team") {
       if (options.team !== undefined || !argv[i + 1] || argv[i + 1]!.startsWith("-")) fail("usage_error", "--team needs one team name");
@@ -100,6 +102,9 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
       if (refusal) throw new TapError(1, refusal.errorClass, refusal.action, refusal.detail);
       const seats = seatMap(doc);
       row = validateDurable(seats[handle], handle, selection.team, verb);
+      if (options.skipQuiesce && (verb !== "down" || row.opencode_server_mode !== "shared")) fail("usage_error", "--skip-quiesce applies only to tap down for a shared OpenCode seat");
+      if (verb === "down") refuseSharedSelfStop([[handle, row]], "tap down");
+      else assertSharedStopCleared(selection.rootReal, row);
       const disposition = lifecycleDisposition("seat", verb);
       if (!disposition.ok) fail(disposition.errorClass, disposition.detail);
       const snapshot = seatSnapshot();
@@ -123,7 +128,12 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
       } else {
         if (disposition.row.registry !== "suspend-rows" || !tmuxFateStopsNamedSession(disposition.row)) fail("lifecycle_fate_invalid", "no power-state owner for this fate");
         if (!pane) {
-          render(verb, options, { ...fields, outcome: "already_stopped", crews: [] });
+          const stopped = options.dryRun ? { quiesced: true } : quiesceSharedSession(row, selection.rootReal, handle, { skip: options.skipQuiesce });
+          if (!options.dryRun && row.opencode_server_mode === "shared") {
+            row.status = "suspended"; row.status_reason = stopped.quiesced ? "session_stopped" : "unquiesced";
+            markResetGenerationReused(selection.busHome, "tap down"); saveRegistry(selection.registryLocation, doc);
+          }
+          render(verb, options, { ...fields, outcome: stopped.quiesced ? "already_stopped" : "unquiesced", crews: [] });
           return 0;
         }
         for (const [name, other] of Object.entries(seats)) {
@@ -138,15 +148,18 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
           render(verb, options, { ...fields, outcome: "would_stop", crews });
           return 0;
         }
+        const stopped = quiesceSharedSession(row, selection.rootReal, handle, { skip: options.skipQuiesce });
+        for (const crew of crews) quiesceSharedSession(seats[crew]!, selection.rootReal, crew);
         if (crews.length) {
           writeSync(2, `tap down: removing owned crew ${crews.join(", ")}; any unsettled crew mail remains on the bus without a recipient. Hand off work before down; this command does not transfer or settle it.\n`);
         }
         const original = structuredClone(row);
         const originals = new Map(crews.map(h => [h, seats[h]!]));
-        const callerSocket = process.env.TMUX ? physicalSocketPath({ ...process.env, TAP_TMUX_SOCKET: undefined, TAP_TMUX_SOCKET_PATH: undefined }) : "";
-        const self = !!pane && callerSocket === physicalSocketPath() && snapshot.panes.some(p => p.id === process.env.TMUX_PANE && p.sessionId === pane.sessionId);
+        const caller = observeCallerIdentity();
+        const self = !!pane && caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) && caller.session === pane.session &&
+          snapshot.panes.some(p => p.id === caller.paneId && p.sessionId === pane.sessionId);
         row.status = "suspended";
-        row.status_reason = "session_stopped";
+        row.status_reason = stopped.quiesced ? "session_stopped" : "unquiesced";
         for (const crew of crews) delete seats[crew];
         markResetGenerationReused(selection.busHome, "tap down");
         saveRegistry(selection.registryLocation, doc);
@@ -163,7 +176,7 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
           saveRegistry(selection.registryLocation, doc);
           fail("stop_failed", result.stderr.trim() || result.stdout.trim() || "session survived; registry restored");
         }
-        if (!self) render(verb, options, { ...fields, outcome: "stopped", crews });
+        if (!self) render(verb, options, { ...fields, outcome: stopped.quiesced ? "stopped" : "pane_stopped_unquiesced", crews });
         return 0;
       }
     } finally { lock.release(); }

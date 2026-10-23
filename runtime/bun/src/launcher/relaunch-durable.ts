@@ -1,8 +1,10 @@
-import { validateLaunchWorkdir } from "./workdir";
+import { requireOpenCode2 } from "./opencode-version";
+import { opencodeStoredSession } from "../opencode-store";
+import { launchWorkdir, validateLaunchWorkdir } from "./workdir";
 // Durable relaunch keeps the census conversation and replaces only its pane.
 import { realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { observeCallingPane, TapError, type CallingPaneObservation } from "../context";
+import { observeCallerIdentity, TapError, type CallingPaneObservation } from "../context";
 import { teamContext } from "../crew-lifecycle";
 import { enrolledTeamNameForRoot } from "../index-home";
 import { assertResetUnfenced } from "../reset";
@@ -14,7 +16,8 @@ import { entrySession } from "./observation";
 import { rootForCwd } from "./records";
 import { registryEntry } from "./resume";
 import { codexChildStoreEnv, codexSessionExists, recordHasResumeArtifact, resolvedResumeIdentity, reviveTier } from "./resume-identity";
-import { LaunchInterrupted, recordFromRow } from "./transaction";
+import { LaunchInterrupted, mintLaunchSessionId, recordFromRow } from "./transaction";
+import { assertSharedStopCleared, refuseSharedSelfStop } from "../opencode-shared-stop";
 import { LauncherError } from "./types";
 import { ClearRefusal, checkRelaunchExpectation, clearRebindTimeout, clearTargetPane, relaunchIdentity, refuseOnIdentityDrift,
   refuseUnsupportedInstruction, replaceHarnessInPane, type ClearScope } from "./replace";
@@ -25,7 +28,7 @@ export interface RelaunchContext { team?: string; caller_pane: string; caller: C
 
 export function relaunchContext(): RelaunchContext {
   const enrolled = enrolledTeamNameForRoot(rootForCwd(process.cwd()));
-  const caller = observeCallingPane(process.env, true);
+  const caller = observeCallerIdentity(process.env, true);
   return { team: enrolled.status === "ok" ? enrolled.name : undefined,
     caller_pane: caller.state === "inside" ? caller.paneId : "", caller };
 }
@@ -59,6 +62,8 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
     control.signal?.throwIfAborted();
     if (!options.dryRun) control.progress?.("checking target and resume identity");
     const scope = relaunchTarget(member), where = `cd ${shlexQuote(scope.root)} && `;
+    refuseSharedSelfStop([[member.handle, member.row]], verb, false, process.env, caller);
+    assertSharedStopCleared(scope.root, member.row);
     assertResetUnfenced(scope.busHome, "session relaunch");
     const refuse = (errorClass: string, action: string, detail: string): never => { throw new TapError(2, errorClass, action, detail); };
     const entry = registryEntry(scope.root, member.handle);
@@ -100,7 +105,7 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
       `seat '${tag}' (${record.harness}) has no stored conversation ${expectedResume} under ${record.launch_workdir}; relaunch --workdir will not resume into an empty chat; nothing was replaced`);
     if (options.workdir !== undefined && expectedResume !== null
       && (resolvedResumeIdentity(record, process.env) !== expectedResume
-        || (record.harness !== "claude" && record.harness !== "codex" && !recordHasResumeArtifact(record, process.env)))) return refuseUnresumable();
+        || (record.harness !== "claude" && record.harness !== "codex" && record.harness !== "opencode" && !recordHasResumeArtifact(record, process.env)))) return refuseUnresumable();
     // The `--` tail typed on this relaunch is this invocation's own tuning: it wins over anything the resume would drop.
     const notices = new Notices(diagnostic);
     notices.suppress(options.json);
@@ -108,6 +113,14 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
       typedTail: options.overrides?.argv?.length ?? 0 });
     if (options.workdir !== undefined && expectedResume !== null && record.harness === "codex"
       && !codexSessionExists(expectedResume, codexChildStoreEnv(process.env, built))) return refuseUnresumable();
+    const nativeEnv = { ...process.env, ...built.env };
+    for (const key of built.unset_env ?? []) delete nativeEnv[key];
+    // OpenCode ignores TAP's reader pin; this must inspect the native child store.
+    delete nativeEnv.OPENCODE_DB_PATH;
+    if (options.workdir !== undefined && record.harness === "opencode"
+      && opencodeStoredSession(resumed, nativeEnv, launchWorkdir(record)) !== "present")
+      return refuse("resume_unavailable_in_workdir", "launch a fresh seat in the new workdir",
+        `OpenCode 2 sessions are bound to their directory; conversation ${expectedResume} could not be verified in ${launchWorkdir(record)}; nothing was replaced`);
     const nonce = randomUUID(), childEnv: Record<string, string> = { ...built.env, TAP_CLEAR_ID: nonce, TAP_LAUNCH_ROOT: scope.root };
     // Registration must resolve the target cwd, never inherit the caller's bus pin.
     delete childEnv.TAP_HOME;
@@ -116,6 +129,8 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
     lines.push(...target.warnings);
     // An explicit --workdir is a mutation (respawn cwd + recorded row), so the preview names the directory it would use.
     if (options.dryRun) return { code: 0, stdout: `${plan.command}\n`, stderr: lines.join("\n"), workdir: options.workdir === undefined ? undefined : record.launch_workdir };
+    if (record.harness === "opencode") requireOpenCode2(nativeEnv, launchWorkdir(record));
+    if (record.opencode_server_mode === "shared") Object.assign(record, await mintLaunchSessionId(record, nativeEnv, control.signal, notices));
     replacing = true;
     const outcome = await replaceHarnessInPane(scope, plan, { verb, handle: member.handle, team: member.team,
       instruction: options.message ?? null, clearHistory: false, relaunch: { identity, resume: expectedResume },

@@ -11,9 +11,14 @@ import { teamRegistryFileRefusal } from "./register-authority";
 import { PY_STRIP } from "./payload-fields";
 import { pyFloatString, pyReadUtf8, pyTruthy } from "./spool-publication";
 import { pyRepr, unicodeInt } from "./watch-detect";
-import { loadModelReference, matchingVariant, variantQualification, type ModelVariant } from "./launcher/model-reference";
+import { loadModelReference, matchingVariant, variantQualification } from "./launcher/model-reference";
 import type { LaunchTuning } from "./launcher/tuning";
 import { tapScriptsDir, artifactBun } from "./scripts-dir";
+import { formatContextTokens, type TokenSample } from "./context-tokens";
+import { formatPromptCache, refreshPromptCache, type PromptCache } from "./prompt-cache";
+import { ensureAscii } from "./fsatomic";
+import { table as rosterTable, columnWidths, fitColumns, rosterWidth, rosterStyle, statusIndicator } from "./verbs/team";
+import { helpArgv } from "./help";
 
 type Result = { exit: number; stdout: string; stderr: string };
 type Row = Record<"handle" | "model" | "harness" | "family" | "tier" | "speed" | "cost" | "voice" | "one_liner", string>;
@@ -58,29 +63,6 @@ function ledgerAbsent(path: string): boolean {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return true; throw error; }
 }
 
-function referenceModels(selector: string, all: boolean): Result {
-  const notices: string[] = [];
-  let variants = loadModelReference(line => notices.push(line));
-  if (selector) variants = variants.filter(v => v.model === selector || `${v.harness}/${v.model}` === selector || v.recipes.includes(selector));
-  if (!variants.length) return failure(`tap models: no reference model matches '${selector}'; next: tap models\n`);
-  let out = "Model reference; access unverified. Qualified catalog priors, not installed models or personal calibration.\n\n";
-  out += table(["MODEL @ HARNESS", "QUALIFICATION", "TIER", "ROLES", "SPEED", "COST"], variants.map(v => [
-    `${v.model} @ ${v.harness}`, variantQualification(v), text(v.metadata?.intelligence) || "unknown",
-    Array.isArray(v.metadata?.primary_roles) ? v.metadata.primary_roles.join(", ") : "-", text(v.metadata?.speed) || "-", text(v.metadata?.cost_level) || "-",
-  ]));
-  out += "\nBare launch: tap launch <harness> [name] --model <id> [--effort <level>]\nNo saved preset required; permission setup may still be needed.\n";
-  for (const v of all || selector ? variants : []) {
-    out += `  ${v.command}\n`;
-    out += `    ${v.ambiguous ? `Conflicting reference fields omitted: ${v.ambiguousFields.join(", ")}.` : text(v.metadata?.summary) || v.description || "No prior."}\n`;
-    for (const field of ["secondary_roles","avoid_roles","banned_roles"]) {
-      const roles = v.metadata?.[field];
-      if (Array.isArray(roles) && roles.length) out += `    ${field}: ${roles.join(", ")}\n`;
-    }
-  }
-  out += "\nUse tap models <model> or --all for qualified commands and guidance. Presets save a combination you use often. tap models --full reads only your personal ledger.\n";
-  return { exit: 0, stdout: out, stderr: notices.map(line => `${line}\n`).join("") };
-}
-
 function referenceCalibration(roster: ObjectRow, strongest: boolean): Result {
   const notices: string[] = [], variants = loadModelReference(line => notices.push(line));
   const agents = Array.isArray(roster.agents) ? roster.agents.filter(object) : [];
@@ -91,7 +73,7 @@ function referenceCalibration(roster: ObjectRow, strongest: boolean): Result {
   });
   if (strongest) {
     const reachable = rows.filter(row => row.agent.status === "active" && TIERS.has(row.tier));
-    if (!reachable.length) return failure("tap team calibration: no reachable seat has a known exact reference variant tier; next: launch a qualified model from tap models, or add personal calibration\n");
+    if (!reachable.length) return failure("tap team calibration: no reachable seat has a known exact reference variant tier; next: launch a supported model with tap launch <harness> [name] --model <id> [--effort <level>] (OpenCode 2: model and variant; Cursor: model only), or add personal calibration\n");
     const best = Math.max(...reachable.map(row => TIERS.get(row.tier)!));
     return success(reachable.filter(row => TIERS.get(row.tier) === best).map(row => `${text(row.agent.handle)}\n`).join(""));
   }
@@ -99,14 +81,14 @@ function referenceCalibration(roster: ObjectRow, strongest: boolean): Result {
     text(agent.handle), `${text(tuning?.model) || text(agent.model) || "?"}@${text(tuning?.effort) || "?"} @ ${text(agent.harness) || "?"}`,
     variant?.family || text(agent.family) || "-", tier || "unknown", variant ? variantQualification(variant) : "unknown exact variant", text(agent.status) || "unknown",
   ]));
-  return { exit: 0, stderr: notices.map(line => `${line}\n`).join(""), stdout: `tap team calibration: ${text(roster.team) || "(unnamed)"}\nReference; access unverified. Stored tuning describes launch only; unknown defaults stay unknown.\n\n${body}\nChoose model/effort with tap models. Calibration matches launch tuning; tap team shows observed model/effort.\n` };
+  return { exit: 0, stderr: notices.map(line => `${line}\n`).join(""), stdout: `tap team calibration: ${text(roster.team) || "(unnamed)"}\nReference; access unverified. Stored tuning describes launch only; unknown defaults stay unknown.\n\n${body}\nSaved recipes: tap presets. Calibration matches launch tuning; tap team shows observed model/effort.\n` };
 }
 
 function parseLedger(path: string): Ledger {
   if (!existsSync(path)) throw new LedgerError(`seat-calibration ledger not found: ${path}`);
   const lines = splitLines(readText(path));
   const start = lines.findIndex(line => strip(line).startsWith(HEADING));
-  if (start < 0) throw new LedgerError(`'${HEADING}' section not found in ${path} — the ledger has no routing table to render (expected the pipe table \`tap models\` reads).`);
+  if (start < 0) throw new LedgerError(`'${HEADING}' section not found in ${path} — the ledger has no routing table to render (expected the pipe table \`tap team calibration\` reads).`);
   let banner = "";
   for (let i = start + 1; i < lines.length && !strip(lines[i]!).startsWith("|"); i++) {
     const line = strip(lines[i]!);
@@ -158,67 +140,6 @@ function table(headers: string[], body: string[][]): string {
   for (const row of body) for (let i = 0; i < row.length - 1; i++) widths[i] = Math.max(widths[i]!, length(row[i]!));
   return [headers, ...body].map(row => row.map((cell, i) => i === row.length - 1 ? cell : cell + " ".repeat(widths[i]! - length(cell)))
     .join("  ").replace(/[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/u, "") + "\n").join("");
-}
-
-function catalog(rows: Row[]): string {
-  return table(["HANDLE", "MODEL @ HARNESS", "FAMILY", "TIER", "SPEED", "COST", "VOICE", "ROUTES TO"],
-    rows.map(row => [row.handle, `${row.model} @ ${row.harness}`, row.family, row.tier, row.speed, row.cost, row.voice, row.one_liner]));
-}
-
-const MODELS_USAGE = "usage: tap models [-h] [--all] [--full] [handle]\n";
-const MODELS_HELP = MODELS_USAGE + "\npositional arguments:\n  handle\n\noptions:\n  -h, --help         show this help message and exit\n  --all\n  --full, --verbose\n";
-const modelOptions = ["--help", "--all", "--full", "--verbose"];
-
-function parseModels(argv: string[]): Result | { all: boolean; full: boolean; handle: string } {
-  let all = false, full = false, handle = "", positional = false, ended = false;
-  const extra: string[] = [];
-  const optionError = (detail: string) => failure(`${MODELS_USAGE}tap models: error: ${detail}\n`, 2);
-  for (const arg of argv) {
-    if (!ended && arg === "--") { ended = true; continue; }
-    if (!ended && arg.startsWith("-h=")) return optionError(`argument -h/--help: ignored explicit argument ${pyRepr(arg.slice(3))}`);
-    if (!ended && arg.startsWith("-h")) return success(MODELS_HELP);
-    if (!ended && arg.startsWith("--")) {
-      const equal = arg.indexOf("="), name = equal < 0 ? arg : arg.slice(0, equal);
-      const matches = modelOptions.filter(option => option.startsWith(name));
-      if (matches.length > 1) return optionError(`ambiguous option: ${arg} could match ${matches.join(", ")}`);
-      const option = matches[0];
-      if (!option) { extra.push(arg); continue; }
-      if (equal >= 0) return optionError(`argument ${option === "--help" ? "-h/--help" : option === "--all" ? "--all" : "--full/--verbose"}: ignored explicit argument ${pyRepr(arg.slice(equal + 1))}`);
-      if (option === "--help") return success(MODELS_HELP);
-      if (option === "--all") all = true;
-      else full = true;
-    } else if (!ended && arg.startsWith("-") && arg !== "-" && !/^-(?:\d+|\d*\.\d+)$/.test(arg)) extra.push(arg);
-    else if (!positional) { handle = arg; positional = true; }
-    else extra.push(arg);
-  }
-  // Preserve the existing deterministic error, including the legacy private
-  // subparser name. Retiring an implementation does not change its exit/text API.
-  if (extra.length) return failure(`usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: ${extra.join(" ")}\n`, 2);
-  return { all, full, handle };
-}
-
-export function modelsView(argv: string[], path = ledgerPath()): Result {
-  const args = parseModels(argv);
-  if ("exit" in args) return args;
-  let ledger: Ledger;
-  try {
-    if (args.full) return ledgerAbsent(path) ? failure(`tap models: seat-calibration ledger not found: ${path}\n`) : success(readText(path));
-    if (ledgerAbsent(path)) return referenceModels(args.handle, args.all);
-    ledger = parseLedger(path);
-  } catch (error) { return failure(`tap models: ${(error as Error).message}${error instanceof LedgerError ? "" : `; next: inspect ${path}`}\n`); }
-  const { banner, rows, dispositions } = ledger;
-  if (args.handle) {
-    const match = rows.find(row => row.handle === args.handle);
-    if (!match) return failure(`tap models: no catalog row for '${args.handle}' (known: ${rows.map(row => row.handle).join(", ")}); seats are \`tap team calibration\`\n`);
-    const disposition = dispositions.get(args.handle);
-    return success(catalog([match]) + (disposition ? `\n${disposition}\n` : "") + `\nHistory: see ${path}\n`);
-  }
-  let out = (banner ? `${banner}\n\n` : "") + catalog(rows);
-  if (args.all) {
-    out += "\nDispositions:\n";
-    for (const row of rows) { const d = dispositions.get(row.handle); if (d) out += `\n### ${row.handle}\n${d}\n`; }
-  } else out += "\ntap models --all for dispositions; <handle> for one; --full for the ledger. Who is on your team and reachable right now: tap team calibration.\n";
-  return success(out);
 }
 
 export function compactAge(seconds: number): string {
@@ -335,17 +256,13 @@ export function calibrationView(roster: ObjectRow, activity: string, strongest: 
       if (date) out += `      ${date} · ${observation}\n`;
     }
   }
-  return success(out + `\nIDLE is tmux window activity — a hint, not a work signal (incoming traffic bumps it). Catalog: tap models. Ledger: ${path}\n`);
+  return success(out + `\nIDLE is tmux window activity — a hint, not a work signal (incoming traffic bumps it). Saved recipes: tap presets. Ledger: ${path}\n`);
 }
 
 export function writeRoutingResult(result: Result): number {
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   return result.exit;
-}
-
-export function cmdModels(argv: string[]): number {
-  return writeRoutingResult(modelsView(argv));
 }
 
 const TEAMS_USAGE = "usage: tap teams [-h] [--all] [--details]\n";
@@ -434,14 +351,29 @@ function spoolWarning(root: string, now: number): string {
 }
 
 export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): Promise<Result> {
-  const args = parseTeams(argv);
-  if ("exit" in args) return args;
+  const separator = argv.indexOf("--");
+  const options = separator < 0 ? argv : argv.slice(0,separator);
+  const seats = options.includes("--seats"), json = options.includes("--json"), wide = options.includes("--wide");
+  const refuse = (error_class: string, detail: string, action = "tap help teams"): Result => json
+    ? {exit:1,stdout:JSON.stringify({ok:false,error_class,action,detail})+"\n",stderr:""}
+    : failure(`tap teams: ${detail}; next: ${action}\n`);
+  if (seats && options.some(arg => arg === "--help" || arg === "-h")) return helpArgv(["teams"]);
+  if (json && !seats) return refuse("usage_error", "--json requires --seats");
+  if (seats && argv.includes("--details")) return refuse("usage_error", "--seats and --details are alternative views");
+  const args = parseTeams(seats ? [...options.filter(arg => !["--seats", "--json", "--wide"].includes(arg)),...(separator < 0 ? [] : argv.slice(separator))] : argv);
+  if ("exit" in args) {
+    if (seats && args.exit !== 0) return refuse("usage_error", args.stderr.trim().split("\n").at(-1) ?? "invalid option");
+    return args;
+  }
+  if (seats && args.details) return refuse("usage_error", "--seats and --details are alternative views");
   const now = Date.now() / 1000, snapshot = loadGlobalRegistry();
-  if (snapshot.marker === "absent") return failure(`tap teams: ${NO_MACHINE_INDEX}; next: tap init  OR  tap session launch\n`);
+  if (seats && snapshot.marker === "invalid") return refuse("invalid_flip", "machine index is unreadable", "tap doctor");
+  if (snapshot.marker === "absent") return seats ? refuse("unanchored_bus", NO_MACHINE_INDEX, "tap init  OR  tap session launch") : failure(`tap teams: ${NO_MACHINE_INDEX}; next: tap init  OR  tap session launch\n`);
   const doc = snapshot.marker === "live" ? snapshot.doc : null;
   const teams = doc && object(doc.teams) ? doc.teams : {};
   type TeamRow = { name: string; root: string; active: number; total: number; attached: number; warn: string; status: string; unobserved: boolean };
   const rows: TeamRow[] = [], pending: {name: string; root: string; stored: ObjectRow}[] = [];
+  const agents: ObjectRow[] = [];
   for (const name of Object.keys(teams).sort(compare)) {
     const meta = teams[name];
     if (!object(meta) || meta.state === "historical") continue;
@@ -466,6 +398,7 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
     while (next < pending.length) {
       const {name, root, stored} = pending[next++]!;
       const observed = await observedRoster(name, scriptsDir);
+      if (seats && observed) agents.push(...observed.filter(row => args.all || row.status === "active").map(row => ({...row,team:name})));
       const active = observed?.filter(row => row.status === "active") ?? [];
       const total = observed?.length ?? Object.values(stored).filter(object).length;
       const attached = active.filter(row => pyTruthy(row.attached) && !["0", "no", "false"].includes(String(row.attached))).length;
@@ -475,6 +408,59 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
       rows.push({name, root, active:active.length, total, attached, warn, status:teamStatus(states, observed === null), unobserved:observed === null});
     }
   }));
+  if (seats) {
+    const collectedAt = Date.now() / 1000;
+    for (const agent of agents) if (object(agent.prompt_cache)) {
+      agent.prompt_cache = refreshPromptCache(agent.prompt_cache as unknown as PromptCache,collectedAt);
+    }
+    const missing = rows.filter(row => row.unobserved).map(row => row.name).sort(compare);
+    const gap = missing.length ? `tap teams --seats: could not observe ${missing.join(", ")}; tap teams --details shows why\n` : "";
+    agents.sort((a,b) => {
+      const expiry = (row: ObjectRow) => object(row.prompt_cache) && row.prompt_cache.state === "warm" && typeof row.prompt_cache.expires_at === "string"
+        ? Date.parse(row.prompt_cache.expires_at) : Infinity;
+      return (expiry(a) - expiry(b) || compare(text(a.team),text(b.team)) || compare(text(a.handle),text(b.handle)));
+    });
+    if (json) return success(ensureAscii(JSON.stringify({ok:true,scope:"machine",agents,unobserved_teams:missing}))+"\n");
+    if (!agents.length) return {exit:0,stdout:`tap teams --seats: no ${args.all ? "registered" : "active"} seats${missing.length ? " observed" : ""}\n`,stderr:gap};
+    const colored = rosterStyle();
+    // JSON retains its flat ordering. The human view groups the same seats by team.
+    const expiry = (row: ObjectRow): number => object(row.prompt_cache) && row.prompt_cache.state === "warm"
+      && typeof row.prompt_cache.expires_at === "string" && Number.isFinite(Date.parse(row.prompt_cache.expires_at))
+      ? Date.parse(row.prompt_cache.expires_at) : Infinity;
+    const cacheRank = (row: ObjectRow) => Number.isFinite(expiry(row)) ? 0
+      : object(row.prompt_cache) && row.prompt_cache.state === "cold" ? 1 : 2;
+    const groups = rows.filter(row => args.all || row.active || row.unobserved).map(team => {
+      const seats = agents.filter(agent => agent.team === team.name).sort((a,b) =>
+        cacheRank(a) - cacheRank(b) || expiry(a) - expiry(b) || compare(text(a.handle),text(b.handle)));
+      return {team,seats,expiry:Math.min(...seats.map(expiry))};
+    }).sort((a,b) => a.expiry - b.expiry || compare(a.team.name,b.team.name));
+    const headers = ["handle", "harness", "state", "context", "family", "model", "preset"];
+    const records = groups.flatMap(group => group.seats.map(row => {
+      const sample = object(row.context_tokens) ? row.context_tokens as unknown as TokenSample : undefined;
+      const count = sample?.input_tokens == null ? "—" : formatContextTokens(sample);
+      const usage = row.harness === "opencode" && sample?.input_tokens != null && sample.window_tokens == null ? `${count}/?` : count;
+      const state = row.status === "unbound" ? "unbound" : row.status === "active" ? text(row.agent_state) || "unknown" : "offline";
+      const observed = text(row.observed_model), effort = text(row.observed_effort);
+      const model = observed ? observed + (effort ? `@${effort}` : "")
+        : row.model || row.effort ? `${text(row.model) || "?"}@${text(row.effort) || "?"} (launch)` : "?";
+      const preset = text(row.preset) ? text(row.preset) + (row.preset_inferred ? "?" : "") : "n/a";
+      return [text(row.handle),text(row.harness),statusIndicator(state),
+        [usage,formatPromptCache(row.prompt_cache as PromptCache | null,colored)].filter(Boolean).join(" "),
+        text(row.family) || "-",model,preset];
+    }));
+    const terminal = rosterWidth(wide), kept = fitColumns(columnWidths(headers,records),terminal === null ? null : Math.max(1,terminal - 2));
+    const hidden = headers.filter((_,i) => !kept.includes(i));
+    // Fit once for every team, then insert headings without recomputing widths.
+    const lines = rosterTable(kept.map(i=>headers[i]!),records.map(row=>kept.map(i=>row[i]!)),null).trimEnd().split("\n");
+    let stdout = `  ${lines.shift()}\n`, offset = 0;
+    for (const {team,seats} of groups) {
+      const heading = colored ? `\x1b[1;36m${team.name}\x1b[0m` : team.name;
+      stdout += `${heading}  ${team.unobserved ? "?/?" : `${team.active}/${team.total}`} seats  ${team.root}\n`;
+      for (const _ of seats) stdout += `  ${lines[offset++]}\n`;
+    }
+    return {exit:0,stdout,
+      stderr:gap + (hidden.length ? `tap teams: hid ${hidden.join(", ")} to fit ${terminal} columns; tap teams --seats --wide shows every column\n` : "")};
+  }
   const visible = rows.filter(row => args.all || row.active || row.unobserved).sort((a,b) => compare(a.name,b.name));
   if (!visible.length) return success(`tap teams (machine-wide): no ${args.all ? "enrolled" : "active"} teams\n`);
   return success(args.details

@@ -10,6 +10,8 @@ test("Cursor pre-mint: the native owner tap clear mints through before replaceme
   const { mintLaunchSessionId, refusePreexistingIdOnNewMint } = await import("../src/launcher/transaction");
   const root = realpathSync(mkdtempSync(join(process.env.TAP_INDEX_HOME!, "cursor-mint-")));
   const binary = join(root, "cursor-agent"), receipt = join(root, "called");
+  // Cursor and the no-op harnesses must never reach an OpenCode probe or API.
+  writeFileSync(join(root, "opencode"), `#!/bin/sh\nprintf opencode >> "${receipt}"\nexit 97\n`, { mode: 0o755 });
   const env = { ...process.env, PATH: `${root}:${process.env.PATH}` };
   const uuid = "550E8400-e29b-41d4-A716-446655440000";
   const executable = (body: string) => {
@@ -23,7 +25,9 @@ test("Cursor pre-mint: the native owner tap clear mints through before replaceme
   expect([updated.harness_session_id, updated.identity_capture_action]).toEqual([uuid, "new"]);
   expect((record as { harness_session_id: null }).harness_session_id).toBeNull();
   const before = readFileSync(receipt, "utf8");
-  for (const harness of ["claude", "codex", "opencode", "agy", "hermes"]) {
+  expect(before).toBe("called");
+  // OpenCode now prepares native sessions; opencode-prepare.test.ts owns that path.
+  for (const harness of ["claude", "codex", "agy", "hermes"]) {
     const other = { ...(record as object), harness } as never;
     expect(await mintLaunchSessionId(other, env)).toBe(other);
   }

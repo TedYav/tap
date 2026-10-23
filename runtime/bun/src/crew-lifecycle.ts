@@ -1,24 +1,25 @@
 // Crew lifecycle: shutdown one crew seat or an owner's whole crew (tap-yih6n.1).
-// A crew row has no owner field; its owner is the one non-crew row sharing its
-// tmux session, the same derivation `tap team` and `tap team refresh` use.
-import { observeCallingPane, TapError, type ResolvedContext } from "./context";
+// Durable parentage gates rearm/relaunch. Explicit teardown keeps its existing
+// session-scoped family selection so legacy crews can always be removed.
+import { observeCallerIdentity, TapError, type ResolvedContext } from "./context";
 import { validToken } from "./ids";
 import { isFile } from "./watch-lease";
 import { loadRegistry, saveRegistry, seatMap } from "./registry";
 import { resolveSelection } from "./team-selection";
 import { assertActingRegistryMatches, SelectorError } from "./selector";
 import { tmux, tmuxReadOnly, tmuxTimeoutMs } from "./tmux";
-import { scratchOnlyGuard, retireSelected, retirementReceipt, type RetirementDisposition } from "./out-retire";
+import { scratchOnlyGuard, retireSelected, retirementReceipt, type RetirementDisposition, type PlainForm } from "./out-retire";
 import { lifecycleDisposition } from "./lifecycle-target";
 import { acquireRegistryLock } from "./panelock";
 import { acquireResetMutationLock, assertResetUnfenced, RESET_HELD_LOCK_WAIT_MS } from "./reset";
 import { checkCrewRegistry } from "./crew-registry";
-import { crewRecipeInvocation } from "./launcher/crew-invocation";
+import { crewRecipeInvocation, crewRecipeWithOverrides } from "./launcher/crew-invocation";
+import type { Overrides } from "./launcher/overrides";
 import { LaunchInterrupted } from "./launcher/transaction";
 import { launchTmux } from "./launcher/process";
 import { LauncherError } from "./launcher/types";
 import { prepareCodexAutoReceipts } from "./launcher/permissions";
-import { crewLifetimeBinding, rearmCrewLifetime, rearmReplacedCrewLifetime, stopCrewLifetimeHelper } from "./crew-lifetime";
+import { assertCrewOwnerLink, crewLifetimeBinding, rearmCrewLifetime, rearmReplacedCrewLifetime, stopCrewLifetimeHelper } from "./crew-lifetime";
 
 const HELP = "tap help crew";
 export const OWNER_GRAMMAR = "tap crew shutdown --owner <handle> or --owner <team>/<handle>";
@@ -81,7 +82,7 @@ export function crewOf(all: Record<string, Row>, owner: string): string[] {
 function inferOwner(ctx: ResolvedContext, all: Record<string, Row>): string {
   const refuse = (why: string) => new TapError(1, "crew_owner_unidentified", OWNER_GRAMMAR,
     `cannot identify crew owner; pass the crew owner explicitly (${why})`);
-  const seen = observeCallingPane();
+  const seen = observeCallerIdentity();
   if (seen.state !== "inside") throw refuse("caller is not in an attributable tmux pane");
   // tap-zk1w: pane ids recycle across tmux servers, so only a row stamped with
   // the caller's observed generation can name the owner.
@@ -126,12 +127,12 @@ export function killablePane(row: Row): { paneId: string; skip: string; hint: st
 }
 
 export function dismissCrew(ctx: ResolvedContext, handle: string, row: Row, disposition: RetirementDisposition,
-  options: { verb?: string; callerPane?: string; deadOnly?: boolean; collect?: (receipt: Record<string, unknown>) => void } = {}): number {
+  options: { verb?: string; callerPane?: string; deadOnly?: boolean; retirementForm?: PlainForm; collect?: (receipt: Record<string, unknown>) => void } = {}): number {
   const verb = options.verb ?? "tap out";
   let callerPane = options.callerPane;
   scratchOnlyGuard(process.env, `a registry ${verb} would stop a crew pane on`, ctx.bus.home, verb);
   if (callerPane === undefined) {
-    const seen = observeCallingPane();
+    const seen = observeCallerIdentity();
     callerPane = seen.state === "inside" ? seen.paneId : "";
   }
   if (callerPane && str(row.pane_id) === callerPane) {
@@ -144,7 +145,7 @@ export function dismissCrew(ctx: ResolvedContext, handle: string, row: Row, disp
   }
   // No lock is held here. The registry-only leaf owns reset → registry custody,
   // validates this exact identity and returns without re-entering a public door.
-  retireSelected(ctx, { name: handle, team: ctx.team, pane: "", kill: false, dash: false }, handle, row, disposition);
+  retireSelected(ctx, options.retirementForm ?? { name: handle, team: ctx.team, pane: "", kill: false, dash: false }, handle, row, disposition);
   // Decide again at the effect: retirement can take long enough for identity to change.
   const { paneId, skip, hint } = options.deadOnly ? { paneId: "", skip: "dead-only selector never stops panes", hint: "" }
     : before.paneId ? killablePane(row) : before;
@@ -188,7 +189,7 @@ export function cmdCrewShutdown(argv: string[], scriptsDir: string, crewOnly = f
   const ctx = teamContext(target?.team ?? "");
   scratchOnlyGuard(process.env, `a registry ${verb} would stop a crew window on`, ctx.bus.home, "tap crew");
   const all = seats(ctx);
-  const seen = observeCallingPane();
+  const seen = observeCallerIdentity();
   const callerPane = seen.state === "inside" ? seen.paneId : "";
   const disposition = lifecycleDisposition("crew", "shutdown");
   if (!disposition.ok) throw new TapError(1, disposition.errorClass, HELP, disposition.detail);
@@ -231,13 +232,21 @@ export function cmdCrewShutdown(argv: string[], scriptsDir: string, crewOnly = f
 
 // Identity a relaunch must not carry into the fresh process: the old
 // conversation's id and transcript, and any attestation made about them.
-const STALE_IDENTITY = ["harness_session_id", "transcript_path", "identity_capture_result"] as const;
+const STALE_IDENTITY = ["harness_session_id", "transcript_path", "identity_capture_result", "crew_identity_capture"] as const;
 
 // Result codes shared with the relaunch receipt: 2 refused before any effect,
 // 1 the effect failed, 7 replaced but the new process was not verified.
 const refused = (errorClass: string, action: string, detail: string) => new TapError(2, errorClass, action, detail);
 const sameSeat = (a: Row, b: Row): boolean => isCrew(a) && isCrew(b)
+  && str(a.instance) === str(b.instance) && str(a.crew_owner) === str(b.crew_owner) && str(a.crew_owner_instance) === str(b.crew_owner_instance)
   && str(a.pane_id) === str(b.pane_id) && str(a.session) === str(b.session) && str(a.harness) === str(b.harness);
+// The recipe fields only crew add and relaunch write. A relaunch composed from one recipe never replaces
+// a process or saves over a recipe another relaunch has since changed.
+const RECIPE_FIELDS = ["harness_env", "passthrough", "harness_unset_env", "harness_tail", "harness_env_set"] as const;
+const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
+  : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical((value as Row)[key])])) : value ?? null;
+const sameRecipe = (a: Row, b: Row): boolean =>
+  JSON.stringify(RECIPE_FIELDS.map(key => canonical(a[key]))) === JSON.stringify(RECIPE_FIELDS.map(key => canonical(b[key])));
 
 function withRegistry<T>(ctx: ResolvedContext, fn: (doc: Record<string, unknown>) => T): T {
   const lock = acquireRegistryLock(ctx.registryPath, RESET_HELD_LOCK_WAIT_MS);
@@ -273,20 +282,26 @@ async function replacementVerified(paneId: string, oldPid: string, signal?: Abor
  * or at the effect leaves the row as it was.
  */
 export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row>, handle: string, callerPane: string,
-  opts: { dryRun?: boolean; expect?: Row; signal?: AbortSignal; progress?: (line: string) => void } = {}): Promise<string> {
-  let respawnAttempted = false;
+  opts: { dryRun?: boolean; expect?: Row; signal?: AbortSignal; progress?: (line: string) => void; overrides?: Overrides } = {}): Promise<string> {
+  let respawnAttempted = false, unpersisted = "";
   try {
     opts.signal?.throwIfAborted();
     const row = Object.hasOwn(all, handle) ? all[handle] : undefined;
     if (!row) throw refused("not_found", "tap crew list", `no registry row for '${handle}' on team ${ctx.team}`);
     if (!isCrew(row)) throw refused("usage_error", `tap session relaunch ${ctx.team}/${handle}`, `'${handle}' is not a crew seat`);
     if (opts.expect && !sameSeat(opts.expect, row)) throw refused("crew_row_changed", "tap crew list", `crew row '${handle}' changed since it was selected; nothing was replaced`);
+    assertCrewOwnerLink(ctx, handle);
     const paneId = str(row.pane_id);
     if (callerPane && paneId === callerPane) {
       throw refused("usage_error", "run tap crew relaunch from another pane", `'${handle}' is the calling pane; a crew seat cannot relaunch itself`);
     }
     let recipe: { command: string; cwd: string };
-    try { recipe = crewRecipeInvocation(ctx.team, handle, row); }
+    // --env, --unset-env and -- update the recipe as they do a durable seat's record.
+    let recipeFields: Row | null = null;
+    try {
+      recipeFields = opts.overrides ? crewRecipeWithOverrides(row, opts.overrides) : null;
+      recipe = await crewRecipeInvocation(ctx.team, handle, recipeFields ? { ...row, ...recipeFields } : row);
+    }
     catch (error) {
       if (!(error instanceof LauncherError)) throw error;
       throw refused(error.errorClass || "crew_recipe_missing", error.action ?? HELP, error.detail ?? error.message);
@@ -302,6 +317,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     const early = paneRefusal();
     if (early) throw early;
     if (opts.dryRun) return paneId;
+    recipe = await crewRecipeInvocation(ctx.team, handle, recipeFields ? { ...row, ...recipeFields } : row, process.env, true, opts.signal);
     prepareCodexAutoReceipts(str(row.harness), row.permissions);
     // Preserve the original parent generation when replacing a supervised child.
     const lifetime = crewLifetimeBinding(paneId);
@@ -316,7 +332,8 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     try {
       withRegistry(ctx, doc => {
         const now = seatMap(doc)[handle] as Row | undefined;
-        if (!now || !sameSeat(now, row)) throw refused("crew_row_changed", "tap crew list", `crew row '${handle}' changed before relaunch; nothing was replaced`);
+        if (!now || !sameSeat(now, row) || !sameRecipe(now, row)) throw refused("crew_row_changed", "tap crew list", `crew row '${handle}' changed before relaunch; nothing was replaced`);
+        assertCrewOwnerLink(ctx, handle);
         for (const key of STALE_IDENTITY) if (Object.hasOwn(now, key)) { stashed[key] = now[key]; delete now[key]; }
         if (Object.keys(stashed).length) saveRegistry(ctx.registryPath, doc);
       });
@@ -353,6 +370,21 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     opts.progress?.(`replacing crew process in pane ${paneId}`);
     respawnAttempted = true;
     const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", recipe.cwd, recipe.command], process.env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], process.env));
+    // The new process runs with the overrides once respawn succeeds, so the row records them before an
+    // interruption is honored (a bounded, synchronous registry write). A failed save is reported only
+    // after verification and lifetime re-arm, which must still happen.
+    if (respawn.code === 0 && recipeFields) {
+      const fields = recipeFields;
+      try {
+        withRegistry(ctx, doc => {
+          const now = seatMap(doc)[handle] as Row | undefined;
+          if (!now || !sameSeat(now, row)) throw new Error("crew row changed");
+          if (!sameRecipe(now, row)) throw new Error("another relaunch changed the crew recipe");
+          Object.assign(now, fields);
+          saveRegistry(ctx.registryPath, doc);
+        });
+      } catch (error) { unpersisted = error instanceof TapError ? error.detail : (error as Error).message; }
+    }
     opts.signal?.throwIfAborted();
     if (respawn.code === 124) throw new TapError(7, "replacement_unverified", `inspect pane ${paneId}; do not retry blindly`, "respawn command timed out; replacement state unverified");
     if (respawn.code !== 0) {
@@ -368,12 +400,14 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     }
     opts.signal?.throwIfAborted();
     if (lifetime) await rearmReplacedCrewLifetime(ctx, handle, lifetime, replacementPid);
+    if (unpersisted) throw new TapError(1, "crew_recipe_unpersisted", `inspect tap crew list, then repeat the overrides with tap session relaunch ${ctx.team}/${handle}`,
+      `replaced crew pane ${paneId} with the overrides, but could not save them to the row (${unpersisted}); a later relaunch would drop them`);
     return paneId;
   } catch (error) {
     if (opts.signal?.aborted) {
       throw new TapError(opts.signal.reason instanceof LaunchInterrupted ? opts.signal.reason.exitCode : 130,
         "relaunch_interrupted", respawnAttempted ? `inspect pane ${str(all[handle]?.pane_id)}; do not retry blindly` : `tap crew relaunch ${ctx.team}/${handle}`,
-        respawnAttempted ? "interrupted after respawn was attempted; replacement state unverified; no retry performed"
+        respawnAttempted ? `interrupted after respawn was attempted; replacement state unverified; no retry performed${unpersisted ? `; overrides not saved to the row (${unpersisted})` : ""}`
           : "interrupted before replacement; nothing was replaced");
     }
     throw error;
@@ -386,7 +420,7 @@ export async function cmdCrewRelaunch(argv: string[]): Promise<number> {
   const target = parseTarget(argv[0]!);
   const ctx = teamContext(target.team);
   scratchOnlyGuard(process.env, "a registry tap crew relaunch would replace a crew process on", ctx.bus.home, "tap crew");
-  const seen = observeCallingPane();
+  const seen = observeCallerIdentity();
   const paneId = await relaunchCrew(ctx, seats(ctx), target.handle, seen.state === "inside" ? seen.paneId : "");
   process.stdout.write(`tap crew relaunch: replaced ${ctx.team}/${target.handle} with a fresh process in ${paneId}\n`);
   return 0;

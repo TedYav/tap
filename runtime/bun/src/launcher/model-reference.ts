@@ -29,7 +29,7 @@ export function modelReference(catalog: Catalog): ModelVariant[] {
     if (!preset.model) continue;
     const policy = catalog.harnessPolicy[preset.harness] as { env?: Record<string, string> } | undefined;
     const tuning = presetTuning(preset, policy?.env);
-    const extra = Object.fromEntries(Object.entries(preset.params).filter(([key]) => !["model", "effort", "reasoning", "config", "provider"].includes(key)));
+    const extra = Object.fromEntries(Object.entries(preset.params).filter(([key]) => !["model", "effort", "reasoning", "config", "provider", ...(preset.harness === "opencode" ? ["variant"] : [])].includes(key)));
     const otherConfig = assignments(preset.harness_passthrough).filter(({key}) => !["model_reasoning_effort","service_tier","model_context_window","model_max_output_tokens"].includes(key));
     if (otherConfig.length) extra.other_config = otherConfig.flatMap(({start,end}) => preset.harness_passthrough.slice(start,end));
     for (const [key, value] of Object.entries(preset.env)) tuning.environment[key] = value;

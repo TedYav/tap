@@ -77,7 +77,7 @@ the population it actually applies to, before the PR states it rather than in th
 ## Facts worth carrying
 
 Three that change what a good decision looks like. Load the rest only when a decision needs it —
-`tap models` for routing priors and capacity, and `AGENTS.md` § Staffing and model tiering for the sanctioned staffing forms.
+`tap presets` for saved recipes, `tap team` for who is seated, and `AGENTS.md` § Staffing and model tiering for the sanctioned staffing forms.
 
 - **Wake count is the lever, not message count.** Collapsing N notifications into one doorbell is a
   real saving; making each one shorter is not.

@@ -5,7 +5,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Bus } from "./bus";
-import { TapError, observeCallingPane, resolveContext } from "./context";
+import { buildSnapshot, classifyRow, type Snapshot } from "./observe";
+import { clockFields, gather } from "./observe-gather";
+import { TapError, observeCallerIdentity, resolveContext } from "./context";
 import { envelopeField, validateEnvelope } from "./envelope";
 import { appendRegistryEventOrWarn, registryEventsPath } from "./events";
 import { atomicWrite } from "./fsatomic";
@@ -22,13 +24,14 @@ import { pyReadUtf8 } from "./spool-publication";
 import { isOldStoreRefusal, teamRegistryRefusal } from "./register-authority";
 import { AGENT_FAMILIES } from "./harness-families";
 import { isMap, loads, type JsonMap, type JsonValue } from "./watch-detect";
-import { physicalSocketPath, serverEpochFromRaw, tmux, tmuxReadOnly, bootId, legacyBootId } from "./tmux";
+import { physicalSocketPath, serverEpochFromRaw, tmux, tmuxReadOnly, bootId, legacyBootId, ServerUnresponsive, tmuxSessionNamespace } from "./tmux";
 import { reservationExpired } from "./reservation";
 import { deadLetterScope, deadLetterTargets, disposeDeadLetters } from "./dead-letters";
+import { assertSharedStopCleared, quiesceSharedSession, refuseSharedSelfStop } from "./opencode-shared-stop";
 
 type Ctx = ReturnType<typeof resolveContext>;
 export type RetirementDisposition = Extract<LifecycleDisposition, { ok: true }>;
-export interface PlainForm { name: string | null; pane: string; kill: boolean; dash: boolean; team?: string; selfReported?: boolean }
+export interface PlainForm { name: string | null; pane: string; kill: boolean; dash: boolean; team?: string; selfReported?: boolean; lastSelection?: { registryPath: string; fingerprint: string } }
 
 const isFile = (p: string) => { try { return statSync(p).isFile(); } catch { return false; } };
 const str = (v: JsonValue | undefined): string => (typeof v === "string" ? v : "");
@@ -49,6 +52,10 @@ export function parseOutForm(argv: string[]): PlainForm {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--pane") { const v = argv[++i]; if (v === undefined) throw new TapError(1, "usage_error", "tap help unregister", "--pane needs a value", "tap"); f.pane = v; }
+    else if (a === "--last") {
+      if (f.dash) throw new TapError(1, "usage_error", "tap help out", "--last cannot be repeated", "tap");
+      f.dash = true;
+    }
     else if (a === "--json") process.env.TAP_JSON = "1";
     else if (a === "--kill" || a === "--hard") f.kill = true;
     else if (a === "--team") {
@@ -60,7 +67,9 @@ export function parseOutForm(argv: string[]): PlainForm {
     else if (f.name === null) f.name = a;
     else throw new TapError(1, "usage_error", "tap help unregister", `unexpected arg '${a}'`, "tap");
   }
-  f.dash = f.name === "-";
+  f.dash ||= f.name === "-";
+  if (f.dash && ((f.name !== null && f.name !== "-") || f.pane))
+    throw new TapError(1, "usage_error", "tap help out", "--last (alias '-') cannot be combined with a name or --pane", "tap");
   if (f.name !== null && !f.dash) {
     const target = parseTarget(f.name);
     if (target.qualified && f.team !== undefined) throw new TapError(1, "selector_conflict", "pass --team OR a qualified seat, not both", "out selectors name the same team axis", "tap");
@@ -90,6 +99,7 @@ export function cmdOutRetire(argv: string[], requested: "out" | "shutdown" = "ou
     if (form.dash) publicationBarrier("after-dash-select", process.env);
     const ctx = retireContext(form, process.env);
     const { name } = resolveRetireName(ctx, form, process.env);
+    if (form.lastSelection) assertLastSelection(ctx, form, name, process.env, false);
     const facts = rowFacts(ctx, name);
     if (requested === "shutdown" && !facts.present) {
       // Empty narration facts can mean an unreadable or malformed registry.
@@ -100,7 +110,7 @@ export function cmdOutRetire(argv: string[], requested: "out" | "shutdown" = "ou
     const disposition = lifecycleDisposition(facts.crew ? "crew" : "seat", action);
     if (!disposition.ok) throw new TapError(1, disposition.errorClass, "tap help out", disposition.detail);
     if (disposition.row.scope === "crew" && disposition.row.crews === "consume-d-contract") return dismissCrew(ctx, name, facts.row!, disposition,
-      { verb: `tap ${action === "out-hard" ? "out --hard" : action}`, deadOnly: form.dash });
+      { verb: `tap ${action === "out-hard" ? "out --hard" : action}`, deadOnly: form.dash, ...(form.lastSelection ? { retirementForm: form } : {}) });
     if (tmuxFateStopsNamedSession(disposition.row)) return killEntry(ctx, form, name, facts, disposition);
     return retireSelected(ctx, form, name, facts.row, disposition);
   } catch (e) {
@@ -139,18 +149,70 @@ function noRegistry(form: PlainForm): boolean {
   return false;
 }
 
-// --- dash selection (`tap out -`): the most recently exited teammate ---------
-// Scans the caller's acting registry for dead-pane candidates (pane-backed,
-// active, identity-then-address probe dead; plus suspended/pane_gone), stamps
-// missing exited_at facts, and publishes the stamps even when refusing, exactly
-// as the incumbent inline scan did under the same lock.
+// --- most recently exited selection (`--last`, alias `-`) ------------------
+// One shared classifier licenses absence for both refresh and this selector.
+function lastObservationRefusal(): TapError {
+  return new TapError(1, "observation_unobservable", "wait for tmux to answer, then retry tap out --last",
+    "tmux snapshot is unobservable; nothing retired", "tap out");
+}
 
-function paneAlive(target: string, env: NodeJS.ProcessEnv): boolean {
-  if (!target) return false;
-  // Read-only incumbent probe on the unthrottled door: a drained courier
-  // token bucket must never masquerade as pane absence here.
-  const r = tmuxReadOnly(["display-message", "-p", "-t", target, "#{pane_id}"], env);
-  return r.code === 0 && r.stdout.trim() !== "";
+function lastRead<T>(read: () => T): T {
+  try { return read(); }
+  catch (error) {
+    if (error instanceof ServerUnresponsive) throw lastObservationRefusal();
+    throw error;
+  }
+}
+
+type LastObservation = { kind: "snapshot"; snapshot: Snapshot } | { kind: "empty"; socket: string };
+
+function lastSnapshot(env: NodeJS.ProcessEnv): LastObservation {
+  const snap = lastRead(() => buildSnapshot({ ...gather({ env, processTable: false }), ...clockFields({ env }),
+    ...("TAP_SERVER_EPOCH" in env ? { server_epoch_pin: env.TAP_SERVER_EPOCH ?? "" } : {}) }, env));
+  if (snap.sessionsMode === "unobservable" || snap.panesMode === "unobservable" || snap.sessionsMode === "empty") {
+    const socket = physicalSocketPath(env);
+    const namespace = tmuxSessionNamespace({ ...env, TAP_TMUX_SOCKET_PATH: socket });
+    if (namespace.observable && namespace.names.size === 0) return { kind: "empty", socket };
+    throw lastObservationRefusal();
+  }
+  return { kind: "snapshot", snapshot: snap };
+}
+
+function lastSocket(observation: LastObservation, env: NodeJS.ProcessEnv): string {
+  return observation.kind === "empty" ? observation.socket : callerSocketNow(env);
+}
+
+function lastState(row: JsonMap, observation: LastObservation, ctx: Ctx, callerSocket: string, env: NodeJS.ProcessEnv): string {
+  const status = row.has("status") ? row.get("status") : "active";
+  const paneGone = status === "suspended" && row.get("status_reason") === "pane_gone";
+  if ((status !== "active" && !paneGone) || row.get("status_reason") === "launching" || str(row.get("delivery")) === "poll"
+    || (row.has("team") && row.get("team") !== ctx.team)
+    || (str(row.get("server_socket")) && row.get("server_socket") !== callerSocket)) return "excluded";
+  const paneId = str(row.get("pane_id"));
+  if (row.has("pane_id") && row.get("pane_id") != null && row.get("pane_id") !== "" && !isPaneId(paneId)) return "excluded";
+  if (!paneId && !str(row.get("pane"))) return "excluded";
+  if (observation.kind === "empty") return "gone";
+  return classifyRow({ status: "active", delivery: str(row.get("delivery")), pane: str(row.get("pane")), pane_id: paneId,
+    session: str(row.get("session")), registered_at: str(row.get("registered_at")), row_epoch: str(row.get("server_epoch")),
+    row_boot: str(row.get("boot_id")), harness: str(row.get("harness")), status_reason: str(row.get("status_reason")) }, observation.snapshot, env).split("\x1f")[0]!;
+}
+
+function callerSocketNow(env: NodeJS.ProcessEnv): string {
+  const probe = lastRead(() => tmuxReadOnly(["display-message", "-p", "#{socket_path}"], env));
+  return probe.code === 0 ? probe.stdout.trim() : "";
+}
+
+function assertLastSelection(ctx: Ctx, form: PlainForm, name: string, env: NodeJS.ProcessEnv, observe = true): void {
+  const pin = form.lastSelection!;
+  const row = writerSeats(retirementDoc(ctx)).get(name);
+  if (ctx.registryPath !== pin.registryPath || !isMap(row) || pyDumpIndent(row, 0) !== pin.fingerprint)
+    throw new TapError(1, "seat_changed", "inspect the current row before retrying tap out --last", "selected exited seat changed; nothing removed", "tap out");
+  if (observe) {
+    const observation = lastSnapshot(env);
+    if (lastState(row, observation, ctx, lastSocket(observation, env), env) !== "gone")
+      throw new TapError(1, "lifecycle_refused", "wait for shutdown to finish, then retry tap out --last",
+        "selected exited seat is no longer positively gone; nothing removed", "tap out");
+  }
 }
 
 function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): boolean {
@@ -174,46 +236,31 @@ function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): boolean {
       }
       refuseOldRegistryDoc(ctx.registryPath, doc, "tap unregister");
       const seats = writerSeats(doc);
+      const snap = lastSnapshot(env), callerSocket = lastSocket(snap, env);
       const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       const candidates: Array<[string, string]> = [];
-      let liveCount = 0;
+      let stampedNewExit = false;
       for (const handle of [...seats.keys()].sort()) {
         const ent = seats.get(handle);
-        if (!isMap(ent)) continue;
-        const delivery = str(ent.get("delivery")) || "pane";
-        if (delivery === "poll") continue;
-        // Missing-vs-present: the default "active" applies only when the key
-        // is absent; an explicit null/false/number/object must not become a
-        // candidacy status.
-        const status: JsonValue = ent.has("status") ? ent.get("status")! : "active";
-        const reason = str(ent.get("status_reason"));
-        if (status === "active") {
-          let paneId = ent.get("pane_id");
-          if (paneId !== undefined && paneId !== null && paneId !== "" && !(typeof paneId === "string" && isPaneId(paneId))) continue;
-          paneId = typeof paneId === "string" ? paneId : "";
-          const paneAddr = str(ent.get("pane"));
-          if ((paneId && paneAlive(paneId, env)) || (paneAddr && paneAlive(paneAddr, env))) { liveCount++; continue; }
-          if (!str(ent.get("exited_at"))) ent.set("exited_at", now);
-          candidates.push([handle, str(ent.get("exited_at"))]);
-        } else if (status === "suspended" && reason === "pane_gone") {
-          if (!str(ent.get("exited_at"))) ent.set("exited_at", now);
-          candidates.push([handle, str(ent.get("exited_at"))]);
-        }
+        if (!isMap(ent) || lastState(ent, snap, ctx, callerSocket, env) !== "gone") continue;
+        if (!str(ent.get("exited_at"))) { ent.set("exited_at", now); stampedNewExit = true; }
+        candidates.push([handle, str(ent.get("exited_at"))]);
       }
       const docMap: JsonMap = isMap(doc) ? doc : new Map<string, JsonValue>();
       // Publish the stamps over the document AS FOUND: when it has no usable
       // seats map there are no stamps, and an old-format file is never rewritten.
       const publish = () => {
-        if (writerSeats(docMap) !== seats) return;
+        if (!stampedNewExit || writerSeats(docMap) !== seats) return;
         atomicWrite(ctx.registryPath, `${pyDumpIndent(docMap, 0)}\n`);
       };
       if (candidates.length === 0) {
         publish();
-        throw new TapError(1, "not_found", "tap unregister <name>", `no dead seats (${liveCount} active pane(s)) — name one explicitly`, "tap");
+        throw new TapError(1, "not_found", "tap unregister <name>", "no eligible exited seats — wait for shutdown or name one explicitly", "tap");
       }
       if (candidates.length === 1) {
         publish();
         form.name = candidates[0]![0]!;
+        form.lastSelection = { registryPath: ctx.registryPath, fingerprint: pyDumpIndent(seats.get(form.name)!, 0) };
         return true;
       }
       const stamped = candidates.filter(([, ea]) => ea);
@@ -222,6 +269,7 @@ function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): boolean {
         if (stamped.filter(([, ea]) => ea === latest[1]).length === 1) {
           publish();
           form.name = latest[0]!;
+          form.lastSelection = { registryPath: ctx.registryPath, fingerprint: pyDumpIndent(seats.get(form.name)!, 0) };
           return true;
         }
       }
@@ -345,7 +393,7 @@ function resolveRetireName(ctx: Ctx, form: PlainForm, env: NodeJS.ProcessEnv): {
   let pane = form.pane;
   let callerRefusal = "";
   if (!pane) {
-    const obs = observeCallingPane(env);
+    const obs = observeCallerIdentity(env);
     if (obs.state === "inside") pane = obs.paneId;
     else callerRefusal = obs.state === "unobservable" ? obs.refusal : obs.detail;
   }
@@ -479,6 +527,10 @@ function retireSelectedBody(ctx: Ctx, form: PlainForm, name: string, expected: R
 
   // Row facts (pre-transaction narration + crew scan) from one preserving read.
   const facts = rowFacts(ctx, name);
+  if (facts.row) {
+    assertSharedStopCleared(ctx.root, facts.row);
+    if (form.kill) refuseSharedSelfStop([[name, facts.row]], "tap out --hard");
+  }
   const narr = narrationLadder(facts, form.kill, env);
   let queuedInbound: Array<[string, string]> = [];
 
@@ -516,6 +568,7 @@ function retireSelectedBody(ctx: Ctx, form: PlainForm, name: string, expected: R
           }
         }
         if (!rebind) {
+          if (form.lastSelection) assertLastSelection(ctx, form, name, env);
           removed = retireRow(ctx, env, name, form.team !== undefined, expected, disposition, liveSessions);
           if (removed) postCommit(ctx, form, name, facts.eventPane, facts.crew, narr.windowId, narr.sessionName, queuedInbound, disposition);
         }
@@ -692,6 +745,9 @@ export function retireFamilyRows(
       const selected = [...new Set(validate(current))];
       for (const handle of selected) {
         if (!current.has(handle)) throw new TapError(1, "seat_changed", "inspect the current roster", `seat '${handle}' disappeared before team out`);
+        const row = current.get(handle)!;
+        assertSharedStopCleared(ctx.root, row);
+        if (options.disposition && tmuxFateStopsNamedSession(options.disposition.row)) quiesceSharedSession(row, ctx.root, handle);
       }
       const tombs: string[] = [];
       const removedRows = new Map<string, JsonMap>();
@@ -822,6 +878,10 @@ export function scratchOnlyGuard(env: NodeJS.ProcessEnv, what: string, root: str
 
 function killEntry(ctx: Ctx, form: PlainForm, name: string, facts: RowFacts, disposition: RetirementDisposition): number {
   const env = process.env;
+  if (facts.row) {
+    assertSharedStopCleared(ctx.root, facts.row);
+    refuseSharedSelfStop([[name, facts.row]], "tap out --hard");
+  }
   fenceOrThrow(ctx);
   ctx.bus.ensureDirs();
   if (!isFile(ctx.registryPath)) { noRegistry(form); return 0; }
@@ -869,6 +929,8 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
       }
       const crews = disposition.row.crews === "consume-d-contract" ? ownedCrewRows(all, expectedSession, snapshot) : [];
       const original = cloneJson(doc), tombs: string[] = [];
+      const caller = observeCallerIdentity(env);
+      quiesceSharedSession(seat, ctx.root, name, { env });
       const cleanup = (): string[] => {
         const retained: string[] = [];
         for (const path of tombs) {
@@ -895,8 +957,8 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
       const record = (outcome: string) => retirementEvent(ctx, name, facts.eventPane, disposition, outcome);
       record(pane ? "stop_requested" : "already_stopped");
       const fields = { session: expectedSession, crews };
-      const callerSocket = env.TMUX ? physicalSocketPath({ ...env, TAP_TMUX_SOCKET: undefined, TAP_TMUX_SOCKET_PATH: undefined }) : "";
-      const self = !!pane && callerSocket === physicalSocketPath() && snapshot.panes.some(p => p.id === env.TMUX_PANE && p.sessionId === pane.sessionId);
+      const self = !!pane && caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) && caller.session === pane.session &&
+        snapshot.panes.some(p => p.id === caller.paneId && p.sessionId === pane.sessionId);
       const render = (outcome: string) => {
         retirementReceipt(ctx, name, disposition, { ...fields, outcome });
         if (env.TAP_JSON !== "1") writeSync(1, `tap ${disposition.action}: '${name}' removed from the registry; ${outcome === "stopped" ? `stopped tmux session '${expectedSession}'` : outcome}\n`);

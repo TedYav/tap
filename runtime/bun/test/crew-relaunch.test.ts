@@ -6,10 +6,10 @@
 // is written while the crew verification (~1.1s of replacement polling) is
 // still pending, and the crew line follows it.
 import { afterAll, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { relaunch, parseOptions, type Member } from "../src/launcher/relaunch";
+import { crewMember, relaunch, parseOptions, type Member } from "../src/launcher/relaunch";
 import { relaunchCrew, seats, teamContext } from "../src/crew-lifecycle";
 import { withLaunchSignals } from "../src/launcher/transaction";
 import { loadGlobalRegistry } from "../src/index-home";
@@ -58,7 +58,7 @@ function fixture() {
   const sh = join(bin, "sh");
   writeFileSync(sh, '#!/bin/sh\nPATH="' + bin + ':$PATH"; export PATH\nif [ "${1:-}" = -lic ]; then shift; exec /bin/sh -c "$@"; fi\nexec /bin/sh "$@"\n');
   const codex = join(bin, "codex");
-  writeFileSync(codex, '#!/bin/sh\n[ "${CODEX_DIE:-}" = 1 ] && exit 3\nexec sleep 600\n');
+  writeFileSync(codex, '#!/bin/sh\n[ "${CODEX_DIE:-}" = 1 ] && exit 3\n[ -n "${CREW_DUMP:-}" ] && printf \'%s\\n\' "${CREW_NEW-absent}" "$@" > "$CREW_DUMP"\nexec sleep 600\n');
   chmodSync(sh, 0o755);
   chmodSync(codex, 0o755);
   // The module spawns bare `tmux`, so the PATH shim intercepts it. Env-gated
@@ -74,6 +74,13 @@ function fixture() {
     + "    kill -INT \"$CREW_LATE_SIGNAL_PID\"\n"
     + "    sleep .1\n"
     + "  fi\n"
+    + "fi\n"
+    // While CREW_RESPAWN_SIGNAL_PID is set, a respawn completes, then SIGINTs the test process while this
+    // client is still exiting (TERM ignored), so the command returns 0 after the abort.
+    + 'if [ -n "${CREW_RESPAWN_SIGNAL_PID:-}" ] && [ "${1:-}" = respawn-pane ]; then\n'
+    + "  trap '' TERM\n"
+    + '  "' + realTmux + '" -S "' + socket + '" "$@"; rc=$?\n'
+    + '  kill -INT "$CREW_RESPAWN_SIGNAL_PID"; sleep .3; exit "$rc"\n'
     + "fi\n"
     + 'exec "' + realTmux + '" -S "' + socket + '" "$@"\n');
   chmodSync(tmuxShim, 0o755);
@@ -99,8 +106,8 @@ function fixture() {
   expect(diePaneId).toMatch(/^%/);
 
   const crewRow = (pane: string, env: Record<string, string>) => ({
-    status: "active", delivery: "pane", harness: "codex", pane_id: pane,
-    session: "Demo/lead", registered_at: "t", crew: true, model: "gpt-test", permissions: "bypass",
+    status: "active", delivery: "pane", harness: "codex", pane_id: pane, instance: `crew-${pane}`,
+    session: "Demo/lead", registered_at: "t", crew: true, crew_owner: "lead", crew_owner_instance: "lead-one", model: "gpt-test", permissions: "bypass",
     harness_env: env, passthrough: [], passthrough_from_config: false, preset: null, cwd: demo,
   });
   const registry = join(demo, ".tap", "team-registry.json");
@@ -108,6 +115,7 @@ function fixture() {
     schema: "0.20",
     team: { name: "Demo" },
     seats: {
+      lead: { instance: "lead-one", session: "Demo/lead", pane_id: "%0", status: "active" },
       "crew-a": crewRow(paneId, {}),
       "crew-die": crewRow(diePaneId, { CODEX_DIE: "1" }),
     },
@@ -245,3 +253,93 @@ test("a signal queued by late synchronous observation prevents respawn", async (
   }
   expect(pid()).toBe(before);
 }, 20000);
+
+test("relaunch --env and -- reach a crew seat's fresh process and persist in its recipe; -m still refuses", async () => {
+  const { ctx } = fixture();
+  const dump = join(fixtureRoot!, "crew-dump");
+  const run = (argv: string[], output: string[]) => {
+    const member: Member = { team: "Demo", handle: "crew-a", root: ctx.root, row: seats(ctx)["crew-a"]!, team_doc: {} };
+    return relaunch(parseOptions(argv), {
+      context: () => ({ team: "Demo", caller_pane: "", caller: { state: "outside", detail: "fixture" } }),
+      load: loadGlobalRegistry,
+      classify: () => [{ member, status: "active", reason: "", pane: member.row.pane_id ?? "" }],
+      prepare: value => value,
+      run: async () => ({ code: 0 }),
+      color: false,
+      crew: crewMember,
+      write: text => { output.push(text); },
+    });
+  };
+  const refused: string[] = [];
+  expect(await run(["Demo/crew-a", "-m", "hello"], refused)).toBe(1);
+  expect(refused.join("")).toContain("-m and --workdir do not apply to a fresh crew relaunch");
+  const output: string[] = [];
+  expect(await run(["Demo/crew-a", "--env", `CREW_DUMP=${dump}`, "--env", "CREW_NEW=typed", "--", "--search"], output), output.join("")).toBe(0);
+  expect(seats(ctx)["crew-a"]).toMatchObject({ harness_env: { CREW_DUMP: dump, CREW_NEW: "typed" },
+    harness_env_set: ["CREW_DUMP", "CREW_NEW"], harness_unset_env: [], harness_tail: ["--search"] });
+  const lines = readFileSync(dump, "utf8").trim().split("\n");
+  expect(lines[0]).toBe("typed");
+  expect(lines.at(-1)).toBe("--search");
+}, 20000);
+
+test("an override relaunch composed from a recipe another relaunch changed refuses before any effect", async () => {
+  const { ctx } = fixture();
+  const pane = seats(ctx)["crew-a"]!.pane_id as string;
+  const pid = () => Bun.spawnSync([realTmux!, "-S", socket!, "display-message", "-p", "-t", pane, "#{pane_pid}"]).stdout.toString().trim();
+  const before = pid();
+  const stale = seats(ctx) as Record<string, Record<string, unknown>>;
+  // Another relaunch saves a different recipe after this one read the row.
+  const doc = JSON.parse(readFileSync(ctx.registryPath, "utf8"));
+  doc.seats["crew-a"].harness_env = { ...doc.seats["crew-a"].harness_env, CREW_OTHER: "first" };
+  writeFileSync(ctx.registryPath, JSON.stringify(doc));
+  let error = null as { code?: number; errorClass?: string } | null;
+  try { await relaunchCrew(ctx, stale, "crew-a", "", { overrides: { env: ["CREW_SECOND=second"] } }); } catch (caught) { error = caught as typeof error; }
+  expect(error).toMatchObject({ code: 2, errorClass: "crew_row_changed" });
+  expect(pid()).toBe(before);
+  expect(seats(ctx)["crew-a"]!.harness_env).toMatchObject({ CREW_OTHER: "first" });
+  expect(seats(ctx)["crew-a"]!.harness_env).not.toHaveProperty("CREW_SECOND");
+}, 20000);
+
+test("an interrupt that lands as a successful respawn returns still saves the overrides that process runs with", async () => {
+  const { ctx } = fixture();
+  const pane = seats(ctx)["crew-a"]!.pane_id as string;
+  const pid = () => Bun.spawnSync([realTmux!, "-S", socket!, "display-message", "-p", "-t", pane, "#{pane_pid}"]).stdout.toString().trim();
+  const before = pid();
+  let error = null as { code?: number; errorClass?: string; detail?: string } | null;
+  process.env.CREW_RESPAWN_SIGNAL_PID = String(process.pid);
+  try {
+    await withLaunchSignals(async signal => {
+      try { await relaunchCrew(ctx, seats(ctx), "crew-a", "", { signal, overrides: { env: ["CREW_ABORTED=saved"] } }); }
+      catch (caught) { error = caught as typeof error; }
+    });
+  } finally { delete process.env.CREW_RESPAWN_SIGNAL_PID; }
+  expect(error).toMatchObject({ code: 130, errorClass: "relaunch_interrupted" });
+  expect(error?.detail).toContain("replacement state unverified");
+  expect(pid()).not.toBe(before);
+  expect(seats(ctx)["crew-a"]!.harness_env).toMatchObject({ CREW_ABORTED: "saved" });
+}, 20000);
+
+test("crew relaunch results keep their error class for --json", async () => {
+  const { ctx } = fixture();
+  const member: Member = { team: "Demo", handle: "crew-a", root: ctx.root, row: seats(ctx)["crew-a"]!, team_doc: {} };
+  expect(await crewMember(member, "", parseOptions(["Demo/crew-a", "--", "resume"]))).toMatchObject({ code: 2, error_class: "launch_arg_invalid" });
+}, 20000);
+
+test.each([undefined, "replaced-parent"])("relaunch refuses a missing or stale durable owner link %j before replacing the child", async ownerInstance => {
+  const { ctx } = fixture();
+  const before = readFileSync(ctx.registryPath, "utf8");
+  try {
+    const doc = JSON.parse(before);
+    if (ownerInstance) doc.seats['crew-a'].crew_owner_instance = ownerInstance;
+    else { delete doc.seats['crew-a'].crew_owner; delete doc.seats['crew-a'].crew_owner_instance; }
+    writeFileSync(ctx.registryPath, JSON.stringify(doc));
+    const unchanged = readFileSync(ctx.registryPath, "utf8");
+    const current = seats(ctx);
+    const pane = String(current['crew-a']!.pane_id);
+    const pid = () => Bun.spawnSync([realTmux!, "-S", socket!, "display-message", "-p", "-t", pane, "#{pane_pid}"]).stdout.toString().trim();
+    const originalPid = pid();
+    await expect(relaunchCrew(ctx, current, "crew-a", "")).rejects.toThrow("recreate");
+    expect(pid()).toBe(originalPid);
+    expect(readFileSync(ctx.registryPath, "utf8")).toBe(unchanged);
+  } finally { writeFileSync(ctx.registryPath, before); }
+});

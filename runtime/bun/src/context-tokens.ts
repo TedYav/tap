@@ -1,6 +1,7 @@
 /** Last reported request input, never cumulative usage or inferred model capacity. */
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { claudePromptCache, isClaudeCompactAttachment, type PromptCache } from "./prompt-cache";
 
 export interface ObservedTuning {
   model: string;
@@ -18,6 +19,7 @@ export interface TokenSample {
   percent_source: "footer" | "codex_reported_window" | "claude_process_env" | "default_1m" | "opencode_model" | null;
   unknown_reason: string | null;
   tuning: ObservedTuning | null;
+  prompt_cache?: PromptCache | null;
 }
 const unknown = (reason: string): TokenSample => ({ input_tokens: null, observed_at: null, source: null,
   window_tokens: null, window_source: null, used_percent: null, percent_source: null, unknown_reason: reason, tuning: null });
@@ -60,10 +62,12 @@ export function readContextTokens(harness: string, sessionId: string, path: stri
     // single-verdict scan it replaces.
     let settled: TokenSample | null = null;
     let tuning: ObservedTuning | null = null;
-    for (const event of lines(tail).reverse()) {
+    const events = lines(tail).reverse();
+    const prompt_cache = codex ? null : claudePromptCache(events, sessionId);
+    for (const event of events) {
       if (!codex && (event.sessionId !== sessionId || event.isSidechain === true)) continue;
       if (!settled) {
-        if (event.type === "compacted" || (event.type === "system" && event.subtype === "compact_boundary") ||
+        if (event.type === "compacted" || (!codex && isClaudeCompactAttachment(event)) || (event.type === "system" && event.subtype === "compact_boundary") ||
             (event.type === "event_msg" && event.payload?.type === "context_compacted")) {
           settled = unknown("awaiting_usage_after_compact");
         } else {
@@ -119,7 +123,7 @@ export function readContextTokens(harness: string, sessionId: string, path: stri
       }
       if (settled && tuning) break;
     }
-    return {...settled ?? unknown("usage_not_in_tail"), tuning};
+    return {...settled ?? unknown("usage_not_in_tail"), tuning, prompt_cache};
   } catch { return unknown("unreadable_transcript"); }
   finally { if (fd !== undefined) closeSync(fd); }
 }
@@ -142,5 +146,5 @@ function formatTokens(tokens: number): string {
 
 export function formatContextTokens(sample?: TokenSample): string {
   const count = sample?.input_tokens == null ? "?" : formatTokens(sample.input_tokens);
-  return sample?.window_tokens == null ? count : `${count} / ${formatTokens(sample.window_tokens)}`;
+  return sample?.window_tokens == null ? count : `${count}/${formatTokens(sample.window_tokens)}`;
 }

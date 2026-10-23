@@ -61,17 +61,82 @@ done
 # Direction 4 (repo-local relays) is this repository's own check: repo-local-skill-relays.test.sh.
 
 # Structural relay checks do not prove a harness loads either convention. Probe
-# OpenCode itself in minimal git repos with isolated state. Its debug output is
-# larger than 64 KiB in this checkout and OpenCode 1.18.21 truncates stdout at
-# exactly 65,536 bytes when it is a pipe, so capture to a file before grepping.
+# OpenCode itself in minimal git repos with isolated state. OpenCode 2 exposes
+# its resolved registry through GET /api/skill (verified with 2.1.2).
 # The source-only repo is the causal negative: it holds the same SKILL.md as
 # each positive arm but no convention relay. A hit there means OpenCode scanned
 # top-level skills/ (or leaked machine state), so the positives cannot prove
 # which relay loaded the skill.
 command -v opencode >/dev/null 2>&1 \
   || { echo "install-skill-coverage: opencode is required for repo-local loader coverage" >&2; exit 1; }
+opencode_version="$(opencode --version)"
+echo "install-skill-coverage: loader $opencode_version"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/install-skill-loader.XXXXXX")"
-trap 'rm -rf "$probe_dir"' EXIT
+trap 'rm -rf "${probe_dir:?}"' EXIT
+
+# A fresh skill.list request can precede asynchronous plugin activation in v2.
+# Keep one private server alive until both the native and compatibility skill
+# plugins resolve controls in the isolated home; only then can it prove absence.
+dump_skills() (
+  local repo="$1" skill_home="$2" dump="$3" server_pid server_url deadline server_password
+  mkdir -p "$skill_home/tmp" "$skill_home/.config/opencode/skills/tap-probe-control" \
+    "$skill_home/.claude/skills/tap-probe-control-compat"
+  skill_home="$(cd "$skill_home" && pwd -P)"
+  cd "$repo"
+  repo="$(pwd -P)"
+  printf '%s\n' '---' 'name: tap-probe-control' 'description: Verify native skill discovery is ready.' '---' \
+    > "$skill_home/.config/opencode/skills/tap-probe-control/SKILL.md"
+  printf '%s\n' '---' 'name: tap-probe-control-compat' 'description: Verify compatibility skill discovery is ready.' '---' \
+    > "$skill_home/.claude/skills/tap-probe-control-compat/SKILL.md"
+  server_password="$(openssl rand -hex 24)"
+  mkfifo "$skill_home/server.stdin"
+  exec 3<>"$skill_home/server.stdin"
+  env -i PATH="$PATH" HOME="$skill_home" \
+    XDG_CONFIG_HOME="$skill_home/.config" \
+    XDG_DATA_HOME="$skill_home/.local/share" \
+    XDG_CACHE_HOME="$skill_home/.cache" \
+    XDG_STATE_HOME="$skill_home/.local/state" TMPDIR="$skill_home/tmp" \
+    OPENCODE_PASSWORD="$server_password" \
+    opencode serve --stdio --hostname 127.0.0.1 --port 0 \
+    3>&- < "$skill_home/server.stdin" > "$dump.server" 2> "$dump.stderr" &
+  server_pid=$!
+  trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; exec 3>&-' EXIT
+  deadline=$((SECONDS + 30))
+  until server_url="$(jq -er '.url // empty' "$dump.server" 2>/dev/null)"; do
+    if ! kill -0 "$server_pid" 2>/dev/null || [ "$SECONDS" -ge "$deadline" ]; then
+      echo "install-skill-coverage: private OpenCode server did not start in $repo" >&2
+      cat "$dump.stderr" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  case "$server_url" in
+    http://127.0.0.1:*) ;;
+    *) echo "install-skill-coverage: unexpected private server URL: $server_url" >&2; exit 1 ;;
+  esac
+  while :; do
+    curl --fail --silent --show-error --max-time 20 --user "opencode:$server_password" \
+      "$server_url/api/skill" > "$dump.json"
+    # Match parsed names only: prose mentions are not registry entries. Embedded
+    # skills have virtual /builtin/ paths; all file skills stay in this fixture.
+    jq -er --arg repo "$repo" --arg skill_home "$skill_home" '
+      if .location.directory == $repo and (.data | type == "array") and
+         all(.data[]; (.name | type == "string") and (.path | type == "string") and
+           (.path | startswith($repo + "/") or startswith($skill_home + "/") or startswith("/builtin/")))
+      then [.data[].name] | join("\n")
+      else error("invalid or uncontained OpenCode skill response") end
+    ' "$dump.json" > "$dump"
+    if grep -Fxq tap-probe-control "$dump" && grep -Fxq tap-probe-control-compat "$dump"; then
+      break
+    fi
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "install-skill-coverage: OpenCode did not resolve both control skills in $repo" >&2
+      cat "$dump.stderr" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+)
 
 # Exercise the installer's actual link/reap functions without its hook writes.
 # A second install must keep /tap-collab available beside both existing work shapes
@@ -122,16 +187,9 @@ for s in ${listed_repo_local+"${listed_repo_local[@]}"}; do
   cp "$ROOT/skills/$s/SKILL.md" "$source_repo/skills/$s/SKILL.md"
 done
 git -C "$source_repo" init -q
-(
-  cd "$source_repo"
-  env -i PATH="$PATH" HOME="$source_home" \
-    XDG_CONFIG_HOME="$source_home/.config" \
-    XDG_DATA_HOME="$source_home/.local/share" \
-    XDG_CACHE_HOME="$source_home/.cache" \
-    opencode debug skill --pure > "$probe_dir/source-only.out"
-)
+dump_skills "$source_repo" "$source_home" "$probe_dir/source-only.out"
 for s in ${listed_repo_local+"${listed_repo_local[@]}"}; do
-  if grep -Fq "\"name\": \"$s\"" "$probe_dir/source-only.out"; then
+  if grep -Fxq "$s" "$probe_dir/source-only.out"; then
     echo "install-skill-coverage: isolated source-only repo unexpectedly discovered REPO_LOCAL skill '$s' without a convention relay" >&2
     fail=1
   fi
@@ -148,15 +206,8 @@ for convention in claude agents; do
     mkdir -p "$repo/skills/$s" "$repo/.$convention/skills" "$home"
     cp "$ROOT/skills/$s/SKILL.md" "$repo/skills/$s/SKILL.md"
     git -C "$repo" init -q
-    (
-      cd "$repo"
-      env -i PATH="$PATH" HOME="$home" \
-        XDG_CONFIG_HOME="$home/.config" \
-        XDG_DATA_HOME="$home/.local/share" \
-        XDG_CACHE_HOME="$home/.cache" \
-        opencode debug skill --pure > "$dump"
-    )
-    if grep -Fq "\"name\": \"$s\"" "$dump"; then
+    dump_skills "$repo" "$home" "$dump"
+    if grep -Fxq "$s" "$dump"; then
       echo "install-skill-coverage: isolated .$convention/skills directory without a relay unexpectedly discovered REPO_LOCAL skill '$s'" >&2
       fail=1
     fi
@@ -172,15 +223,8 @@ for convention in claude agents; do
     cp "$ROOT/skills/$s/SKILL.md" "$repo/skills/$s/SKILL.md"
     ln -s "../../skills/$s" "$repo/.$convention/skills/$s"
     git -C "$repo" init -q
-    (
-      cd "$repo"
-      env -i PATH="$PATH" HOME="$home" \
-        XDG_CONFIG_HOME="$home/.config" \
-        XDG_DATA_HOME="$home/.local/share" \
-        XDG_CACHE_HOME="$home/.cache" \
-        opencode debug skill --pure > "$dump"
-    )
-    if ! grep -Fq "\"name\": \"$s\"" "$dump"; then
+    dump_skills "$repo" "$home" "$dump"
+    if ! grep -Fxq "$s" "$dump"; then
       echo "install-skill-coverage: opencode did not discover REPO_LOCAL skill '$s' through .$convention/skills" >&2
       fail=1
     fi
@@ -191,16 +235,17 @@ done
 # remain separately discoverable. Isolated machine state prevents an installed
 # legacy link from hiding a missing relay or the wrong frontmatter name.
 linked_dump="$probe_dir/linked-skills.out"
-(
-  cd "$ROOT"
-  env -i PATH="$PATH" HOME="$probe_dir/linked-home" \
-    XDG_CONFIG_HOME="$probe_dir/linked-config" \
-    XDG_DATA_HOME="$probe_dir/linked-data" \
-    XDG_CACHE_HOME="$probe_dir/linked-cache" \
-    opencode debug skill --pure > "$linked_dump"
-)
+# v2 walks all ancestors, beyond the git root. Copy the checkout's discovery
+# inputs into the sandbox so that walk cannot reach the operator's home.
+linked_repo="$probe_dir/linked-repo"
+mkdir -p "$linked_repo"
+for entry in .claude .agents .opencode skills plugins opencode.json opencode.jsonc; do
+  [ ! -e "$ROOT/$entry" ] || cp -RP "$ROOT/$entry" "$linked_repo/$entry"
+done
+git -C "$linked_repo" init -q
+dump_skills "$linked_repo" "$probe_dir/linked-home" "$linked_dump"
 for skill in tap-collab tap-pair tap-discuss tap-conduct tap; do
-  if grep -Fq "\"name\": \"$skill\"" "$linked_dump"; then
+  if grep -Fxq "$skill" "$linked_dump"; then
     echo "install-skill-coverage: duplicate product skill /$skill leaked from repo state" >&2
     fail=1
   else
@@ -212,21 +257,14 @@ done
 alias_home="$probe_dir/alias-loader-home"
 mkdir -p "$alias_home/.config/opencode"
 link_user_skills OpenCode "$alias_home/.config/opencode" > "$probe_dir/alias-install.out"
-(
-  cd "$probe_dir/source-only"
-  env -i PATH="$PATH" HOME="$alias_home" \
-    XDG_CONFIG_HOME="$alias_home/.config" \
-    XDG_DATA_HOME="$alias_home/.local/share" \
-    XDG_CACHE_HOME="$alias_home/.cache" \
-    opencode debug skill --pure > "$probe_dir/aliases.out"
-)
+dump_skills "$source_repo" "$alias_home" "$probe_dir/aliases.out"
 for skill in tap-lead tap-drive tap-conduct tap; do
-  grep -Fq "\"name\": \"$skill\"" "$probe_dir/aliases.out" \
+  grep -Fxq "$skill" "$probe_dir/aliases.out" \
     || { echo "install-skill-coverage: generated/canonical $skill missing from loader" >&2; fail=1; }
 done
 
 for skill in lead drive conductor using-tap; do
-  if grep -Fq "\"name\": \"$skill\"" "$probe_dir/aliases.out"; then
+  if grep -Fxq "$skill" "$probe_dir/aliases.out"; then
     echo "install-skill-coverage: old alias $skill leaked into discovery" >&2; fail=1
   fi
 done
@@ -237,7 +275,7 @@ for skill in "${TOMBSTONE_SKILLS[@]}"; do
     echo "install-skill-coverage: missing tombstone $skill" >&2; fail=1;
   }
   for dump in "$linked_dump" "$probe_dir/aliases.out"; do
-    if grep -Fq "\"name\": \"$skill\"" "$dump"; then
+    if grep -Fxq "$skill" "$dump"; then
       echo "install-skill-coverage: retired $skill leaked into discovery" >&2; fail=1;
     fi
   done

@@ -546,7 +546,7 @@ test("(4f) OpenCode premint --session helper parses argv and kernel argv, failin
   const plugin = readFileSync(OPENCODE_HOOK, "utf8");
   expect(plugin).toContain("tap-opencode-session-id");
   expect(plugin).toContain("sessionIdAtInit");
-  expect(plugin).toContain("await ensureBound(argvSession)");
+  expect(plugin).toContain("await bindRoot(sessionIdAtInit(tuiArgs))");
 
   expect(sessionIdHelper(["from-argv", "opencode", "--session", "ses_fixture_cpfu"])).toBe("ses_fixture_cpfu");
   expect(sessionIdHelper(["from-argv", "opencode", "--session=ses_eq_cpfu"])).toBe("ses_eq_cpfu");
@@ -595,19 +595,23 @@ function runPluginFactory(name: string, launchArgs: string[], fire: string[]): s
   stub("tap", `[ "$1" = in ] && echo "in session=$OPENCODE_SESSION_ID" >> "$NH2F_LOG"; exit 0`);
   stub("tap-resolve-session-root", `[ "$1" = walk ] && printf '%s\\n' "$2"; exit 0`);
   stub("tap-session-context", "exit 0");
-  // Like the real OpenCode worker, the harness sees a rewritten process.argv with no --session
-  // (kernel argv, which ps reads, keeps it), so init must find the id through the from-pid
-  // fallback. The plugin is imported after the rewrite because static imports hoist.
-  writeFileSync(join(dir, "harness.ts"), `import { $ } from "bun"
-const at = process.argv.indexOf("--session")
-if (at >= 0) process.argv.splice(at, 2)
-if (process.argv.some((a) => a.startsWith("--session"))) throw new Error("harness argv still carries --session")
+  stub("ps", '[ "$2" = "$NH2F_PID" ] && echo "opencode serve --stdio --port 0" || printf "%s\\n" "$NH2F_PARENT"');
+  writeFileSync(join(dir, "harness.ts"), `
+process.env.NH2F_PID = String(process.pid)
 const { default: plugin } = await import(new URL(${JSON.stringify(HOOK_COPY)}, import.meta.url).href)
-const client = { session: { messages: async () => ({ data: [] }), prompt: async () => ({}) } }
-const hooks: any = await (plugin as any)({ client, directory: process.cwd(), worktree: process.cwd(), $ })
-for (const id of (process.env.NH2F_FIRE ?? "").split(",").filter(Boolean)) {
-  await hooks.event({ event: { type: "session.updated", properties: { info: { id } } } })
-}
+let prompt: any
+const cleanup = await plugin.setup({ app: { version: "2.1.2" }, location: { directory: process.cwd() },
+  storage: { get: async () => undefined, set: async () => {} },
+  session: {
+    get: async ({sessionID}: any) => ({id: sessionID, location: {directory: process.cwd()}}),
+    hook: async (_name: string, callback: any) => { prompt = callback },
+  },
+  event: { subscribe: ({signal}: any) => ({async *[Symbol.asyncIterator]() {
+    await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve()))
+  }}) },
+})
+for (const id of (process.env.NH2F_FIRE ?? "").split(",").filter(Boolean)) await prompt({sessionID: id})
+await cleanup?.()
 `);
   const r = spawnSync(process.execPath, [join(dir, "harness.ts"), ...launchArgs], {
     cwd: dir,
@@ -622,6 +626,7 @@ for (const id of (process.env.NH2F_FIRE ?? "").split(",").filter(Boolean)) {
       TMUX_PANE: "%1",
       NH2F_LOG: log,
       NH2F_FIRE: fire.join(","),
+      NH2F_PARENT: ["opencode", "--standalone", ...launchArgs].join(" "),
     },
   });
   expect(r.status, `factory harness failed: ${r.stderr}`).toBe(0);

@@ -147,7 +147,6 @@ export function reviveTier(
   if (!harness || !AGENT_FAMILIES.has(harness)) return "-";
   if (nativeId) return "exact";
   if (harness === "claude" || harness === "codex") return "picker";
-  if (harness === "agy") return "latest";
   return "fresh";
 }
 
@@ -422,10 +421,15 @@ function conversationArtifactMissing(record: SessionRecord, env: NodeJS.ProcessE
 }
 
 /** The fresh-start disclosure for an id-less record whose harness never opens a
- * native picker (OpenCode, cursor), else null: resume-family doors that relaunch
- * such a seat must say the conversation was not resumed. */
+ * native picker at startup (OpenCode, cursor, agy), else null: resume-family doors
+ * that relaunch such a seat must say the conversation was not resumed. agy's
+ * `--continue` would guess the workdir's latest conversation, so an id-less agy
+ * seat starts empty and points at agy's own /resume picker instead. */
 export function idlessFreshWarning(record: SessionRecord): string | null {
   if (record.harness_session_id) return null;
+  if (record.harness === "agy") {
+    return `tap session: WARNING: ${record.name} has no captured agy conversation id; starting an empty conversation. Use agy's /resume picker to select the conversation you want`;
+  }
   const what = record.harness === "opencode" ? "OpenCode session" : record.harness === "cursor" ? "cursor chat" : null;
   return what && `tap session: WARNING: ${record.name} has no native ${what} id; starting a fresh conversation`;
 }
