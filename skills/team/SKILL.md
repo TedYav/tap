@@ -27,8 +27,8 @@ Lists the team name and each member. Default columns are handle / harness / stat
 `--json` and the machine-wide view (`tap admin ...`) are reference — `tap help team` or `skills/tap/SKILL.md`.
 
 For caches across the machine, use `tap teams --seats [--all] [--json] [--wide]`
-(or `tap team list --seats`). Team headings carry seat counts and roots; indented
-seats share the roster columns. Teams sort by soonest warm-cache expiry; within
+(or `tap team list --seats`). Team headings carry `<active>/<total> seats active` and roots, with blank lines between teams; indented
+seats share the roster columns. Teams sort by name, ignoring case; within
 each team, warm seats sort by expiry, then cold, then unknown. `--all` includes
 inactive seats too. Claude's context marker `●4m` means estimated minutes until
 expiry; a bare `●` means the recorded lifetime elapsed. Markers are bright blue

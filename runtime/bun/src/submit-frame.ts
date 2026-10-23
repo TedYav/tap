@@ -6,7 +6,7 @@ import { opencodeBoxText } from "./opencode-composer";
 // A submission decision uses one joined frame, never an id's disappearance alone.
 import { capturePane, isOpenCodeCommand, normalizeInputMatch, promptLineRe, promptRowReAwk, tmux } from "./tmux";
 import { classifyPane, claudeActiveBoxRange, claudeBox, claudeFeedbackOverlay, claudeQueuedRows, isPasteCollapse } from "./pane-state";
-import { approvalPrompt, detectAgentState } from "./agent-state";
+import { agentAtRest, approvalPrompt, detectAgentState } from "./agent-state";
 import { parseStuckSentinel } from "./stuck-sentinel";
 import { matchSentinelSuffix, sentinelShapedInput } from "./sentinel-tail";
 import { dimPromptInput, promptGlyph } from "./pane/geometry";
@@ -384,7 +384,7 @@ export function readFrame(frame: string, command: string, expected: string, widt
   // as OpenCode's reading is (tap-7txco): without it every quick-starting
   // Claude delivery would read as a queue behind earlier work.
   const state = detectAgentState("claude", frame.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")).agentState;
-  const busy = state === "working" ? true : state === "idle" ? false : undefined;
+  const busy = state === "working" ? true : agentAtRest(state) ? false : undefined;
   return busy === undefined ? read : { ...read, busy };
 }
 
@@ -408,7 +408,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
     // Only an observed idle read may later license the fast-start relabel;
     // booting/unknown frames carry no busy evidence at all (tap-ho6pk).
     const state = detectAgentState("opencode", frame.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")).agentState;
-    const busy = state === "working" ? true : state === "idle" ? false : undefined;
+    const busy = state === "working" ? true : agentAtRest(state) ? false : undefined;
     return { state: actual === null ? "unobservable" : actual === expected ? "staged" : actual ? "changed" : "empty", mode, width, text: actual, busy };
   }
   if (start < 0) {

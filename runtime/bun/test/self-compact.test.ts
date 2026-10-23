@@ -210,6 +210,13 @@ test("interrupt, one locked submit, compacted proof, then unlock before the resu
   expect(compacted.ordinal).toBeUndefined();
   expect(f.receipts[3]!.delivery).toBe("queued-spool");
 });
+test("an errored but usable composer can compact without an interrupt", async () => {
+  const f = fakePane({ startState: "idle" });
+  f.fx.state = () => "error";
+  await run(f);
+  expect(f.log).toEqual(["submit", "unlock", "send:worker"]);
+  expect(f.receipts.at(-1)?.state).toBe("resume-sent");
+});
 test("a pane that never idles after one Escape is reported not compacted", async () => {
   const f = fakePane({ stuckWorking: true });
   await run(f, 31000);
@@ -592,6 +599,45 @@ test("claude and opencode wakes: an old_store row read records incomplete and ne
   }
 });
 
+
+test("claude wake: requested tier switches run after proof and before the resume; an unproven one warns, never withholds", async () => {
+  const confirmed = fakeWake({});
+  const fx = confirmed.fx("claude");
+  const asked: unknown[] = [];
+  fx.switches = async switches => {
+    asked.push(switches); confirmed.log.push("switches");
+    return { model: { state: "confirmed", command: "/model fable", detail: "transcript recorded the switch" } };
+  };
+  await runWake(confirmed.request("claude", { switches: { model: "fable" } }), fx, 5000);
+  expect(asked).toEqual([{ model: "fable" }]);
+  expect(confirmed.log).toEqual(["unlock", "settle:2", "switches", "send:Post-compaction resume check. Read /bus/handoff/worker.md first."]);
+  expect(confirmed.receipts.at(-1)).toMatchObject({ state: "resume-sent", switches: { model: { state: "confirmed" } } });
+  expect(confirmed.unverified).toEqual([]);
+
+  const missed = fakeWake({});
+  const missedFx = missed.fx("claude");
+  missedFx.switches = async () => ({ effort: { state: "unconfirmed", command: "/effort medium", detail: "submitted; no transcript confirmation before the deadline" } });
+  await runWake(missed.request("claude", { switches: { effort: "medium" } }), missedFx, 5000);
+  const sent = missed.log.find(entry => entry.startsWith("send:"))!;
+  expect(sent).toStartWith("send:TAP could not confirm '/effort medium'");
+  expect(sent).toEndWith("Post-compaction resume check. Read /bus/handoff/worker.md first.");
+  expect(missed.receipts.at(-1)).toMatchObject({ state: "resume-sent", switches: { effort: { state: "unconfirmed" } } });
+  expect(missed.unverified).toEqual(["switch-unconfirmed"]);
+
+  const thrown = fakeWake({});
+  const thrownFx = thrown.fx("claude");
+  thrownFx.switches = async () => { throw new Error("tmux server unresponsive"); };
+  await runWake(thrown.request("claude", { switches: { model: "fable" } }), thrownFx, 5000);
+  expect(thrown.log.find(entry => entry.startsWith("send:"))).toStartWith("send:TAP could not confirm '/model fable' (switch failed: tmux server unresponsive)");
+  expect(thrown.receipts.at(-1)).toMatchObject({ state: "resume-sent", switches: { model: { state: "unconfirmed" } } });
+
+  // No switches requested: the hook is never consulted.
+  const plain = fakeWake({});
+  const plainFx = plain.fx("claude");
+  plainFx.switches = async () => { throw new Error("not requested"); };
+  await runWake(plain.request("claude"), plainFx, 5000);
+  expect(plain.receipts.at(-1)?.state).toBe("resume-sent");
+});
 
 test("claude wake: observed compaction, spacing, then the resume note; no pane submit", async () => {
   const f = fakeWake({  });

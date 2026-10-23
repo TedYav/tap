@@ -95,6 +95,7 @@ has a name you can address; the **team** is the group working in this project.
 | Visit a seat | `tap attach <seat>`, using a name from `tap team` |
 | Leave it running and return to your terminal | **Ctrl-b**, then **d** |
 | See the roster | `tap team` from the project directory |
+| Type a teammate's name from a picker | **Ctrl-b**, then **Ctrl-g**, after `tap keybinding install` |
 | Scroll through output | **Ctrl-b**, then **[**; arrows or Page Up |
 | Leave scroll mode | **q** |
 
@@ -204,6 +205,17 @@ This stops the team's sessions while preserving the roster. Run `tap team up`
 to resume them, then `tap attach <seat>` to visit each agent. Check its context
 before giving it more work.
 
+After a reboot or a tmux restart, bring back the seats that were running with:
+
+```bash
+tap team up --last
+```
+
+It previews the most recent group of seats and asks before resuming them;
+seats you stopped on purpose stay stopped. `tap launch <harness> <seat>` for a
+name that is already running offers a menu instead of a second copy: press
+**r** to attach to it.
+
 ## Bring an existing conversation into a named seat
 
 Use the same harness and project directory as the old conversation, and launch
@@ -273,8 +285,8 @@ it never answers it for you.
 
 A seat waiting on one of these prompts is blocked, as TAP's
 [prompt detector](../runtime/bun/src/agent-state.ts) reads it. `tap team` shows
-`● needs you: tap attach <team>/<seat>`
-([`team.ts`](../runtime/bun/src/verbs/team.ts)), and `tap admin dashboard` lists
+its state as `blocked`; `tap team doctor` explains why and names the
+`tap attach <team>/<seat>` command, and `tap admin dashboard` lists
 blocked seats first under attention
 ([`admin.ts`](../runtime/bun/src/verbs/admin.ts)). A blocked seat is not idle, so
 `tap team --stalled` never lists it
@@ -351,6 +363,8 @@ needs *Applications in terminal may access clipboard* enabled in the profile.
 | Codex says `Hooks need review` | Visit that seat and follow [hook review](#when-codex-asks-to-review-hooks); trust is your decision. |
 | A seat is parked on a permission or sign-in prompt | Attach to it and answer the prompt yourself. When it is ready, ask the sender agent to check whether the original question was answered. |
 | The sender reports delivery, but no answer appears | Visit the receiving agent and inspect what it is doing. Avoid resending the same task until you know whether it already started. |
+| `tap team` shows a seat as `error` | Its last turn failed (an API error, usage limit or provider capacity) but its input box still works. `tap team doctor --only seat-state` names the reason and a `tap nudge` or `tap attach` command; once the limit clears, nudge it to continue. |
+| You signed in to another account or changed an environment variable, and running seats still use the old one | Restart them in place with their conversations: `tap session relaunch --harness claude --nudge` (or `codex`). `--nudge` tells every seat that was not idle to continue its work; add `--dry-run` to preview. |
 | A Claude seat went into agent view (left arrow, `/bg`) and stopped answering | New Claude seats start with `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, so this affects seats launched before that default. Recovery is `claude stop <short-id>` from another shell, then `tmux respawn-pane` in the seat's own pane with its original directory, arguments and environment plus `--resume <new-session-id>`. The exact, ordered procedure is on the [harness page](../skills/tap/protocol/harness/README.md#claude-agent-view-prevention-and-recovery); prepare the whole command before stopping the worker. |
 
 To update TAP later, run `./install.sh --sync` from your TAP clone.

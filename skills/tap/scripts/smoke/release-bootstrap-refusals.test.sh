@@ -14,7 +14,7 @@ BOOT="$ROOT/scripts/release/bootstrap.sh"
 WORK="$(mktemp -d)"
 trap 'chmod -R u+w "${WORK:?}" 2>/dev/null || true; rm -rf "${WORK:?}"' EXIT
 export COPYFILE_DISABLE=1
-VERSION="0.23-20261002-abcdefabcdef"
+VERSION="0.23.1+2.gabcdefabcdef"
 TOP="tap-$VERSION-test"
 # The release build names platforms `${process.platform}-${process.arch}`; the fixtures use
 # this host's, as Bun names it, so the bootstrap's own mapping is checked against the producer's.
@@ -95,7 +95,7 @@ echo "release-bootstrap: (1b) a changed file and a lost executable bit are each 
 # --- switching versions prints one transition line; an older archive is labelled a rollback ---
 case "$out" in *" -> "*) fail "a rerun of the same version printed a transition: $out" ;; esac
 case "$out" in *"next: cd into a project (git init it if it is not a repository), run tap init, then tap doctor"*) ;; *) fail "the verdict does not name project initialization before doctor: $out" ;; esac
-OLD_VERSION="0.23-20260901-0123456789ab"
+OLD_VERSION="0.23.0"
 VERSION="$OLD_VERSION" TOP="tap-$OLD_VERSION-test" make_tree "$WORK/src-old"
 OLD="$WORK/old.tar.gz"; pack "$WORK/src-old" "$OLD" "tap-$OLD_VERSION-test"
 run_boot --archive "$OLD" --sha256 "$(sha "$OLD")" --prefix "$PREFIX"

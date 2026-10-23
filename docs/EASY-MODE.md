@@ -73,7 +73,7 @@ unanswered default is not consent. Apply the recorded answer:
   **every** permission request until someone answers it. Tell the human that
   before they choose. In a new folder, Claude, Codex and Antigravity auto seats
   first ask the human to trust it. TAP shows a seat waiting on either prompt as
-  blocked (`needs you`). Choosing auto alone does not turn on a sandbox; each
+  blocked. Choosing auto alone does not turn on a sandbox; each
   harness's own settings stay in force.
 
 Record the selected permission choices in an answers file. This example assumes

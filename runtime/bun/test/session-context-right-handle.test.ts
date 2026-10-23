@@ -87,9 +87,8 @@ function setupRepo(name: string, registry: unknown, indexHome = join(WORK, ".tap
   mkdirSync(join(repo, ".tap", "bus", "payloads"), { recursive: true });
   mkdirSync(join(repo, ".tap", "bus", "receipts"), { recursive: true });
   mkdirSync(indexHome, { recursive: true });
-  // Briefing reads lib.sh + CHANGELOG under --root; point at the real checkout.
+  // Briefing reads the protocol brief under --root; point at the real checkout.
   symlinkSync(join(REPO, "skills"), join(repo, "skills"));
-  symlinkSync(join(REPO, "CHANGELOG.md"), join(repo, "CHANGELOG.md"));
   writeFileSync(join(repo, ".tap", "team-registry.json"), `${JSON.stringify(registry, null, 2)}\n`);
   enrollRepo(repo, indexHome);
   return repo;
@@ -152,7 +151,7 @@ function runCtx(
     MOCK_SERVER_RAW: serverEpoch.replace(/^srv:/, ""),
     TAP_SERVER_EPOCH: serverEpoch,
     TAP_VERSION_SEEN_PATH: seen,
-    TAP_VERSION_CHANGELOG_PATH: join(REPO, "CHANGELOG.md"),
+    TAP_VERSION_CHANGELOG_PATH: join(REPO, "skills/tap/VERSION-BRIEF.md"),
     FOREIGN_TAP_LOG: FOREIGN_TAP_LOG,
   };
   const r = spawnSync(process.execPath, [CTX, "context", repo], {
@@ -368,7 +367,6 @@ mkdirSync(join(REPO4, ".tap"), { recursive: true });
 mkdirSync(join(REPO4, ".tap", "bus", "payloads"), { recursive: true });
 mkdirSync(join(REPO4, ".tap", "bus", "receipts"), { recursive: true });
 symlinkSync(join(REPO, "skills"), join(REPO4, "skills"));
-symlinkSync(join(REPO, "CHANGELOG.md"), join(REPO4, "CHANGELOG.md"));
 expect(existsSync(join(REPO4, ".tap", "bus"))).toBe(true);
 const TEAM4 = join(REPO4, ".tap", "team-registry.json");
 writeFileSync(
@@ -439,7 +437,7 @@ function adapterEnv(seen: string, psState: string, extra: Env = {}): Env {
     MOCK_PS_STATE: psState,
     TAP_SERVER_EPOCH: "srv:900:200",
     TAP_VERSION_SEEN_PATH: seen,
-    TAP_VERSION_CHANGELOG_PATH: join(REPO, "CHANGELOG.md"),
+    TAP_VERSION_CHANGELOG_PATH: join(REPO, "skills/tap/VERSION-BRIEF.md"),
     FOREIGN_TAP_LOG: FOREIGN_TAP_LOG,
     ...extra,
   };

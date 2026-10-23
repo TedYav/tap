@@ -45,7 +45,7 @@ import { bootId, bootIdsMatch, capturePane, injectText, inputHasId, normalizeInp
 import { controlChunkLanded, controlPayloadChunks, controlTailReady } from "./slices/control-payload";
 import { captureInputFrame, pendingInputRegionText, pendingInputText, realPaneIo, type PendingInput } from "./pane/reader";
 import { composerHoldsExactly, observeSubmitFrame, agyPermissionOverlay, agyReprobeInputMatches, isOrdinarySentinel, readFrame, sentinelSubmitDecision, visibleSentinelId, type SubmitFrame } from "./submit-frame";
-import { detectAgentState } from "./agent-state";
+import { agentAtRest, detectAgentState, type AgentState } from "./agent-state";
 import { stagedIdleSubmitEligible } from "./submit-phase";
 import { beginIdleSubmit } from "./delivery-attempt";
 import { closedSentinelInput, sentinelShapedInput } from "./sentinel-tail";
@@ -1468,9 +1468,9 @@ function submitVerifyLockedBody(
     if (!parsed.ok) return refuse("unparseable TAP input retained; no keys sent");
     const stuckFull = parsed.fields.id;
     const stuckId = stuckFull.slice(stuckFull.lastIndexOf("/") + 1);
-    // Two samples across a settle, both positively idle. The agent state is an
-    // ALLOWLIST: overprint, booting, working, blocked and every unknown or
-    // future state refuses by default. Both samples must hold the same single
+    // Two samples across a settle, both positively at rest (idle or error).
+    // The allowlist rejects overprint, booting, working, blocked and every
+    // unknown or future state. Both samples must hold the same single
     // well-formed wire — visibleSentinelId refuses approval prompts, obvious
     // dialogs and concatenated wires — and each must hold the wire as the
     // WHOLE composer, not merely contain it: composerHoldsExactly is equality,
@@ -1493,7 +1493,7 @@ function submitVerifyLockedBody(
     // not-idle line, and the generic bytes stay byte-identical for the gates
     // that always refused there.
     let sampleWhy = "";
-    const sample = (): { id: string; state: string; frame: string } | null => {
+    const sample = (): { id: string; state: AgentState; frame: string } | null => {
       const captured = fx.captureEscaped!(target, command);
       if (!captured.ok) return null;
       // The pane TITLE is Codex evidence, never an empty fallback: a working
@@ -1521,7 +1521,7 @@ function submitVerifyLockedBody(
     if (first === null && sampleWhy) {
       return refuse(`${sampleWhy}; no keys sent`);
     }
-    if (first === null || first.id !== stuckFull || first.state !== "idle"
+    if (first === null || first.id !== stuckFull || !agentAtRest(first.state)
       || sentinelSubmitDecision(first.frame, command, text, false).action !== "submit") {
       return refuse(`pane '${pane}' is not positively idle holding one submit-safe staged wire; no keys sent`);
     }
@@ -1530,7 +1530,7 @@ function submitVerifyLockedBody(
     if (second === null && sampleWhy) {
       return refuse(`${sampleWhy} on the second sample; no keys sent`);
     }
-    if (second === null || second.id !== stuckFull || second.state !== "idle"
+    if (second === null || second.id !== stuckFull || !agentAtRest(second.state)
       || sentinelSubmitDecision(second.frame, command, text, false).action !== "submit") {
       return refuse("the staged wire was not stable across two idle samples; no keys sent");
     }
@@ -1584,7 +1584,7 @@ function submitVerifyLockedBody(
       const minted = beginIdleSubmit(authority.busHome!, id, { stagedId: stuckFull, pane, agentState: second.state, retry: authority.attemptUuid });
       if (minted !== "created") return refuse("an idle-time Enter was already licensed for this staged observation; no keys sent");
       const recheck = sample();
-      if (recheck === null || recheck.id !== stuckFull || recheck.state !== "idle"
+      if (recheck === null || recheck.id !== stuckFull || !agentAtRest(recheck.state)
         || sentinelSubmitDecision(recheck.frame, command, text, false).action !== "submit") {
         return refuse("the composer changed while the idle-submit license was minted; no key sent");
       }

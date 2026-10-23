@@ -9,10 +9,20 @@ import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { crewMember, relaunch, parseOptions, type Member } from "../src/launcher/relaunch";
+import { crewMember, relaunch, parseOptions, readRelaunchStates, type ClassifiedMember, type Member } from "../src/launcher/relaunch";
 import { relaunchCrew, seats, teamContext } from "../src/crew-lifecycle";
 import { withLaunchSignals } from "../src/launcher/transaction";
 import { loadGlobalRegistry } from "../src/index-home";
+import { observedRows } from "../src/roster-observation";
+import type { RegistryRow } from "../src/team-observe";
+
+function classified(member: Member): ClassifiedMember {
+  const pane = String(member.row.pane_id ?? "");
+  const observation = observedRows([{ ...member.row, team: member.team, handle: member.handle } as RegistryRow],
+    new Map([[member.handle, ["active", "", "", pane, String(member.row.harness), "0"]]]),
+    String(member.row.server_epoch ?? ""), {})[0]!;
+  return { member, status: "active", reason: "", pane, observation };
+}
 
 const savedEnv: Array<[string, string | undefined]> = [];
 type LaunchRejection = { code?: number; detail?: string };
@@ -146,8 +156,8 @@ test("completed durable sibling reports while real crew verification is pending"
   const output: string[] = [];
   const code = await relaunch(parseOptions(["--harness", "codex", "--team", "Demo"]), {
     context: () => ({ team: "Demo", caller_pane: "", caller: { state: "outside", detail: "fixture" } }),
-    load: loadGlobalRegistry,
-    classify: () => members.map(member => ({ member, status: "active", reason: "", pane: member.row.pane_id ?? "" })),
+    load: loadGlobalRegistry, states: readRelaunchStates,
+    classify: () => members.map(classified),
     prepare: value => value,
     run: async () => ({ code: 0 }),
     color: false,
@@ -176,10 +186,10 @@ test("a replacement that never stabilizes refuses instead of reporting success",
   let failure: { code: number; reason: string } | null = null;
   const code = await relaunch(parseOptions(["Demo/crew-die"]), {
     context: () => ({ team: "Demo", caller_pane: "", caller: { state: "outside", detail: "fixture" } }),
-    load: loadGlobalRegistry,
+    load: loadGlobalRegistry, states: readRelaunchStates,
     classify: () => {
       const member: Member = { team: "Demo", handle: "crew-die", root: ctx.root, row: all["crew-die"]!, team_doc: {} };
-      return [{ member, status: "active", reason: "", pane: member.row.pane_id ?? "" }];
+      return [classified(member)];
     },
     prepare: value => value,
     run: async () => ({ code: 0 }),
@@ -254,15 +264,15 @@ test("a signal queued by late synchronous observation prevents respawn", async (
   expect(pid()).toBe(before);
 }, 20000);
 
-test("relaunch --env and -- reach a crew seat's fresh process and persist in its recipe; -m still refuses", async () => {
+test("relaunch --nudge skips a crew prompt while --env and -- persist; -m still refuses", async () => {
   const { ctx } = fixture();
   const dump = join(fixtureRoot!, "crew-dump");
   const run = (argv: string[], output: string[]) => {
     const member: Member = { team: "Demo", handle: "crew-a", root: ctx.root, row: seats(ctx)["crew-a"]!, team_doc: {} };
     return relaunch(parseOptions(argv), {
       context: () => ({ team: "Demo", caller_pane: "", caller: { state: "outside", detail: "fixture" } }),
-      load: loadGlobalRegistry,
-      classify: () => [{ member, status: "active", reason: "", pane: member.row.pane_id ?? "" }],
+      load: loadGlobalRegistry, states: readRelaunchStates,
+      classify: () => [classified(member)],
       prepare: value => value,
       run: async () => ({ code: 0 }),
       color: false,
@@ -274,7 +284,8 @@ test("relaunch --env and -- reach a crew seat's fresh process and persist in its
   expect(await run(["Demo/crew-a", "-m", "hello"], refused)).toBe(1);
   expect(refused.join("")).toContain("-m and --workdir do not apply to a fresh crew relaunch");
   const output: string[] = [];
-  expect(await run(["Demo/crew-a", "--env", `CREW_DUMP=${dump}`, "--env", "CREW_NEW=typed", "--", "--search"], output), output.join("")).toBe(0);
+  expect(await run(["Demo/crew-a", "--nudge", "--env", `CREW_DUMP=${dump}`, "--env", "CREW_NEW=typed", "--", "--search"], output), output.join("")).toBe(0);
+  expect(output.join(" ")).toContain("nudge skipped: crew_fresh");
   expect(seats(ctx)["crew-a"]).toMatchObject({ harness_env: { CREW_DUMP: dump, CREW_NEW: "typed" },
     harness_env_set: ["CREW_DUMP", "CREW_NEW"], harness_unset_env: [], harness_tail: ["--search"] });
   const lines = readFileSync(dump, "utf8").trim().split("\n");

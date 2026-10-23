@@ -16,7 +16,7 @@ import { loadRegistry, seatMap, type Seat, loadCurrentRegistry } from "./registr
 import { atomicWrite } from "./fsatomic";
 import { acquirePaneLock } from "./panelock";
 import { authorizePaneEffect, inspectClearFenceRecord, submitVerifyLocked, REAL_EFFECTS, type BoundRecipient, type PaneEffects, type SubmitAuthority, type SubmitResult } from "./courier";
-import { detectAgentState } from "./agent-state";
+import { agentAtRest, detectAgentState, type AgentState } from "./agent-state";
 import { classifySubmitFrame } from "./submit-frame";
 import { capturePane, observePane, pressEscape, settle, tmuxReadOnly } from "./tmux";
 import { assertResetUnfenced, resetFenceRefusal } from "./reset";
@@ -28,6 +28,7 @@ import { compactionWitnessPath, captureCompactionBoundary, compactionEnterEffect
 import { checkText } from "./self-gate";
 import { focusNarrowing, handoffPing } from "./compact-focus";
 import { tapScriptsDir, artifactBun, runtimeModule } from "./scripts-dir";
+import { applySwitches, claudeSwitchEffects, hasSwitches, requireSwitchHarness, switchFailure, switchWarning, type SeatSwitches, type SwitchReport } from "./self-switch";
 
 const scripts = tapScriptsDir();
 const HEAD_BYTES = 65536;
@@ -35,7 +36,7 @@ const TAIL_BYTES = 2 * 1024 * 1024;
 const INTERRUPT_TIMEOUT_MS = 30000;
 const DEFAULT_TIMEOUT_MS = 600000;
 
-export interface Options { handoffPath?: string; pane: string; focus: string; notify?: string }
+export interface Options { handoffPath?: string; pane: string; focus: string; notify?: string; switches?: SeatSwitches }
 export interface CompactRequest {
   id: string; registry: string; bus: string; team: string; handle: string; command: string;
   bound: BoundRecipient & { handle: string; instance: string };
@@ -48,7 +49,7 @@ export interface CompactReceipt {
   state: CompactState; detail: string; handoff?: string; delivery?: string;
   compactedAt?: string; ordinal?: number;
 }
-export type SeatReadiness = "idle" | "working" | "blocked" | "booting" | "overprint" | "unknown";
+export type SeatReadiness = AgentState;
 export interface CompactEffects {
   row(): Seat | undefined;
   state(): SeatReadiness;
@@ -270,7 +271,7 @@ export function lockedCompactSubmit(
     if (latestTurnId(request.oldTranscript) !== request.turnId) {
       throw new Error("turn: a new Codex turn started after staging; refusing Enter; nothing interrupted");
     }
-    if (readiness(true) !== "idle") {
+    if (!agentAtRest(readiness(true))) {
       throw new Error("readiness: staged compact is not idle or no longer owned; refusing Enter; nothing interrupted");
     }
     const late = escapeRefusal(authority, request.bound.paneId, probes);
@@ -309,18 +310,18 @@ export async function runCompact(request: CompactRequest, fx: CompactEffects, ti
       const deadline = fx.now() + INTERRUPT_TIMEOUT_MS;
       let idle = 0;
       while (fx.now() < deadline) {
-        if (fx.state() === "idle") { idle++; if (idle >= 2) break; } else idle = 0;
+        if (agentAtRest(fx.state())) { idle++; if (idle >= 2) break; } else idle = 0;
         await fx.wait();
       }
       if (idle < 2) return finish("not-compacted", "interrupt-unobserved: pane never returned to idle; nothing submitted; queued work untouched");
-    } else if (readiness !== "idle") {
+    } else if (!agentAtRest(readiness)) {
       return finish("not-compacted", `${readiness}: seat is not compactable now; nothing submitted`);
     }
     const pre = fx.row();
     if (!sameSeat(request, pre) || pre?.harness_session_id !== request.oldSession) {
       return finish("incomplete", "identity: seat changed before Enter; nothing submitted");
     }
-    if (fx.state() !== "idle") {
+    if (!agentAtRest(fx.state())) {
       return finish("incomplete", "readiness boundary lost: pane took new work before Enter; nothing submitted; queued work untouched");
     }
     if (fx.turn() !== request.turnId) {
@@ -395,9 +396,11 @@ export interface WakeRequest {
   session: string; transcript: string; boundary?: CompactionBoundary;
   /** New Claude submission authority. Older requests with a boundary only observe. */
   queuedAt?: number;
+  /** Claude only: `/model` then `/effort`, after compaction proof and before the resume. */
+  switches?: SeatSwitches;
 }
 export type WakeState = "armed" | "queued" | "submitting" | "compacted" | "submitted" | "submission-unverified" | "resume-sent" | "resume-miss" | "not-compacted" | "not-submitted" | "incomplete";
-export interface WakeReceipt { state: WakeState; detail: string; handoff?: string; delivery?: string; evidence?: CompactionProof["evidence"]; compactedAt?: string; queuedAt?: string; submittedAt?: string }
+export interface WakeReceipt { state: WakeState; detail: string; handoff?: string; delivery?: string; evidence?: CompactionProof["evidence"]; compactedAt?: string; queuedAt?: string; submittedAt?: string; switches?: SwitchReport }
 export interface WakeSubmission { result: SubmitResult; boundary?: CompactionBoundary; effectAttempted?: boolean }
 export interface WakeEffects {
   row(): Seat | undefined;
@@ -405,6 +408,8 @@ export interface WakeEffects {
   /** Claude may retry only when effectAttempted is explicitly false. */
   submit(): WakeSubmission;
   send(body: string): SendOutcome;
+  /** Requested tier switches, applied after proof and before the resume; never withholds the resume. */
+  switches?(switches: SeatSwitches): Promise<SwitchReport>;
   record(receipt: WakeReceipt): void;
   /** Appends one line to wake-unverified.log, the aggregate record of wakes whose ordering or delivery was not established. */
   unverified(reason: string): void;
@@ -458,7 +463,7 @@ export async function runWake(request: WakeRequest, fx: WakeEffects, timeout = D
   let phase: WakeState = "armed";
   let submitUnverified = "";
   let proof: CompactionProof | null = null;
-  const timeline: Pick<WakeReceipt, "queuedAt" | "submittedAt"> = {};
+  const timeline: Pick<WakeReceipt, "queuedAt" | "submittedAt" | "switches"> = {};
   const valid = () => {
     const row = fx.row();
     return sameSeat(request, row) && row?.harness_session_id === request.session && compactionWitnessPath(request.mode, row) === request.transcript;
@@ -516,7 +521,7 @@ export async function runWake(request: WakeRequest, fx: WakeEffects, timeout = D
       const deadline = fx.now() + timeout;
       let idle = 0;
       while (fx.now() < deadline) {
-        if (fx.state() === "idle") { idle++; if (idle >= 2) break; } else idle = 0;
+        if (agentAtRest(fx.state())) { idle++; if (idle >= 2) break; } else idle = 0;
         await fx.wait();
       }
       if (idle < 2) return finish("not-compacted", "no idle turn boundary observed before the deadline; nothing submitted");
@@ -551,9 +556,15 @@ export async function runWake(request: WakeRequest, fx: WakeEffects, timeout = D
     // tap-lmbs: a follow-up queued with no gap often goes unprocessed.
     fx.settle(spacing);
     if (!valid()) return finish("resume-miss", "identity: seat or native session changed before resume; handoff preserved for manual resume");
-    const body = request.resumePing?.trim()
+    if (hasSwitches(request.switches) && fx.switches) {
+      try { timeline.switches = await fx.switches(request.switches); }
+      catch (error) { timeline.switches = switchFailure(request.switches, error); }
+      if (switchWarning(timeline.switches)) fx.unverified("switch-unconfirmed");
+      if (!valid()) return finish("resume-miss", "identity: seat or native session changed after the tier switch; handoff preserved for manual resume");
+    }
+    const body = switchWarning(timeline.switches) + (request.resumePing?.trim()
       ? request.resumePing
-      : handoffPing(request.handoff ?? "", request.handle, "", request.focus, process.env, request.notify);
+      : handoffPing(request.handoff ?? "", request.handle, "", request.focus, process.env, request.notify));
     let outcome: SendOutcome;
     try { outcome = fx.send(body); }
     catch (error) { fx.unverified("resume-send-failed"); return finish("resume-miss", `resume send failed: ${msg(error)}; handoff preserved for manual resume`); }
@@ -617,7 +628,7 @@ function claimRun(path: string, id: string): boolean {
 
 /** One observation of the bound pane, classified; any unreadable part is "unknown". */
 function paneReadiness(bound: BoundRecipient,
-  classify: (screen: string, title: string) => SeatReadiness = (screen, title) => detectAgentState(bound.harness, screen, title).agentState as SeatReadiness): SeatReadiness {
+  classify: (screen: string, title: string) => SeatReadiness = (screen, title) => detectAgentState(bound.harness, screen, title).agentState): SeatReadiness {
   const obs = observePane(bound.paneId);
   if (!obs || typeof obs === "string" || obs.serverEpoch !== bound.serverEpoch) return "unknown";
   const screen = capturePane(bound.paneId, true);
@@ -674,6 +685,11 @@ async function wakeWorker(path: string, request: WakeRequest): Promise<void> {
         return { result, boundary };
       },
       send: resumeSender(path, request, request.session),
+      switches: switches => applySwitches(switches, claudeSwitchEffects({
+        id: request.id, bound: request.bound, authority, transcript: request.transcript, session: request.session,
+        valid: () => { const seat = requestSeat(request.registry, request.handle); return sameSeat(request, seat) && seat?.harness_session_id === request.session; },
+        settle, wait: () => Bun.sleep(pollMs),
+      })),
       record,
       unverified,
       unlock: release,
@@ -765,6 +781,7 @@ export function armSelfCompact(options: Options, context?: ResolvedContext): num
   if (!mode) {
     throw new TapError(6, "compact_witness_unsupported", "unsupported harness", `self compact worker supports codex, claude and opencode; '${self.handle}' runs '${harness}'`);
   }
+  requireSwitchHarness(options.switches, harness);
   validateNotify(options.notify, self.handle, seats);
   if (!seat.instance || !seat.server_epoch) throw new Error("seat identity is incomplete");
   // A background job carries the owner it was started for; a different seat
@@ -781,10 +798,11 @@ export function armSelfCompact(options: Options, context?: ResolvedContext): num
     captureCompactionBoundary(mode, seat);
     const request: WakeRequest = { mode, id, registry: ctx.registryPath, bus: ctx.bus.home, team: ctx.team, handle: self.handle,
       bound, handoff, focus: options.focus, resumePing, notify: options.notify, session, transcript,
-      ...(mode === "claude" && { queuedAt: Date.now() }) };
+      ...(mode === "claude" && { queuedAt: Date.now() }), ...(hasSwitches(options.switches) && { switches: options.switches }) };
     const receipt = spawnRequest(bun, ctx.bus.home, id, request, { mode, handoff });
+    const then = hasSwitches(options.switches) ? ` After proof it runs ${[options.switches.model && `/model ${options.switches.model}`, options.switches.effort && `/effort ${options.switches.effort}`].filter(Boolean).join(" then ")} before the resume.` : "";
     console.error(mode === "claude"
-      ? `self: compact QUEUED; worker ARMED to wait for the composer and submit once. Resume requires fresh transcript proof. End this turn now. Receipt: ${receipt}`
+      ? `self: compact QUEUED; worker ARMED to wait for the composer and submit once. Resume requires fresh transcript proof.${then} End this turn now. Receipt: ${receipt}`
       : `self: compaction ARMED; the worker submits bare /compact at the next idle turn boundary; the resume requires fresh store proof. End this turn now. Receipt: ${receipt}`);
     return 0;
   }

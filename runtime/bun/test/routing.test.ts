@@ -386,8 +386,9 @@ test("machine seats flatten teams, sort warm expiry first, and preserve offline 
   expect(all.agents).toHaveLength(4);
   const human = (await teamsView(["--seats","--wide"])).stdout;
   expect(human).toMatch(/^  handle +harness +state +context +family +model +preset\n/);
-  expect(human).toContain(`beta  2/2 seats  ${join(fx.dir,"beta")}\n  soon`);
-  expect(human.indexOf("\nbeta ")).toBeLessThan(human.indexOf("\nalpha "));
+  expect(human).toContain(`beta  2/2 seats active  ${join(fx.dir,"beta")}\n  soon`);
+  expect(human).toContain(`alpha  1/2 seats active  ${join(fx.dir,"alpha")}\n  later`);
+  expect(human.indexOf("\nalpha ")).toBeLessThan(human.indexOf("\nbeta "));
   expect(human).not.toContain("sleeping");
   expect((await teamsView(["--seats","--details","--json"])).exit).toBe(1);
   expect(JSON.parse((await teamsView(["--json"])).stdout)).toMatchObject({ok:false,error_class:"usage_error",detail:"--json requires --seats"});
@@ -407,10 +408,37 @@ test("machine seats keep healthy seats and disclose unobserved teams in both for
   expect(JSON.parse(result.stdout)).toMatchObject({ok:true,unobserved_teams:["broken"],agents:[{team:"healthy",handle:"warm"}]});
   const human = await teamsView(["--seats"]);
   expect(human.exit).toBe(0);
-  expect(human.stdout).toContain("healthy  1/1 seats");
+  expect(human.stdout).toContain("healthy  1/1 seats active");
+  expect(human.stdout).toContain("broken  ?/? seats active");
   expect(human.stdout).toMatch(/\n  warm +claude/);
   expect(human.stderr).toContain("broken");
   expect(human.stderr).toContain("tap teams --details");
+});
+
+test("teams sort case-insensitively with blank lines between teams in both views", async () => {
+  const fx = fleet();
+  const names = ["tap","UI-BugBash","gamma","Beta","alpha"];
+  for (const name of names) fx.enroll(name,{}, {agents:[
+    {handle:`${name}-a`,harness:"claude",status:"active",agent_state:"idle"},
+    {handle:`${name}-b`,harness:"claude",status:"active",agent_state:"idle"},
+  ]});
+  fx.save();
+  const order = ["alpha","Beta","gamma","tap","UI-BugBash"];
+  const seats = (await teamsView(["--seats","--wide"])).stdout;
+  const headings = seats.split("\n").filter(line => /seats active/.test(line));
+  expect(headings.map(line => line.split("  ")[0])).toEqual(order);
+  expect(headings[0]).toBe(`alpha  2/2 seats active  ${join(fx.dir,"alpha")}`);
+  expect(seats.endsWith("\n")).toBe(true);
+  expect(seats.endsWith("\n\n")).toBe(false);
+  // exactly one blank line before every heading except the first, none elsewhere
+  expect(seats.split("\n").slice(0,-1).filter(line => line === "")).toHaveLength(order.length - 1);
+  for (const heading of headings.slice(1)) expect(seats).toContain(`\n\n${heading}\n`);
+  expect(seats).not.toContain("\n\n\n");
+  expect(seats.split("\n")[1]).toBe(headings[0]);
+  const plain = (await teamsView([])).stdout.split("\n").slice(1).filter(Boolean).map(line => line.split(/\s+/)[0]);
+  expect(plain).toEqual(order);
+  const json = JSON.parse((await teamsView(["--seats","--json"])).stdout);
+  expect(json.agents.map((row: any) => row.team)).toHaveLength(10);
 });
 
 test("machine seats refresh clock-derived cache fields at final collection time", async () => {
@@ -439,18 +467,18 @@ test("machine seat index refusals retain actionable recovery fields", async () =
 test("nested seats keep urgency within teams, cold before unknown, and align all columns", async () => {
   const fx = fleet();
   const expiry = (seconds: number) => ({state:"warm",ttl_seconds:3600,expires_at:new Date(Date.now()+seconds*1000).toISOString()});
-  fx.enroll("zeta",{}, {agents:[
+  fx.enroll("alpha",{}, {agents:[
     {handle:"a-unknown",harness:"codex",status:"active",agent_state:"working",family:"openai",model:"gpt",effort:"high",preset:"sol"},
     {handle:"z-cold",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(-10)},
     {handle:"soon",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(120),
       context_tokens:{input_tokens:329000,window_tokens:600000},observed_model:"opus",observed_effort:"high",family:"anthropic",preset:"opus"},
   ]});
-  fx.enroll("alpha",{}, {agents:[{handle:"later",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(180)}]});
+  fx.enroll("zeta",{}, {agents:[{handle:"later",harness:"claude",status:"active",agent_state:"idle",prompt_cache:expiry(180)}]});
   fx.save();
   const human = (await teamsView(["--seats","--wide"])).stdout;
   const lines = human.trimEnd().split("\n");
   expect(lines.filter(line=>line.includes("handle"))).toHaveLength(1);
-  expect(lines[1]).toMatch(/^zeta  3\/3 seats/);
+  expect(lines[1]).toMatch(/^alpha  3\/3 seats active/);
   expect(lines.slice(2,5).map(line=>line.trim().split(/\s+/)[0])).toEqual(["soon","z-cold","a-unknown"]);
   expect(lines[2]).toMatch(/329k\/600k ●2m +anthropic +opus@high +opus$/);
   expect(lines[4]).toMatch(/openai +gpt@high \(launch\) +sol$/);

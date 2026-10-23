@@ -1466,7 +1466,7 @@ if [ "$SETUP" = 1 ] || { [ "$SYNC" = 0 ] && [ "${TAP_INSTALL_SYNC_REEXEC:-0}" !=
 else
   if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "install: interactive machine setup skipped (no terminal). next: tap setup --machine --answers <file> (see docs/EASY-MODE.md); use --dry-run to preview."
-    echo "install: presets are optional; bare launch: tap session launch <harness> <name>"
+    echo "install: presets are optional; bare launch: tap launch <harness> [name]"
     echo "install: optional tmux lookup key (prefix C-g fuzzy-picks a teammate): tap keybinding install"
     echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard, and a status bar if you have no tmux config): tap tmux-defaults install"
   else

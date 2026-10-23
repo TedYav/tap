@@ -16,6 +16,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { bunBinary } from "../courier-argv";
+import { readRelease, versionAtCommit } from "../release-version";
 import { selectArtifactPaths } from "./artifact-paths";
 
 export class BuildError extends Error {
@@ -78,8 +79,8 @@ export function buildArtifact(options: { repo: string; commit: string; out: stri
   const sentinel = /SENTINEL_VERSION\s*=\s*"([^"]+)"/.exec(showAt(repo, commit, "runtime/bun/src/sentinel.ts").toString())?.[1];
   if (!sentinel) throw new BuildError("release_missing_source", "runtime/bun/src/sentinel.ts has no SENTINEL_VERSION");
   const committed = Number(git(repo, ["show", "-s", "--format=%ct", commit]).toString().trim());
-  const day = new Date(committed * 1000).toISOString().slice(0, 10).replaceAll("-", "");
-  const version = `${sentinel}-${day}-${commit.slice(0, 12)}`;
+  const release = readRelease(showAt(repo, commit, "CHANGELOG.md").toString(), sentinel);
+  const version = versionAtCommit(repo, commit, release.version);
   const platform = `${process.platform}-${process.arch}`;
   const top = `tap-${version}-${platform}`;
   const shim = showAt(repo, commit, "scripts/release/libexec-bun.sh");

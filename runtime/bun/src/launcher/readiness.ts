@@ -1,4 +1,4 @@
-import { codexHookTrust, CODEX_HOOK_TRUST_REASON, detectAgentState } from "../agent-state";
+import { agentAtRest, codexHookTrust, CODEX_HOOK_TRUST_REASON, detectAgentState } from "../agent-state";
 import { paneHarness } from "../pane-harness";
 export { paneHarness } from "../pane-harness";
 import { paneAlertState } from "../pane/reader";
@@ -117,30 +117,25 @@ export function memoizedStartupObservation(env: NodeJS.ProcessEnv, signal?: Abor
   };
 }
 
-/** The Codex readiness signal: the roster's own idle judgment — the same one
+/** The Codex readiness signal: the roster's idle or usable-error judgment — the same one
  * delivery licenses injection on. Selection menus reuse the › glyph as their
  * cursor, so a loose composer line-match would call dialogs ready; the
- * classifier separates an idle composer (dim placeholder corroboration) from
+ * classifier separates an at-rest composer (dim placeholder corroboration) from
  * blocked and working screens, with the pane title as one of its inputs. Needs
  * the RAW screen, SGR bytes intact. A title this observation could not take
  * (null) suppresses the signal: a spinner-titled Codex must never pass as
  * idle on an unverified title. */
 export function codexComposerIdle(screen: string | null, title: string | null = null): boolean {
-  return screen !== null && title !== null && detectAgentState("codex", screen, title).agentState === "idle";
+  return screen !== null && title !== null && agentAtRest(detectAgentState("codex", screen, title).agentState);
 }
 
-/** The OpenCode readiness signal, mirroring the roster's gate order exactly
- * (seat-state): the bounded alert tail first — paneAlertState over the
- * SGR-stripped screen plus a trailing newline, so a rate-limit or approval
- * phrase near the prompt outranks everything — then opencodePromptReady: the
- * composer box present with no `esc interrupt` marker below it. This is the
- * roster's readiness predicate itself, not detectAgentState's narrower
- * composer_idle, which additionally demands the `ctrl+p commands` footer. The
- * roster classifies opencode over a plain capture, so the strip is normally a
- * no-op; it keeps the predicate total over any screen. */
+/** A proven usable-error composer is ready even when its error is inside the
+ * generic alert tail. Other frames retain the existing alert and prompt gates;
+ * an approval modal is never admitted by the error exception. */
 export function opencodeComposerIdle(screen: string | null): boolean {
   if (screen === null) return false;
   const stripped = stripPaneSgr(screen);
+  if (detectAgentState("opencode", stripped).agentState === "error") return true;
   return paneAlertState(`${stripped}\n`) === "" && opencodePromptReady(stripped) === 0;
 }
 

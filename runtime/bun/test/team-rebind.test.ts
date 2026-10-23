@@ -78,7 +78,7 @@ test("public native door exposes doctor and validates only before effects",()=>{
 
 test("team doctor report uses the doctor envelope without registry writes",()=>{
  const f=fixture(), before=f.raw();
- const run=spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--json"],{encoding:"utf8",env:process.env,cwd:process.cwd()});
+ const run=spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--only","session-binding","--json"],{encoding:"utf8",env:process.env,cwd:process.cwd()});
  expect(run.status).toBe(0);
  const report=JSON.parse(run.stdout);
  expect(report).toMatchObject({ok:true,bus:{home:process.env.TAP_HOME},summary:{torn:0,unattributed:0,clean:true}});
@@ -118,7 +118,7 @@ function captureDoctor(argv: string[], observe: Parameters<typeof cmdTeamDoctor>
   Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: tty });
   process.stdout.write = ((chunk: unknown) => { stdout += String(chunk); return true; }) as typeof outWrite;
   process.stderr.write = ((chunk: unknown) => { stderr += String(chunk); return true; }) as typeof errWrite;
-  try { cmdTeamDoctor(argv, observe); return { stdout, stderr }; }
+  try { cmdTeamDoctor([...argv, "--only", "session-binding"], observe); return { stdout, stderr }; }
   finally {
     process.stdout.write = outWrite; process.stderr.write = errWrite;
     if (outTTY) Object.defineProperty(process.stdout, "isTTY", outTTY); else Reflect.deleteProperty(process.stdout, "isTTY");
@@ -194,7 +194,7 @@ esac
   expect(f.raw()).toBe(before);
   if (harness === "opencode") {
     const db = new Database(path); db.exec("DROP TABLE session_message"); db.close();
-    const invalid = spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--json"],{encoding:"utf8",env:process.env,cwd:root});
+    const invalid = spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--only","session-binding","--json"],{encoding:"utf8",env:process.env,cwd:root});
     const bad = JSON.parse(invalid.stdout);
     expect(bad.findings[0].detail.outcome).toBe("invalid");
     expect(bad.summary.clean).toBe(false);
@@ -203,7 +203,7 @@ esac
   expect(boundStoreMatches({...row,harness_session_id:"missing"},home)).toBe(false);
   expect(boundStoreMatches({...row,registered_from_worktree:home},home)).toBe(false);
   writeFileSync(join(bin,"tmux"),readFileSync(join(bin,"tmux"),"utf8").replace(`\t${harness}\t`,"\tvim\t"));
-  const unknown = spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--json"],{encoding:"utf8",env:process.env,cwd:root});
+  const unknown = spawnSync(process.execPath,[resolve(import.meta.dir,"../main.ts"),"team","doctor","--only","session-binding","--json"],{encoding:"utf8",env:process.env,cwd:root});
   expect(JSON.parse(unknown.stdout).findings[0].detail).toMatchObject({outcome:"skipped",detail:"pane is not running the registered harness"});
 });
 

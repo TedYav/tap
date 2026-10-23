@@ -15,12 +15,12 @@ ask your agent to load the named skill if its harness uses another spelling.
 | [tap:config-wizard](../skills/config-wizard/SKILL.md) | Help you configure TAP, including advanced settings, presets, permissions and notifications. |
 | [tap:extend](../skills/extend/SKILL.md) | Customize your installed TAP: a launch default, a new harness, a new command or any changed behavior. It tries your settings first, then changes TAP's source in your clone, and helps you keep or share the change. |
 | [tap:lead](../skills/lead/SKILL.md) | Lead the team: choose a strategy, staff the work and ensure it gets an independent review. |
-| [tap:self](../skills/self/SKILL.md) | Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal, loop and clear support depends on the harness; the skill handles required handoffs. |
-| [tap:collab](../skills/collab/SKILL.md) | Work with another agent on a task as equal collaborators. They agree who writes, challenges and decides, then use pair or discuss. |
+| [tap:self](../skills/self/SKILL.md) | Run a supported command in its own harness, with the agent composing the argument. For example: “Your context is getting full; /tap:self compact.” Compact, rebrief, goal and loop support depends on the harness; the skill handles required handoffs. In Claude Code it can also switch the seat's model and effort after the reset, before it resumes work. `clear` is a deprecated alias of rebrief. |
+| [tap:collab](../skills/collab/SKILL.md) | Work with one or more other agents on a task as equal collaborators, for example “Collab with reviewer and tester on X.” They agree who writes, challenges and decides, then use pair or discuss. With several peers, the agent you asked leads the group. |
 | [tap:pair](../skills/pair/SKILL.md) | Pair program: one agent writes and the other independently reviews after each work turn, tied to the published unit or commit range. It also works for prose and research. |
 | [tap:adapt](../skills/adapt/SKILL.md) | Give a modern frontier agent permission to use its judgment to simplify a legacy skill or make it useful across TAP teams. It records the proposed changes and preserves authority boundaries. Interactive mode waits for your go; `mode:agent` applies the changes and records its decisions. |
 | [tap:escalate](../skills/escalate/SKILL.md) | Reach you out of band when it needs your decision, through your configured notifier. Notifier acceptance does not prove you saw the question. |
-| [tap:discuss](../skills/discuss/SKILL.md) | Discuss a plan, review or decision with another agent using a defined protocol, and arrive at a recommendation. Exchanges are bounded and open issues are recorded. |
+| [tap:discuss](../skills/discuss/SKILL.md) | Discuss a plan, review or decision with one or more other agents using a defined protocol, and arrive at a recommendation. Exchanges are bounded and open issues are recorded. |
 
 For larger teams, you can also ask for these roles or workflows:
 
@@ -64,6 +64,7 @@ user slash menu; the rest also work when you type them.
 | [tap:outstanding](../skills/outstanding/SKILL.md) | Check sent messages that still await settlement before yielding. |
 | [tap:ask](../skills/ask/SKILL.md) | Run one stateless harness question and print the answer, without a TAP seat or follow-up lifecycle. |
 | [tap:choreography](../skills/choreography/SKILL.md) | Coordinate readers, writers, review evidence and supervision. |
+| [tap:calibrate-gc](../skills/calibrate-gc/SKILL.md) | Consolidate old notes in the optional calibration store when `tap calibrate` suggests it. The store is off until you run `tap config set calibration.enabled true`. |
 
 ## Find the canonical instructions
 
@@ -76,7 +77,7 @@ tap help skill lead
 ```
 
 Open the returned file before using the skill. Namespaced and flat names resolve
-there too. The native plugin exposes all 24 skills. Flat hosts start with `tap`,
+there too. The native plugin exposes all 25 skills. Flat hosts start with `tap`,
 `tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard`, `tap-help` and
 `tap-extend`; the
 full-kit setting adds the rest. Skills guide agent behavior; TAP transports

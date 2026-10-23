@@ -122,7 +122,7 @@ export function computeFor(jobs: ComputeJob[], team: string, handle: string, pan
 
 /**
  * Enrich one native classification. Only `idle` may become `waiting`.
- * Working, blocked, booting, overprint and unknown keep their native answer.
+ * Working, blocked, error, booting, overprint and unknown keep their native answer.
  */
 export function rosterActivity(harness: string, screen: string, native: AgentStateResult, compute: string[], now: number,
   turnEndedAt: number | null = null): RosterActivity {

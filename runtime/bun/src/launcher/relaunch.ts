@@ -4,7 +4,10 @@ import { TapError } from "../context";
 import { loadGlobalRegistry } from "../index-home";
 import { teamRegistryRefusal } from "../register-authority";
 import { pyReadUtf8 } from "../spool-publication";
-import { observe, observedRows, type RegistryRow } from "../verbs/team";
+import { observe, type RegistryRow } from "../team-observe";
+import { observedRows, withAgentStates, readComputeJobs, type ObservedRow } from "../roster-observation";
+import type { ComputeJob, RosterAgentState } from "../roster-activity";
+import { nudgeMessageRefusal, renderNudgeWire } from "../nudge-wire";
 import { tmuxReadOnly } from "../tmux";
 import { relaunchCrew, seats, teamContext } from "../crew-lifecycle";
 import { HARNESSES } from "./catalog";
@@ -17,7 +20,7 @@ import { tapScriptsDir } from "../scripts-dir";
 
 const scripts = tapScriptsDir();
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
-export interface Options { seat?: string; harness?: string; team?: string; message?: string; workdir?: string; json: boolean; dryRun: boolean; overrides?: Overrides }
+export interface Options { seat?: string; harness?: string; team?: string; message?: string; nudge?: string; workdir?: string; json: boolean; dryRun: boolean; overrides?: Overrides }
 export interface Exclusion { team: string; handle: string; reason: string }
 export interface Member { team: string; handle: string; root: string; team_doc: Record<string, unknown>; row: Record<string, any>; expect?: Record<string, unknown>; expect_resume?: string | null; prepare_error?: string }
 export function parseOptions(argv: string[]): Options {
@@ -32,6 +35,12 @@ export function parseOptions(argv: string[]): Options {
     // custody auto-wait or its stderr progress (tap-7t3ag), as crew/out do.
     if (arg === "--json") { out.json = true; process.env.TAP_JSON = "1"; }
     else if (arg === "--dry-run") out.dryRun = true;
+    else if (arg === "--nudge") out.nudge = "";
+    else if (arg.startsWith("--nudge=")) {
+      out.nudge = arg.slice("--nudge=".length);
+      const refusal = nudgeMessageRefusal(out.nudge);
+      if (refusal) throw new Error(`--nudge: ${refusal}`);
+    }
     else if (["--harness", "--team", "-m", "--message", "--workdir", "--env", "--unset-env"].includes(arg.split("=")[0]!)) {
       const key = arg.split("=")[0]!;
       const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : argv[++i];
@@ -46,8 +55,10 @@ export function parseOptions(argv: string[]): Options {
       else if (key === "--workdir") out.workdir = value;
       else out.message = value;
     } else if (!arg.startsWith("-") && !out.seat) out.seat = arg;
-    else throw new Error(`unexpected argument ${arg}`);
+    else throw new Error(`unexpected argument ${arg}${out.nudge !== undefined && !arg.startsWith("-") ? "; use --nudge=<text> for a message" : ""}`);
   }
+  if (out.nudge !== undefined && out.message !== undefined) throw new Error("--nudge and -m/--message cannot be combined");
+  if (out.nudge !== undefined && out.seat && out.harness) throw new Error("--nudge takes no separate value; use --nudge=<text> for a message, or omit --harness to select a seat");
   if (!!out.seat === !!out.harness) throw new Error("supply a team/handle OR --harness <claude|codex|cursor|opencode>");
   if (out.harness && !["claude", "codex", "cursor", "opencode"].includes(out.harness)) throw new Error("unsupported relaunch harness");
   if (out.workdir !== undefined && !out.seat) throw new Error("--workdir applies to a single-seat relaunch; supply [team/]handle");
@@ -91,8 +102,12 @@ export function census(options: Options, scope: string, teams: Record<string, un
   return { members, skipped_teams, excluded_inactive };
 }
 
+export interface ClassifiedMember { member: Member; status: string; reason: string; pane: string; observation: ObservedRow }
+export interface PreRelaunchState { agent_state: RosterAgentState; agent_state_reason: string }
+interface NudgeDecision { planned: boolean; reason: "non_idle" | "idle" | "crew_fresh" | "hermes_unsupported"; transport: "argv" | "bus_note" | null }
+
 /** Exactly the roster observation and socket-namespace policy, without preset/UI work. */
-export function classify(members: Member[], diagnostics: string[]): { member: Member; status: string; reason: string; pane: string }[] {
+export function classify(members: Member[], diagnostics: string[]): ClassifiedMember[] {
   const rows = members.map((m, i) => ({ ...m.row, team: m.team, handle: String(i),
     status: m.row.status ?? "active", delivery: m.row.delivery || "pane" } as RegistryRow));
   if (!rows.length) return [];
@@ -101,8 +116,39 @@ export function classify(members: Member[], diagnostics: string[]): { member: Me
   const socket = rows.some(row => row.server_socket) ? tmuxReadOnly(["display-message", "-p", "#{socket_path}"]) : null;
   const currentSocket = socket?.code === 0 && socket.stdout.trim().startsWith("/") ? socket.stdout.trim() : "";
   return observedRows(rows, observation.rows, observation.serverEpoch, {}, currentSocket).map(row => ({
-    member: members[Number(row.handle)]!, status: row.status, reason: row.statusReason, pane: row.observedPaneId,
+    member: members[Number(row.handle)]!, status: row.status, reason: row.statusReason, pane: row.observedPaneId, observation: row,
   }));
+}
+
+/** One activity snapshot before replacement, with real team/handle compute attribution. */
+export function readRelaunchStates(selected: ClassifiedMember[]): Map<Member, PreRelaunchState> {
+  const teams = new Map<string, ClassifiedMember[]>();
+  for (const row of selected) {
+    const group = teams.get(row.member.team) ?? [];
+    group.push(row); teams.set(row.member.team, group);
+  }
+  const states = new Map<Member, PreRelaunchState>();
+  let jobs: ComputeJob[] | undefined;
+  for (const [team, members] of teams) {
+    const rows = members.map(({ member, observation }) => ({ ...observation, handle: member.handle }));
+    withAgentStates(rows, { team, computeJobs: () => jobs ??= readComputeJobs() }).forEach((row, index) => {
+      states.set(members[index]!.member, { agent_state: row.agentState, agent_state_reason: row.agentStateReason });
+    });
+  }
+  return states;
+}
+
+function nudgeDecision(member: Member, state: PreRelaunchState): NudgeDecision {
+  if (isCrewRow(member)) return { planned: false, reason: "crew_fresh", transport: null };
+  if (member.row.harness === "hermes") return { planned: false, reason: "hermes_unsupported", transport: null };
+  if (state.agent_state === "idle") return { planned: false, reason: "idle", transport: null };
+  return { planned: true, reason: "non_idle", transport: member.row.harness === "opencode" ? "bus_note" : "argv" };
+}
+
+function continuation(member: Member, message: string): string {
+  return member.row.harness === "opencode"
+    ? `Continue your current work and check tap poll.${message ? `\n\nContext: ${message}` : ""}`
+    : renderNudgeWire(message);
 }
 
 const short = (text: string, limit = 140) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/[\r\n\x00-\x1f\x7f]+/g, " ").trim().slice(0, limit);
@@ -125,7 +171,7 @@ export async function crewMember(member: Member, callerPane: string, options: Op
 
 const isCrewRow = (m: Member): boolean => m.row.crew === true || m.row.crew === 1;
 
-export async function relaunch(options: Options, deps = { context: relaunchContext, prepare: prepareRelaunch, run: relaunchOne, classify, crew: crewMember, load: loadGlobalRegistry, write: (text: string) => { process.stdout.write(text); }, color: !!process.stdout.isTTY }, signal?: AbortSignal): Promise<number> {
+export async function relaunch(options: Options, deps = { context: relaunchContext, prepare: prepareRelaunch, run: relaunchOne, classify, states: readRelaunchStates, crew: crewMember, load: loadGlobalRegistry, write: (text: string) => { process.stdout.write(text); }, color: !!process.stdout.isTTY }, signal?: AbortSignal): Promise<number> {
   const context = deps.context();
   if (options.seat && !options.seat.includes("/")) {
     if (!context.team) throw new Error("current team unresolved; pass team/handle");
@@ -153,14 +199,24 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
   const diagnostics: unknown[] = [context];
   const classifierDiagnostics: string[] = [];
   const selected: Member[] = [];
+  const selectedObservations: ClassifiedMember[] = [];
   const excluded_caller: Exclusion[] = [];
   for (const observed of deps.classify(data.members, classifierDiagnostics)) {
     const { team, handle } = observed.member;
     if (observed.status !== "active") data.excluded_inactive.push({ team, handle, reason: observed.reason || observed.status });
     else if (context.caller_pane && observed.pane === context.caller_pane) excluded_caller.push({ team, handle, reason: "caller-pane" });
-    else selected.push(observed.member);
+    else { selected.push(observed.member); selectedObservations.push(observed); }
   }
   diagnostics.push(...classifierDiagnostics);
+  const nudgePlans = new Map<Member, { pre_relaunch: PreRelaunchState; nudge: NudgeDecision }>();
+  if (options.nudge !== undefined) {
+    const states = deps.states(selectedObservations);
+    for (const member of selected) {
+      const state = states.get(member);
+      if (!state) throw new Error("seat activity snapshot incomplete; nothing was replaced");
+      nudgePlans.set(member, { pre_relaunch: state, nudge: nudgeDecision(member, state) });
+    }
+  }
   const label = options.harness ? `${options.harness} seats` : "seats";
   const where = scope === "*" ? "on all teams" : `on team ${short(scope)}`;
   if (!options.json) deps.write(selected.length
@@ -174,6 +230,8 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
   const runMember = async (member: Member) => {
     const crewMember = isCrewRow(member);
     const i = durable.indexOf(member);
+    const nudgePlan = nudgePlans.get(member);
+    const memberOptions = nudgePlan?.nudge.planned ? { ...options, message: continuation(member, options.nudge!) } : options;
     let result: MemberResult;
     try {
       result = signal?.aborted
@@ -182,7 +240,7 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
         : crewMember ? await deps.crew(member, context.caller_pane ?? "", options, signal, options.json ? undefined : line => deps.write(`  ${short(member.team)}/${short(member.handle)}: ${short(line)}\n`))
         : !prepared[i] || prepared[i]?.prepare_error
         ? { code: 1, reason: prepared[i]?.prepare_error || "resume census failed" }
-        : await deps.run(prepared[i]!, options, context.caller, { signal, progress: options.json ? undefined : line => deps.write(`  ${short(member.team)}/${short(member.handle)}: ${short(line)}\n`) });
+        : await deps.run(prepared[i]!, memberOptions, context.caller, { signal, progress: options.json ? undefined : line => deps.write(`  ${short(member.team)}/${short(member.handle)}: ${short(line)}\n`) });
     } catch (error) { result = { code: error instanceof LaunchInterrupted ? error.exitCode : 1, reason: String(error) }; }
     const code = result.code ?? 1;
     const errorLine = result.stderr?.trim().split("\n").findLast(line => line.startsWith("tap session relaunch:"));
@@ -192,10 +250,20 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
         deps.write(`  ${short(member.team)}/${short(member.handle)}: ${short(warning, Infinity)}\n`);
       }
       const dot = deps.color && process.env.NO_COLOR === undefined && !options.dryRun ? `\x1b[${code === 0 ? 32 : 31}m●\x1b[0m` : "●";
-      deps.write(`${dot} ${short(member.team)}/${short(member.handle)}${code === 0 ? "" : ` — ${short(reason || "replacement failed", Infinity)}`}\n`);
+      let nudgeText = "";
+      if (nudgePlan) {
+        const { pre_relaunch: state, nudge } = nudgePlan;
+        const marker = nudge.planned
+          ? options.dryRun ? `would nudge via ${nudge.transport}`
+            : code !== 0 ? `nudge planned via ${nudge.transport}; relaunch failed`
+            : nudge.transport === "bus_note" ? "nudge via bus note" : "nudge in resume prompt"
+          : `nudge skipped: ${nudge.reason === "hermes_unsupported" ? "hermes has no resume-prompt channel" : nudge.reason}`;
+        nudgeText = ` — ${short(`${state.agent_state} (${state.agent_state_reason}); ${marker}`, Infinity)}`;
+      }
+      deps.write(`${dot} ${short(member.team)}/${short(member.handle)}${code === 0 ? "" : ` — ${short(reason || "replacement failed", Infinity)}`}${nudgeText}\n`);
       if (options.dryRun && result.workdir) deps.write(`  ${short(member.team)}/${short(member.handle)}: would respawn in ${short(result.workdir, Infinity)} and record it as launch_workdir\n`);
     }
-    return { ...result, team: member.team, handle: member.handle, code, reason, status: code !== 0 ? "failed" : crewMember ? (options.dryRun ? "would-replace" : "replaced") : options.dryRun ? "would-resume" : "resumed" };
+    return { ...result, ...nudgePlan, team: member.team, handle: member.handle, code, reason, status: code !== 0 ? "failed" : crewMember ? (options.dryRun ? "would-replace" : "replaced") : options.dryRun ? "would-resume" : "resumed" };
   };
   // Bound concurrent replacements as the incumbent batch did.
   const results: Awaited<ReturnType<typeof runMember>>[] = [];

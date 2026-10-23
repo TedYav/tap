@@ -54,8 +54,12 @@ function observe(w: World): string {
 }
 
 describe("registry row gates", () => {
+  test("the existing alert rung reports a provider error even with fresh activity", () => {
+    const frame = read("runtime/bun/test/fixtures/agent-state/errors/claude-api-overloaded.txt");
+    expect(observe({ frame, fresh: true, activity: "1000" })).toBe("rate-limited-error");
+  });
   test("absent, inactive, pane-gone and non-string rows are unknown", () => {
-    const frame = claude("idle-real");
+    const frame = claude("done-real");
     expect(observe({ seats: {}, frame })).toBe("unknown");
     expect(observe({ row: { status: "suspended" }, frame })).toBe("unknown");
     expect(observe({ alive: false, frame })).toBe("unknown");
@@ -63,17 +67,17 @@ describe("registry row gates", () => {
     expect(observe({ row: { harness: 7 }, frame })).toBe("unknown");
   });
   test("an absent status reads as active", () => {
-    expect(observe({ seats: { s: { pane: "%1", harness: "claude" } }, frame: claude("idle-real") })).toBe("idle-at-prompt");
+    expect(observe({ seats: { s: { pane: "%1", harness: "claude" } }, frame: claude("done-real") })).toBe("idle-at-prompt");
   });
   test("an empty recorded harness resolves through the pane command", () => {
     const displays = (_p: string, f: string) => ({ "#{pane_id}": "%1", "#{pane_current_command}": "claude\n" } as Record<string, string>)[f] ?? "";
-    expect(observe({ row: { harness: "" }, frame: claude("idle-real"), deps: { display: displays } })).toBe("idle-at-prompt");
+    expect(observe({ row: { harness: "" }, frame: claude("done-real"), deps: { display: displays } })).toBe("idle-at-prompt");
   });
 });
 
 // seat-activity.test.ts's Bash-stub cases, now native.
 describe("claude busy footer", () => {
-  const idle = claude("idle-real");
+  const idle = claude("done-real");
   // The live prompt row is "❯" + NBSP; a plain "❯ " first matches scrollback.
   const typed = (text: string) => idle.replace("❯\u00a0", `❯\u00a0${text}`);
   for (const draft of ["", "human draft", "explain esc to interrupt", "first line\nesc to interrupt"]) {
@@ -177,7 +181,7 @@ describe("codex busy footer", () => {
 });
 
 describe("ladder", () => {
-  const idle = claude("idle-real");
+  const idle = claude("done-real");
   test("R1 alert > R2 busy footer: a rate limit under a working footer is rate-limited", () => {
     expect(observe({ frame: claude("working-real") + "\nrate limit reached\n" })).toBe("rate-limited-error");
   });

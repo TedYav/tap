@@ -26,6 +26,7 @@ export type HelpResult = {
 
 /** Aliases share a page with the canonical verb. */
 export const HELP_ALIASES: Record<string, string> = {
+  "--version": "version",
   in: "register",
   out: "unregister",
 };
@@ -76,6 +77,7 @@ function lines(...rows: string[]): string {
 }
 
 const PAGES: Record<string, string> = {
+  version: lines("NAME", "  tap version — show the installed release", "", "USAGE", "  tap version", "  tap --version", "", "DESCRIPTION", "  Reads CHANGELOG.md. A git checkout ahead of its release adds +<commits>.g<sha>.", "  Without an export tag, commits are counted from the release heading introduction.", "  Archive installs print the build version from tap-release.json. No team enrollment is needed.", "", "EXIT CODES", "  0 version printed; 1 invalid or unreadable release information", "", "SEE ALSO", "  tap help doctor"),
   "admin": lines(
     "NAME",
     "  tap admin — operate on every team on this machine",
@@ -299,11 +301,11 @@ SEE ALSO
   tap self — harness self-control for the calling seat
 
 USAGE
-  tap self compact --handoff <file> [--notify <seat>] [--pane <tmux-target>] [--harness <name>] [--] <focus>
+  tap self compact --handoff <file> [--notify <seat>] [--model <name>] [--effort <level>] [--pane <tmux-target>] [--harness <name>] [--] <focus>
   tap self goal [--pane <tmux-target>] [--harness <name>] [--] <objective>
   tap self loop [--interval <N><s|m|h|d>] [--pane <tmux-target>] [--harness <name>] [--] <prompt>
-  tap self clear --handoff <file> [--charter <file>] [--notify <seat>] [--pane <tmux-target>] [--harness <name>]
-  tap self rebrief --handoff <file> [--notify <seat>] [--charter <file>] [--pane <tmux-target>] [--harness <name>]
+  tap self clear --handoff <file> [--charter <file>] [--notify <seat>] [--model <name>] [--effort <level>] [--pane <tmux-target>] [--harness <name>]
+  tap self rebrief --handoff <file> [--notify <seat>] [--charter <file>] [--model <name>] [--effort <level>] [--pane <tmux-target>] [--harness <name>]
 
 DESCRIPTION
   Driven by the /tap:self skill: the agent composes the text and this verb enforces the allowlist before any pane effect. It sets or strengthens only: no goal clearing, loop canceling, slash injection, deixis, or exclusive compact focus. It acts on the calling seat, which must be registered.
@@ -318,6 +320,8 @@ OPTIONS
   --handoff FILE   Required for compact, rebrief and clear on every supported harness. A readable, nonempty regular file is copied durably before arming. Use /tap:self to author it from intent; the CLI never fabricates a summary or guesses a role.
   --charter FILE   Optional separate charter for rebrief/clear, copied before the handoff.
   --notify SEAT    Optional outcome audience for compact/rebrief/clear; a different active teammate. No supervision or obligation transfer. Omitted: no peer is selected or messaged; the resumed seat reports in its own conversation. If asynchronous failure prevents recovery, only the receipt/log records it. Explicit invalid, self or inactive recipients refuse before effects.
+  --model NAME     Claude Code only, compact/rebrief/clear: after the reset is proven and before the resume note, run /model NAME (an alias such as fable or sonnet, or a full model id). Compact on a cheap model, resume on the one you want.
+  --effort LEVEL   Claude Code only, compact/rebrief/clear: low|medium|high|xhigh|max, run as /effort LEVEL after --model. Each switch is proven from the transcript; an unproven switch never withholds the resume, which then opens with a warning. Claude Code also saves each switch as its default for new sessions. Other harnesses: exit 6 before any effect.
   --pane TARGET   Resolve the calling seat by tmux target.
   --harness NAME  Must match the registered harness.
   --interval N    Loop only: a duration such as 5m.
@@ -342,6 +346,7 @@ EXAMPLES
   tap self loop --interval 5m -- "Check the CI run for this branch's pull request and report"
   tap self rebrief --handoff tmp/me/handoff.md
   tap self compact --handoff tmp/me/handoff.md --notify lead -- "Preserve: review holds and next step"
+  tap self compact --handoff tmp/me/handoff.md --model fable --effort medium -- "Preserve: open review state"
 
 EXIT CODES: armed and submitted are not completed recovery
   0  goal/loop: submitted and verified. compact: queued or armed, completion unverified; end your turn and let the resume note arrive
@@ -658,7 +663,7 @@ DESCRIPTION
     "  <me> defaults to TAP_SELF, then the caller's verified registered identity. If the caller cannot be observed, pass the positional handle: tap outstanding <handle>.",
     "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal: any row means you still owe supervision. Exit 0 whether or not sends are open (open sends are state, not an error; branch on `--json` `outstanding` and `spool_conditions` (parked sends can collapse into a backlog condition); nothing is owed only when both are empty); non-zero only for a usage error or a bus that cannot be read. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
   ),
-  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets                       saved launch recipes\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap models → tap presets or tap launch; tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
+  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets                       saved launch recipes\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap --version                     installed release and development commit\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap models → tap presets or tap launch; tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
   "peek": "NAME\n  tap peek — read a teammate's pane without touching it\n\nUSAGE\n  tap peek <handle> [--pane <tmux-target>] [--json]\n\nDESCRIPTION\n  Supervision read. Prints the seat's input_state and a transcript tail with the\n  ACTIVE INPUT REGION STRIPPED, so a draft your teammate has not submitted is never\n  quoted back at them. It sends nothing, submits nothing, and wakes nobody.\n\n  <handle> names a seat on your team. `help` can never be a registered handle, so\n  the bare `tap peek help` is unambiguous and prints this page.\n\nOPTIONS\n  --pane   read an explicit tmux target instead of the handle's registered pane\n  --json   emit {handle, pane, harness, input_state, transcript}\n\nEXIT CODES\n  0  read\n  1  usage error, or the handle is not registered\n  3  the seat's pane is gone — re-register it against a live target\n\nSEE ALSO\n  tap team (who exists) · tap health (liveness) · tap nudge (recover a stuck sentinel)\n",
   "poll": lines(
     "NAME",
@@ -1168,9 +1173,10 @@ SEE ALSO
     "DESCRIPTION",
     "  Read-only machine-wide team summary: TEAM | SEATS | STATUS, with SEATS=<active>/<total> and tap-team status dots. --details adds ATTACHED | WARN | WORKDIR; --all adds dormant teams. Unknown seats count as lifecycle-active but are ignored for the status dot. Fail-soft on an empty index; an absent index refuses unanchored_bus (next: tap init  OR  tap session launch). Aliased as 'tap team list'. refresh is the alias of tap admin refresh.",
     "",
-    "  --seats groups active seats under team headings with seat counts and roots.",
-    "  Teams and their seats show soonest warm cache expiry first. Cold seats follow,",
-    "  then unknown. --all adds dormant teams and inactive seats; tap team --all's",
+    "  --seats groups active seats under team headings (<active>/<total> seats active,",
+    "  root), separated by blank lines. Teams sort by name, ignoring case; within a",
+    "  team, soonest warm cache expiry comes first, then cold, then unknown.",
+    "  --all adds dormant teams and inactive seats; tap team --all's",
     "  diagnostic columns stay unchanged. context uses the same marker as tap team.",
     "  A named team uses tap teams <name>; --seats is machine-wide only.",
     "",
@@ -1181,7 +1187,7 @@ SEE ALSO
     "  --json     With --seats, one flat {ok:true,scope:\"machine\",agents:[...],",
     "             unobserved_teams:[...]} object (team names that could not be read).",
     "             Each agent has the team roster JSON fields plus team (string).",
-    "             Cache schema: tap help team roster. Seats retain flat expiry order.",
+    "             Cache schema: tap help team roster. JSON seats keep flat expiry order.",
     "  --wide     With --seats, keep all columns on narrow terminals.",
     "",
     "EXAMPLES",
@@ -1856,10 +1862,25 @@ DESCRIPTION
   own pane. --env, --unset-env and harness flags update and persist their
   recipe; -m and --workdir do not apply to them.
 
-  -m <instruction> rides the harness's own resume prompt as an argument; no
-  keystroke is simulated. Hermes has no such channel, so -m on a hermes seat is
-  refused (instruction_unsupported) before any effect. The pane's scrollback is
-  kept. --env KEY=VALUE and --unset-env KEY persist for later resume/restart.
+  -m <instruction> uses the harness's native resume argv where supported.
+  OpenCode uses its existing after-rebind, settle-only TAP bus payload. Hermes
+  has no prompt channel, so explicit -m refuses (instruction_unsupported)
+  before any effect. The pane's scrollback is kept. Environment overrides persist.
+
+  --nudge snapshots each selected seat once before any replacement, using the
+  same state and reason as tap team. Every state except idle gets continuation:
+  working, waiting, blocked, error, booting, overprint and unknown. Crews still
+  relaunch fresh and skip the prompt (crew_fresh). Hermes still relaunches and
+  skips it (hermes_unsupported). Selection and existing refusals stay unchanged.
+  Argv channels carry the nudge doorbell; OpenCode's bus body carries plain
+  continue/check-poll text. --nudge=<text> adds validated context: one line,
+  at most 200 UTF-8 bytes, no [[ or ]], and no word starting with @ or /.
+  An empty attached value refuses. -m and --nudge cannot be combined.
+  Bare --nudge takes no value: relaunch --nudge fable targets seat fable.
+
+  With --nudge, dry-run and JSON show pre_relaunch.agent_state and its reason,
+  plus nudge.planned, nudge.reason and nudge.transport (argv, bus_note or null).
+  A planned prompt is not proof the replacement succeeded or processed it.
 
   For durable seats relaunch refuses rather than degrading: a row whose session
   belongs to another seat, and any seat whose launch would carry no
@@ -1869,7 +1890,8 @@ DESCRIPTION
 OPTIONS
   --harness <h>                      batch form (above)
   --team <name> | --team='*'         batch scope
-  -m <instruction>                   resume prompt for the relaunched conversation
+  -m <instruction>                   instruction through the existing harness channel
+  --nudge[=<text>]                    continue every non-idle seat; attached text only
   --workdir <path>                   single seat only: respawn in this checkout of the
                                      team repo and record it as launch_workdir
   --env KEY=VALUE, --unset-env KEY   repeatable; persisted
@@ -1879,6 +1901,8 @@ OPTIONS
   -h, --help                         show this help and exit
 
 EXAMPLES
+  tap session relaunch --harness codex --nudge
+  tap session relaunch fable --nudge='continue the current review' --dry-run
   tap session relaunch fable
   tap session relaunch tap/luna-reviewer -m "continue the review"
   tap session relaunch --harness claude --dry-run
@@ -2280,7 +2304,7 @@ PAGES["team roster"] = lines(
   "  rendered as offline.",
   "",
   "COLUMNS",
-  "  state    A display projection of observed activity: working, blocked, idle,",
+  "  state    A display projection of observed activity: working, blocked, error, idle,",
   "           waiting, booting, overprint, unknown or unsubmitted for an active",
   "           seat; incapable for a seat explicitly marked incapable; unbound for",
   "           a pane awaiting rebind; otherwise offline. Daemon ready is described",
@@ -2292,6 +2316,10 @@ PAGES["team roster"] = lines(
   "           turn end, and only a dated transcript record supplies that, never a",
   "           footer's bare clock (`● idle 41m`). A long idle is the stall signal;",
   "           a long waiting points at a hung job. No witness, no age.",
+  "           error means a failed turn with a usable composer (API",
+  "           error, usage limit or provider capacity). Delivery and nudge can",
+  "           use it. blocked means a modal holds input. Attach to inspect it;",
+  "           --json retains the classifier reason in agent_state_reason.",
   "           JSON keeps the separate lifecycle and activity fields: `status`,",
   "           `status_reason` and `agent_state`.",
   "  family   Vendor lineage (anthropic, openai, google, xai...): the recorded",
@@ -2350,7 +2378,7 @@ PAGES["team roster"] = lines(
   "              in `status`; it does not widen the default table. It also omits",
   "              per-seat offline trailers and the offline and gone-seats warnings;",
   "              `reason` carries the classifier status_reason.",
-  "  --active    Only lifecycle-active seats (idle, working, blocked); excludes",
+  "  --active    Only lifecycle-active seats (including blocked and error); excludes",
   "              poll-delivery daemons and explicit daemon harnesses.",
   "  --offline   Only offline, gone, suspended or expired seats; excludes daemons.",
   "              Unknown, pending and unbound seats are not classified as offline.",
@@ -2433,13 +2461,13 @@ PAGES["team calibration"] = lines(
 
 PAGES["team doctor"] = lines(
   "NAME",
-  "  tap team doctor — check that each active seat is bound to the right session",
+  "  tap team doctor — check session bindings and explain seat states",
   "",
   "USAGE",
-  "  tap team doctor [--fix] [--only session-binding] [--json]",
+  "  tap team doctor [--fix] [--only session-binding|seat-state] [--json]",
   "",
   "DESCRIPTION",
-  "  Checks the session binding of every active seat. Without --fix the report never",
+  "  Runs session-binding and seat-state checks. Without --fix the report never",
   "  writes registry bindings. --fix repairs Claude/Codex mismatches only from",
   "  stable pane and process evidence:",
   "    Claude              the PID record matches process start time and worktree;",
@@ -2458,18 +2486,26 @@ PAGES["team doctor"] = lines(
   "  kept.",
   "",
   "OPTIONS",
-  "  --fix                    Apply the repairs above.",
-  "  --only session-binding   Name the check to run; it is the only one available.",
+  "  --fix                    Repair session bindings only; seat-state stays read-only.",
+  "  --only <check>           Run session-binding or seat-state (default: both).",
   "  --json                   Retain all findings, including unchanged seats.",
   "",
   "OUTPUT",
+  "  Seat-state uses the same observation as tap team. Error and blocked seats show",
+  "  their reason and a nudge or attach command. Unreadable pane states remain",
+  "  unchecked; poll and inactive seats are outside this check. --fix --only",
+  "  seat-state reports without changing anything. JSON summary.clean describes",
+  "  binding integrity; summary.seat_attention counts blocked/error seats.",
   "  Human output omits unchanged seats and shows every skipped warning and repair",
-  "  receipt. A scan with no skipped or repair lines says ✓ no issues detected.",
+  "  receipt. Only a scan with no visible findings says ✓ no issues detected.",
   "  Interactive terminals show transient current-seat progress. Skipped checks are",
   "  grouped under yellow not-checked warnings; would-repair findings are red and",
   "  repair receipts are uncolored. The clean check is green. NO_COLOR or TERM=dumb",
   "  disables color; TERM=dumb also disables progress. Redirected output has no",
-  "  progress or color.",
+  "  progress or color. A completed scan exits 0, including error/blocked findings.",
+  "",
+  "EXAMPLE",
+  "  tap team doctor --only seat-state --json",
   "",
   "SEE ALSO",
   "  tap help team · tap doctor (bus-integrity report)",

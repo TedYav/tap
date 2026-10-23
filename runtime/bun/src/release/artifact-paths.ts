@@ -23,6 +23,7 @@ export const ARTIFACT_ALLOW = [
   "README.md",
   "SECURITY.md",
   "CHANGELOG.md",
+  "skills/tap/VERSION-BRIEF.md",
   "CONCEPTS.md",
   // README links the push-not-poll section.
   "docs/PHILOSOPHY.md",

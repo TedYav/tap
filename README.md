@@ -3,7 +3,8 @@
 TAP allows agents to communicate! If this doesn't work with your [threat model](SECURITY.md), don't use it!
 
 **Pre-release beta.** TAP is not yet a public, open-source release. Expect bugs. Send bug reports and
-feature requests to ted@tedyav.com.
+feature requests to ted@tedyav.com. Run `tap --version` when reporting a problem; see
+[CHANGELOG.md](CHANGELOG.md) for release notes.
 
 TAP lets Claude Code and Codex talk while you watch their terminals. If you like
 agent swarms, tmux, and seeing what each agent is doing, this is for you.
@@ -82,11 +83,18 @@ From inside Claude, press **Ctrl-b**, then **d** to return to your terminal.
 | See who needs attention | `tap team` from your project |
 | Leave an agent running | **Ctrl-b**, then **d** |
 | Scroll in a terminal | **Ctrl-b**, then **[**; **q** to leave scroll mode |
+| Type a teammate's name from a picker | **Ctrl-b**, then **Ctrl-g** (once `tap keybinding install` has run) |
+| See every team's seats on this machine | `tap teams --seats` |
+| Bring the team back after a reboot | `tap team up --last` |
 
-When the roster shows `needs you: tap attach ...`, visit that seat and inspect
-its prompt. The human makes sign-in, trust and permission decisions. Then return
-to the asking pane and have it check the original question before sending it
-again.
+`tap team` shows each seat's state (working, idle, blocked or error), its
+context use and, for Claude, an estimate of when its prompt cache expires.
+A **blocked** seat is waiting on a prompt: visit it with `tap attach <seat>` and
+inspect the prompt. The human makes sign-in, trust and permission decisions.
+Then return to the asking pane and have it check the original question before
+sending it again. An **error** seat's last turn failed (an API error or a usage
+limit) but its input box still works. `tap team doctor` explains each blocked or
+error seat and names the command that helps it.
 
 ![A TAP team spanning several agent harnesses](docs/assets/tap-team.png)
 

@@ -21,15 +21,16 @@ import { paneHarnessCommand } from "../observe-gather";
 import { tmuxReadOnly } from "../tmux";
 import { checkHarness, checkText, commandPrefix, family, type SelfVerb } from "../self-gate";
 import { tapScriptsDir } from "../scripts-dir";
+import { checkSwitches, hasSwitches, type SeatSwitches } from "../self-switch";
 
 const SCRIPTS = tapScriptsDir();
 const say = (message: string) => process.stderr.write(`self: ${message}\n`);
 
-export interface SelfOptions { verb: SelfVerb; text: string; pane?: string; harness?: string; interval?: string; handoff?: string; notify?: string }
+export interface SelfOptions { verb: SelfVerb; text: string; pane?: string; harness?: string; interval?: string; handoff?: string; notify?: string; model?: string; effort?: string }
 
-const USAGE = "usage: tap self compact --handoff FILE [--notify SEAT] [--pane TARGET] [--harness NAME] -- FOCUS\n" +
+const USAGE = "usage: tap self compact --handoff FILE [--notify SEAT] [--model NAME] [--effort LEVEL] [--pane TARGET] [--harness NAME] -- FOCUS\n" +
   "       tap self <goal|loop> [--pane TARGET] [--harness NAME] [--interval DURATION] -- TEXT\n" +
-  "       tap self <clear|rebrief> --handoff FILE [--charter FILE] [--notify SEAT] [--pane TARGET] [--harness NAME]";
+  "       tap self <clear|rebrief> --handoff FILE [--charter FILE] [--notify SEAT] [--model NAME] [--effort LEVEL] [--pane TARGET] [--harness NAME]";
 
 export function parseSelf(argv: string[]): SelfOptions {
   const verb = argv[0];
@@ -37,7 +38,7 @@ export function parseSelf(argv: string[]): SelfOptions {
     throw new TapError(1, "usage_error", "tap help self", `first argument must be a verb: compact|goal|loop|clear|rebrief\n${USAGE}`, "tap self");
   }
   const out: SelfOptions = { verb: verb as SelfVerb, text: "" };
-  const flags = { "--pane": "pane", "--harness": "harness", "--interval": "interval", "--handoff": "handoff", "--notify": "notify" } as const;
+  const flags = { "--pane": "pane", "--harness": "harness", "--interval": "interval", "--handoff": "handoff", "--notify": "notify", "--model": "model", "--effort": "effort" } as const;
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--") { out.text = argv.slice(i + 1).join(" "); break; }
@@ -55,6 +56,10 @@ export function parseSelf(argv: string[]): SelfOptions {
     break;
   }
   if (out.verb === "compact" && !out.handoff) throw new Error("an authored --handoff FILE is required; use /tap:self compact to prepare it");
+  if (out.model !== undefined || out.effort !== undefined) {
+    if (out.verb !== "compact") throw new TapError(1, "usage_error", "tap help self", "--model and --effort only apply to compact, clear and rebrief", "tap self");
+    checkSwitches({ model: out.model, effort: out.effort });
+  }
   return out;
 }
 
@@ -186,7 +191,8 @@ function runSelf(options: SelfOptions, scripts: string, context?: ResolvedContex
 
   if (verb === "compact") {
     if (!ownerStill()) { say(ownerChanged); return 1; }
-    return armSelfCompact({ pane, handoffPath: options.handoff, focus: text, notify: options.notify }, ctx);
+    const switches: SeatSwitches = { ...(options.model !== undefined && { model: options.model }), ...(options.effort !== undefined && { effort: options.effort }) };
+    return armSelfCompact({ pane, handoffPath: options.handoff, focus: text, notify: options.notify, ...(hasSwitches(switches) && { switches }) }, ctx);
   }
 
   // Typed command prefix, then the pasted text and its marker. The marker is not

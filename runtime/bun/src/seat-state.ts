@@ -309,6 +309,7 @@ export function seatState(handle: string, opts: SeatStateOptions): SeatState {
   const codex = harness === "codex" || harness.startsWith("codex-");
   const family = codex ? "codex" : harness.startsWith("claude") ? "claude" : harness;
   const held = detectAgentState(family, codex && capture.code === 0 ? capture.stdout : full);
+  if (held.agentState === "error") return "rate-limited-error";
   if (held.agentState === "blocked" && held.reason !== "shell_mode") return "blocked-on-approval";
 
   // (2) BUSY-FOOTER GATES — a generating seat that still shows an input band must

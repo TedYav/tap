@@ -2,6 +2,8 @@
 
 > Normative TAP v0.23 source fragment. Search the group index for adjacent parts.
 
+[Continuation after relaunch (`--nudge`)](relaunch-nudge.md) uses the roster state snapshot and the existing instruction channel.
+
 ## Recorded launch workdir (2026-09-25)
 
 From an enrolled team root, `tap session launch <preset|harness> [name] --workdir <path>` starts the harness in an existing checkout of the same Git repository. Relative paths resolve from the caller directory; symlinks resolve to the canonical checkout root. A missing path, checkout subdirectory, or unrelated repository refuses before enrollment or reservation. Dry run performs the same validation without writes.

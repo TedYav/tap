@@ -458,12 +458,12 @@ printf 'answer\\n'
   } finally { f.close(); }
 });
 
-test("router refuses every verb but help in a stateless child, with no effects", () => {
+test("router refuses stateful verbs in a stateless child, with no effects", () => {
   const f = fixture();
   try {
     writeFileSync(join(f.env.TAP_INDEX_HOME!, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {} }));
     const before = snapshot(f.dir);
-    const verbs = [["whoami"], ["reply", "some-message-id"], ["send", "somebody", "hi"], ["definitely-not-a-verb"], ["version"], ["--version"]];
+    const verbs = [["whoami"], ["reply", "some-message-id"], ["send", "somebody", "hi"], ["definitely-not-a-verb"]];
     for (const argv of verbs) {
       const refused = run(f, argv, doors.bin, { TAP_STATELESS: "1" });
       expect(refused.status, `${argv[0]}: ${refused.stderr}`).not.toBe(0);
@@ -474,7 +474,7 @@ test("router refuses every verb but help in a stateless child, with no effects",
     }
     expect(snapshot(f.dir)).toEqual(before);
     // help stays available, and the same verb outside a stateless child is not this refusal.
-    for (const argv of [["--help"], ["help"], ["whoami", "--help"], ["-h", "ask"], ["--help", "ask"], ["help", "ask"], []]) {
+    for (const argv of [["version"], ["--version"], ["--help"], ["help"], ["whoami", "--help"], ["-h", "ask"], ["--help", "ask"], ["help", "ask"], []]) {
       const help = run(f, argv, doors.bin, { TAP_STATELESS: "1" });
       expect(help.status, `${argv.join(" ")}: ${help.stderr}`).toBe(0);
       expect(help.stdout).not.toBe("");

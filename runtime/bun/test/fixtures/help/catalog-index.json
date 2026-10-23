@@ -9,6 +9,16 @@
   },
   {
     "topic": [
+      "--version"
+    ],
+    "key": "version",
+    "exit": 0,
+    "page": "version",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
       "admin"
     ],
     "key": "admin",
@@ -1284,6 +1294,16 @@
     "key": "up",
     "exit": 0,
     "page": "up",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "version"
+    ],
+    "key": "version",
+    "exit": 0,
+    "page": "version",
     "dedicated": true,
     "tombstone": false
   },

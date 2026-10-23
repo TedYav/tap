@@ -1,0 +1,9 @@
+⏺ API Error: Connection lost mid-response. The response above may be incomplete.
+
+✻ Brewed for 18m 12s · done 2:51 PM
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────── example/seat ─
+❯
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Example model | context 30% | project example | branch example
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

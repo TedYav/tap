@@ -35,7 +35,7 @@ function schemaNumber(value: JsonValue): number | bigint {
 function brief(root: string, team: string, handle: string, env: NodeJS.ProcessEnv): void {
   const current = SENTINEL_VERSION;
   const statePath = env.TAP_VERSION_SEEN_PATH ?? join(homedir(), ".tap/version-seen.json");
-  const changelogPath = env.TAP_VERSION_CHANGELOG_PATH ?? join(root, "CHANGELOG.md");
+  const changelogPath = env.TAP_VERSION_CHANGELOG_PATH ?? join(root, "skills/tap/VERSION-BRIEF.md");
   const visible = env.TAP_VERSION_RECORD_ONLY !== "1";
   // Check before opening state descriptors: a closed stdout could otherwise be
   // reused by the lock, making a notice write succeed against the lock file.

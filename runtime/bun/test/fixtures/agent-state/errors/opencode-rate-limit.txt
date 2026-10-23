@@ -1,0 +1,14 @@
+  ┃
+  ┃  Too Many Requests: You've exceeded your subscription rate limits. Upgrade, or try again later. You can view
+  ┃  your usage at https://synthetic.new/billing
+  ┃
+
+     ▣  Build · Kimi K3
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Kimi K3 Synthetic
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /example/project                                                379.3K (72%) · $29.91  ctrl+p commands
+

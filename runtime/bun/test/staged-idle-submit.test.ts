@@ -524,6 +524,21 @@ test("R5 fix keeps a clean idle Codex composer submittable: one Enter, license m
   expect(existsSync(join(home, "receipts", `${codexId}.idle-submit`))).toBe(true);
 });
 
+test("a quota-error composer still permits exactly one licensed Enter for an owned staged wire", () => {
+  const home = scratch();
+  stageHold(home, codexId);
+  const captured = readFileSync(join(import.meta.dir, "fixtures/agent-state/errors/codex-usage-limit.ansi"), "utf8");
+  // Combine the captured terminal error with an already captured staged
+  // composer. The empty prompt's shortcuts footer is not a staged-input row.
+  const staged = captured.slice(0, captured.indexOf("\x1b[1m›"))
+    + codexStaged.slice(codexStaged.lastIndexOf("\x1b[1m›"));
+  const run = codexArm(home, [staged, staged]);
+  expect(run.result).toMatchObject({ status: "injected" });
+  expect(run.enters).toBe(1);
+  expect(run.injections).toBe(0);
+  expect(existsSync(join(home, "receipts", `${codexId}.idle-submit`))).toBe(true);
+});
+
 test("R5: human bytes landing after the wire between samples never ride the Codex Enter", () => {
   const home = scratch();
   stageHold(home, codexId);

@@ -230,20 +230,34 @@ if [ "$(uname -s)" = Darwin ] && command -v xattr >/dev/null 2>&1; then
   xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true
 fi
 
-# Name the version current leaves, so an upgrade or a rollback is visible. Versions are
-# <sentinel>-<YYYYMMDD>-<commit>; only an earlier sentinel or day is called older, and two
-# commits from one day are not ordered.
+# Name the version current leaves. Compare release components, then the development
+# commit count. Unknown legacy formats and same-count parallel builds are unordered.
 previous="$(readlink "$prefix/current" 2>/dev/null || true)"
 previous="${previous#versions/}"
-older_than() { # a b: a is an earlier release than b
-  local a="$1" b="$2" a_major a_minor a_day b_major b_minor b_day
-  a_major="${a%%.*}"; a_minor="${a#*.}"; a_minor="${a_minor%%-*}"; a_day="${a#*-}"; a_day="${a_day%%-*}"
-  b_major="${b%%.*}"; b_minor="${b#*.}"; b_minor="${b_minor%%-*}"; b_day="${b#*-}"; b_day="${b_day%%-*}"
-  case "$a_major$a_minor$a_day$b_major$b_minor$b_day" in ""|*[!0-9]*) return 1 ;; esac
-  [ "${#a_day}" -eq 8 ] && [ "${#b_day}" -eq 8 ] || return 1
-  if [ "$a_major" -ne "$b_major" ]; then [ "$a_major" -lt "$b_major" ]; return; fi
-  if [ "$a_minor" -ne "$b_minor" ]; then [ "$a_minor" -lt "$b_minor" ]; return; fi
-  [ "$a_day" -lt "$b_day" ]
+older_than() {
+  local a="$1" b="$2" a_base b_base a_count=0 b_count=0 i x y
+  local a_parts=() b_parts=()
+  a_base="${a%%+*}"; b_base="${b%%+*}"
+  [[ "$a_base" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  a_parts=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  [[ "$b_base" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  b_parts=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  if [ "$a" != "$a_base" ]; then
+    [[ "${a#*+}" =~ ^(0|[1-9][0-9]*)\.g[0-9a-f]+$ ]] || return 1
+    a_count="${BASH_REMATCH[1]}"
+  fi
+  if [ "$b" != "$b_base" ]; then
+    [[ "${b#*+}" =~ ^(0|[1-9][0-9]*)\.g[0-9a-f]+$ ]] || return 1
+    b_count="${BASH_REMATCH[1]}"
+  fi
+  a_parts+=("$a_count"); b_parts+=("$b_count")
+  for i in 0 1 2 3; do
+    x="${a_parts[$i]}"; y="${b_parts[$i]}"
+    [ "$x" != "$y" ] || continue
+    if [ "${#x}" -ne "${#y}" ]; then [ "${#x}" -lt "${#y}" ]; return; fi
+    [[ "$x" < "$y" ]]; return
+  done
+  return 1
 }
 
 # Switch current atomically: a new link renamed over the old one.

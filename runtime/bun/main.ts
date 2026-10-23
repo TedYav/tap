@@ -12,6 +12,7 @@ import { cmdAdminFast } from "./src/verbs/admin-fast";
 import { cmdAdmin } from "./src/verbs/admin";
 import { onboarding } from "./src/onboarding";
 import { verbose } from "./src/verbose";
+import { cmdVersion } from "./src/release-version";
 import { tapScriptsDir } from "./src/scripts-dir";
 import { noMachineIndexError, resolveContext, TapError } from "./src/context";
 import { isOldStoreRefusal } from "./src/register-authority";
@@ -80,6 +81,8 @@ export type Handler = (argv: string[], env?: NodeJS.ProcessEnv, stdin?: Buffer) 
 type NativeHandler = (argv: string[]) => number | Promise<number>;
 
 const nativeHandlers = {
+  version: cmdVersion,
+  "--version": cmdVersion,
   compact: argv => cmdCompact(argv, tapScriptsDir()),
   self: argv => cmdSelf(argv, tapScriptsDir()),
   command: argv => cmdCompact(argv, tapScriptsDir(), true),
@@ -396,13 +399,12 @@ function reserved(argv: string[]): boolean {
  * A `tap ask` child is a stateless one-shot: TAP_STATELESS=1 and no seat. Self identity is
  * also walked from the process tree's first tty, which reaches the invoking seat's pane, so
  * environment scrubbing alone cannot keep the child from acting as that seat. Fail closed:
- * every verb but help refuses here, before any bus or registry resolution. `version` is not
- * exempt: it has no static leaf, so it would fall into onboarding, which can create state.
+ * every verb but help and version refuses here, before any bus or registry resolution.
  */
 function statelessRefusal(argv: string[], help: typeof import("./src/help") | undefined): number | null {
   if (process.env.TAP_STATELESS !== "1") return null;
   const verb = argv[0];
-  if (verb === undefined || verb === "help") return null;
+  if (verb === undefined || verb === "help" || verb === "version" || verb === "--version") return null;
   // `tap -h ask` / `tap --help ask` are the ask-help aliases main serves before any state read.
   if (HELP.has(verb) && argv.length === 2 && argv[1] === "ask") return null;
   if (argv.some(arg => HELP.has(arg)) && help?.isHelpForm(argv)) return null;
@@ -570,7 +572,7 @@ if (import.meta.main) {
     if (process.env.TAP_STATELESS !== "1") {
       try { recording = statSync(marker).isFile(); } catch { /* absent or unreadable: not recording */ }
     }
-    if (!launchHelpRequested && verb !== "doctor" && verb !== "completion" && recording) {
+    if (!launchHelpRequested && verb !== "doctor" && verb !== "completion" && verb !== "version" && verb !== "--version" && recording) {
       try { (await import("./src/debug-capture")).recordCommand(argv, process.env, process.pid); }
       catch (error) { console.error("tap debug: journal write failed: " + (error as Error).message); }
     }
@@ -587,7 +589,9 @@ if (import.meta.main) {
   verbose("dispatch", { verb: argv[0] ?? "", cwd: process.cwd() });
   // Ask never enters context/onboarding. Its Bash door also reaches this one
   // owner.
-  if (argv[0] === "ask" || (argv.length === 2 && ["help", "-h", "--help"].includes(argv[0] ?? "") && argv[1] === "ask")) {
+  if (["version", "--version"].includes(argv[0] ?? "") && !argv.some(arg => HELP.has(arg))) {
+    process.exitCode = cmdVersion(argv.slice(1));
+  } else if (argv[0] === "ask" || (argv.length === 2 && ["help", "-h", "--help"].includes(argv[0] ?? "") && argv[1] === "ask")) {
     const { cmdAsk } = await import("./src/verbs/ask");
     process.exitCode = await cmdAsk(argv[0] === "ask" ? argv.slice(1) : ["--help"]);
   } else if (argv[0] === "help" && argv[1] === "skill") {

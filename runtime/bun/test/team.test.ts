@@ -332,13 +332,16 @@ esac`);
     delete f.env.TAP_SERVER_EPOCH;
     const tmuxTrace = join(f.dir, "tmux.trace");
     f.env.TMUX_TRACE = tmuxTrace;
+    const capturePath = join(f.dir, "state-frame");
+    f.env.STATE_FRAME = capturePath;
+    writeFileSync(capturePath, "Allow command?\n");
     replaceTmux(f, String.raw`
 while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
 printf '%s\n' "$*" >> "$TMUX_TRACE"
 case "$1" in
   list-sessions) printf 'live-session\t1:1\t1\n' ;;
   list-panes) printf 'live-session\tlive-session:1.0\t%%7\tcodex\t123\t1:1\t0\n' ;;
-  capture-pane) printf '%s\n' 'Allow command?' ;;
+  capture-pane) cat "$STATE_FRAME" ;;
   display-message) printf '1:1\n' ;;
   *) exit 1 ;;
 esac`);
@@ -363,13 +366,17 @@ esac`);
     expect(human.stdout).toMatch(/handle\s+harness\s+state\s+context\s+family\s+model\s+preset(?:\s|$)/);
     expect(human.stdout).not.toMatch(/handle\s+harness\s+status\s+agent/);
     expect(human.stdout).not.toMatch(/\sroles(?:\s|$)/);
-    expect(human.stdout).toMatch(/live\s+codex\s+● needs you: tap attach roster\/live\s+—\s+openai\s+\?\s+n\/a/);
+    expect(human.stdout).toMatch(/live\s+codex\s+● blocked\s+—\s+openai\s+\?\s+n\/a/);
     const trace = readFileSync(tmuxTrace, "utf8");
     expect(trace.match(/capture-pane/g)).toHaveLength(1);
     expect(trace).toContain("capture-pane -e -p -t %7");
     writeFileSync(tmuxTrace, "");
     expect(run(["team", "roster"], f.worktree, f.env).stdout).toBe(human.stdout);
     expect(readFileSync(tmuxTrace, "utf8").match(/capture-pane/g)).toHaveLength(1);
+    writeFileSync(capturePath, readFileSync(join(import.meta.dir, "fixtures/agent-state/errors/codex-usage-limit.ansi"), "utf8"));
+    expect(run(["team"], f.worktree, f.env).stdout).toContain("● error");
+    expect(JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents[0])
+      .toMatchObject({ agent_state: "error", agent_state_reason: "usage_limit" });
   }, 30_000);
 
   test("an ended turn that owns background work reads waiting, aged from its dated turn end (tap-i5fzq)", () => {
@@ -608,7 +615,7 @@ esac`);
     }));
     // Lethal: forcing the active arm to `unknown` fails working/blocked/idle.
     expect(rows.working, readFileSync(tmuxTrace, "utf8")).toBe("● working");
-    expect(rows.blocked).toBe("● needs you: tap attach roster/blocked");
+    expect(rows.blocked).toBe("● blocked");
     expect(rows.idle).toBe("● idle");
     expect(rows.unknown_active).toBe("● unknown");
     expect(rows.capture_failed).toBe("● unknown");
@@ -709,8 +716,8 @@ esac`);
     expect(plain.stdout).not.toContain("\x1b[");
     expect(piped.stdout).toBe(plain.stdout);
     expect(ttyNoColor.stdout).not.toContain("\x1b[");
-    expect(plain.stdout).toContain("● needs you: tap attach roster/live");
-    expect(colored.stdout).toContain("\x1b[31m●\x1b[0m needs you: tap attach roster/live");
+    expect(plain.stdout).toContain("● blocked");
+    expect(colored.stdout).toContain("\x1b[31m●\x1b[0m blocked");
     expect(colored.stdout).toContain("\x1b[90m●\x1b[0m offline");
     const stripAnsi = (value: string): string => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replaceAll("\r", "");
     expect(stripAnsi(colored.stdout)).toBe(ttyNoColor.stdout.replaceAll("\r", ""));
@@ -1387,16 +1394,16 @@ esac`);
     ];
     const actual = argvs.map(argv => { const r = run(argv, f.worktree, f.env); return [argv.join(" "), r.status, r.stdout, r.stderr]; });
     expect(actual).toEqual([
-      ["team ", 0, "tap team: no agents registered yet — start one: tap session launch <preset|harness> [name]\n", ""],
+      ["team ", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
       ["team  --json", 0, "{\"team\":null,\"agents\":[]}\n", ""],
       ["team show", 1, "", "tap team: unknown subcommand 'show' (usage: tap team [list|roster|calibration|attach|detach|down|out|up|refresh|shutdown|reset|restore|purge] [--json|--all|--wide]); next: tap help team\n"],
       ["team --future-option", 1, "", "tap team: unknown option '--future-option'; next: tap help team\n"],
       ["team --names --json", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap team --names   (or: tap team --json)\",\"detail\":\"--names and --json are alternative output shapes \\u2014 pick one\"}\n", ""],
-      ["team --active", 0, "tap team: no agents registered yet — start one: tap session launch <preset|harness> [name]\n", ""],
+      ["team --active", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
       ["team --json extra", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap help team\",\"detail\":\"unexpected arg 'extra'\"}\n", ""],
       ["team roster --future-option", 1, "", "tap team roster: unknown option '--future-option'; next: tap help team\n"],
       ["team roster --names --json", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap team --names   (or: tap team --json)\",\"detail\":\"--names and --json are alternative output shapes \\u2014 pick one\"}\n", ""],
-      ["team roster --active", 0, "tap team: no agents registered yet — start one: tap session launch <preset|harness> [name]\n", ""],
+      ["team roster --active", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
       ["team --json --all", 0, "{\"team\":null,\"agents\":[]}\n", ""],
       ["team --names --all", 0, "", ""],
       ["team --active --names", 0, "", ""],
@@ -1911,7 +1918,7 @@ exec '${realPython}' "$@"
   expect(existsSync(trace)).toBe(false);
 });
 
-test("fresh two-seat roster names permission and hook-trust actions without a stale-binding warning", () => {
+test("fresh two-seat roster shows blocked permission and hook-trust states without a stale-binding warning", () => {
   const f = fixture(); delete f.env.TAP_SERVER_EPOCH;
   const captures = join(root, "runtime/bun/test/fixtures/agent-state");
   replaceTmux(f, `
@@ -1932,8 +1939,8 @@ esac`);
   for (const args of [["team"], ["team", "roster", "roster"]]) {
     const human = run(args, f.worktree, f.env);
     expect(human.status, human.stderr).toBe(0);
-    expect(human.stdout).toContain("needs you: tap attach roster/helper");
-    expect(human.stdout).toContain("needs you: tap attach roster/reviewer");
+    expect(human.stdout).toContain("blocked");
+    expect(human.stdout).toContain("blocked");
     expect(human.stdout).not.toContain("Warning:");
     expect(human.stdout).not.toContain("Private conversation");
     const json = run([...args, "--json"], f.worktree, f.env);
@@ -3329,3 +3336,58 @@ esac`);
   const unknown = runTty(["team"],f.worktree,{...env,NO_COLOR:""});
   expect(unknown.stdout).not.toMatch(/2k ●/);
 },60_000);
+
+test("doctor seat-state matches roster reasons and remains read-only even with --fix", () => {
+  const f = fixture();
+  const frame = join(f.dir, "doctor-frame"), trace = join(f.dir, "doctor-trace");
+  f.env.STATE_FRAME = frame; f.env.TMUX_TRACE = trace;
+  replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+printf '%s\n' "$*" >> "$TMUX_TRACE"
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\tcodex\t123\t1:1\t0\n' ;;
+ capture-pane) cat "$STATE_FRAME" ;;
+ display-message) case "$*" in *pane_title*) printf 'Demo\n' ;; *) printf '1:1\n' ;; esac ;;
+ *) exit 1 ;;
+esac`);
+  const registry = seedPostFlip(f, { live: { status: "active", delivery: "pane", pane: "live-session:0.0", pane_id: "%7",
+    session: "live-session", server_epoch: "srv:1:1", harness: "codex" },
+    daemon: { status: "active", delivery: "poll", harness: "daemon" },
+    stopped: { status: "suspended", delivery: "pane", harness: "codex", pane: "old:0.0", session: "old" },
+  });
+  const before = readFileSync(registry, "utf8");
+  for (const [file, state, next] of [
+    ["errors/codex-usage-limit.ansi", "error", "tap nudge roster/live"],
+    ["codex/blocked-real.txt", "blocked", "tap attach roster/live"],
+    ["codex/fresh-warning-fast.ansi", "idle", ""],
+  ]) {
+    writeFileSync(frame, readFileSync(join(root, "runtime/bun/test/fixtures/agent-state", file!), "utf8"));
+    const roster = JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents.find((row: {handle: string}) => row.handle === "live");
+    writeFileSync(trace, "");
+    const checked = run(["team", "doctor", "--fix", "--only", "seat-state", "--json"], f.worktree, f.env);
+    expect(checked.status, checked.stderr).toBe(0);
+    const report = JSON.parse(checked.stdout), finding = report.findings[0];
+    expect(report).toMatchObject({ ok: true, summary: { torn: 0, unattributed: 0, clean: true, seat_attention: state === "idle" ? 0 : 1 } });
+    expect(report.findings).toHaveLength(1);
+    expect(finding).toMatchObject({ name: "seat-state", detail: { handle: "live", agent_state: state,
+      agent_state_reason: roster.agent_state_reason } });
+    if (next) expect(finding.next).toBe(next);
+    expect(readFileSync(trace, "utf8").match(/capture-pane/g)).toHaveLength(1);
+    expect(readFileSync(registry, "utf8")).toBe(before);
+    const human = run(["team", "doctor", "--only", "seat-state"], f.worktree, f.env);
+    expect(human.status, human.stderr).toBe(0);
+    if (state === "idle") expect(human.stdout).toContain("✓ no issues detected");
+    else {
+      expect(human.stdout).toContain(`${state} (${roster.agent_state_reason})`);
+      expect(human.stdout).toContain(next!);
+      expect(human.stdout).not.toContain("✓");
+    }
+  }
+  writeFileSync(frame, "unreadable frame\n");
+  const unknown = run(["team", "doctor", "--only", "seat-state", "--json"], f.worktree, f.env);
+  expect(JSON.parse(unknown.stdout)).toMatchObject({summary:{clean:true,seat_attention:0}, findings:[{detail:{outcome:"skipped",agent_state:"unknown"}}]});
+  const combined = JSON.parse(run(["team", "doctor", "--json"], f.worktree, f.env).stdout);
+  expect(combined.findings.map((v: {name: string}) => v.name)).toEqual(["session-binding", "session-binding", "session-binding", "seat-state"]);
+  expect(readFileSync(registry, "utf8")).toBe(before);
+}, 30_000);

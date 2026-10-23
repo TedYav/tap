@@ -9,7 +9,7 @@
 // production caller uses since the Bash bridge was retired; this port
 // enters the same `main(argv, env)` the door wraps, in-process, the way the
 // tick's seam does.
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, beforeEach, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -96,7 +96,7 @@ function registry(harness: string): void {
   writeFileSync(reg(), `{"schema": "0.20", "team":{"name":"team"},"seats":{"reviewer":{"harness":"${harness}","pane":"%1","status":"active"}}}\n`);
   // the harness's own empty input band, which the ladder reads as idle-at-prompt
   const root = join(import.meta.dir, "../../..");
-  if (harness === "claude") copyFileSync(join(root, "runtime/bun/test/fixtures/agent-state/claude/idle-real.txt"), file("idle-band"));
+  if (harness === "claude") copyFileSync(join(root, "runtime/bun/test/fixtures/agent-state/claude/done-real.txt"), file("idle-band"));
   else if (harness === "opencode") copyFileSync(join(root, "skills/tap/scripts/smoke/fixtures/opencode-splash/healthy-idle-band.txt"), file("idle-band"));
   else writeFileSync(file("idle-band"), "done.\n\u203a \n");
 }
@@ -115,6 +115,15 @@ function resetCase(): void {
   rmSync(join(bus(), "spool/ask.md"), { force: true });
   rmSync(join(bus(), "receipts/ask.done"), { force: true });
 }
+
+beforeEach(() => {
+  fixture();
+  writeFileSync(join(index(), "global-registry.json"), '{"schema":"0.20","teams":{}}\n');
+  registry("codex");
+  writeFileSync(file("seat-state"), "idle-at-prompt");
+  writeFileSync(file("pane"), "Context 60% left\n");
+  resetCase();
+});
 
 function ask(toTeam = ""): void {
   writeFileSync(join(bus(), "payloads/ask.md"),
@@ -137,8 +146,6 @@ const rawCaptureArgv = (): string =>
   require("node:fs").readFileSync(file("tmux-argv"), "utf8").trimEnd().split("\n").join(" ");
 
 test("an idle-looking reviewer with a pending qualified ask never clears; done, one wake", () => {
-  fixture();
-  resetCase();
   writeFileSync(file("pane"), "Context 60% left\n");
   ask();
   tick();
@@ -161,7 +168,6 @@ test("an idle-looking reviewer with a pending qualified ask never clears; done, 
 });
 
 test("every clearable harness reaches its own clear command from the real authority", () => {
-  fixture();
   for (const harness of ["claude", "opencode", "codex"]) {
     resetCase();
     registry(harness);
@@ -185,9 +191,18 @@ test("every clearable harness reaches its own clear command from the real author
   registry("codex");
 });
 
+test("an errored Claude composer receives no context-clear wake; a completed turn does", () => {
+  registry("claude");
+  writeFileSync(file("pane"), "82K (41%)\n");
+  copyFileSync(join(import.meta.dir, "fixtures/agent-state/claude/idle-real.txt"), file("idle-band"));
+  tick();
+  expect(sends()).toBe(0);
+  registry("claude");
+  tick();
+  expect(sends()).toBe(1);
+});
+
 test("parked, malformed, foreign and decoy-gated asks all refuse the wake", () => {
-  fixture();
-  resetCase();
   ask();
   require("node:fs").renameSync(join(bus(), "payloads/ask.md"), join(bus(), "spool/ask.md"));
   tick();
@@ -252,8 +267,6 @@ test("parked, malformed, foreign and decoy-gated asks all refuse the wake", () =
 });
 
 test("a lease that moves under the detector withholds the wake; a disarmed team never sends", () => {
-  fixture();
-  resetCase();
   writeFileSync(join(bus(), "watch/arm.json"), '{"armed_by":"lead","armed_at":2,"done_when":"x"}\n');
   writeFileSync(file("pane"), "Context 60% left\n");
   ask();

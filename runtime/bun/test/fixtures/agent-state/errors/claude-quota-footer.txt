@@ -1,0 +1,12 @@
+⏺ Usage limit reached again · continuing automatically at 4am · esc to cancel
+  ⎿  You've hit your weekly limit · resets 4am (America/Los_Angeles)
+
+✻ Cogitated for 6s · done 7:40 PM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── example/seat ─
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Usage limit reached · limit resets 4am
+    Continuing automatically at 4am · esc to cancel · /usage-credits to continue now
+  Example model | context 30% | project example | branch example
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

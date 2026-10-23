@@ -839,7 +839,7 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
     expect(JSON.stringify(helpCatalogIndex(), null, 2) + "\n").toBe(frozen);
 
     const index = JSON.parse(frozen) as ReturnType<typeof helpCatalogIndex>;
-    expect(index.filter((row) => row.dedicated)).toHaveLength(90);
+    expect(index.filter((row) => row.dedicated)).toHaveLength(92);
     expect(index.filter((row) => row.tombstone)).toHaveLength(3);
     expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(46);
 

@@ -181,7 +181,7 @@ describe("agent state detection", () => {
   });
 
   test("Claude Code real live pane captures detect idle, wrapped-working, and permission dialogs", () => {
-    expect(detectAgentState("claude", fixture("claude", "idle-real"))).toEqual({
+    expect(detectAgentState("claude", fixture("claude", "done-real"))).toEqual({
       agentState: "idle",
       reason: "prompt_idle",
     });
@@ -202,7 +202,7 @@ describe("agent state detection", () => {
     for (const name of ["spinner-real", "spinner-hook-notice-real"]) {
       expect(detectAgentState("claude", fixture("claude", name))).toEqual({ agentState: "working", reason: "spinner_working" });
     }
-    for (const name of ["done-real", "done-shell-real", "done-shells", "idle-real"]) {
+    for (const name of ["done-real", "done-shell-real", "done-shells"]) {
       expect(detectAgentState("claude", fixture("claude", name))).toEqual({ agentState: "idle", reason: "prompt_idle" });
     }
     expect(detectAgentState("claude", fixture("claude", "blocked-spinner"))).toEqual({ agentState: "blocked", reason: "permission_prompt" });
@@ -276,7 +276,7 @@ describe("agent state detection", () => {
   });
 
   test("Claude Code typed composer is idle activity, not generation", () => {
-    const typed = fixture("claude", "idle-real").replace("❯ ", "❯ git status");
+    const typed = fixture("claude", "done-real").replace("❯ ", "❯ git status");
     expect(detectAgentState("claude", typed)).toEqual({
       agentState: "idle",
       reason: "prompt_idle",

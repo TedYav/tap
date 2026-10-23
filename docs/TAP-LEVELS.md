@@ -142,6 +142,17 @@ helps choose a seat; it does not create the skill or schedule it. Keep monitorin
 bounded and event-driven where possible; avoid waking a model just to check
 whether a peer replied.
 
+Long runs outlast terminals and accounts. Before a seat runs out of context,
+`/tap:self compact` or `rebrief` resets it from a handoff it wrote; a Claude Code
+seat can switch model and effort before it resumes. After a reboot,
+`tap team up --last` brings back the seats that were running. After a sign-in
+or environment change, `tap session relaunch --harness <harness> --nudge`
+restarts those seats in place and tells each busy one to continue.
+`tap teams --seats` shows every team's seats with context use and, for Claude,
+estimated prompt-cache expiry. To keep notes on how each model performs in
+which role, the optional `tap calibrate` store records observations; it is off
+until `tap config set calibration.enabled true`.
+
 The [factory-skills reference](SKILLS.md) lists every shipped TAP
 skill and when to use it. Start with those, then add your own instructions for
 repeated needs. [Level 5 (web guide)](https://tedyav.github.io/tap/cheatsheet-level-5.html) covers bounded supervision

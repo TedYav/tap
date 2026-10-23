@@ -19,6 +19,7 @@ import { defaultProc, observeProcessStore, type Attribution } from "../session-s
 import { harnessWorkdir } from "../launcher/workdir";
 import { duplicateIdentityOwner } from "../session-identity-owner";
 import { loads, type JsonMap } from "../watch-detect";
+import { seatStateFindings } from "./seat-state";
 
 export interface Binding { pane: PaneObservation; identity: Attribution }
 export type BindingResult = { invalid: string; binding?: never; reason?: never; checked?: never; next?: never } | { binding: Binding; reason?: never; checked?: never; invalid?: never; next?: never } | { binding?: never; reason: string; checked?: never; invalid?: never; next?: string } | { binding?: never; reason?: never; checked: string; invalid?: never; next?: never };
@@ -165,7 +166,7 @@ export function cmdTeamDoctor(argv: string[], observe: (row: Seat) => BindingRes
     else if (arg === "--json") json = true;
     else if (arg === "--only" && only === undefined && argv[i + 1] && !argv[i + 1]!.startsWith("-")) {
       only = argv[++i]!;
-      if (only !== "session-binding") throw new TapError(1, "usage_error", "tap help team", `unknown check '${only}'; available: session-binding`);
+      if (only !== "session-binding" && only !== "seat-state") throw new TapError(1, "usage_error", "tap help team", `unknown check '${only}'; available: session-binding, seat-state`);
     } else throw new TapError(1, "usage_error", "tap help team", `unexpected argument '${arg}'`);
   }
   let selection;
@@ -183,7 +184,7 @@ export function cmdTeamDoctor(argv: string[], observe: (row: Seat) => BindingRes
     throw new TapError(1, "registry_invalid", "repair_registry", `registry '${selection.registryLocation}' seats is missing or not an object`);
   }
   const initial = seatMap(initialDoc);
-  const handles = Object.keys(initial).sort();
+  const handles = only === "seat-state" ? [] : Object.keys(initial).sort();
   const results: { handle: string; outcome: string; detail: string; next?: string }[] = [];
   const color = !!process.stdout.isTTY && process.env.TERM !== "dumb" && !Object.hasOwn(process.env, "NO_COLOR");
   const progress = !json && !!process.stdout.isTTY && !!process.stderr.isTTY && process.env.TERM !== "dumb";
@@ -244,11 +245,14 @@ export function cmdTeamDoctor(argv: string[], observe: (row: Seat) => BindingRes
     // the would_repair next uses (discuss F5).
     ...(result.outcome === "skipped" && result.next ? { next: result.next } : {}),
   }));
+  const states = only === "session-binding" ? [] : seatStateFindings(initial, selection.team);
   if (json) process.stdout.write(`${JSON.stringify({ ok: true, bus: { home: selection.busHome, rule: selection.busRule },
-    findings, summary: { torn: 0, unattributed: 0, clean: !results.some(result => result.outcome === "invalid") } })}\n`);
+    findings: [...findings, ...states], summary: { torn: 0, unattributed: 0, clean: !results.some(result => result.outcome === "invalid"),
+      seat_attention: states.filter(finding => finding.detail.outcome === "attention").length } })}\n`);
   else {
     const visible = results.filter(result => result.outcome !== "unchanged");
-    if (!visible.length) process.stdout.write(`${color ? "\x1b[32m" : ""}✓ no issues detected${color ? "\x1b[0m" : ""}\n`);
+    const visibleStates = states.filter(finding => finding.detail.outcome !== "unchanged");
+    if (!visible.length && !visibleStates.length) process.stdout.write(`${color ? "\x1b[32m" : ""}✓ no issues detected${color ? "\x1b[0m" : ""}\n`);
     const unchecked = visible.filter(result => result.outcome === "skipped");
     for (const result of visible.filter(result => result.outcome !== "skipped")) {
       const finding = result.outcome === "would_repair" || result.outcome === "invalid";
@@ -258,6 +262,11 @@ export function cmdTeamDoctor(argv: string[], observe: (row: Seat) => BindingRes
       process.stdout.write(`${color ? "\x1b[33m" : ""}tap team doctor: not checked\n`);
       for (const result of unchecked) process.stdout.write(`  ${result.handle}: ${result.detail}${result.next ? `; next: ${result.next}` : ""}\n`);
       if (color) process.stdout.write("\x1b[0m");
+    }
+    for (const finding of visibleStates) {
+      const result = finding.detail;
+      const tint = result.outcome === "skipped" ? "\x1b[33m" : "\x1b[31m";
+      process.stdout.write(`${color ? tint : ""}tap team doctor: ${result.handle}: ${result.detail}${finding.next ? `; next: ${finding.next}` : ""}${color ? "\x1b[0m" : ""}\n`);
     }
   }
   return 0;

@@ -3,10 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { census, classify, cmdSessionRelaunch, parseOptions, relaunch, type Member } from "../src/launcher/relaunch";
+import { census, classify, cmdSessionRelaunch, parseOptions, relaunch, readRelaunchStates, type ClassifiedMember, type Options, type Member } from "../src/launcher/relaunch";
 import { prepareRelaunch, relaunchOne } from "../src/launcher/relaunch-durable";
 import { loadGlobalRegistry } from "../src/index-home";
 import { lookupHelp } from "../src/help";
+import { renderNudgeWire } from "../src/nudge-wire";
 import { removeScratchTree } from "./support/scratch";
 
 const root = resolve(import.meta.dir, "../../..");
@@ -55,7 +56,7 @@ esac
   } }));
   const acted: Member[] = [], output: string[] = [], crewActed: { member: Member; callerPane: string; dryRun: boolean }[] = [];
   let caller = "", failure = "";
-  const deps = { classify, load: loadGlobalRegistry, color: false, write: (text: string) => { output.push(text); },
+  const deps = { classify, states: readRelaunchStates, load: loadGlobalRegistry, color: false, write: (text: string) => { output.push(text); },
     crew: async (member: Member, callerPane: string, options: { dryRun: boolean }) => {
       crewActed.push({ member, callerPane, dryRun: options.dryRun });
       return member.team === failure ? { code: 1, reason: "crew pane %7 is not live; next: tap crew shutdown tap/crew" } : { code: 0 };
@@ -504,7 +505,9 @@ test("a machine-wide relaunch logs every result, exclusion and bypassed team pas
   writeFileSync(index, JSON.stringify(global));
   const deps = { ...f.deps,
     context: () => ({ team: "t00", caller_pane: "%caller", caller: { state: "outside" as const, detail: "test caller" } }),
-    classify: (members: Member[]) => members.map(member => ({ member, status: "active", reason: "", pane: member.team === "t00" ? "%caller" : "%p" })),
+    classify: (members: Member[]) => members.map(member => ({ member, status: "active", reason: "", pane: member.team === "t00" ? "%caller" : "%p",
+      observation: {handle:member.handle,session:"t/alice",harness:"codex",pane:"%p",observedPaneId:"%p",observedServerEpoch:"srv:1:1",
+        delivery:"pane",status:"active",statusReason:"",attached:"0",unattended:false,crew:false,preset:"",agentState:"unknown" as const,agentStateReason:"not_observed"} })),
     run: async (member: Member) => ({ code: 0, elapsed: 0.1, stdout: "", stderr: "", reason: "", error_class: undefined, team: member.team }) };
   expect(await relaunch(parseOptions(["--harness", "codex", "--team", "*", "--dry-run"]), deps)).toBe(0);
   const lines = readFileSync(log, "utf8").trim().split("\n");
@@ -626,3 +629,161 @@ test("tap help session documents the single-seat --workdir exit 7", () => {
   expect(text).toContain("7  single-seat --workdir only");
   expect(text).toContain("never retry");
 });
+
+test("relaunch nudge uses an attached optional message and preserves positional seat selection", () => {
+  expect(parseOptions(["--nudge", "alice"])).toMatchObject({ seat: "alice", nudge: "" });
+  expect(parseOptions(["alice", "--nudge=finish the current task"])).toMatchObject({ seat: "alice", nudge: "finish the current task" });
+  expect(parseOptions(["--harness", "codex", "--nudge"])).toMatchObject({ harness: "codex", nudge: "" });
+  expect(() => parseOptions(["--harness", "codex", "--nudge", "keep going"])).toThrow("--nudge=<text>");
+  expect(() => parseOptions(["alice", "--nudge="])).toThrow("empty");
+  for (const args of [["alice", "-m", "message", "--nudge"], ["alice", "--nudge", "--message=message"]]) {
+    expect(() => parseOptions(args)).toThrow("--nudge");
+  }
+  for (const text of ["x".repeat(201), "line1\nline2", "[[nested]]", "check @peer", "use /compact", "\u0000"])
+    expect(() => parseOptions(["alice", `--nudge=${text}`])).toThrow();
+  expect(parseOptions(["alice", `--nudge=${"é".repeat(100)}`]).nudge).toBe("é".repeat(100));
+  expect(() => parseOptions(["alice", `--nudge=${"é".repeat(101)}`])).toThrow("bytes");
+});
+
+
+test("relaunch nudge snapshots the full selection before replacement and nudges every durable state except idle", async () => {
+  const f = fixture();
+  for (const state of ["working", "waiting", "blocked", "error", "booting", "overprint", "unknown", "idle"] as const) {
+    f.output.length = 0; f.acted.length = 0; f.crewActed.length = 0;
+    const events: string[] = [], prompts: (string | undefined)[] = [];
+    const deps = { ...f.deps,
+      states: (rows: ClassifiedMember[]) => {
+        events.push("snapshot");
+        expect(rows).toHaveLength(3);
+        return new Map(rows.map(row => [row.member, { agent_state: state, agent_state_reason: `fixture_${state}` }]));
+      },
+      prepare: (members: Member[]) => { events.push("prepare"); return f.deps.prepare(members); },
+      run: async (member: Member, options: Options) => {
+        expect(events[0]).toBe("snapshot"); events.push("run"); prompts.push(options.message);
+        return f.deps.run(member, options);
+      },
+      crew: async (member: Member, pane: string, options: Options) => {
+        expect(events[0]).toBe("snapshot"); expect(options.message).toBeUndefined();
+        events.push("crew"); return f.deps.crew(member, pane, options);
+      },
+    };
+    const text = 'keep "moving" and \\finish';
+    expect(await relaunch(parseOptions(["--harness", "codex", "--team", "*", `--nudge=${text}`, "--json"]), deps)).toBe(0);
+    const receipt = JSON.parse(f.output.join(""));
+    expect(events.filter(event => event === "snapshot")).toHaveLength(1);
+    expect(events.indexOf("prepare")).toBe(1);
+    expect(prompts).toEqual([state === "idle" ? undefined : renderNudgeWire(text), state === "idle" ? undefined : renderNudgeWire(text)]);
+    for (const result of receipt.results) {
+      expect(result.pre_relaunch).toEqual({ agent_state: state, agent_state_reason: `fixture_${state}` });
+      expect(result.nudge).toEqual(result.handle === "crew"
+        ? { planned: false, reason: "crew_fresh", transport: null }
+        : state === "idle" ? { planned: false, reason: "idle", transport: null }
+        : { planned: true, reason: "non_idle", transport: "argv" });
+    }
+  }
+});
+
+test("relaunch nudge dry-run retains the same state decision and crew behavior", async () => {
+  const f = fixture();
+  const deps = { ...f.deps, states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member,
+    {agent_state: "error" as const, agent_state_reason: "usage_limit"}])) };
+  expect(await relaunch(parseOptions(["--harness", "codex", "--nudge", "--dry-run"]), deps)).toBe(0);
+  expect(f.output.join("")).toContain("would nudge");
+  expect(f.output.join("")).toContain("nudge skipped: crew_fresh");
+  expect(f.crewActed).toHaveLength(1);
+  f.output.length = 0;
+  expect(await relaunch(parseOptions(["--harness", "codex", "--nudge", "--dry-run", "--json"]), deps)).toBe(0);
+  const receipt = JSON.parse(f.output.join(""));
+  expect(receipt.results.find((row: any) => row.handle === "alice")).toMatchObject({status:"would-resume",
+    pre_relaunch:{agent_state:"error",agent_state_reason:"usage_limit"},nudge:{planned:true,transport:"argv"}});
+});
+
+test("OpenCode nudge uses the existing bus instruction path with plain continuation text", async () => {
+  const f = fixture({ includeOpencode: true });
+  const prompts: string[] = [];
+  const deps = { ...f.deps,
+    states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, {agent_state:"error" as const,agent_state_reason:"rate_limit"}])),
+    run: async (member: Member, options: Options) => { prompts.push(options.message!); return f.deps.run(member, options); },
+  };
+  expect(await relaunch(parseOptions(["--harness", "opencode", "--team", "*", "--nudge=finish the current task", "--json"]), deps)).toBe(0);
+  expect(prompts).toHaveLength(2);
+  for (const prompt of prompts) {
+    expect(prompt).toContain("Continue your current work"); expect(prompt).toContain("tap poll");
+    expect(prompt).toContain("finish the current task"); expect(prompt).not.toContain("[[");
+  }
+  for (const row of JSON.parse(f.output.join("")).results) expect(row.nudge).toMatchObject({planned:true,transport:"bus_note"});
+});
+
+
+test("Hermes nudge reports hermes_unsupported without changing relaunch selection", async () => {
+  const f = fixture();
+  const registry = JSON.parse(readFileSync(f.registry, "utf8"));
+  registry.seats = { alice: { ...registry.seats.alice, harness: "hermes" } };
+  writeFileSync(f.registry, JSON.stringify(registry));
+  const tmux = join(f.dir, "bin/tmux");
+  writeFileSync(tmux, readFileSync(tmux, "utf8").replaceAll("codex", "hermes"));
+  const deps = { ...f.deps,
+    states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, {agent_state:"unknown" as const,agent_state_reason:"no_matching_rule"}])),
+    run: async (member: Member, options: Options) => { expect(options.message).toBeUndefined(); return f.deps.run(member, options); },
+  };
+  for (const dry of [[], ["--dry-run"]]) {
+    f.output.length = 0;
+    expect(await relaunch(parseOptions(["tap/alice", "--nudge", "--json", ...dry]), deps)).toBe(0);
+    const result = JSON.parse(f.output.join("")).results[0];
+    expect(result.nudge).toEqual({planned:false,reason:"hermes_unsupported",transport:null});
+    expect(result.status).toBe(dry.length ? "would-resume" : "resumed");
+  }
+  f.output.length = 0;
+  delete process.env.TAP_JSON; // The prior in-process --json parses set the environment gate.
+  expect(await relaunch(parseOptions(["tap/alice", "--nudge", "--dry-run"]), deps)).toBe(0);
+  expect(f.output.join("")).toContain("nudge skipped: hermes has no resume-prompt channel");
+});
+
+test("without nudge relaunch never invokes state capture and keeps its existing receipt", async () => {
+  const f = fixture();
+  const deps = { ...f.deps, states: () => { throw new Error("state capture without --nudge"); } };
+  expect(await relaunch(parseOptions(["--harness", "codex", "--team", "*", "--json"]), deps)).toBe(0);
+  for (const result of JSON.parse(f.output.join("")).results) {
+    expect(result.pre_relaunch).toBeUndefined(); expect(result.nudge).toBeUndefined();
+  }
+});
+
+test("relaunch nudge uses roster frames once and attributes same-named seats to their real teams", async () => {
+  const f = fixture();
+  const registry = JSON.parse(readFileSync(f.registry, "utf8")); delete registry.seats.crew;
+  writeFileSync(f.registry, JSON.stringify(registry));
+  const frame = join(f.dir, "nudge-frame"), trace = join(f.dir, "nudge-trace"), queue = join(f.dir, "compute-queue");
+  writeFileSync(frame, readFileSync(join(root, "runtime/bun/test/fixtures/agent-state/codex/fresh-warning-fast.ansi")));
+  writeFileSync(queue, JSON.stringify({jobs:[{id:"j1",status:"running",released_at:null,notify_done:"tap/alice",
+    identity:JSON.stringify({team:"tap",handle:"alice",pane_id:"%7"})}]}));
+  writeFileSync(join(f.dir,"bin/compute"), `#!/bin/sh\ncat '${queue}'\n`, {mode:0o755});
+  const tmux = join(f.dir, "bin/tmux");
+  let script = readFileSync(tmux,"utf8");
+  script = script.replace('case "$1" in', `printf '%s\\n' "$*" >> '${trace}'\ncase "$1" in`);
+  script = script.replace('*) exit 1 ;;', `capture-pane) cat '${frame}' ;;\ndisplay-message) case "$*" in *pane_title*) printf 'Demo\\n' ;; *) printf '1:1\\n' ;; esac ;;\n*) exit 1 ;;`);
+  writeFileSync(tmux, script);
+  const deps = { ...f.deps, run: async (member: Member, options: Options) => {
+    // Every selected frame was captured before the first replacement.
+    expect(readFileSync(trace,"utf8").match(/capture-pane/g)).toHaveLength(2);
+    return f.deps.run(member,options);
+  } };
+  for (const file of ["codex/fresh-warning-fast.ansi", "errors/codex-usage-limit.ansi"]) {
+    writeFileSync(frame,readFileSync(join(root,"runtime/bun/test/fixtures/agent-state",file)));
+    const expected = new Map<string, {agent_state:string;agent_state_reason:string}>();
+    for (const team of ["tap", "other"]) {
+      const roster = spawnSync(process.execPath,[join(root,"runtime/bun/main.ts"),"team","roster",team,"--json"],{env:process.env,cwd:f.dir,encoding:"utf8"});
+      expect(roster.status,roster.stderr).toBe(0);
+      const seat = JSON.parse(roster.stdout).agents.find((row: {handle:string}) => row.handle === "alice");
+      expected.set(team,{agent_state:seat.agent_state,agent_state_reason:seat.agent_state_reason});
+    }
+    f.output.length=0; writeFileSync(trace,"");
+    expect(await relaunch(parseOptions(["--harness","codex","--team","*","--nudge","--dry-run","--json"]),deps)).toBe(0);
+    const results = JSON.parse(f.output.join("")).results;
+    expect(results).toHaveLength(2);
+    for(const result of results) expect(result.pre_relaunch).toEqual(expected.get(result.team));
+    if(file.includes("fresh-warning")) {
+      expect(results.find((row:any)=>row.team==="tap").pre_relaunch).toEqual({agent_state:"waiting",agent_state_reason:"compute"});
+      expect(results.find((row:any)=>row.team==="other").pre_relaunch).toEqual({agent_state:"idle",agent_state_reason:"prompt_idle"});
+    }
+  }
+}, 30_000);

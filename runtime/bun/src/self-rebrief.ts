@@ -7,8 +7,8 @@ import { loadRegistry, seatMap, type Seat, loadCurrentRegistry } from "./registr
 import { atomicWrite } from "./fsatomic";
 import { acquirePathLock } from "./panelock";
 import { submitVerify, type BoundRecipient, type SubmitAuthority, type SubmitResult } from "./courier";
-import { detectAgentState } from "./agent-state";
-import { capturePane, observePane, tmuxReadOnly } from "./tmux";
+import { agentAtRest, detectAgentState } from "./agent-state";
+import { capturePane, observePane, settle, tmuxReadOnly } from "./tmux";
 import { assertResetUnfenced, markResetGenerationReused } from "./reset";
 import { cmdSendOutcome, SendAuthorizationPending, type SendOutcome } from "./verbs/send";
 import { AGENT_FAMILIES } from "./harness-families";
@@ -17,36 +17,47 @@ import { captureCodexResetBoundary, codexProcessInPane, codexRolloutAbsent, code
 import { authoredRecovery } from "./compact-focus";
 import { clearCommand } from "./clear-command";
 import { tapScriptsDir, artifactBun } from "./scripts-dir";
+import { applySwitches, checkSwitches, claudeSwitchEffects, hasSwitches, requireSwitchHarness, switchFailure, switchWarning, type SeatSwitches, type SwitchReport } from "./self-switch";
 
 export { clearCommand };
 
 const scripts = tapScriptsDir();
-export interface Options { verb: "clear" | "rebrief"; handoff?: string; charter?: string; notify?: string; pane?: string; harness?: string }
+export interface Options { verb: "clear" | "rebrief"; handoff?: string; charter?: string; notify?: string; pane?: string; harness?: string; switches?: SeatSwitches }
 export interface Request {
   id: string; registry: string; bus: string; team: string; handle: string;
   bound: BoundRecipient; oldSession: string; oldTranscript: string;
   verb?: "clear" | "rebrief"; command: string; handoff?: string; notify?: string; recoveryId?: string;
+  /** Claude only: `/model` then `/effort` in the fresh conversation, before the recovery note. */
+  switches?: SeatSwitches;
 }
 type Witness = "none" | "native-id-changed" | "codex-thread-start";
 export interface Receipt {
   state: "armed" | "submitted" | "submission-unverified" | "reset-observed" | "recovery-pending-proof" | "recovery-accepted" | "delivery-miss" | "incomplete";
   detail: string; newSession?: string; newTranscript?: string; delivery?: string;
   witness?: Witness; recoveryId?: string; firstInput?: string;
-  threadStart?: CodexThreadStart; threadBoundary?: CodexResetBoundary;
+  threadStart?: CodexThreadStart; threadBoundary?: CodexResetBoundary; switches?: SwitchReport;
 }
 export function parseOptions(argv: string[]): Options {
   const verb = argv[0];
   if (verb !== "clear" && verb !== "rebrief") throw new Error("expected clear or rebrief");
   const out: Options = { verb };
+  const switches: SeatSwitches = {};
   for (let i = 1; i < argv.length; i++) {
     const key = argv[i];
-    if (!["--handoff", "--charter", "--notify", "--pane", "--harness"].includes(key ?? "")) throw new Error(`unexpected argument: ${key}`);
+    if (!["--handoff", "--charter", "--notify", "--pane", "--harness", "--model", "--effort"].includes(key ?? "")) throw new Error(`unexpected argument: ${key}`);
     const value = argv[++i];
     if (!value || value.startsWith("--")) throw new Error(`${key} requires a value`);
+    if (key === "--model" || key === "--effort") {
+      const field = key === "--model" ? "model" : "effort";
+      if (switches[field] !== undefined) throw new Error(`duplicate ${key}`);
+      switches[field] = value;
+      continue;
+    }
     const field = key!.slice(2) as "handoff" | "charter" | "notify" | "pane" | "harness";
     if (out[field] !== undefined) throw new Error(`duplicate ${key}`);
     out[field] = value;
   }
+  if (hasSwitches(switches)) { checkSwitches(switches); out.switches = switches; }
   if (!out.handoff) throw new Error("an authored --handoff FILE is required; use /tap:self rebrief to prepare it");
   return out;
 }
@@ -134,6 +145,8 @@ export function freshIdentity(request: Request, seat?: Seat): { session: string;
 }
 export interface Effects {
   row(): Seat | undefined; idle(): boolean; submit(): SubmitResult;
+  /** Requested tier switches in the fresh conversation; never withholds the recovery note. */
+  switches?(switches: SeatSwitches, fresh: { session: string; transcript: string }): Promise<SwitchReport>;
   send(to: string, body: string, id?: string, nativeSession?: string): SendOutcome; record(receipt: Receipt): void;
   fresh(seat?: Seat): { session: string; transcript: string } | null;
   prepareSubmit?(): boolean; resetThread?(): CodexThreadStart | null; bootstrapSafe?(thread: CodexThreadStart): boolean; firstInput?(transcript: string): string | null;
@@ -174,8 +187,9 @@ export async function runRecovery(request: Request, fx: Effects, timeout = 18000
   let witness: Witness = "none";
   let threadStart: CodexThreadStart | undefined;
   let waitingForBind=false;
+  let switched: SwitchReport | undefined;
   const fail = (detail: string, state: "incomplete" | "delivery-miss" = "incomplete") => {
-    try { fx.record({ state, detail: `${phase}: ${detail}`, witness, recoveryId }); }
+    try { fx.record({ state, detail: `${phase}: ${detail}`, witness, recoveryId, ...(switched && { switches: switched }) }); }
     catch (error) { console.error(`self: incomplete receipt unavailable: ${error}; ${detail}`); }
     notifyRecoveryFailure(request, join(request.bus, "handoff", `${request.id}.receipt.json`), state, `${phase}: ${detail}`, fx.send);
   };
@@ -236,9 +250,15 @@ export async function runRecovery(request: Request, fx: Effects, timeout = 18000
         phase = "recovery-pending-proof";
         fx.record({ state: phase, detail: "same-process native thread start observed; authored recovery will bootstrap rollout registration", witness, recoveryId, threadStart });
       } else { await fx.wait(); continue; }
+      if (fresh && !codex && !switched && hasSwitches(request.switches) && fx.switches) {
+        try { switched = await fx.switches(request.switches, fresh); }
+        catch (error) { switched = switchFailure(request.switches, error); }
+        fx.record({ state: phase, detail: "tier switches attempted before recovery", witness, recoveryId, switches: switched });
+        if (!sameSeat(request, fx.row())) return fail("seat identity changed during the tier switch; recovery not sent");
+      }
       {
         const evidence = fresh ? `Native session change observed: ${request.oldSession} -> ${fresh.session}.` : `Native Codex thread start observed: ${threadStart!.session}; bound rollout and recovery-first proof are pending until this input starts the turn.`;
-        const body = `TAP authored ${request.verb ?? "rebrief"} recovery for ${request.team}/${request.handle}. ${evidence} ${authoredRecovery(request.handoff ?? "the preserved bus brief", request.handle, request.notify)} Delivery acceptance does not establish that you read the brief.`;
+        const body = `${switchWarning(switched)}TAP authored ${request.verb ?? "rebrief"} recovery for ${request.team}/${request.handle}. ${evidence} ${authoredRecovery(request.handoff ?? "the preserved bus brief", request.handle, request.notify)} Delivery acceptance does not establish that you read the brief.`;
         let outcome: SendOutcome;
         try { outcome=fx.send(request.handle,body,recoveryId,fresh?.session ?? request.oldSession); }
         catch (error) {
@@ -249,7 +269,8 @@ export async function runRecovery(request: Request, fx: Effects, timeout = 18000
         }
         if (outcome.rc !== 0) return fail(`recovery send ${outcome.disposition}; do not reset again`, "delivery-miss");
         if (codex) { sent = outcome; continue; }
-        fx.record({ state: "recovery-accepted", detail: "durable recovery accepted; recipient read remains unverified", witness, recoveryId, newSession: fresh!.session, newTranscript: fresh!.transcript, delivery: outcome.disposition });
+        fx.record({ state: "recovery-accepted", detail: "durable recovery accepted; recipient read remains unverified", witness, recoveryId, newSession: fresh!.session, newTranscript: fresh!.transcript, delivery: outcome.disposition,
+          ...(switched && { switches: switched }) });
         return;
       }
     }
@@ -272,7 +293,7 @@ export function recoveryIdle(request: Request, fx = { observePane, capturePane, 
   // Codex's empty composer is corroborated by dim paint; plain text could be a draft.
   const screen = fx.capturePane(request.bound.paneId, true);
   const title = fx.tmuxReadOnly(["display-message", "-p", "-t", request.bound.paneId, "#{pane_title}"]);
-  return screen.code === 0 && title.code === 0 && detectAgentState(request.bound.harness, screen.stdout, title.stdout.trim()).agentState === "idle";
+  return screen.code === 0 && title.code === 0 && agentAtRest(detectAgentState(request.bound.harness, screen.stdout, title.stdout.trim()).agentState);
 }
 async function worker(path: string): Promise<void> {
   const request: Request = JSON.parse(readRegular(path, 65536));
@@ -315,6 +336,11 @@ async function worker(path: string): Promise<void> {
       },
       bootstrapSafe: thread=> !!threadBoundary && codexRolloutAbsent(threadBoundary.home,thread),
       firstInput: firstCodexInput,
+      switches: (switches, fresh) => applySwitches(switches, claudeSwitchEffects({
+        id: request.id, bound: request.bound, authority, transcript: fresh.transcript, session: fresh.session,
+        valid: () => { const seat = seatMap(loadCurrentRegistry(request.registry))[request.handle]; return sameSeat(request, seat) && seat?.harness_session_id === fresh.session; },
+        settle, wait: () => Bun.sleep(1000),
+      })),
       send: (to, body, id, session) => sendRecovery(request, to, body, id, session,
         id && to===request.handle && threadBoundary ? ()=>{
           if (!sameCodexProcess(threadBoundary!,owner())) throw new Error("Codex process changed before recovery placement");
@@ -351,6 +377,7 @@ export function armSelfRecovery(options: Options, context?: ResolvedContext, scr
   const harness = String(seat.harness ?? "");
   if (options.harness && options.harness !== harness) throw new Error("--harness differs from registered harness");
   if (harness !== "claude" && !harness.startsWith("codex")) throw new TapError(6, "reset_witness_unsupported", "use a supervised peer reset", `no native reset witness for ${harness}`);
+  requireSwitchHarness(options.switches, harness);
   const oldSession = String(seat.harness_session_id ?? ""), oldTranscript = String(seat.transcript_path ?? "");
   if (!transcriptIdentity(oldTranscript, harness, oldSession)) throw new Error("current native session/transcript identity is unverified; nothing armed");
   validateNotify(options.notify, self.handle, seats);
@@ -359,7 +386,8 @@ export function armSelfRecovery(options: Options, context?: ResolvedContext, scr
   const handoff = copyBrief(ctx.bus.home, id, options.handoff, options.charter);
   const request: Request = { id, verb: options.verb, registry: ctx.registryPath, bus: ctx.bus.home, team: ctx.team, handle: self.handle,
     bound: { paneId: self.paneId, instance: String(seat.instance), serverEpoch: String(seat.server_epoch), bootId: String(seat.boot_id ?? ""), harness, handle: self.handle },
-    oldSession, oldTranscript, command: clearCommand(harness), handoff, notify: options.notify, recoveryId: mintId(self.handle) };
+    oldSession, oldTranscript, command: clearCommand(harness), handoff, notify: options.notify, recoveryId: mintId(self.handle),
+    ...(hasSwitches(options.switches) && { switches: options.switches }) };
   const dir = join(ctx.bus.home, "handoff");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const path = join(dir, `${id}.json`);

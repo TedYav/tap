@@ -1,7 +1,7 @@
 ---
 name: self
 description: "When invoking compact, rebrief, goal, loop, or clear on this seat, inject a supported harness control into its pane."
-argument-hint: 'compact|rebrief|clear [--notify <seat>]|goal|loop'
+argument-hint: 'compact|rebrief|clear [--notify <seat>] [--model <name>] [--effort <level>]|goal|loop'
 allowed-tools: 'Bash, Read, Grep, Glob, Write'
 role: maker
 ---
@@ -87,6 +87,22 @@ tap self rebrief --handoff /ABS/tmp/seat/handoff-UTC.md
 These show the two choices; run only the requested one. `/tap:self clear` runs
 the rebrief form. Raw `tap self clear --handoff FILE` uses the same engine and
 prints a migration line; bare clear refuses before any effect.
+
+`--model NAME` and `--effort LEVEL` are optional on compact, rebrief and clear,
+Claude Code only; pass them through when the operator names them. After the
+reset is proven and before the resume note, the worker runs `/model NAME` then
+`/effort LEVEL`, so a seat can compact or rebrief on a cheap model and resume
+on the one it needs:
+
+```bash
+tap self compact --handoff /ABS/tmp/seat/handoff-UTC.md --model fable --effort medium -- 'Preserve: ...'
+```
+
+Each switch is proven from the transcript. An unproven switch never withholds
+the resume; the note then opens with a warning. Tell the operator when you see
+one. Claude Code also saves each switch as its default for new sessions.
+Effort is `low|medium|high|xhigh|max`. Other harnesses refuse with `6` before
+anything is armed.
 
 `--notify SEAT` is optional on compact, rebrief and the CLI clear alias. Pass it
 only when the requester explicitly names an outcome audience. It transfers no

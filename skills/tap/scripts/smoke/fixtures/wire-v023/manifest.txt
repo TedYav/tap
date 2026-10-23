@@ -27,6 +27,7 @@
 #
 # The class split is confirmed per file, not inherited from the plan for the change:
 # each reason names the line or the mechanism it was read from.
+runtime/bun/test/agent-state-errors.test.ts	A	Current v0.23 nudge wires exercise error-state submission without changing wire grammar
 runtime/bun/test/agent-state.test.ts	B	`[[TAP` is an ANCHOR: detectAgentState names an agy draft by `/^\s*>\s*\[\[TAP\s/m` and the test asserts sentinel_unsubmitted vs a human draft and working-wins, not the version or grammar
 runtime/bun/test/agy-band-characterization.test.ts	B	characterization of an agy band; the sentinel text is opaque input, not an asserted shape
 runtime/bun/test/agy-staged-wait.test.ts	B	whole v0.23 wire is opaque staged input to id-keyed submitVerifyLocked; asserts full-wire wait and stranded-wire refusal, not grammar

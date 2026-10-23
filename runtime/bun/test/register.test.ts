@@ -1195,7 +1195,7 @@ test("version briefing preserves quoted paths and JSON output without draining m
     const scripts = join(installRoot, "skills/tap/scripts");
     mkdirSync(join(scripts, "smoke"), { recursive: true });
     writeFileSync(join(scripts, "lib.sh"), 'TAP_SENTINEL_VERSION="fixture"\ntap_spool_opportunistic_drain() { printf "%s\\n" "$1" "$TAP_REGISTRY" "$TAP_HOME" > "$TAP_TEST_DRAIN_RECORD"; }\n');
-    writeFileSync(join(installRoot, "CHANGELOG.md"), '## TAP v0.23\nversion-banner\n');
+    writeFileSync(join(installRoot, "skills/tap/VERSION-BRIEF.md"), '## TAP v0.23\nversion-banner\n');
     const drain = join(f.root, "drain-record"), version = join(f.root, "version-record");
     const seed = () => writeFileSync(version, JSON.stringify({ schema_version: 1, seats: { "repo/scout": { last_seen_version: "old" } } }));
     seed();

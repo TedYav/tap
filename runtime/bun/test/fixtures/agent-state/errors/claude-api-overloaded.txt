@@ -1,0 +1,11 @@
+
+⏺ API Error: 529 Overloaded. This is a server-side issue, usually
+  temporary — try again in a moment. If it persists, check
+  https://status.claude.com.
+
+✻ Churned for 3m 23s · done 7:13 AM
+
+─────────────────────────────────────────────────────────────── example/seat ─
+❯
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents        /rc failed

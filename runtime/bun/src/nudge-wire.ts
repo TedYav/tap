@@ -7,7 +7,7 @@ import { PYTHON_SPACE } from "./terminal-text";
  * context, `[[TAP v0.23 nudge message="..."]]`. It names no payload, sender or
  * recipient and carries no task authority or reply obligation; its meaning
  * ("continue what you were working on; check tap poll") is the doorbell copy.
- * `tap nudge` is its only producer and types exactly these bytes.
+ * `tap nudge` types these bytes; relaunch uses them in native resume argv.
  *
  * The message value is a JSON string literal, so `"` and `\` round-trip and a
  * trailing backslash cannot escape the closing quote. Refused: newlines and

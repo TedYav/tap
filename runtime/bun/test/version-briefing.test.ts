@@ -10,7 +10,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "version-brief-"));
   const install = join(root, "installed ' TAP"), home = join(root, "home");
   const state = join(root, "state ' directory", "seen.json");
-  const changelog = join(install, "CHANGELOG.md");
+  const changelog = join(install, "skills/tap/VERSION-BRIEF.md");
   mkdirSync(join(install, "skills/tap/scripts"), { recursive: true });
   mkdirSync(home);
   writeFileSync(changelog, '## TAP v0.230\nwrong version\n## TAP v0.23\n\n One change.\n\n Another change.\n## Older\nnot this\n');

@@ -243,6 +243,32 @@ test("Claude keeps native pre-delivery witness and never takes Codex thread boot
   expect(pass.receipts.at(-1)).toMatchObject({state:"recovery-accepted",witness:"native-id-changed",detail:"durable recovery accepted; recipient read remains unverified"});
 });
 
+test("Claude tier switches run in the fresh conversation before the recovery note; Codex never takes them",async()=>{
+  const claudeRequest={...request,bound:{...request.bound,harness:"claude"},switches:{model:"fable",effort:"medium"}};
+  const bodies:string[]=[];const seen:unknown[]=[];
+  const f=fixture({row:()=>({...seat,harness:"claude"}),
+    switches:async(switches,fresh)=>{seen.push([switches,fresh]);f.log.push("switches");
+      return {model:{state:"confirmed",command:"/model fable",detail:"ok"},effort:{state:"unconfirmed",command:"/effort medium",detail:"submitted; no transcript confirmation before the deadline"}};},
+    send:(to,body)=>{f.log.push(`send:${to}`);bodies.push(body);return{rc:0,disposition:"queued-spool"};}});
+  await runRecovery(claudeRequest,f.fx,3000);
+  expect(f.log).toEqual(["clear","switches","send:worker"]);
+  expect(seen).toEqual([[{model:"fable",effort:"medium"},{session:"new",transcript:join(root,"new.jsonl")}]]);
+  expect(bodies[0]).toStartWith("TAP could not confirm '/effort medium'");
+  expect(bodies[0]).toContain("TAP authored rebrief recovery");
+  expect(f.receipts.at(-1)).toMatchObject({state:"recovery-accepted",switches:{model:{state:"confirmed"},effort:{state:"unconfirmed"}}});
+
+  const thrownBodies:string[]=[];
+  const thrown=fixture({row:()=>({...seat,harness:"claude"}),switches:async()=>{throw new Error("tmux server unresponsive");},
+    send:(to,body)=>{thrownBodies.push(body);return{rc:0,disposition:"queued-spool"};}});
+  await runRecovery(claudeRequest,thrown.fx,3000);
+  expect(thrownBodies[0]).toStartWith("TAP could not confirm '/model fable' (switch failed: tmux server unresponsive) or '/effort medium'");
+  expect(thrown.receipts.at(-1)).toMatchObject({state:"recovery-accepted",switches:{model:{state:"unconfirmed"},effort:{state:"unconfirmed"}}});
+
+  const codex=fixture({switches:async()=>{throw new Error("codex never switches");}});
+  await runRecovery({...request,switches:{model:"fable"}},codex.fx,3000);
+  expect(codex.log).toEqual(["clear","send:worker"]);
+});
+
 test("already-used fresh Codex conversation refuses recovery before placement",async()=>{
   const f=fixture({firstInput:()=>"unrelated work submitted before observer poll"});
   await runRecovery(request,f.fx,3000);

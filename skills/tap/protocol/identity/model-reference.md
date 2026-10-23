@@ -51,13 +51,14 @@ The context cell appends a Claude cache estimate when expiry is known: `329k/600
 
 **Machine-wide seat view.** `tap teams --seats [--all] [--json] [--wide]` (also
 `tap team list --seats`) groups active seats under team headings carrying
-active/total counts and the root path. One column header aligns the two-space
+`<active>/<total> seats active` and the root path. One column header aligns the two-space
 indented seat rows with the team roster columns: handle, harness, state, context,
 family, model, preset. Headings are bold cyan (SGR 1;36) on a color terminal;
 state and cache markers use the roster colors. Styling requires TTY stdout,
 `NO_COLOR` absent and `TERM` other than `dumb`.
 `--all` includes dormant teams and inactive seats, preserving its inclusion
-meaning. Teams sort by their soonest warm expiry, then name. Within each team,
+meaning. Teams sort by name, ignoring case (codepoint order breaks ties), with a blank line
+between teams. Within each team,
 warm seats sort by earliest expiry, then cold, then unknown; ties use handle
 order. Whole-column fitting accounts for the two-space indent. `--details` is a separate
 summary shape; named-team forms refuse `--seats`. JSON is

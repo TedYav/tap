@@ -58,7 +58,7 @@ test("skill lists parse from skill-policy.ts source exactly as the module export
 test("the selection at HEAD ships the runtime tree an installed tap reads", () => {
   const selected = new Set(selection());
   for (const path of ["bin/tap", "install.sh", "runtime/bun/main.ts", "runtime/bun/src/artifact-bun-preload.ts", "skills/tap/config/config.v3.toml",
-    "skills/tap/scripts/run-shell-logged.sh", "skills/tap/scripts/watch-templates/notice.md", "completions/_tap", "CHANGELOG.md",
+    "skills/tap/scripts/run-shell-logged.sh", "skills/tap/scripts/watch-templates/notice.md", "completions/_tap", "CHANGELOG.md", "skills/tap/VERSION-BRIEF.md",
     "docs/attach-launch-reference.md", "skills/lead/references/ingest/README.md", "vendor/fzf/LICENSE", "vendor/fzf/manifest.json", "runtime/bun/third_party/herdr/LICENSE",
     "hooks/tap-shell-body-guard.ts", "docs/cheatsheet.html", "docs/RELEASE-ARTIFACTS.md", "SECURITY.md", "docs/TAP-LEVELS.md", "docs/COMMUNITY-FEATURES.md",
     "compat/skills/tap-double-check/SKILL.md", "compat/skills/tap-coach/SKILL.md", "compat/skills/tap-abandon-branch/SKILL.md"]) {
@@ -99,7 +99,7 @@ test("an unknown commit refuses with a named error and writes nothing", () => {
 test("two builds of HEAD give one top directory of files and directories, the same inventory, and a receipt", () => {
   const first = buildArtifact({ repo: REPO, commit: "HEAD", out: dir("tap-release-a-") });
   const second = buildArtifact({ repo: REPO, commit: "HEAD", out: dir("tap-release-b-") });
-  expect(first.version).toMatch(/^\d+\.\d+-\d{8}-[0-9a-f]{12}$/);
+  expect(first.version).toMatch(/^\d+\.\d+\.\d+\+[0-9]+\.g[0-9a-f]{12,40}$/);
   expect(readFileSync(`${first.archive}.sha256`, "utf8")).toBe(`${first.sha256}  ${first.top}.tar.gz\n`);
   expect(existsSync(first.bootstrap)).toBe(true);
 
@@ -117,8 +117,27 @@ test("two builds of HEAD give one top directory of files and directories, the sa
     return join(into, readdirSync(into)[0]!);
   };
   const a = extract(first.archive), b = extract(second.archive);
+  const reported = spawnSync("bash", [join(a, "bin/tap"), "--version"], { encoding: "utf8" });
+  expect(reported.status, reported.stderr).toBe(0);
+  expect(reported.stdout).toBe(`TAP v${first.version}\n`);
   const tracked = (root: string) => readFileSync(join(root, "INVENTORY"), "utf8").split("\n").filter(line => line && !line.endsWith(" libexec/tap/tap"));
   expect(tracked(a)).toEqual(tracked(b));
   expect(JSON.parse(readFileSync(join(a, "tap-release.json"), "utf8"))).toMatchObject({ schema: 1, version: first.version, commit: first.commit, bun: Bun.version });
   console.log(`release-build: archives byte-identical=${first.sha256 === second.sha256} (${first.sha256.slice(0, 12)} vs ${second.sha256.slice(0, 12)})`);
+}, 240000);
+
+test("different commits in one release have distinct archive identities; a tagged commit uses the release", () => {
+  const repo = dir("tap-release-commits-");
+  const run = (...args: string[]) => {
+    const r = spawnSync("git", ["-C", repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0); return r.stdout.trim();
+  };
+  run("clone", "--quiet", "--shared", REPO, ".");
+  run("tag", "v0.23.0");
+  const released = buildArtifact({ repo, commit: "HEAD", out: dir("tap-release-tagged-") });
+  expect(released.version).toBe("0.23.0");
+  run("commit", "--allow-empty", "-qm", "Next build");
+  const next = buildArtifact({ repo, commit: "HEAD", out: dir("tap-release-next-") });
+  expect(next.version).toBe(`0.23.0+1.g${run("rev-parse", "--short=12", "HEAD")}`);
+  expect(next.top).not.toBe(released.top);
 }, 240000);

@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert result.returncode == 0 and 'links installed; shell setup required' in result.stderr, result
     assert 'interactive machine setup skipped (no terminal)' in result.stdout, result
     assert 'tap setup --machine --answers <file>' in result.stdout and '--dry-run' in result.stdout, result
-    assert 'tap session launch <harness> <name>' in result.stdout, result
+    assert 'tap launch <harness> [name]' in result.stdout, result
     assert 'install: done' not in result.stdout and (bindir / 'tap').is_symlink(), result
     remedy = next(line.split('run in this terminal: ', 1)[1] for line in result.stderr.splitlines() if 'run in this terminal:' in line)
     check = subprocess.run(['/bin/bash', '-c', remedy + '\ncommand -v tap\ntap help'], env=env, text=True, capture_output=True)

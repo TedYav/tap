@@ -23,7 +23,11 @@ files do not enter the archive. It writes:
 - `tap-<version>-<os>-<arch>.tar.gz.sha256`
 - `tap-bootstrap.sh`
 
-The version combines the protocol version, commit date, and source commit prefix.
+The version is the release version (for example `0.23.0`) at a tagged release
+commit. Other builds add a development suffix, such as `0.23.0+3.g0123456789ab`:
+commits since the tag and the source commit prefix. Without an export tag, the
+count starts at the release heading's introduction; even that first build
+carries `+0.g<sha>`.
 The archive contains `tap-release.json` with the full commit, platform, and Bun
 version, plus an `INVENTORY` of file hashes and executable bits. The build prints
 the archive path, SHA-256, file count, source commit, and bootstrap path.

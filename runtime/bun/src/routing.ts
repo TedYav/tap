@@ -150,6 +150,11 @@ export function compactAge(seconds: number): string {
   return `${value - floor === 0.5 && floor % 2 === 0 ? floor : Math.round(value)}${suffix}`;
 }
 
+// Team order for human views: case-insensitive, then codepoint order so `Tap` and `tap` stay stable.
+function compareTeams(a: string, b: string): number {
+  return compare(a.toLowerCase(), b.toLowerCase()) || compare(a, b);
+}
+
 function compare(a: string, b: string): number {
   const aa = Array.from(a, ch => ch.codePointAt(0)!), bb = Array.from(b, ch => ch.codePointAt(0)!);
   for (let i = 0; i < Math.min(aa.length, bb.length); i++) if (aa[i] !== bb[i]) return aa[i]! - bb[i]!;
@@ -328,6 +333,7 @@ export function teamStatus(states: string[], unobserved = false, colored = !!pro
   const kinds: [string, number][] = unobserved ? [[unobservedLabel, 33]] : [];
   if (!unobserved) {
     if (states.includes("blocked")) kinds.push(["blocked", 31]);
+    if (states.includes("error")) kinds.push(["error", 31]);
     if (states.includes("working")) kinds.push(["working", 32]);
     // An ended turn that owns background work will wake itself (tap-i5fzq).
     if (states.includes("waiting")) kinds.push(["waiting", 93]);
@@ -432,8 +438,8 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
     const groups = rows.filter(row => args.all || row.active || row.unobserved).map(team => {
       const seats = agents.filter(agent => agent.team === team.name).sort((a,b) =>
         cacheRank(a) - cacheRank(b) || expiry(a) - expiry(b) || compare(text(a.handle),text(b.handle)));
-      return {team,seats,expiry:Math.min(...seats.map(expiry))};
-    }).sort((a,b) => a.expiry - b.expiry || compare(a.team.name,b.team.name));
+      return {team,seats};
+    }).sort((a,b) => compareTeams(a.team.name,b.team.name));
     const headers = ["handle", "harness", "state", "context", "family", "model", "preset"];
     const records = groups.flatMap(group => group.seats.map(row => {
       const sample = object(row.context_tokens) ? row.context_tokens as unknown as TokenSample : undefined;
@@ -454,14 +460,15 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
     const lines = rosterTable(kept.map(i=>headers[i]!),records.map(row=>kept.map(i=>row[i]!)),null).trimEnd().split("\n");
     let stdout = `  ${lines.shift()}\n`, offset = 0;
     for (const {team,seats} of groups) {
+      if (team !== groups[0]!.team) stdout += "\n";
       const heading = colored ? `\x1b[1;36m${team.name}\x1b[0m` : team.name;
-      stdout += `${heading}  ${team.unobserved ? "?/?" : `${team.active}/${team.total}`} seats  ${team.root}\n`;
+      stdout += `${heading}  ${team.unobserved ? "?/?" : `${team.active}/${team.total}`} seats active  ${team.root}\n`;
       for (const _ of seats) stdout += `  ${lines[offset++]}\n`;
     }
     return {exit:0,stdout,
       stderr:gap + (hidden.length ? `tap teams: hid ${hidden.join(", ")} to fit ${terminal} columns; tap teams --seats --wide shows every column\n` : "")};
   }
-  const visible = rows.filter(row => args.all || row.active || row.unobserved).sort((a,b) => compare(a.name,b.name));
+  const visible = rows.filter(row => args.all || row.active || row.unobserved).sort((a,b) => compareTeams(a.name,b.name));
   if (!visible.length) return success(`tap teams (machine-wide): no ${args.all ? "enrolled" : "active"} teams\n`);
   return success(args.details
     ? table(["TEAM", "SEATS", "ATTACHED", "WARN", "WORKDIR"], visible.map(row => [row.name, `${row.active}/${row.total}`, String(row.attached), row.warn, row.root]))

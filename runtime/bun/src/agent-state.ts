@@ -16,11 +16,16 @@ import { codexPlaceholder, readStdinFrame, withoutCodexPaint } from "./terminal-
 
 const CODEX_QUEUED_MESSAGES = /(?:^|\n)([•*] Messages to be submitted after next tool call \(press esc to\s+interrupt and send immediately\)\n(?:[ \t]+↳[^\n]*(?:\n[ \t]{4,}[^\n]*)*\n)+)[ \t\n\u2800-\u28ff]*$/;
 
-export type AgentState = "working" | "blocked" | "idle" | "booting" | "overprint" | "unknown";
+export type AgentState = "working" | "blocked" | "error" | "idle" | "booting" | "overprint" | "unknown";
 
 export interface AgentStateResult {
   agentState: AgentState;
   reason: string;
+}
+
+/** A turn has stopped and its composer is usable; this does not prove empty input. */
+export function agentAtRest(state: AgentState): boolean {
+  return state === "idle" || state === "error";
 }
 
 interface Gate {
@@ -37,14 +42,18 @@ type Region =
   | { kind: "last_non_empty_line" }
   | { kind: "claude_live_input" }
   | { kind: "claude_live_footer" }
+  | { kind: "claude_error_footer" }
   | { kind: "claude_live_status" }
   | { kind: "claude_live_modal" }
+  | { kind: "claude_last_message" }
   | { kind: "codex_live_composer" }
   | { kind: "codex_before_composer" }
+  | { kind: "codex_last_message" }
   | { kind: "cursor_live_composer" }
   | { kind: "cursor_live_modal" }
   | { kind: "opencode_live_input" }
   | { kind: "opencode_live_modal" }
+  | { kind: "opencode_last_message" }
   | { kind: "agy_live_input" }
   | { kind: "agy_live_modal" }
   | { kind: "hermes_live_input" }
@@ -110,6 +119,41 @@ const live = (kind: Exclude<Region["kind"], "bottom_non_empty_lines">): Region =
 const RULES: Record<Harness, Rule[]> = {
   claude: [
     {
+      id: "usage_limit_modal",
+      state: "blocked",
+      priority: 950,
+      region: tail(TRUST_TAIL),
+      lineRegex: [/^\s*What do you want to do\?\s*$/],
+      regex: [
+        new RegExp(`^[ \\t]*(?:❯\\s*)?${wrapped("1. Stop and wait for limit to reset").source}[ \\t]*$`, "im"),
+        new RegExp(`^[ \\t]*(?:❯\\s*)?${wrapped("2. Wait here, then continue automatically at").source}\\s+[^\\n]+$`, "im"),
+        new RegExp(`^[ \\t]*(?:❯\\s*)?${wrapped("3. Switch to usage credits").source}[ \\t]*$`, "im"),
+        closingHint("Enter to confirm · Esc to cancel"),
+      ],
+    },
+    {
+      id: "usage_limit",
+      state: "error",
+      // A resumed turn's live spinner/interrupt hint supersedes this footer.
+      priority: 400,
+      region: live("claude_error_footer"),
+      lineRegex: [/^\s*⚠ Usage limit reached · limit resets\b/],
+    },
+    {
+      id: "usage_limit",
+      state: "error",
+      priority: 700,
+      region: live("claude_last_message"),
+      lineRegex: [/^⏺ (?:Usage limit reached(?: again)? ·|Automatic continue cancelled · \/rate-limit-options)/],
+    },
+    {
+      id: "api_error",
+      state: "error",
+      priority: 700,
+      region: live("claude_last_message"),
+      lineRegex: [/^⏺ API Error: /],
+    },
+    {
       // Workspace trust at startup in a new folder (auto mode, tap-3oox6). Its
       // default row is "No, exit". Both choices and the key hint are rows of
       // their own, the hint closes the screen, and no other row carries the
@@ -156,6 +200,20 @@ const RULES: Record<Harness, Rule[]> = {
     },
   ],
   codex: [
+    {
+      id: "usage_limit",
+      state: "error",
+      priority: 700,
+      region: live("codex_last_message"),
+      lineRegex: [/^■ You[’']ve hit your usage limit\./],
+    },
+    {
+      id: "model_capacity",
+      state: "error",
+      priority: 700,
+      region: live("codex_last_message"),
+      lineRegex: [/^■ Selected model is at capacity\. Please try a different model\./],
+    },
     {
       id: "codex-hook-trust",
       state: "blocked",
@@ -242,6 +300,13 @@ const RULES: Record<Harness, Rule[]> = {
     },
   ],
   opencode: [
+    {
+      id: "rate_limit",
+      state: "error",
+      priority: 200,
+      region: live("opencode_last_message"),
+      regex: [/^Too Many Requests: You've exceeded your subscription rate limits\./],
+    },
     {
       id: "permission_required",
       state: "blocked",
@@ -436,6 +501,50 @@ function opencodeLiveInput(screen: string): string {
   return "";
 }
 
+/** The last response, never the current draft or an earlier turn's error. */
+function lastMessage(screen: string, harness: "claude" | "codex"): string {
+  let above: string;
+  if (harness === "claude") {
+    const band = bracketedRegion(screen, CLAUDE_PROMPT);
+    if (band && /esc to interrupt(?:\s|·|$)/i.test(band.footer)) return "";
+    above = band?.above ?? screen;
+  } else {
+    const rows = screen.split("\n");
+    const composer = rows.findLastIndex(row => /^[›❯»]/.test(row));
+    above = withoutCodexPaint(rows.slice(0, composer < 0 ? rows.length : composer).join("\n"));
+  }
+  const rows = above.split("\n");
+  const marker = harness === "claude" ? /^(?:⏺|❯)(?:\s|$)/ : /^(?:■|[•*]|[›❯»])(?:\s|$)/;
+  const start = rows.findLastIndex(row => marker.test(row));
+  if (start < 0) return "";
+  const message = rows.slice(start).join("\n");
+  // A new running turn supersedes the completed response, even without new prose.
+  if (harness === "claude" && rows.slice(start + 1).some(row => CLAUDE_SPINNER.test(row))) return "";
+  return message;
+}
+
+/** OpenCode's last error block, above the separate input box and model row. */
+function opencodeLastMessage(screen: string): string {
+  const rows = screen.split("\n");
+  const bottom = rows.findLastIndex(row => /^\s*╹▀/.test(row));
+  let start = bottom < 0 ? rows.length : bottom;
+  if (bottom >= 0) while (start > 0 && /^\s*┃/.test(rows[start - 1]!)) start--;
+  let end = start;
+  while (end > 0 && (!rows[end - 1]!.trim() || /^\s*▣\s/.test(rows[end - 1]!))) end--;
+  let message = end;
+  while (message > 0 && /^\s*┃/.test(rows[message - 1]!)) message--;
+  return rows.slice(message, end).map(row => row.replace(/^\s*┃\s?\s?/, "").trimEnd()).join("\n").trim();
+}
+
+/** An error releases input only when this frame proves the harness's composer. */
+function errorComposer(harness: Harness, screen: string, ownedCodexComposer: boolean): boolean {
+  const plain = screen.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  if (harness === "claude") return bracketedRegion(plain, CLAUDE_PROMPT) !== null;
+  if (harness === "codex") return codexLiveComposer(screen, ownedCodexComposer) !== "";
+  if (harness === "opencode") return opencodeLiveInput(plain) !== "";
+  return false;
+}
+
 function modalWithoutInput(screen: string, input: string, footer: RegExp, lines: number = 6, footerRows: number = 1): string {
   if (input) return "";
   return footer.test(bottomNonEmptyLines(screen, footerRows)) ? bottomNonEmptyLines(screen, lines) : "";
@@ -453,6 +562,10 @@ function regionText(screen: string, region: Region, ownedCodexComposer = false):
       return bracketedInput(screen, /^\s*❯(?:\s| |$)/u);
     case "claude_live_status":
       return claudeStatusRow(screen) ?? "";
+    case "claude_last_message":
+      return lastMessage(screen, "claude");
+    case "claude_error_footer":
+      return bracketedRegion(screen, CLAUDE_PROMPT)?.footer ?? "";
     case "claude_live_footer": {
       const band = bracketedRegion(screen, /^\s*❯(?:\s| |$)/u);
       // Draft text is not a working hint; wrapped footer chrome may occupy three rows.
@@ -478,6 +591,8 @@ function regionText(screen: string, region: Region, ownedCodexComposer = false):
     }
     case "codex_live_composer":
       return codexLiveComposer(raw, ownedCodexComposer);
+    case "codex_last_message":
+      return lastMessage(screen, "codex");
     case "codex_before_composer": {
       if (!codexLiveComposer(raw, ownedCodexComposer)) return "";
       const rows = screen.split("\n");
@@ -499,6 +614,8 @@ function regionText(screen: string, region: Region, ownedCodexComposer = false):
       return modalWithoutInput(screen, cursorLiveComposer(screen), /\(esc or n\)\s*$/i, 8);
     case "opencode_live_input":
       return opencodeLiveInput(screen);
+    case "opencode_last_message":
+      return /esc (?:to )?interrupt|(?:■|⬝){4,}/.test(opencodeLiveInput(screen)) ? "" : opencodeLastMessage(screen);
     case "opencode_live_modal":
       return modalWithoutInput(
         screen,
@@ -562,10 +679,13 @@ export function detectAgentState(harnessName: string, screen: string, paneTitle 
   let matched: Rule | null = null;
   for (const rule of RULES[harness]) {
     if (!gateMatches(rule, regionText(screen, rule.region, ownedCodexComposer))) continue;
+    // Error text never establishes a modal. Without composer proof, retain
+    // the existing unknown/booting answer and exact-staged-input safeguards.
+    if (rule.state === "error" && !errorComposer(harness, screen, ownedCodexComposer)) continue;
     if (!matched || rule.priority > matched.priority) matched = rule;
   }
-  // Permission dialogs remain blocked even if the last title still spins.
-  if (harness === "codex" && matched?.state !== "blocked" && /^[\u2800-\u28ff]/u.test(paneTitle)) {
+  // A modal or terminal error outranks a title left spinning by the failed turn.
+  if (harness === "codex" && matched?.state !== "blocked" && matched?.state !== "error" && /^[\u2800-\u28ff]/u.test(paneTitle)) {
     return { agentState: "working", reason: "title_working" };
   }
   if (matched) return { agentState: matched.state, reason: matched.id };
