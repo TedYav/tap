@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { liveSeat, stopExactPane, ownedCrewRows, parseSeatOptions, seatSnapshot, validateDurable } from "../src/seat-updown";
@@ -32,7 +32,16 @@ function fixture() {
     TAP_SERVER_EPOCH: undefined, TAP_BOOT_ID: undefined,
   };
   servers.push(env);
-  const put = (seats: Record<string, unknown>) => writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "team", worktree_root: root }, seats }));
+  const put = (seats: Record<string, unknown>) => {
+    const epoch = tm(env, "display-message", "-p", "#{pid}:#{start_time}").stdout.trim();
+    const socket = tm(env, "display-message", "-p", "#{socket_path}").stdout.trim();
+    const stamped = Object.fromEntries(Object.entries(seats).map(([handle, raw]) => {
+      const value = raw as Record<string, unknown>;
+      return [handle, value.delivery === "poll" ? value : { instance: `${handle}|fixture`,
+        ...(/^\d+:\d+$/.test(epoch) ? { server_epoch: `srv:${epoch}`, server_socket: socket } : {}), ...value }];
+    }));
+    writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "team", worktree_root: root }, seats: stamped }));
+  };
   const get = () => JSON.parse(readFileSync(registry, "utf8"));
   const run = (...args: string[]) => spawnSync(process.execPath, [join(repo, "runtime/bun/main.ts"), ...args], { cwd: root, env, encoding: "utf8", timeout: 20_000 });
   put({});
@@ -95,9 +104,12 @@ test("real tmux: a live server with no sessions observes as empty, a server with
   expect(seatSnapshot(call)).toEqual({ panes: [], epoch: "" });
 });
 
-test("crew cleanup is owner-session scoped and refuses moved crew", () => {
-  expect(ownedCrewRows({ own: { crew: true, session: "team/seat", pane_id: "%2" }, foreign: { crew: true, session: "elsewhere", pane_id: "%3" } }, "team/seat", snapshot)).toEqual(["own"]);
-  expect(() => ownedCrewRows({ moved: { crew: true, session: "team/seat", pane_id: "%1" } }, "team/seat", { ...snapshot, panes: [{ ...snapshot.panes[0]!, session: "elsewhere" }] })).toThrow("another session");
+test("crew cleanup follows durable ownership across vessels and excludes reused owner instances", () => {
+  const parent = { instance: "parent-one", session: "team/seat" };
+  expect(ownedCrewRows({ parent,
+    own: { crew: true, crew_owner: "parent", crew_owner_instance: "parent-one", session: "crew-vessel" },
+    foreign: { crew: true, crew_owner: "parent", crew_owner_instance: "old-instance", session: "team/seat" },
+  }, "parent")).toEqual(["own"]);
 });
 
 test("real down preserves mail, instance, resume recipe; only owner crew disappear; repeat is no-op", () => {
@@ -107,6 +119,7 @@ test("real down preserves mail, instance, resume recipe; only owner crew disappe
   const crew = tm(f.env, "new-window", "-d", "-t", "=team/seat", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
   const foreign = tm(f.env, "new-session", "-d", "-s", "operator", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
   f.put({ seat: row(pane), crew: { crew: true, session: "team/seat", pane_id: crew }, outsider: { crew: true, session: "operator", pane_id: foreign } });
+  const before = f.get().seats;
   mkdirSync(join(f.bus, "payloads")); mkdirSync(join(f.bus, "receipts"));
   writeFileSync(join(f.bus, "payloads", "pending.md"), "reply: expected\nto: seat\nbody");
   writeFileSync(join(f.bus, "receipts", "pending.sent"), "placed but unsettled");
@@ -115,7 +128,7 @@ test("real down preserves mail, instance, resume recipe; only owner crew disappe
   expect(JSON.parse(result.stdout).outcome).toBe("stopped");
   expect(tm(f.env, "has-session", "-t", "=team/seat").status).not.toBe(0);
   expect(tm(f.env, "has-session", "-t", "=operator").status).toBe(0);
-  expect(f.get().seats).toEqual({ seat: { ...row(pane), status: "suspended", status_reason: "session_stopped" }, outsider: { crew: true, session: "operator", pane_id: foreign } });
+  expect(f.get().seats).toEqual({ seat: { ...before.seat, status: "suspended", status_reason: "session_stopped" }, outsider: before.outsider });
   expect(readFileSync(join(f.bus, "payloads", "pending.md"), "utf8")).toContain("reply: expected");
   expect(readFileSync(join(f.bus, "receipts", "pending.sent"), "utf8")).toBe("placed but unsettled");
   expect(JSON.parse(f.run("down", "team/seat", "--json").stdout).outcome).toBe("already_stopped");
@@ -204,6 +217,7 @@ test("failed kill restores the owner and crew rows while preserving the live ses
   const crew = tm(f.env, "new-window", "-d", "-t", "=team/seat", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
   const seats = { seat: row(pane), crew: { crew: true, session: "team/seat", pane_id: crew } };
   f.put(seats);
+  const before = f.get().seats;
   mkdirSync(join(f.root, "bin"));
   const shim = join(f.root, "bin/tmux");
   writeFileSync(shim, `#!/bin/bash\nfor arg in "$@"; do\n  if [ "$arg" = if-shell ]; then echo 'forced stop refusal' >&2; exit 1; fi\ndone\nexec ${quote(Bun.which("tmux")!)} "$@"\n`);
@@ -211,8 +225,8 @@ test("failed kill restores the owner and crew rows while preserving the live ses
   f.env.PATH = `${f.root}/bin:${f.env.PATH}`;
   const result = f.run("down", "seat", "--json");
   expect(result.status).toBe(1);
-  expect(JSON.parse(result.stdout).error_class).toBe("stop_failed");
-  expect(f.get().seats).toEqual(seats);
+  expect(JSON.parse(result.stdout).error_class).toBe("crew_stop_unverified");
+  expect(f.get().seats).toEqual(before);
   expect(tm(f.env, "has-session", "-t", "=team/seat").status).toBe(0);
   expect(tm(f.env, "display-message", "-p", "-t", crew, "#{pane_id}").stdout.trim()).toBe(crew);
 }, 10_000);
@@ -238,22 +252,21 @@ test("co-tenants refuse under the current registry lock; stale poll membership d
   expect(f.get().seats.poll).toEqual(poll);
 }, 10_000);
 
-test("absent-session down and dry-run preserve stale status, crew rows and reset generation", () => {
+test("absent-session dry-run preserves rows; explicit down retires its retained crew", () => {
   const f = fixture();
-  const seats = { seat: row(), crew: { crew: true, session: "team/seat", pane_id: "%2" } };
-  f.put(seats);
+  f.put({ seat: row(), crew: { crew: true, session: "team/seat", pane_id: "%2" } });
   const generation = join(f.bus, "reset-generation.json");
   writeFileSync(generation, '{"pristine":true,"extension":"retain"}\n');
-  const before = readFileSync(f.registry, "utf8");
-  const beforeGeneration = readFileSync(generation, "utf8");
-  for (const args of [["--dry-run"], []]) {
-    const result = f.run("down", "seat", "--json", ...args);
-    expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ outcome: "already_stopped", crews: [] });
-    expect(result.stderr).toBe("");
-    expect(readFileSync(f.registry, "utf8")).toBe(before);
-    expect(readFileSync(generation, "utf8")).toBe(beforeGeneration);
-  }
+  const before = readFileSync(f.registry, "utf8"), beforeGeneration = readFileSync(generation, "utf8");
+  const preview = f.run("down", "seat", "--json", "--dry-run");
+  expect(preview.status).toBe(0);
+  expect(JSON.parse(preview.stdout)).toMatchObject({ outcome: "would_stop", crews: ["crew"] });
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+  expect(readFileSync(generation, "utf8")).toBe(beforeGeneration);
+  const result = f.run("down", "seat", "--json");
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(f.get().seats.crew).toBeUndefined();
+  expect(f.get().seats.seat.status).toBe("suspended");
 });
 
 test("down and up refuse an old, hybrid or axis-less registry with no write or generation stamp", () => {
@@ -294,3 +307,24 @@ test("human down names removed crews and discloses preserved but unassigned crew
   expect(f.get().seats.helper).toBeUndefined();
   expect(readFileSync(path, "utf8")).toBe(mail);
 });
+
+test.each(["down", "out"])("%s from a surviving crew stops that caller after its owner pane is gone", async verb => {
+  const f = fixture();
+  const owner = tm(f.env, "new-session", "-d", "-s", "team/seat", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
+  const child = tm(f.env, "new-window", "-d", "-t", "=team/seat", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
+  tm(f.env, "new-session", "-d", "-s", "observer", "sleep 120");
+  f.put({ seat: row(owner), child: { crew: true, crew_owner: "seat", crew_owner_instance: "seat|stable", session: "team/seat", pane_id: child } });
+  expect(tm(f.env, "kill-pane", "-t", owner).status).toBe(0);
+  const receipt = join(f.root, "crew-self.json"), survived = join(f.root, "survived"), script = join(f.root, "stop-from-crew.sh");
+  const childEnv = Object.entries(f.env).filter(([key, value]) => value !== undefined && (key.startsWith("TAP_") || ["HOME", "PATH", "TMUX_TMPDIR"].includes(key)))
+    .map(([key, value]) => quote(`${key}=${value}`)).join(" ");
+  writeFileSync(script, `#!/bin/sh\ncd ${quote(f.root)}\nenv ${childEnv} ${quote(process.execPath)} ${quote(join(repo, "runtime/bun/main.ts"))} ${verb} seat ${verb === "out" ? "--kill" : ""} --json > ${quote(receipt)} 2> ${quote(receipt + ".err")}\nprintf survived > ${quote(survived)}\nexec sleep 120\n`);
+  expect(tm(f.env, "respawn-pane", "-k", "-t", child, `sh ${quote(script)}`).status).toBe(0);
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && tm(f.env, "list-panes", "-a", "-F", "#{pane_id}").stdout.trim().split("\n").includes(child)) await Bun.sleep(50);
+  const detail = [receipt, receipt + ".err"].map(path => existsSync(path) ? readFileSync(path, "utf8") : `missing ${path}`).join("\n");
+  expect(tm(f.env, "list-panes", "-a", "-F", "#{pane_id}").stdout.trim().split("\n"), detail).not.toContain(child);
+  expect(f.get().seats.child).toBeUndefined();
+  expect(JSON.parse(readFileSync(receipt, "utf8")).outcome).toBe("stop_requested");
+  expect(existsSync(survived)).toBe(false);
+}, 10000);

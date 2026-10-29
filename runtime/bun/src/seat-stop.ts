@@ -1,3 +1,4 @@
+import { crewFamilyHandles } from "./crew-ownership";
 // Shared terminal observation and exact stop effect for seat power and retirement.
 import { TapError } from "./context";
 import type { Seat } from "./registry";
@@ -53,16 +54,23 @@ export function liveSeat(row: Seat, expected: string, snapshot: SeatSnapshot): P
   return pane;
 }
 
-/** Shared-session ownership is the installed crew contract. No foreign pane is followed. */
-export function ownedCrewRows(seats: Record<string, Seat>, session: string, snapshot: SeatSnapshot): string[] {
-  const handles: string[] = [];
-  for (const [handle, row] of Object.entries(seats)) {
-    if (row.crew !== true || row.session !== session) continue;
-    const live = snapshot.panes.find(p => p.id === row.pane_id);
-    if (live && live.session !== session) fail("crew_identity_mismatch", `crew '${handle}' is live in another session`);
-    handles.push(handle);
+/** Durable family selection includes retained crews in separate vessels. */
+export function ownedCrewRows(seats: Record<string, Seat>, owner: string): string[] {
+  return crewFamilyHandles(seats, owner);
+}
+
+/** A parent may have exited while its linked crews keep the vessel alive. */
+export function liveOwnerSeat(seats: Record<string, Seat>, owner: string, snapshot: SeatSnapshot): Pane | undefined {
+  const row = seats[owner]!;
+  const members = snapshot.panes.filter(p => p.session === row.session);
+  if (!members.some(p => p.id === row.pane_id)) {
+    const owned = new Set(ownedCrewRows(seats, owner).flatMap(handle => {
+      const child = seats[handle]!;
+      return child.server_epoch === snapshot.epoch ? [child.pane_id] : [];
+    }));
+    if (members.every(p => owned.has(p.id))) return undefined;
   }
-  return handles;
+  return liveSeat(row, String(row.session), snapshot);
 }
 
 /** The final predicate and kill run on the same tmux server, using immutable ids. */

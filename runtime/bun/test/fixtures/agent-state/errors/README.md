@@ -32,3 +32,11 @@ Negative controls in the test are explicitly constructed from these captures:
 newer normal responses and working rows, prose and indented quotations of
 error strings, low-quota warnings, and Codex's ordinary interruption notice.
 These controls test boundaries; they are not additional live observations.
+
+`codex-capacity-turn.jsonl` is the terminal event from a real Codex capacity
+failure on October 28, 2026 at 06:52:04Z. It retains the timestamp, event type,
+error object and null last-agent message; unrelated timing and conversation
+identifiers were omitted. It is a transcript projection, separate from the
+October 19 screen capture. `unwedge-progress.test.ts` places constructed recovery
+input before this event to test repeated capacity failures; that sequence is
+synthetic, not a second captured recovery.

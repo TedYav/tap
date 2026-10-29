@@ -119,6 +119,13 @@ reg.write_text(json.dumps({'schema':'0.20','team':{'name':'CrewRegistry','worktr
  'driver':{'delivery':'pane','harness':'codex','status':'active','instance':'driver|fixture',
            'pane_id':os.environ['TMUX_PANE'],'pane':'CrewRegistry/driver:0.0','session':'CrewRegistry/driver',
            'server_epoch':'srv:'+os.environ['PARENT_EPOCH'],'server_socket':os.environ['SOCKET']}}}))
+document=json.loads(reg.read_text())
+# An exited row survives registration's existing active-row adoption cleanup,
+# so the post-registration arm and reconcile must both ignore its generation.
+document['seats']['before-restart']={**document['seats']['driver'],'server_epoch':'srv:1:1','instance':'old|fixture','status':'exited'}
+document['seats']['old-active']={**document['seats']['driver'],'server_epoch':'srv:2:2','instance':'old-active|fixture',
+                                'session':'CrewRegistry/old-active','pane':'CrewRegistry/old-active:0.0'}
+reg.write_text(json.dumps(document))
 outside=w/'outside'; (outside/'.tap').mkdir(); outside_reg=outside/'.tap/team-registry.json'
 outside_reg.write_text(json.dumps({'schema':'0.20','team':{'name':'Outside','worktree_root':str(outside)},'seats':{}}))
 (w/'index/global-registry.json').write_text(json.dumps({'schema':'0.20','teams':{
@@ -128,6 +135,30 @@ PY
 cd "$WORK/CrewRegistry"
 mkdir -p "$WORK/CrewRegistry/nested" "$WORK/unselectable"
 : > "$CREW_WINDOWS"
+cat > "$WORK/brief.md" <<'BRIEF'
+Run tap whoami first; report the handle with your result. Review the bounded fixture.
+BRIEF
+for destination in missing-lane unknown-team/lane not/a/seat driver; do
+  cp "$WORK/CrewRegistry/.tap/team-registry.json" "$WORK/reply-to.before"
+  before_windows="$(wc -l < "$CREW_WINDOWS")"
+  reply_rc=0
+  bash "$ROOT/scripts/tap.sh" crew add codex-test invalid-reply --assign "$WORK/brief.md" --reply-to "$destination" > "$WORK/invalid-reply.log" 2>&1 || reply_rc=$?
+  [ "$reply_rc" = 1 ] || { cat "$WORK/invalid-reply.log"; echo 'invalid reply destination accepted'; exit 1; }
+  [ "$(wc -l < "$CREW_WINDOWS")" = "$before_windows" ] || { cat "$WORK/invalid-reply.log"; echo 'invalid reply destination created a window'; exit 1; }
+  cmp "$WORK/reply-to.before" "$WORK/CrewRegistry/.tap/team-registry.json"
+done
+assign_rc=0
+bash "$ROOT/scripts/tap.sh" crew add codex-test assignment-unavailable --assign "$WORK/brief.md" > "$WORK/assignment-unavailable.log" 2>&1 || assign_rc=$?
+[ "$assign_rc" = 1 ] && grep -q 'started.*not assigned' "$WORK/assignment-unavailable.log" || {
+  cat "$WORK/assignment-unavailable.log"; echo 'unverified assignment did not report the started crew'; exit 1;
+}
+python3 - "$WORK" <<'PY'
+import json,pathlib,sys
+w=pathlib.Path(sys.argv[1]); row=json.loads((w/'CrewRegistry/.tap/team-registry.json').read_text())['seats']['assignment-unavailable']
+assert row['crew_identity_capture']['decision']=='unavailable',row
+assert not list((w/'CrewRegistry/.tap/bus/payloads').glob('*.md'))
+assert not list((w/'CrewRegistry/.tap/bus/spool').glob('*.md'))
+PY
 failures=0
 for preset in glm53 claude-test codex-test; do
   for cwd in default outside nested unselectable; do
@@ -161,6 +192,8 @@ w=pathlib.Path(sys.argv[1]);handle,preset,cwd=sys.argv[2:]
 reg=json.loads((w/'CrewRegistry/.tap/team-registry.json').read_text());row=reg['seats'][handle]
 assert row['crew'] is True,row
 assert row['crew_owner']=='driver' and row['crew_owner_instance']=='driver|fixture',row
+assert reg['seats']['before-restart']['server_epoch']=='srv:1:1',reg
+assert reg['seats']['old-active']['server_epoch']=='srv:2:2' and reg['seats']['old-active']['status']=='active',reg
 assert row['crew_identity_capture']['decision']=='unavailable',row
 assert row['crew_identity_capture']['reason'],row
 assert not row.get('harness_session_id'),row
@@ -178,6 +211,35 @@ PY
   done
 done
 [ "$failures" = 0 ]
+
+# The registered caller keeps its team while working in an unenrolled linked
+# worktree; the crew must start there, not be relocated to the enrolled root.
+git -C "$WORK/CrewRegistry" -c user.name=Fixture -c user.email=fixture@example.invalid commit --allow-empty -qm initial
+git -C "$WORK/CrewRegistry" worktree add -qb lane "$WORK/lane"
+before_windows="$(wc -l < "$CREW_WINDOWS")"
+if (
+  cd "$WORK/lane"
+  TAP_HOME="$WORK/outside/.tap/bus" bash "$ROOT/scripts/tap.sh" crew add codex-test wrong-team > "$WORK/wrong-team.log" 2>&1
+); then echo 'caller pin on another team accepted'; exit 1; fi
+grep -q 'launcher uses' "$WORK/wrong-team.log" || { cat "$WORK/wrong-team.log"; exit 1; }
+[ "$(wc -l < "$CREW_WINDOWS")" = "$before_windows" ] || { echo 'wrong-team refusal created a pane'; exit 1; }
+(
+  cd "$WORK/lane"
+  unset TAP_HOME TAP_SELF
+  bash "$ROOT/scripts/tap.sh" crew add codex-test linked-caller > "$WORK/linked-caller.log" 2>&1
+) || { cat "$WORK/linked-caller.log"; exit 1; }
+python3 - "$WORK" <<'PY'
+import json,pathlib,subprocess,os,sys
+w=pathlib.Path(sys.argv[1]); reg=json.loads((w/'CrewRegistry/.tap/team-registry.json').read_text())
+row=reg['seats']['linked-caller']
+assert row['crew_owner']=='driver',row
+assert row['cwd']==str(w/'lane'),row
+actual=subprocess.check_output([os.environ['REAL_TMUX'],'-S',os.environ['SOCKET'],'display-message','-p','-t',row['pane_id'],'#{pane_current_path}'],text=True).strip()
+assert actual==str(w/'lane'),actual
+assert not (w/'lane/.tap/team-registry.json').exists()
+assert reg['seats']['old-active']['status']=='active'
+PY
+echo 'crew native door: registered caller from unenrolled linked worktree: ok'
 
 # ── tap-eeibj: the cross-team refusal honours TAP_JSON ───────────────────────
 # Same refusal as the outside-cwd arm above, asked for as JSON: the structured
@@ -433,7 +495,6 @@ capture_parent_pid="$("$REAL_TMUX" -S "$SOCKET" display-message -p -t "$TMUX_PAN
 capture_exit=0
 CREW_CAPTURE_KILL_PARENT_PID="$capture_parent_pid" \
   bash "$ROOT/scripts/tap.sh" crew add codex-test parent-exits-during-capture > "$WORK/parent-exits-capture.log" 2>&1 || capture_exit=$?
-[ "$capture_exit" != 0 ] || { echo 'crew add succeeded after its parent exited during capture'; cat "$WORK/parent-exits-capture.log"; exit 1; }
-grep -q 'during native identity capture' "$WORK/parent-exits-capture.log" || { cat "$WORK/parent-exits-capture.log"; exit 1; }
-if grep -q 'tap crew add: started' "$WORK/parent-exits-capture.log"; then cat "$WORK/parent-exits-capture.log"; exit 1; fi
-echo 'crew native door: parent exit during capture refuses success'
+[ "$capture_exit" = 0 ] || { echo 'crew add failed after its parent exited during capture'; cat "$WORK/parent-exits-capture.log"; exit 1; }
+grep -q 'tap crew add: started' "$WORK/parent-exits-capture.log" || { cat "$WORK/parent-exits-capture.log"; exit 1; }
+echo 'crew native door: parent exit during capture leaves the crew running'

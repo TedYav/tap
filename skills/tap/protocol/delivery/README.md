@@ -2,8 +2,11 @@
 
 Normative TAP v0.23 protocol pages. Open only the page needed for the current question.
 
+- [Harness operator](./harness-operator.md) — opted-in crew navigation back to a composer.
+- [Unwedge ladder](./unwedge.md) — explicit recovery rungs, custody and exact native resume.
 - [Delivery reliability](./reliability.md) — durability, recipient-observed target and recovery.
 - [Delivery receipt measures](./receipt-measures.md) — nightly receipt joins, denominators and the initial evidence report.
+- [Operator input controls](./operator-input-holds.md) — WAIT snooze and persistent STOP/START holds.
 - [Idle staged-submit](./idle-staged-submit.md) — the one licensed Enter on a staged sentinel (tap-9lqa7).
 - [Default-deny](./default-deny.md) — no TAP key answers an approval prompt or trust dialog (tap-rlebf.1).
 - [Approval timeout](./approval-timeout.md) — an opted-in team declines an unanswered approval request once, with a recovery-run Escape (tap-rlebf.2).

@@ -28,6 +28,9 @@ export function reportFrame(frame: string, tty: boolean, env: NodeJS.ProcessEnv)
 
 export function recoveryCli(argv: string[]): number {
   const [op, ...args] = argv;
+  if (process.env.TAP_RECOVERY_RUN && readRun(process.env.TAP_RECOVERY_RUN).purpose === "operator") {
+    throw new Error("operator runs accept only tap operate actions");
+  }
   if (op === "guard") {
     const [paneId] = args;
     if (!paneId) throw new Error("guard requires a pane id");
@@ -71,6 +74,7 @@ export function recoveryCli(argv: string[]): number {
     const target = targetRow(registry, handle, pane, paneId);
     if (process.env.TAP_RECOVERY_RUN) {
       const run = readRun(process.env.TAP_RECOVERY_RUN);
+      if (run.purpose === "operator") throw new Error("operator runs never authorize nudge or submission");
       if (run.mode !== mode || run.target.paneId !== paneId || !canAct(run)) throw new Error("parent recovery does not authorize nudge");
       // A run `tap nudge` opened for its ladder (tap-xe42x) learns the staged payload here.
       updateRun(run.id, current => {
@@ -88,6 +92,7 @@ export function recoveryCli(argv: string[]): number {
     const [id, status] = args;
     if (!id) throw new Error("nudge finish requires recovery id");
     const run = readRun(id);
+    if (run.purpose === "operator") throw new Error("operator runs never authorize nudge or submission");
     if (!run.hold) releaseRun(id, status === "0" ? "staged message submitted; processing unconfirmed" : status === "7" ? "message queued in harness; processing unconfirmed; no replay" : "nudge unresolved; inspect recorded effects");
     return 0;
   }
@@ -95,6 +100,7 @@ export function recoveryCli(argv: string[]): number {
     const id = process.env.TAP_RECOVERY_RUN;
     if (!id) throw new Error("recorded tmux requires recovery context");
     const run = readRun(id);
+    if (run.purpose === "operator") throw new Error("operator runs accept only tap operate actions");
     if (args[0] !== "send-keys") {
       const result = tmux(args);
       process.stdout.write(result.stdout); process.stderr.write(result.stderr); return result.code;

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 /** One inventory for installation, setup, coverage and generated compatibility wrappers. */
 export const CORE_SKILLS = ["tap", "in", "send", "escalate", "config-wizard", "help", "extend"];
-export const OPTIONAL_SKILLS = ["lead", "drive", "conduct", "choreography", "collab", "discuss", "pair", "adapt", "self", "context", "out", "assign", "reply", "outstanding", "team", "ask", "crew", "calibrate-gc"];
+export const OPTIONAL_SKILLS = ["lead", "drive", "conduct", "choreography", "collab", "discuss", "pair", "adapt", "self", "context", "out", "assign", "reply", "outstanding", "team", "ask", "crew", "calibrate-gc", "harness-operator"];
 export const REPO_LOCAL_SKILLS = ["coach", "abandon-branch"];
 /** Lookup-only explanations, never linked into a harness discovery root. */
 export const TOMBSTONE_SKILLS = ["tap-double-check", "tap-coach", "tap-abandon-branch"];

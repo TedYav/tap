@@ -75,6 +75,11 @@ test("native candidates follow target positions and comma selection eligibility"
 test("completion follows accepted grammar and stored eligibility without probing panes", () => {
   const f = fixture();
   const at = (...words: string[]) => values(completionCandidates(["tap", ...words], words.length + 1, f.env, f.alpha));
+  for (const verb of ["assign", "send"]) {
+    expect(at(verb, "--reply")).toEqual(["--reply-to"]);
+    expect(at(verb, "alice", "--reply-to", "a")).toContain("alice");
+    expect(at(verb, "alice", "--reply-to", "beta/b")).toContain("beta/bea");
+  }
   expect(at("te")).toEqual(expect.arrayContaining(["team", "teams", "teardown"]));
   expect(at("a")).not.toContain("advisory");
   expect(at("team", "")).not.toContain("alpha");
@@ -234,4 +239,15 @@ test("session fork completes forkable seats and its own flags", () => {
   expect(at("session", "f")).toEqual(["fork"]);
   expect(at("session", "fork", "")).toEqual(["alice", "cx"]);
   expect(at("session", "fork", "--d")).toEqual(["--dry-run"]);
+});
+
+test("crew continuation completes retained crews and owner selectors without offering a durable target", () => {
+  const f = fixture();
+  expect(values(completionCandidates(["tap", "crew", "re"], 3, f.env, f.alpha))).toContain("resume");
+  const crew = values(completionCandidates(["tap", "crew", "resume", ""], 4, f.env, f.alpha));
+  expect(crew).toContain("crew"); expect(crew).not.toContain("alice");
+  const owners = values(completionCandidates(["tap", "crew", "resume", "--owner", ""], 5, f.env, f.alpha));
+  expect(owners).toContain("alice"); expect(owners).not.toContain("crew");
+  expect(values(completionCandidates(["tap", "crew", "resume", "--owner", "alice", "--"], 6, f.env, f.alpha))).toContain("--owner");
+  expect(values(completionCandidates(["tap", "crew", "relaunch", "crew", "--"], 5, f.env, f.alpha))).toContain("--resume");
 });

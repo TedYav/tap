@@ -1,6 +1,7 @@
 import { opencodeShellMode } from "./opencode-composer";
 import { classifyPane, claudeFeedbackOverlay } from "./pane-state";
 import { refreshInputProtection } from "./input-protection";
+import { codexUpdatePrompt } from "./codex-update";
 // Native lazy readiness observations and their shared decision walk.
 // Retained shell callers forward to this owner using the same selected tmux namespace.
 import { classifyHarness, harnessFamily, agentFamilies } from "./observe";
@@ -122,6 +123,7 @@ export function readPaneReady(prefix: ReadinessPrefix, home: string, env: NodeJS
               : { kind: "no-band" };
             break;
           }
+          if (command === "codex" && codexUpdatePrompt(escaped.frame)) { seen.pending = { kind: "codex-update" }; break; }
           if (command.startsWith("opencode") && opencodeShellMode(escaped.frame)) { seen.pending = { kind: "shell-mode" }; break; }
           if (command.startsWith("claude") && claudeFeedbackOverlay(escaped.frame)) { seen.pending = { kind: "feedback-draft" }; break; }
           const pending = pendingInputText(framePairIo(escaped.frame, plain.frame, width), prefix.pane, command);
@@ -244,6 +246,7 @@ export function observedBand(facts: BandFacts): DeliveryBand {
  * concentrating (a focus fact only `--polite` waits on). Merging them would be a bug.
  */
 export type Readiness =
+  | "recover:codex-update" // admits one licensed Skip attempt, never payload typing
   | "busy:shell-mode"
   | "busy:feedback-draft" // Claude's drafted-report panel: a human or the seat's leader dismisses it
   | "busy:operator-wait"
@@ -264,6 +267,7 @@ export type Readiness =
 
 /** The reader's answer for this pane, as `tap_pending_input_text` reports it. */
 export type PendingFact =
+  | { kind: "codex-update" }
   | { kind: "shell-mode" }
   | { kind: "feedback-draft" }
   | { kind: "text"; text: string }   // rc 0 with bytes: a draft occupies the band
@@ -464,7 +468,8 @@ export function readinessWalk(prefix: ReadinessPrefix, seen: ReadinessObservatio
         // A missing composer may be a permission dialog. Preserve the modal
         // hold before the deadline path considers forcing a missing prompt.
         if (seen.pending === undefined) return { done: false, need: "pending" };
-        return done(seen.pending.kind === "modal" ? "busy:modal" : "busy:noprompt");
+        return done(seen.pending.kind === "codex-update" ? "recover:codex-update"
+          : seen.pending.kind === "modal" ? "busy:modal" : "busy:noprompt");
     }
   }
   // `ready` admits a bounded submit attempt, so the locked native recovery must actually
@@ -562,6 +567,7 @@ export function displayState(row: DisplayRow | null, ready: Readiness | ""): Dis
   if (!row) return "unknown";
   if (!row.pane || !row.paneId || !row.target || !row.targetRegistry) return "unknown";
   if (ready === "busy:in-turn") return "focus";
+  if (ready === "recover:codex-update") return "hold";
   if (ready === "busy" || ready.startsWith("busy:")) return "hold";
   if (ready === "ready") return row.waiting ? "batch" : "ready";
   if (ready === "gone" || ready === "unsafe") return ready;

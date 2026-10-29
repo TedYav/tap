@@ -64,7 +64,8 @@ import { lifecycleDisposition, lifecycleReceipt } from "../lifecycle-target";
 import { assertBoundParentLifetimes, captureCohortParentLifetimes, chooseSeatCohort, chooseTeam, confirmAction, discoveryTerminalAvailable, parentSeatSnapshot, readDiscoverySeats, requireDiscoveryTerminal, revalidateTeam, type BoundCohort, type BoundTeam, type Picker } from "../team/discovery";
 import { pick } from "../fzf";
 import { parseSessionDoor } from "../launcher/session-doors";
-import { crewLifetimeBinding, crewLifetimeMatchesRows, reconcileCrewLifetime, validateCrewLifetimeBinding } from "../crew-lifetime";
+import { captureCrewProcess, fenceCrewLifetime } from "../crew-lifetime";
+import { crewFamilyHandles } from "../crew-ownership";
 
 import { observedRows, withAgentStates, type ObservedRow } from "../roster-observation";
 export { observedRows, withAgentStates, readComputeJobs, type AgentStateOptions, type ObservedRow } from "../roster-observation";
@@ -986,7 +987,7 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
       ["handle", "kind", "harness", "pane", "status", "attached", "unattended", "reason", "notes/asks"],
       rows.map((row) => [
         row.handle, row.crew ? "CREW" : "SEAT", humanHarness(row), row.pane, row.status,
-        row.attached && row.attached !== "0" ? "yes" : "no", row.unattended ? "yes" : "no", row.foreignNamespace ? `bound under ${socketLabel(row.serverSocket!)}` : row.crewLifetime === "unsupervised" ? "crew unsupervised; tap crew rearm " + row.handle : row.statusReason, `${row.digestWindow ?? 10}s/${row.askWindow ?? 10}s`,
+        row.attached && row.attached !== "0" ? "yes" : "no", row.unattended ? "yes" : "no", row.foreignNamespace ? `bound under ${socketLabel(row.serverSocket!)}` : row.crewLifetime === "legacy_supervised" ? "legacy parent lifetime; tap team refresh" : row.statusReason, `${row.digestWindow ?? 10}s/${row.askWindow ?? 10}s`,
       ]),
       process.stdout.isTTY ? undefined : null,
     ));
@@ -1012,8 +1013,8 @@ function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: bool
   }
   const unknownWindow = rows.filter(modelWindowMissing).map(row => row.handle);
   if (unknownWindow.length) process.stderr.write(`Warning: model window unavailable for ${unknownWindow.join(", ")}. Running OpenCode 2 seats publish it automatically.\n`);
-  const unsupervised = rows.filter(row => row.crew && row.crewLifetime === "unsupervised").map(row => row.handle);
-  if (unsupervised.length) process.stdout.write(`Warning: crew supervision missing for ${unsupervised.join(", ")}; run tap crew rearm <handle>.\n`);
+  const legacy = rows.filter(row => row.crew && row.crewLifetime === "legacy_supervised").map(row => row.handle);
+  if (legacy.length) process.stdout.write(`Legacy parent-bound crews: ${legacy.join(", ")}; tap team refresh transitions them to independent lifetime.\n`);
 }
 
 /**
@@ -1181,67 +1182,34 @@ async function interactiveStop(
   if (!args.includes("--yes") && !(await (ui?.consent ?? confirmAction)())) { process.stdout.write(`tap team ${verb}: cancelled\n`); return 0; }
   revalidateTeam(team);
   assertBoundParentLifetimes(bound);
-  await armApprovedCrews(bound);
+  await prepareApprovedCrews(bound);
   return invokeResolvedStop(verb, ctx, actual, team.team, bound);
 }
 
-async function armApprovedCrews(bound: BoundCohort): Promise<void> {
+async function prepareApprovedCrews(bound: BoundCohort): Promise<void> {
   const rows = readDiscoverySeats(bound.team.registryPath);
-  const approved = new Map<string, { instance: string; session: string }>();
-  for (const [handle, original] of bound.crewAtSelection ?? []) {
-    if (![...bound.seats.values()].some(parent => parent.session === original.session)) continue;
-    const current = rows[handle];
-    if (!current || current.crew !== true || current.instance !== original.instance || current.session !== original.session) {
+  const children = [...new Set([...bound.seats.keys()].flatMap(owner => crewFamilyHandles(rows, owner)))];
+  // Check all selected identities before any legacy transition or process effect.
+  for (const handle of children) {
+    const row = rows[handle]!, original = bound.crewAtSelection?.get(handle);
+    if (!original || row.instance !== original.instance || row.session !== original.session
+      || (original.paneId !== undefined && row.pane_id !== original.paneId)
+      || (original.serverEpoch !== undefined && row.server_epoch !== original.serverEpoch)
+      || (original.owner !== undefined && String(row.crew_owner ?? "") !== original.owner)
+      || (original.ownerInstance !== undefined && String(row.crew_owner_instance ?? "") !== original.ownerInstance)) {
       throw new TapError(1, "target_changed", `retry tap team ${bound.team.team}`,
-        `crew '${handle}' changed identity after selection`, "tap team");
+        `crew '${handle}' appeared or changed after selection`, "tap team");
     }
   }
-  // Refuse every unapproved late child before reconciling any original child:
-  // a failed stop must not arm a different family as a side effect.
-  for (const parent of bound.seats.values()) {
-    for (const [handle, row] of Object.entries(rows)) {
-      if (row?.crew !== true || row.session !== parent.session || bound.crewAtSelection?.has(handle)) continue;
-      const lifetime = bound.parentLifetimes?.get(parent.handle);
-      const binding = crewLifetimeBinding(typeof row.pane_id === "string" ? row.pane_id : "");
-      if (!lifetime || !binding || !crewLifetimeMatchesRows(binding, parent.handle, rows[parent.handle]!, handle, row)
-        || binding.parent.pid !== lifetime.process.pid || binding.parent.start !== lifetime.process.start
-        || binding.parent.boot !== lifetime.process.boot || !validateCrewLifetimeBinding(binding)) {
-        throw new TapError(1, "crew_lifetime_unprovable", "tap team doctor",
-          `crew '${handle}' has no approved parent lifetime binding before the team action`, "tap team");
-      }
-    }
+  bound.approvedCrewAtConsent = new Map();
+  bound.approvedCrewProcesses = new Map();
+  for (const handle of children) {
+    const row = rows[handle]!;
+    fenceCrewLifetime(bound.team.context, handle, row);
+    bound.approvedCrewProcesses.set(handle, captureCrewProcess(bound.team.team, handle, row));
+    bound.approvedCrewAtConsent.set(handle, { instance: String(row.instance), session: String(row.session) });
+    assertBoundParentLifetimes(bound);
   }
-  for (const parent of bound.seats.values()) {
-    const children = Object.entries(rows).filter(([, row]) => row?.crew === true && row.session === parent.session);
-    if (!children.length) continue;
-    const owners = Object.entries(rows).filter(([, row]) => row?.crew !== true && row.session === parent.session);
-    if (owners.length !== 1 || owners[0]![0] !== parent.handle || !bound.parentLifetimes?.has(parent.handle)) {
-      throw new TapError(1, "crew_owner_ambiguous", "tap team doctor",
-        `crew in session '${parent.session}' has no uniquely approved live parent`, "tap team");
-    }
-    const lifetime = bound.parentLifetimes!.get(parent.handle)!;
-    for (const [handle, row] of children) {
-      const original = bound.crewAtSelection?.get(handle);
-      if (original && (original.instance !== row.instance || original.session !== parent.session)) {
-        throw new TapError(1, "target_changed", `retry tap team ${bound.team.team}`,
-          `crew '${handle}' changed identity after selection`, "tap team");
-      }
-      // A child published during the confirmation interval may join only if
-      // it was already supervised by this exact approved parent generation.
-      const binding = original
-        ? await reconcileCrewLifetime(bound.team.context, parent.handle, handle)
-        : crewLifetimeBinding(typeof row.pane_id === "string" ? row.pane_id : "");
-      if (!binding || !crewLifetimeMatchesRows(binding, parent.handle, rows[parent.handle]!, handle, row)
-        || binding.parent.pid !== lifetime.process.pid || binding.parent.start !== lifetime.process.start
-        || binding.parent.boot !== lifetime.process.boot || !validateCrewLifetimeBinding(binding)) {
-        throw new TapError(1, "crew_lifetime_unprovable", "tap team doctor",
-          `crew '${handle}' has no approved parent lifetime binding before the team action`, "tap team");
-      }
-      approved.set(handle, { instance: binding.crewInstance, session: parent.session });
-      assertBoundParentLifetimes(bound);
-    }
-  }
-  bound.approvedCrewAtConsent = approved;
 }
 
 function runTeamStopDoorExact(verb: StopVerb, args: string[]): number {

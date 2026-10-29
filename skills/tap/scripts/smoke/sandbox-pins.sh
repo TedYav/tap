@@ -5,6 +5,9 @@
 # (tap-zwh1). TAP_VERSION_SEEN_PATH is unset-only: its consumer (`??`) takes an
 # empty path literally and has no HOME fallback, so empty is not a leak there.
 
+# Same credential boundary as the Bun runner; fixtures opt in after sourcing.
+. "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/test-secret-env.sh" || exit 1
+
 tap_smoke_known_defect() {
   local bead="${1:-}" date="${2:-}" description="${3:-}" extra="${4:-}"
   if [[ ! "$bead" =~ ^tap-[a-z0-9]{5,}$ ]] \

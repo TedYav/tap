@@ -1,3 +1,4 @@
+import { captureCrewProcess, fenceCrewLifetime, stopCrewProcess } from "./crew-lifetime";
 import { writeSync } from "node:fs";
 import { join } from "node:path";
 import { observeCallerIdentity, TapError } from "./context";
@@ -8,7 +9,7 @@ import { loadRegistry, saveRegistry, seatMap, type Seat } from "./registry";
 import { assertSelectionCurrent, parseTarget, selectCaller, SelectorError, type Selection } from "./selector";
 import { canonicalSessionName, lifecycleDisposition, lifecycleReceipt, tmuxFateStopsNamedSession } from "./lifecycle-target";
 import { physicalSocketPath } from "./tmux";
-import { liveSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-stop";
+import { liveSeat, liveOwnerSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-stop";
 export { liveSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-stop";
 import { resumeSelectedSeat, validateSeatUp, withLaunchSignals, LaunchInterrupted, TransactionError } from "./launcher/transaction";
 import { withStartupTrace } from "./startup-trace";
@@ -108,7 +109,7 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
       const disposition = lifecycleDisposition("seat", verb);
       if (!disposition.ok) fail(disposition.errorClass, disposition.detail);
       const snapshot = seatSnapshot();
-      const pane = liveSeat(row, String(row.session), snapshot);
+      const pane = verb === "down" ? liveOwnerSeat(seats, handle, snapshot) : liveSeat(row, String(row.session), snapshot);
       const fields = { team: selection.team, handle, session: row.session, instance: row.instance };
       if (disposition.row.registry === "resume-rows" && disposition.row.tmux === "relaunch") {
         if (pane) {
@@ -127,7 +128,8 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
         // complete row before claiming. Never hold the registry lock over launch.
       } else {
         if (disposition.row.registry !== "suspend-rows" || !tmuxFateStopsNamedSession(disposition.row)) fail("lifecycle_fate_invalid", "no power-state owner for this fate");
-        if (!pane) {
+        const crews = disposition.row.crews === "consume-d-contract" ? ownedCrewRows(seats, handle) : [];
+        if (!pane && crews.length === 0) {
           const stopped = options.dryRun ? { quiesced: true } : quiesceSharedSession(row, selection.rootReal, handle, { skip: options.skipQuiesce });
           if (!options.dryRun && row.opencode_server_mode === "shared") {
             row.status = "suspended"; row.status_reason = stopped.quiesced ? "session_stopped" : "unquiesced";
@@ -139,15 +141,19 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
         for (const [name, other] of Object.entries(seats)) {
           if (name === handle || other.delivery === "poll") continue;
           const sharesSession = other.session === row.session || snapshot.panes.some(p => p.id === other.pane_id && p.session === row.session);
-          if (sharesSession && !(other.crew === true && other.session === row.session)) {
+          if (sharesSession && !crews.includes(name)) {
             fail("shared_durable_session", `seat '${name}' shares this session; use the team lifecycle command`);
           }
         }
-        const crews = disposition.row.crews === "consume-d-contract" ? ownedCrewRows(seats, String(row.session), snapshot) : [];
         if (options.dryRun) {
           render(verb, options, { ...fields, outcome: "would_stop", crews });
           return 0;
         }
+        const crewProofs = crews.flatMap(crew => {
+          fenceCrewLifetime({ team: selection.team, registryPath: selection.registryLocation }, crew, seats[crew]);
+          const proof = captureCrewProcess(selection.team, crew, seats[crew]!);
+          return proof ? [proof] : [];
+        });
         const stopped = quiesceSharedSession(row, selection.rootReal, handle, { skip: options.skipQuiesce });
         for (const crew of crews) quiesceSharedSession(seats[crew]!, selection.rootReal, crew);
         if (crews.length) {
@@ -156,8 +162,11 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
         const original = structuredClone(row);
         const originals = new Map(crews.map(h => [h, seats[h]!]));
         const caller = observeCallerIdentity();
-        const self = !!pane && caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) && caller.session === pane.session &&
-          snapshot.panes.some(p => p.id === caller.paneId && p.sessionId === pane.sessionId);
+        const callerPane = caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) ? caller.paneId : "";
+        const callingCrews = crewProofs.filter(proof => proof.crewPane === callerPane);
+        const deferred = callingCrews.filter(proof => !pane || proof.crewSession !== pane.session);
+        const self = deferred.length > 0 || (!!pane && callerPane !== "" &&
+          snapshot.panes.some(p => p.id === callerPane && p.sessionId === pane.sessionId));
         row.status = "suspended";
         row.status_reason = stopped.quiesced ? "session_stopped" : "unquiesced";
         for (const crew of crews) delete seats[crew];
@@ -168,15 +177,28 @@ async function executeSeatUpDown(verb: "up" | "down", options: SeatOptions, scri
           options.selfReported = true;
         }
         // A timeout can have acted: leave the row suspended and never retry.
-        const result = stopExactPane(pane);
+        for (const proof of crewProofs.filter(proof => !callingCrews.includes(proof))) {
+          const result = stopCrewProcess(proof);
+          if (result.outcome !== "stopped") {
+            seats[handle] = original;
+            for (const [crew, old] of originals) seats[crew] = old;
+            saveRegistry(selection.registryLocation, doc);
+            fail("crew_stop_unverified", `crew '${proof.crew}' stop is ${result.outcome}; rows restored; inspect partial effects`);
+          }
+        }
+        const result = pane ? stopExactPane(pane) : { code: 0, stderr: "", stdout: "" };
         const after = seatSnapshot();
-        if (after.panes.some(p => p.sessionId === pane.sessionId && p.rawEpoch === pane.rawEpoch)) {
+        if (pane && after.panes.some(p => p.sessionId === pane.sessionId && p.rawEpoch === pane.rawEpoch)) {
           seats[handle] = original;
           for (const [crew, old] of originals) seats[crew] = old;
           saveRegistry(selection.registryLocation, doc);
           fail("stop_failed", result.stderr.trim() || result.stdout.trim() || "session survived; registry restored");
         }
         if (!self) render(verb, options, { ...fields, outcome: stopped.quiesced ? "stopped" : "pane_stopped_unquiesced", crews });
+        for (const proof of deferred) {
+          const result = stopCrewProcess(proof);
+          if (result.outcome !== "stopped") fail("crew_stop_unverified", result.detail);
+        }
         return 0;
       }
     } finally { lock.release(); }

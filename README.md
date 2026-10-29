@@ -4,7 +4,9 @@ TAP allows agents to communicate! If this doesn't work with your [threat model](
 
 **Pre-release beta.** TAP is not yet a public, open-source release. Expect bugs. Send bug reports and
 feature requests to ted@tedyav.com. Run `tap --version` when reporting a problem; see
-[CHANGELOG.md](CHANGELOG.md) for release notes.
+[CHANGELOG.md](CHANGELOG.md) for release notes. Versions read `0.<protocol>.<release>`: installs
+that share the middle number speak the same wire protocol and can work on one team, and the last
+number counts releases within it.
 
 TAP lets Claude Code and Codex talk while you watch their terminals. If you like
 agent swarms, tmux, and seeing what each agent is doing, this is for you.
@@ -65,7 +67,10 @@ source: readable, changeable, and yours to fork. See [Make it yours](#make-it-yo
 
    Approve the `tap` command if your harness asks. Done means the **answer
    text in your asking pane**. If mail arrives while you type, type WAIT
-   (in capitals) to hold deliveries for two minutes.
+   (in capitals) to snooze up to two minutes, ending when the draft clears.
+   To change TUI views, type only STOP and wait for its acknowledgement;
+   it holds mail even with an empty composer. Type only START when you return.
+   STOP expires after ten minutes and only takes effect while incoming mail is watched.
 
 [Your first TAP team](docs/GETTING-STARTED.md) covers prompts and returning to
 seats. [The five levels of TAP](docs/TAP-LEVELS.md) shows what you

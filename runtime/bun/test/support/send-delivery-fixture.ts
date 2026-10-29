@@ -133,6 +133,7 @@ case " $* " in
       *" -X cancel"*) if [ "$FAKE_CANCEL_CLEARS" = "1" ]; then rm -f "$FAKE_INMODE"; fi; printf '%s\\n' "$*" >> "$FAKE_KEYS" ;;
       *" -l -- "*) if [ "$band" = "$FAKE_BAND" ]; then hold paste; fi; rm -f "$band.submitted"; for last do :; done; printf '%s' "$last" > "$band"; printf '%s\\n' "$*" >> "$FAKE_KEYS" ;;
       *" Enter "*|*" Enter") : > "$band.submitted"; printf '%s\\n' "$*" >> "$FAKE_KEYS"; printf '%s\\n' "send-keys Enter" >> "$FAKE_EFFECTS" ;;
+      *" C-u "*|*" C-u") if [ "$FAKE_CLEAR_INPUT" = "1" ]; then : > "$band"; fi; printf '%s\\n' "$*" >> "$FAKE_KEYS" ;;
       *" Escape "*|*" Escape") if [ "$FAKE_INTERRUPT_CLEARS" = "1" ]; then : > "$band"; fi; printf '%s\\n' "$*" >> "$FAKE_KEYS"; if [ "$FAKE_INTERRUPT_FAIL" = "1" ]; then exit 1; fi ;;
       *) printf '%s\\n' "$*" >> "$FAKE_KEYS" ;;
     esac ;;

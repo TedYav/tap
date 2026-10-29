@@ -960,6 +960,73 @@ test("an unattended shell holding the name is reseated fresh, as the incumbent d
 }, 60_000);
 
 
+function updateMenuHarness(f: ReturnType<typeof fixture>, dismiss: boolean | "exit") {
+  mkdirSync(join(f.root, "real"));
+  if (process.platform === "linux") copyFileSync("/bin/sleep", join(f.root, "real/codex"));
+  else symlinkSync("/bin/sleep", join(f.root, "real/codex"));
+  copyFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt"), join(f.root, "frame"));
+  // Reconstructed post-Skip paint: the real plain capture cannot prove dim input.
+  writeFileSync(join(f.root, "after"), "\x1b[2J\x1b[H› \x1b[2mAsk Codex to do anything\x1b[0m\n");
+  writeFileSync(join(f.root, "bin/codex"), `#!/bin/bash
+stty -icanon -echo
+cat '${f.root}/frame'
+( while IFS= read -r -n 1 key; do printf '%s' "$key" >> '${f.root}/keys'; ${dismiss === "exit" ? 'kill -TERM "$$"; exit' : dismiss ? `cat '${f.root}/after'` : ":"}; done ) < /dev/tty &
+export PATH='${f.root}/real':"$PATH"
+exec '${f.root}/real/codex' 600
+`, { mode: 0o755 });
+}
+
+test("fresh Codex launch dismisses an update once and receipts both versions", () => {
+  const f = fixture("codex");
+  updateMenuHarness(f, true);
+  const result = run(f.root, ["testseat", "reviewer"], true);
+  expect(result.status, result.diagnostic).toBe(0);
+  expect(result.stdout).toContain("dismissed Codex update prompt (0.164.0 -> 0.165.0 available)");
+  expect(readFileSync(join(f.root, "keys"), "utf8")).toBe("\x1b");
+  const trace = readFileSync(join(f.root, "index/logs/startup.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const skipped = trace.filter(event => event.event === "codex_update_skip");
+  expect(skipped.map(event => event.outcome)).toEqual(["intent", "skipped"]);
+  expect(skipped[1]).toMatchObject({ current: "0.164.0", available: "0.165.0", pane: expect.stringMatching(/^%/), actor: "launcher", timestamp: expect.any(String) });
+}, 25_000);
+
+test("an unverified Codex update dismissal retains the session and refuses readiness", () => {
+  const f = fixture("codex");
+  updateMenuHarness(f, false);
+  const result = run(f.root, ["testseat", "reviewer", "--json"], true);
+  expect(result.status, result.diagnostic).toBe(2);
+  expect(JSON.parse(result.stdout).error_class).toBe("harness_start_dialog");
+  expect(result.diagnostic).toContain("codex-update-skip");
+  expect(readFileSync(join(f.root, "keys"), "utf8")).toBe("\x1b");
+  expect(spawnSync(realTmux, ["-L", f.socket, "has-session", "-t", "=fixture/reviewer"]).status).toBe(0);
+}, 25_000);
+
+test("a Codex exit after a possible dismissal retains its dead pane instead of running the failure callback", async () => {
+  const f = fixture("codex");
+  updateMenuHarness(f, "exit");
+  const result = run(f.root, ["testseat", "reviewer", "--json"], true);
+  expect(result.status, result.diagnostic).toBe(2);
+  expect(JSON.parse(result.stdout).error_class).toBe("harness_start_dialog");
+  expect(readFileSync(join(f.root, "keys"), "utf8")).toBe("\x1b");
+  // Allow the detached pane-died callback to run if it was left armed.
+  await Bun.sleep(1000);
+  expect(spawnSync(realTmux, ["-L", f.socket, "has-session", "-t", "=fixture/reviewer"]).status).toBe(0);
+  const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
+  expect(row.status_reason).toBe("launching");
+  expect(tmuxEffect(["display-message", "-p", "-t", row.pane_id, "#{pane_dead}"], process.env).trim()).toBe("1");
+}, 25_000);
+
+test.each(["resume", "restart"])("Codex %s dismisses the update in its new vessel", verb => {
+  const f = fixture("codex");
+  updateMenuHarness(f, true);
+  expect(run(f.root, ["testseat", "reviewer"], true).status).toBe(0);
+  if (verb === "resume") expect(spawnSync(realTmux, ["-L", f.socket, "kill-session", "-t", "=fixture/reviewer"]).status).toBe(0);
+  const result = spawnSync("bash", [publicBin, "session", verb, "reviewer", ...(verb === "restart" ? ["--force"] : [])],
+    { cwd: f.root, env: process.env, encoding: "utf8", timeout: 20_000 });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("dismissed Codex update prompt (0.164.0 -> 0.165.0 available)");
+  expect(readFileSync(join(f.root, "keys"), "utf8")).toBe("\x1b\x1b");
+}, 30_000);
+
 test("fresh Codex hook dialog reports its frame and retains the seat for manual recovery", () => {
   const f = fixture("codex");
   mkdirSync(join(f.root, "real"));

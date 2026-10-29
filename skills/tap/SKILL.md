@@ -137,9 +137,13 @@ Before adding or reassigning a seat, read [staffing](references/staffing.md).
 - Every agent is visible: harness subagent, current-session crew, or named,
   rostered launcher seat. No anonymous agent tmux sessions. Pane-less poll
   senders are transport infrastructure, not staffed agents.
-- Identity-gate a new crew seat: ask it to run `tap whoami`; dispatch work only
-  after its returned handle matches. Registry/courier receipts do not replace
-  that answer, and the check is not independent of the shared resolver.
+- Before first dispatch, the creating command verifies the requested handle,
+  preset/model and `crew_identity_capture.decision=accepted`; `crew add --assign`
+  performs that check. Require `tap whoami` in the first receipt. A separate
+  identity-only exchange is optional for sensitive briefs. This is the
+  dispatcher's pre-dispatch step, never a retroactive hold on a working seat
+  or authority to message another owner's crew. The shared resolver is not an
+  independent identity check.
 - For unrelated reassignment: drain or hand off both queues, return tokens and
   leases, hand off custody, then clear, then send the new work with `tap assign`.
   A clear's `-m` is orientation only. Compact is for useful continuity, not an

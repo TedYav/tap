@@ -132,12 +132,15 @@ test("different commits in one release have distinct archive identities; a tagge
     const r = spawnSync("git", ["-C", repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0); return r.stdout.trim();
   };
-  run("clone", "--quiet", "--shared", REPO, ".");
-  run("tag", "v0.23.0");
+  run("clone", "--quiet", "--shared", "--no-tags", REPO, ".");
+  // The newest CHANGELOG heading is the release this commit carries; tag it instead of a pinned version.
+  const current = /^## (\d+\.\d+\.\d+) /m.exec(readFileSync(join(repo, "CHANGELOG.md"), "utf8"))?.[1];
+  expect(current).toBeDefined();
+  run("tag", `v${current}`);
   const released = buildArtifact({ repo, commit: "HEAD", out: dir("tap-release-tagged-") });
-  expect(released.version).toBe("0.23.0");
+  expect(released.version).toBe(current!);
   run("commit", "--allow-empty", "-qm", "Next build");
   const next = buildArtifact({ repo, commit: "HEAD", out: dir("tap-release-next-") });
-  expect(next.version).toBe(`0.23.0+1.g${run("rev-parse", "--short=12", "HEAD")}`);
+  expect(next.version).toBe(`${current}+1.g${run("rev-parse", "--short=12", "HEAD")}`);
   expect(next.top).not.toBe(released.top);
 }, 240000);

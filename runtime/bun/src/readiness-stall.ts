@@ -31,7 +31,10 @@ export function stallBoundSeconds(env: NodeJS.ProcessEnv): number {
 /** How much of a transcript's end the turn-marker scan reads. */
 const TAIL_BYTES = 256 * 1024;
 
-function tailLines(path: string): { lines: string[]; mtime: number } | null {
+export interface BoundTranscript {
+  path: string; fileId: string; size: number; start: number; bytes: Buffer; lines: string[]; mtime: number;
+}
+function tailLines(path: string, binding?: { harness: "claude" | "codex"; id: string }): BoundTranscript | null {
   let fd: number;
   try { fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK); } catch { return null; }
   try {
@@ -43,7 +46,20 @@ function tailLines(path: string): { lines: string[]; mtime: number } | null {
     const lines = buf.subarray(0, n).toString("utf8").split("\n");
     // A partial first line is a cut, not a record.
     if (start > 0) lines.shift();
-    return { lines, mtime: st.mtimeMs / 1000 };
+    if (binding) {
+      if (!binding.id) return null;
+      if (binding.harness === "codex") {
+        const head = Buffer.alloc(Math.min(st.size, 65536));
+        const bytes = readSync(fd, head, 0, head.length, 0);
+        const meta = head.subarray(0, bytes).toString("utf8").split("\n").map(parsed).find(row => row?.type === "session_meta");
+        if (obj(meta?.payload).id !== binding.id) return null;
+      } else {
+        const messages = lines.map(parsed).filter(row => row?.type === "user" || row?.type === "assistant");
+        if (!messages.length || messages.some(row => row?.sessionId !== binding.id || row?.isSidechain === true)) return null;
+      }
+    }
+    if (n !== buf.length || fstatSync(fd).size !== st.size) return null;
+    return { path, fileId: `${st.dev}:${st.ino}`, size: st.size, start, bytes: buf, lines, mtime: st.mtimeMs / 1000 };
   } catch { return null; } finally { closeSync(fd); }
 }
 
@@ -135,9 +151,9 @@ function claudeTranscript(seat: Seat, env: NodeJS.ProcessEnv): string {
  */
 export interface HarnessEvidence { ended: boolean; lastActivity: number; at: number | null }
 
-function transcriptEvidence(path: string, scan: (lines: readonly string[]) => Turn): HarnessEvidence | null {
+function transcriptEvidence(path: string, scan: (lines: readonly string[]) => Turn, binding?: { harness: "claude" | "codex"; id: string }): HarnessEvidence | null {
   if (!path || !isAbsolute(path)) return null;
-  const t = tailLines(path);
+  const t = tailLines(path, binding);
   const turn = t ? scan(t.lines) : null;
   return t && turn ? { ended: turn.ended, lastActivity: t.mtime, at: turn.ended ? turn.at : null } : null;
 }
@@ -148,7 +164,7 @@ function transcriptEvidence(path: string, scan: (lines: readonly string[]) => Tu
  * decode every row of every session (tap-2zzft). JSON stays in the SELECT list only.
  * INDEXED BY makes a store without that index fail (unknown evidence) instead of silently scanning.
  */
-export const OPENCODE_EVIDENCE_SQL = `SELECT type, time_created AS created, json_extract(data, '$.time.completed') AS completed
+export const OPENCODE_EVIDENCE_SQL = `SELECT type, time_created AS created, time_updated AS updated, json_extract(data, '$.time.completed') AS completed
   FROM session_message INDEXED BY session_message_session_seq_idx WHERE session_id = ?
   ORDER BY seq DESC LIMIT 1`;
 
@@ -165,21 +181,31 @@ export function opencodeEvidence(sessionId: string, env: NodeJS.ProcessEnv): Har
   try {
     db = new Database(path, { readonly: true });
     const row = db.query(OPENCODE_EVIDENCE_SQL).get(sessionId) as
-      { type: unknown; created: unknown; completed: unknown } | null;
+      { type: unknown; created: unknown; updated: unknown; completed: unknown } | null;
     if (!row || typeof row.created !== "number" || !Number.isFinite(row.created)) return null;
     const completed = typeof row.completed === "number" && Number.isFinite(row.completed) ? row.completed : null;
+    const updated = typeof row.updated === "number" && Number.isFinite(row.updated) ? row.updated : null;
     const ended = row.type === "idle";
-    return { ended, lastActivity: Math.max(row.created, completed ?? 0) / 1000, at: ended ? row.created / 1000 : null };
+    return { ended, lastActivity: Math.max(row.created, updated ?? 0, completed ?? 0) / 1000, at: ended ? row.created / 1000 : null };
   } catch { return null; } finally { db?.close(); }
 }
 
 /** The instrument each harness uses; null is "unknown", which never alarms. */
-export function harnessEvidence(harness: string, seat: Seat, env: NodeJS.ProcessEnv): HarnessEvidence | null {
+export function harnessEvidence(harness: string, seat: Seat, env: NodeJS.ProcessEnv, requireSessionMatch = false): HarnessEvidence | null {
   const fam = (name: string) => harness === name || harness.startsWith(`${name}-`);
-  if (fam("claude")) return transcriptEvidence(claudeTranscript(seat, env), claudeTurn);
-  if (fam("codex")) return transcriptEvidence(typeof seat.transcript_path === "string" ? seat.transcript_path : "", codexTurn);
+  const id = typeof seat.harness_session_id === "string" ? seat.harness_session_id : "";
+  if (fam("claude")) return transcriptEvidence(claudeTranscript(seat, env), claudeTurn, requireSessionMatch ? { harness: "claude", id } : undefined);
+  if (fam("codex")) return transcriptEvidence(typeof seat.transcript_path === "string" ? seat.transcript_path : "", codexTurn, requireSessionMatch ? { harness: "codex", id } : undefined);
   if (fam("opencode")) return opencodeEvidence(typeof seat.harness_session_id === "string" ? seat.harness_session_id : "", env);
   return null;
+}
+
+/** A bounded byte position and suffix from the same identity-checked descriptor as readiness evidence. */
+export function readBoundTranscript(harness: string, seat: Seat, env = process.env): BoundTranscript | null {
+  if (harness !== "claude" && harness !== "codex") return null;
+  const path = harness === "claude" ? claudeTranscript(seat, env) : typeof seat.transcript_path === "string" ? seat.transcript_path : "";
+  const id = typeof seat.harness_session_id === "string" ? seat.harness_session_id : "";
+  return path && isAbsolute(path) && id ? tailLines(path, { harness, id }) : null;
 }
 
 // --- the episode record ------------------------------------------------------------------

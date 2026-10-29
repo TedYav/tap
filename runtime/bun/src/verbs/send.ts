@@ -661,7 +661,7 @@ function cmdSendOutcomeBody(
         const supSession = String(toSeat.session ?? "");
         const supHarness = String(toSeat.harness ?? "");
         throw new TapError(3, "suspended",
-          supSession !== "" && supHarness !== "" ? `tap session resume ${to}` : `re-open pane for '${to}' and run 'tap in'`,
+          (toSeat.crew === true || toSeat.crew === 1) ? `tap crew resume ${to}` : supSession !== "" && supHarness !== "" ? `tap session resume ${to}` : `re-open pane for '${to}' and run 'tap in'`,
           `'${to}' is suspended`);
       }
       if (!remote && String(toSeat.status ?? "active") === "pending") {
@@ -813,7 +813,7 @@ function cmdSendOutcomeBody(
         const session = String(toSeat.session ?? "");
         const harness = String(toSeat.harness ?? "");
         throw new TapError(3, "pane_gone",
-          session !== "" && harness !== "" ? `tap session resume ${to}` : `re-open pane for '${to}' and run 'tap in'`,
+          (toSeat.crew === true || toSeat.crew === 1) ? `tap crew resume ${to}` : session !== "" && harness !== "" ? `tap session resume ${to}` : `re-open pane for '${to}' and run 'tap in'`,
           `pane '${pane}' gone; marked '${to}' suspended`);
       };
 
@@ -1888,7 +1888,7 @@ function deliverableRow(registryPath: string, team: string, handle: string, qual
  * scope, a deliverable address stamps `<team>/<handle>`, and only the
  * registry-DEFAULT form (autoReplyTo) falls back to a warning.
  */
-function explicitReplyToStamp(raw: string, from: string, ctx: ReturnType<typeof resolveContext>): string {
+export function explicitReplyToStamp(raw: string, from: string, ctx: ReturnType<typeof resolveContext>): string {
   let address = raw;
   if (raw.includes(":") && !raw.includes("/")) {
     const team = raw.slice(0, raw.indexOf(":"));

@@ -14,15 +14,27 @@ Two registers: performance metaphors name coordination (`leader`, `conductor`, `
 `setlist`); plain words name work (`driver`, `implementer`, `reviewer`, `gate`). `Driver` is the one
 crossover and stays.
 
-You conduct the round-loop: staff available seats, dispatch ready work, route reviews and batch milestones. Drivers own implementation and merge under AGENTS.md; you track completion and handle dependencies. Use its staffing defaults for conductor placement.
+You conduct the round-loop: staff available seats, dispatch ready work, route reviews and batch milestones. Drivers own implementation and, unless the charter names another merge owner, the merge under AGENTS.md. You track completion and handle dependencies under AGENTS.md.
 
 The charter names the mission, material scope, roster, active rulings and escalation recipients. Standing repo grants apply without being copied into each charter. Start a bounded assignment with enough information to act; ask only for a missing decision that blocks it. New roles use the plan-before-writing boundary in `/tap:lead`. Avoid hypothetical lists of authority withheld.
+
+A conductor that launches crews is a launcher-managed seat, started with
+`tap session launch`. Crew-from-crew creation remains refused. Lanes own the
+crews serving them, because a crew follows its parent's lifetime. A fast-tier
+conductor executes scripted gates; do not assign it unscripted precedence or
+merge judgments.
+
+The charter's merge rule is the conductor's merge rule. Generic merge skills
+add no gates; when one conflicts with the charter, follow the charter without
+a confirmation round trip. Within the grant, infer and continue, recording the
+inference in the digest. Ask only for the charter's named human gates, one-way
+doors or scope changes.
 
 ## Independent review
 
 Name a non-author whole-diff gate seat once. The driver sends the pinned diff and source references directly; reviewers inspect source and evidence independently. Your summary does not replace their read. Review carry and the final-head CI receipt follow AGENTS.md. Do not schedule local full-suite runs or reserve a review for the leader personally unless the user assigned it that way.
 
-The driver squashes when CI differential PASS, the required heterogeneous ladder and the thread census satisfy AGENTS.md, then syncs primary and reports the result. You receive that evidence; no extra merge grant is needed.
+The merge owner (the driver unless the charter says otherwise) squashes when the charter and repository gates pass, then syncs primary and reports the result. You receive that evidence; no extra merge grant is needed.
 
 ## Acquisition ownership
 

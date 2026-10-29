@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { detectAgentState } from "../src/agent-state";
+import { approvalRequest, detectAgentState } from "../src/agent-state";
 
 const fixtures = join(import.meta.dir, "fixtures", "agent-state");
 const opencodeSplashFixtures = join(
@@ -16,6 +16,27 @@ function fixture(harness: string, state: string): string {
 }
 
 describe("agent state detection", () => {
+  test("Codex update menu is blocked, including a narrow scrolled picker and stale spinning title", () => {
+    for (const name of ["update-available", "update-available-narrow", "update-available-real"]) {
+      const menu = fixture("codex", name);
+      for (const frame of [menu, `\x1b[1m${menu}\x1b[0m`]) {
+        expect(detectAgentState("codex", frame, "⠹ tap")).toEqual({ agentState: "blocked", reason: "codex-update-available" });
+        expect(approvalRequest("codex", frame)).toBeNull();
+      }
+    }
+  });
+
+  test("quoted, dismissed and incomplete update menus do not block a Codex composer", () => {
+    const menu = fixture("codex", "update-available");
+    for (const frame of [
+      `${menu}\n› \x1b[2mAsk Codex to do anything\x1b[0m`,
+      `› Explain this menu:\n${menu}`,
+      menu.replace("enter continue · esc skip", ""),
+      menu.replace(/Update available[^\n]*\n/, ""),
+      menu.replace(/.*[123]\. .*\n/g, ""),
+    ]) expect(detectAgentState("codex", frame).reason).not.toBe("codex-update-available");
+  });
+
   test("Codex fresh quota-warning captures ignore configured or absent status lines", () => {
     for (const name of ["fresh-warning", "fresh-warning-fast"]) {
       const frame = readFileSync(join(fixtures, "codex", `${name}.ansi`), "utf8");

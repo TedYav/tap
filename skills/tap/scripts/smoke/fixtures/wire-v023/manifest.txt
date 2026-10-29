@@ -44,6 +44,7 @@ runtime/bun/test/codex-status-footer.test.ts	A	Holds the staged v0.23 wire (the 
 runtime/bun/test/codex-warning-footer.test.ts	A	visibleSentinelId(frame, "codex", true) must equal the id parsed out of the v0.23 wire (:53), and visibleSentinelId returns null when parseStuckSentinel rejects the grammar, so a wire change reds it; the other assertions treat the wire as opaque input over recorded Codex frames
 runtime/bun/test/composer-input.test.ts	B	the harness dispatch unit: a v0.23 sentinel is the BAND PAYLOAD it reads back, compared against the same constant it wrote, so the assertion is the dispatch order and the three-way status and a wire change cannot red it
 runtime/bun/test/courier-attempt-failure.test.ts	B	v0.23 wire is opaque input to id-keyed submitVerifyLocked; asserts attempt_evidence_unwritable with no pane effect and an untouched payload, not grammar
+runtime/bun/test/courier-codex-update.test.ts	B	v0.23 note is input to the licensed update Skip path; asserts effect order and uncertain-outcome custody, not wire grammar
 runtime/bun/test/courier-completion.test.ts	B	ordinary v0.23 wire is fixture input for completion and pending authority; assertions cover effects and evidence
 runtime/bun/test/courier-overprint-repaint.test.ts	B	a v0.23 note sentinel is the staged input handed to submitVerifyLocked; assertions are on repaint/busy-hold outcomes, not the wire bytes — tap-vctb8
 runtime/bun/test/dead-pane-delivery.test.ts	B	Current wire is input to dead-pane delivery controls; assertions check refusal and retained custody, not sentinel grammar.
@@ -77,6 +78,8 @@ runtime/bun/test/fixtures/cursor-followup-queued.ansi	B	observed Cursor queue/co
 runtime/bun/test/fixtures/hermes-queue-row/idle-staged.ansi	B	live Hermes at-rest capture holding a staged `/queue [[TAP v0.23 note …]]` wire; its cell-wrap geometry and paint are the specimen (tap-rhajr)
 runtime/bun/test/fixtures/hermes-queue-row/mid-turn-staged.ansi	B	live Hermes mid-turn `⚕ ❯` receipt frame holding the same staged wire; its cell-wrap geometry and paint are the specimen (tap-rhajr)
 runtime/bun/test/fixtures/opencode-capture/shell-mode-staged-160.ansi	B	real OpenCode shell-mode pane capture; opencode-shell-mode.test.ts:12 replaces its `[[TAP...` text and still expects the same shell-mode detection, so the staged sentinel bytes are incidental, not asserted
+runtime/bun/test/fixtures/unwedge-transcripts/claude-metadata-stop.jsonl	B	Sanitized captured metadata projection with canonical own-stimulus input; progress correlation fixture
+runtime/bun/test/fixtures/unwedge-transcripts/codex-metadata-stop.jsonl	B	Sanitized native content provenance and capacity-stop projection; progress correlation fixture
 runtime/bun/test/generic-band-cursor-hermes.test.ts	A	builds a full `[[TAP v0.23 ask <id>]]` frame and asserts pendingSentinel parses it to the exact id/to shape (:168); the `[[TAP ${id}]]` args at :293/:300/:307 are id-keyed submitVerifyLocked injection controls, not wire-shape assertions, but the :168 case alone makes a grammar bump a pass/fail condition
 runtime/bun/test/harness-queued.test.ts	A	complete owned v0.23 wire and missing-delimiter negatives exercise the queued-state predicate (tap-bdhec)
 runtime/bun/test/help.test.ts	A	asserts the nudge help page names the id-less `[[TAP v0.23 nudge]]` doorbell bytes (tap-xe42x)
@@ -131,6 +134,8 @@ runtime/bun/test/submit-visible.test.ts	A	Current wire visible-input submission 
 runtime/bun/test/support/sentinel-render-cli.ts	A	native sentinel constructor fixture
 runtime/bun/test/unit3-lock.test.ts	B	`[[TAP ...]]` placeholders; asserts lock behavior
 runtime/bun/test/unit3-sentinel.test.ts	A	asserts renderSentinel output byte-for-byte (:35-36, :41)
+runtime/bun/test/unwedge-observe.test.ts	A	Exact v0.23 staged sentinel and whole-composer equality assertions for unwedge admission
+runtime/bun/test/unwedge-progress.test.ts	B	Canonical note and nudge wires are transcript inputs for own-stimulus versus productive-progress correlation
 runtime/bun/test/waiter-escalated-grace.test.ts	B	real-waiter escalated-grace rows drive deadline disposition; assertions bind receipts and pane effects, not wire grammar
 skills/tap/scripts/regress/communication-identity-full.test.sh	A	hand-built v=0.6 sentinels with from=/to= fed to nudge's identity path (:226, :356)
 skills/tap/scripts/regress/courier-injects.test.sh	A	BYTE-EXACT sentinel equality (:177-179); also a tap-0z9l path= carrier

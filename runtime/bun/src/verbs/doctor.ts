@@ -49,6 +49,7 @@ import { recordFromRow } from "../launcher/transaction";
 import { recordHasResumeArtifact } from "../launcher/resume-identity";
 import { agyIdentityHookSpec } from "../install-manifest";
 import { agyConversationStore, agyRootStatus } from "../agy-conversation";
+import { cmdSeatDoctor } from "./doctor-seat";
 
 const ID_TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const REQUIRED_PAYLOAD_FIELDS = ["id", "from", "to", "kind", "path"];
@@ -177,13 +178,21 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 export function cmdDoctor(argv: string[], scriptsDir: string): number | Promise<number> {
-  let json = false;
+  const delimiter = argv.indexOf("--");
+  let json = argv.slice(0, delimiter < 0 ? argv.length : delimiter).includes("--json");
+  if (json) process.env.TAP_JSON = "1";
+  let handle = "", positional = false;
   let pruneInputBackups = false;
   let pruneWatchLogs = false;
   let fix = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
-    if (arg === "--json") {
+    if (!arg) throw new TapError(1, "usage_error", "tap help doctor", "a seat handle must not be empty");
+    if (!positional && arg === "--") { positional = true; continue; }
+    if (positional) {
+      if (handle) throw new TapError(1, "usage_error", "tap help doctor", `unexpected arg '${arg}'`);
+      handle = arg;
+    } else if (arg === "--json") {
       json = true;
       process.env.TAP_JSON = "1";
     } else if (arg === "--prune-input-backups") pruneInputBackups = true;
@@ -191,9 +200,15 @@ export function cmdDoctor(argv: string[], scriptsDir: string): number | Promise<
     else if (arg === "--fix") fix = true;
     else if (arg.startsWith("--")) {
       throw new TapError(1, "unknown_option", "tap help doctor", `unknown option '${arg}'`);
+    } else if (!handle) {
+      handle = arg;
     } else {
       throw new TapError(1, "usage_error", "tap help doctor", `unexpected arg '${arg}'`);
     }
+  }
+  if (handle) {
+    if (fix || pruneInputBackups || pruneWatchLogs) throw new TapError(1, "usage_error", "tap help doctor", "a seat handle cannot be combined with --fix or prune options");
+    return cmdSeatDoctor(handle, json, scriptsDir);
   }
   if (fix && (pruneInputBackups || pruneWatchLogs)) {
     throw new TapError(
@@ -714,10 +729,10 @@ function scanCrewSupervision(registryPath: string, findings: Finding[]): void {
         (str(row.server_socket) && str(row.server_socket) !== currentSocket)) continue;
       const pane = observePaneResult(str(row.pane_id));
       if (pane.status !== "ok" || pane.observation.session !== str(row.session)) continue;
-      if (crewLifetimeHealth(str(row.pane_id)) !== "unsupervised") continue;
-      const next = `tap crew rearm ${handle}`;
-      findings.push({ severity: "warning", name: "crew_unsupervised", detail: { handle, pane_id: row.pane_id },
-        problem: `live crew '${handle}' has no verified lifetime helper`, next });
+      if (crewLifetimeHealth(str(row.pane_id)) !== "legacy_supervised") continue;
+      const next = "tap team refresh";
+      findings.push({ severity: "warning", name: "crew_legacy_lifetime", detail: { handle, pane_id: row.pane_id },
+        problem: `crew '${handle}' still has pre-upgrade parent-bound lifetime`, next });
     }
   } catch (error) {
     if (!(error instanceof ServerUnresponsive)) throw error;

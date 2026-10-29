@@ -407,7 +407,7 @@ export interface ProcessObservation { identity: Attribution | null; refusal: str
  * processes or files, a changed ancestry, and failed observations supply no
  * authority. The refusal string names WHY authority was refused so callers can
  * remediate; it is empty exactly when identity is present. */
-export function observeProcessStore(run: ProcRunner, harness: string, worktree: string, home: string, panePid: string): ProcessObservation {
+export function observeProcessStore(run: ProcRunner, harness: string, worktree: string, home: string, panePid: string, storeEnv: NodeJS.ProcessEnv = {}): ProcessObservation {
   const none = (refusal: string): ProcessObservation => ({ identity: null, refusal });
   if (!(harness === "codex" || harness === "claude") || !/^\d+$/.test(panePid)) return none("unsupported_harness");
   const root = Number(panePid);
@@ -458,15 +458,16 @@ export function observeProcessStore(run: ProcRunner, harness: string, worktree: 
   // Claude closes idle transcripts, but maintains a PID-scoped live session
   // record across /clear and /resume. Bind it to this exact process generation;
   // argv's --session-id is only the launch identity and can be stale.
+  const claudeRoot = storeEnv.CLAUDE_CONFIG_DIR || join(home, ".claude");
   if (harness === "claude") {
-    const manifestPath = join(home, ".claude", "sessions", `${owner}.json`);
+    const manifestPath = join(claudeRoot, "sessions", `${owner}.json`);
     let live: Record<string, unknown> | null = null;
     try { live = headJson(manifestPath); } catch { /* older Claude has no PID record */ }
     if (live && live.pid === owner && typeof live.sessionId === "string" && UUID_RE.test(live.sessionId) &&
         typeof live.cwd === "string" && norm(live.cwd) === norm(worktree) &&
         typeof live.procStart === "string" && live.procStart.trim().replace(/\s+/g, " ") === before[owner]!.lstart &&
         live.kind === "interactive") {
-      const path = join(home, ".claude", "projects", norm(worktree).replaceAll("/", "-"), `${live.sessionId}.jsonl`);
+      const path = join(claudeRoot, "projects", norm(worktree).replaceAll("/", "-"), `${live.sessionId}.jsonl`);
       let after: Record<number, ProcRow>;
       try { after = processSnapshot(run); } catch { return none("tools_unavailable"); }
       const again = headJson(manifestPath);
@@ -499,8 +500,8 @@ export function observeProcessStore(run: ProcRunner, harness: string, worktree: 
   // evidence the check is unnecessary — an empty result cannot license the
   // binding (licensing-zero rule, discuss F4).
   const storeRoot = realPathLenient(harness === "codex"
-    ? join(home, ".codex", "sessions")
-    : join(home, ".claude", "projects", norm(worktree).replaceAll("/", "-")));
+    ? join(storeEnv.CODEX_HOME || join(home, ".codex"), "sessions")
+    : join(claudeRoot, "projects", norm(worktree).replaceAll("/", "-")));
   let fcwd = "";
   for (const line of opened.stdout.split("\n")) {
     if (line === "fcwd") { fcwd = "pending"; continue; }

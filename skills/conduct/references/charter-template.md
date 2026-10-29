@@ -6,9 +6,22 @@ Keep the charter to what this assignment needs. Standing AGENTS.md grants and ro
 
 Name the goal, source plan or bead, completion evidence, and any material boundary. A bounded spec can start directly; plan before writing for a new role, subsystem or one-way door.
 
+## Grant
+
+State the outcome and why it matters. Name the standing grant by class:
+launches, merges that meet the stated gate, and shutdowns on a lane's word.
+Inside that grant, infer and continue; record the inference in the digest.
+List the only ask triggers: named human-gated items, one-way doors and scope
+changes. Include observed exceptions, not hypothetical lists of withheld
+powers. Define done with the completion evidence and who receives it.
+
+The charter's merge rule governs the conductor. Loaded generic merge skills
+add no gates and do not require confirmation when their defaults conflict
+with this charter.
+
 ## Roster
 
-Name the drivers, reviewers, and conductor, using the staffing defaults in AGENTS.md. Include capacity limits, known seat anomalies, and any exception still in force, each with its source.
+Name the drivers, reviewers, and conductor, using the staffing defaults in AGENTS.md. Include capacity limits, known seat anomalies, and any exception still in force, each with its source. Seat a conductor that launches crews with `tap session launch`; lanes own their serving crews. A fast-tier conductor gets scripted gates only.
 
 ## Decisions and continuity
 

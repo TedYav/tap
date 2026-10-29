@@ -39,6 +39,9 @@ test("native child context selects its root seat despite a foreign enrolled cwd 
   const r = run("child-context"); expect(r.result).toEqual({ team: "t", root: join(root, "child-context/team"),
     pin: join(root, "child-context/team/.tap/bus"), socket: join(root, "child-context/socket") });
 });
+test("shared crew shutdown infers its owner from the verified selected socket", () => {
+  expect(run("crew-owner").result).toMatchObject({ code: 0, unchanged: true, mutations: 0 });
+});
 for (const door of ["down", "out-kill", "out-hard", "team-down", "team-shutdown", "team-reset", "team-out"]) {
   test(`shared self-including ${door} refuses before any registry or pane mutation`, () => {
     const r = run(`self-${door}`);

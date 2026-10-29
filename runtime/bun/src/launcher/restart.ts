@@ -104,7 +104,10 @@ export async function restartSession(options: RestartOptions, cwd: string, deps:
   const freshWarning = idlessFreshWarning(launched);
   if (freshWarning) err(freshWarning);
   const code = await deps.run(launched, live);
-  if (code === 0 && !options.dryRun && !options.json) { inboxDigest(launched); out(`tap session restart: restarted ${launched.name}`); }
+  if (code === 0 && !options.dryRun && !options.json) {
+    for (const line of launched.ensure_receipts ?? []) out(`tap session: ${line}`);
+    inboxDigest(launched); out(`tap session restart: restarted ${launched.name}`);
+  }
   return code;
 }
 
@@ -129,9 +132,13 @@ export async function cmdSessionRestart(options: RestartOptions, scriptDir = SCR
             return seatState(handle, { registry: ctx.registryPath, home: ctx.bus.home, env: { ...process.env, TAP_SEAT_STATE_READONLY: "1" } });
           } catch { return "unknown"; }
         },
-        run: (record, live) => withLaunchSignals(async signal => (await launchTransaction({ kind: "restart", record: cloneRecord(record),
+        run: (record, live) => withLaunchSignals(async signal => {
+          const result = await launchTransaction({ kind: "restart", record: cloneRecord(record),
           incumbent_live: live, preflight_done: true, dry_run: options.dryRun, json: options.json, script_dir: scriptDir,
-          output_path: callerTty(), terminal: { stderr_tty: !!process.stderr.isTTY } }, process.env, signal, notices)).code),
+          output_path: callerTty(), terminal: { stderr_tty: !!process.stderr.isTTY } }, process.env, signal, notices);
+          Object.assign(record, result.record);
+          return result.code;
+        }),
       }, notices);
     } catch (error) { code = error instanceof RestartResumeFailure ? renderRestartFailure(error, options.json) : render(error, options.json); }
     finally { if (!options.dryRun) startupTrace(code === 0 ? "launch_complete" : "launch_failure", { exit_code: code }); }

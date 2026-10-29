@@ -1,3 +1,4 @@
+import { crewFamilyHandles } from "../crew-ownership";
 // The team stop orchestrator (U4 Range A of the libsh-bun TeamStop ladder).
 // Port of `team_runtime_stop` (skills/tap/scripts/tap-team-stop.sh at base
 // 58484fb5f): composes the approved U1 plan/classification surfaces, the U2
@@ -149,21 +150,6 @@ export function runTeamStop(inv: StopInvocation): number {
   let selection = parsed.selection;
   rosterGate(`team ${verb}`, selection, roster);
   crewSelectGate(`team ${verb}`, selection, ctx.registryPath);
-  if (inv.bound) {
-    const current = readDiscoverySeats(ctx.registryPath);
-    const approved = new Set(selection.only);
-    for (const parent of inv.bound.seats.values()) {
-      const children = Object.entries(current).filter(([, row]) => row?.crew === true && row.session === parent.session);
-      if (!children.length) continue;
-      const owners = Object.entries(current).filter(([, row]) => row?.crew !== true && row.session === parent.session);
-      if (owners.length !== 1 || owners[0]![0] !== parent.handle) {
-        throw new TapError(1, "crew_owner_ambiguous", "tap team doctor",
-          `crew in session '${parent.session}' has no unique selected parent`, `tap team ${verb}`);
-      }
-      for (const [handle] of children) approved.add(handle);
-    }
-    selection = { mode: "--only", only: [...approved], except: [] };
-  }
 
   // Caller identity before any observation (self-last ordering).
   const identity = effects.identity;
@@ -218,6 +204,15 @@ export function runTeamStop(inv: StopInvocation): number {
     `tap team ${verb === "reset-stop" ? "reset" : verb}`, true);
 
   if (rows.length === 0) return zeroRowArm(engine);
+  const familyRows = Object.fromEntries(dump.seats);
+  if (selection.mode) {
+    const chosen = selection.mode === "--only" ? selection.only : selection.except;
+    const family = new Set(chosen);
+    for (const owner of chosen) for (const handle of crewFamilyHandles(familyRows, owner)) family.add(handle);
+    selection = selection.mode === "--only" ? { ...selection, only: [...family] } : { ...selection, except: [...family] };
+  }
+  engine.selection = selection;
+
 
   // Pass-0: a selection naming every row short-circuits without observation.
   if (selectAny(selection) && passZeroAllSpared(rows, selection)) {
@@ -855,6 +850,7 @@ function txWord(
       approvedInstances: inv.bound && new Map([...inv.bound.seats].map(([handle, row]) => [handle, row.instance])),
       approvedParentLifetimes: inv.bound?.parentLifetimes,
       approvedCrewAtConsent: inv.bound?.approvedCrewAtConsent,
+      approvedCrewProcesses: inv.bound?.approvedCrewProcesses,
       selfHandle: engine.selfHandle ?? "", runId: inv.effects.runId,
       selfRowsPath: selfRowsPath ?? (mode === "cotenant_kill" ? engine.selfRowsPath : ""),
       adoptedBridge: engine.adoptedBridge,

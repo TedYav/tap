@@ -66,7 +66,7 @@ test("native hook binds from workspace authority, skips accepted identity, and c
     db.exec("CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, parent_conversation_id TEXT NOT NULL DEFAULT '', nesting_depth INTEGER NOT NULL DEFAULT 0)");
     db.query("INSERT INTO conversation_summaries (conversation_id) VALUES (?)").run(id);
     db.close();
-    const observed = { state: "inside" as const, paneId: "%1", serverEpoch: "srv:1:2", session: "demo/scout" };
+    const observed = { state: "inside" as const, paneId: "%1", panePid: String(process.pid), serverEpoch: "srv:1:2", session: "demo/scout" };
     const row = { harness: "agy", status: "active", pane_id: "%1", server_epoch: "srv:1:2", session: "demo/scout", instance: "scout|1" };
     const save = (extra: object = {}) => writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "demo", worktree_root: workspace }, seats: { scout: { ...row, ...extra } } }));
     const calls: unknown[] = [];

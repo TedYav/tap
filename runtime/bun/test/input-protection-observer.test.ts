@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { acquirePaneLock } from "../src/panelock";
 import { observePaneResult } from "../src/tmux";
 import { queueExplanation } from "../src/queue-explanation";
-import { readInputProtection, updateInputProtection } from "../src/input-protection";
+import { readInputProtection, updateInputProtection, protectedMessageState } from "../src/input-protection";
 import { fixture, releaseScratch } from "./support/send-delivery-fixture";
 afterAll(releaseScratch, 40_000);
 
@@ -94,5 +94,55 @@ test("queue explanation applies pane protection only to its own cohort member", 
     const unrelated = queueExplanation(f.bus, "unrelated", Date.now() / 1000, f.env);
     expect(unrelated).toContain("busy/busy");
     expect(unrelated).not.toContain("draft grace");
+    updateInputProtection(observed.observation, { state: "busy", text: "STOP" }, { env: f.env });
+    // STOP is pane-wide even before a newly parked row joins the tracked cohort.
+    expect(queueExplanation(f.bus, "unrelated", Date.now() / 1000, f.env)).toContain("held by operator STOP until");
+    updateInputProtection(observed.observation, { state: "busy", text: "START" }, { env: f.env });
+    expect(protectedMessageState(f.bus, "unrelated", "%7", f.env)).toBeNull();
+    expect(protectedMessageState(f.bus, "protected", "%7", f.env)).not.toBeNull();
   } finally { lock!.release(); }
+});
+
+test("STOP without pending mail does nothing, including a retained consumed WAIT marker", () => {
+  const f = fixture({ draft: "STOP" });
+  const observed = observePaneResult("%7", f.env);
+  if (observed.status !== "ok") throw new Error("fixture pane missing");
+  const lock = acquirePaneLock("%7", 1000, f.env)!;
+  try {
+    expect(updateInputProtection(observed.observation, { state: "busy", text: "STOP" }, { env: f.env })).toBeNull();
+    writeFileSync(join(f.bus, "payloads", "old.md"), "old payload");
+    updateInputProtection(observed.observation, { state: "busy", text: "WAIT" }, {
+      env: f.env, now: 1000, message: { home: f.bus, id: "old", sender: "alice" },
+    });
+    writeFileSync(join(f.bus, "receipts", "old.sent"), "{}");
+    const retained = updateInputProtection(observed.observation, { state: "busy", text: "STOP" }, { env: f.env, now: 2000 });
+    expect(retained?.stopUntil).toBeUndefined();
+    expect(retained?.pending).toEqual([]);
+  } finally { lock.release(); }
+});
+
+test("STOP persists with its cohort and identity until exact START releases it", () => {
+  const f = fixture({ draft: "STOP" });
+  const observed = observePaneResult("%7", f.env);
+  if (observed.status !== "ok") throw new Error("fixture pane missing");
+  const lock = acquirePaneLock("%7", 1000, f.env)!;
+  try {
+    writeFileSync(join(f.bus, "payloads", "old.md"), "old payload");
+    updateInputProtection(observed.observation, { state: "busy", text: "STOP" }, {
+      env: f.env, now: 1000, message: { home: f.bus, id: "old", sender: "alice" },
+    });
+    updateInputProtection(observed.observation, { state: "ready" }, { env: f.env, now: 10000 });
+    updateInputProtection(observed.observation, { state: "ready" }, { env: f.env, now: 20000 });
+    expect(readInputProtection("%7", observed.observation.serverEpoch, f.env)?.stopUntil).toBe(601000);
+    expect(readInputProtection("%7", "another-server", f.env)).toBeNull();
+    writeFileSync(join(f.bus, "payloads", "new.md"), "new payload");
+    const joined = updateInputProtection(observed.observation, { state: "ready" }, {
+      env: f.env, now: 30000, urgent: true, message: { home: f.bus, id: "new", sender: "bob" },
+    });
+    expect(joined?.senders).toEqual(["alice", "bob"]);
+    expect(joined?.stopUntil).toBe(601000);
+    const released = updateInputProtection(observed.observation, { state: "busy", text: "START" }, { env: f.env, now: 40000 });
+    expect(released?.startRequested).toBe(true);
+    expect(readInputProtection("%7", observed.observation.serverEpoch, f.env)?.stopUntil).toBe(40000);
+  } finally { lock.release(); }
 });

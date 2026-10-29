@@ -76,13 +76,14 @@ pid() { T display-message -p -t "$1" '#{pane_pid}'; }
 export TMUX="$SOCKET,0,0"
 LEAD="$(pane Demo/lead:0.0)"; CA="$(pane Demo/lead:1.0)"; CB="$(pane Demo/lead:2.0)"; CC="$(pane Demo/lead:3.0)"; CX="$(pane Demo/lead:4.0)"
 export TMUX_PANE="$LEAD" CALLER_TTY="$(T display-message -p -t "$LEAD" '#{pane_tty}')"
+export EPOCH="srv:$(T display-message -p '#{pid}:#{start_time}')"
 python3 - "$WORK" "$LEAD" "$CA" "$CB" "$CC" "$CX" <<'PY'
-import json, pathlib, sys
+import json, pathlib, sys, os
 w = pathlib.Path(sys.argv[1]); lead, ca, cb, cc, cx = sys.argv[2:]
 demo = w / "Demo"
 def crew(pane, **extra):
     row = {"status": "active", "delivery": "pane", "harness": "codex", "pane_id": pane, "pane": "Demo/lead:1.0",
-           "session": "Demo/lead", "registered_at": "t", "crew": True, "instance": "crew-"+pane, "crew_owner": "lead", "crew_owner_instance": "lead-one", "model": "gpt-test", "permissions": "bypass",
+           "session": "Demo/lead", "server_epoch": os.environ["EPOCH"], "server_socket": os.environ["SOCKET"], "registered_at": "t", "crew": True, "instance": "crew-"+pane, "crew_owner": "lead", "crew_owner_instance": "lead-one", "model": "gpt-test", "permissions": "bypass",
            "harness_env": {}, "passthrough": [], "passthrough_from_config": False, "preset": None, "cwd": str(demo)}
     row.update(extra)
     return {k: v for k, v in row.items() if v != "__drop__"}
@@ -149,6 +150,12 @@ seat_x() { python3 - "$REG" "$CX" "$1" "$WORK/Other" <<'PY'
 import json, sys
 path, pane, mode, other = sys.argv[1:]
 doc = json.load(open(path)); seats = doc["seats"]
+# The first relaunch stamped crew-a with the live server generation. A crew must share
+# its owner's session and server generation to relaunch at all, so give the owner and
+# the other crew rows the same one (still no socket: the foreign-socket guard below
+# stays reachable).
+for handle in ("lead", "crew-b", "crew-c"):
+    seats[handle].setdefault("server_epoch", seats["crew-a"]["server_epoch"])
 if mode.startswith("add"):
     extra = {"cwd": other} if mode == "add-cwd" else {"server_socket": "/nonexistent/other.sock"}
     seats["crew-x"] = dict(seats["crew-a"], pane_id=pane, pane="Demo/lead:4.0", **extra)

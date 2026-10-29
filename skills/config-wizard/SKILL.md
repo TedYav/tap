@@ -142,7 +142,7 @@ bypass parameters are advanced edits (below).
   may clear a draft to deliver and keeps the text TAP can capture; pasting it
   back is conditional, and when it does not happen `tap draft` recovers it
   (OpenCode drafts always need that, and pasted content or images may not be
-  captured). Typing `WAIT` in capitals holds deliveries for two minutes. `wait`
+  captured). Typing `WAIT` in capitals snoozes up to two minutes or until the draft clears. While incoming mail is watched, exact `STOP` holds across empty input and view changes for up to ten minutes; exact `START` releases it. `wait`
   parks arrivals until the input is empty.
 
 ### 6. Optional extras

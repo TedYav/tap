@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { bootId } from "../src/tmux";
 import { removeScratchTree } from "./support/scratch";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -34,6 +35,12 @@ afterEach(() => {
   for (const f of fixtures.splice(0)) { tm(f.env, "kill-server"); removeScratchTree(f.root); }
 });
 const row = (pane: string, crew = false) => ({ session: "team/owner", pane_id: pane, pane: "team/owner:0.0", instance: `${crew ? "crew" : "owner"}|stable`, status: "active", crew, delivery: "pane" });
+// A crew row as `tap crew add` writes it: process-generation proof plus the retained owner instance.
+function crewRow(f: ReturnType<typeof fixture>, pane: string) {
+  const facts = tm(f.env, "display-message", "-p", "-t", pane, "#{pid}:#{start_time}\t#{socket_path}").stdout.trim().split("\t");
+  return { ...row(pane, true), crew_owner: "owner", crew_owner_instance: "owner|stable",
+    server_epoch: `srv:${facts[0]}`, server_socket: facts[1], boot_id: bootId() };
+}
 function session(f: ReturnType<typeof fixture>) {
   return tm(f.env, "new-session", "-d", "-s", "team/owner", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
 }
@@ -50,7 +57,7 @@ function mutated(f: ReturnType<typeof fixture>, mutant: string, ...args: string[
 test("matrix crew-effect mutation changes public dispatch, not only labels", () => {
   const f = trackedFixture(), owner = session(f);
   const crew = tm(f.env, "split-window", "-d", "-t", owner, "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-  f.put({ owner: row(owner), crew: row(crew, true) });
+  f.put({ owner: row(owner), crew: crewRow(f, crew) });
   const result = mutated(f, "crew-effect-none", "out", "crew");
   expect(result.status).toBe(0);
   expect(f.get().seats.crew).toBeUndefined();
@@ -94,10 +101,10 @@ for (const args of [["out", "team/crew"], ["crew", "shutdown", "team/crew"], ["s
   test(`${args.join(" ")}: same dismissal owner stops only the crew split and labels its action`, () => {
     const f = trackedFixture(), owner = session(f);
     const crew = tm(f.env, "split-window", "-d", "-t", owner, "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-    f.put({ owner: row(owner), crew: row(crew, true) });
+    f.put({ owner: row(owner), crew: crewRow(f, crew) });
     f.env.TAP_BUN_ROUTE_TRACE = join(f.root, "route-trace");
     const result = f.run(...args, "--json");
-    expect(result.status).toBe(0);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(readFileSync(f.env.TAP_BUN_ROUTE_TRACE, "utf8")).toBe(`native ${args[0]}\n`);
     const action = args.includes("--hard") ? "out-hard" : args[0] === "out" ? "out" : "shutdown";
     expect(JSON.parse(result.stdout)).toMatchObject({ lifecycle_action: action, mechanism: "crew-dismiss", outcome: "dismissed", pane_id: crew });
@@ -115,10 +122,10 @@ for (const args of [["shutdown", "team/owner"], ["out", "owner", "--team", "team
     const f = trackedFixture(), owner = session(f);
     const crew = tm(f.env, "split-window", "-d", "-t", owner, "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
     const foreign = tm(f.env, "new-session", "-d", "-s", "foreign", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-    f.put({ owner: row(owner), crew: row(crew, true), foreign: { ...row(foreign), session: "foreign" } });
+    f.put({ owner: row(owner), crew: crewRow(f, crew), foreign: { ...row(foreign), session: "foreign" } });
     f.env.TAP_BUN_ROUTE_TRACE = join(f.root, "route-trace");
     const result = f.run(...args, "--json");
-    expect(result.status).toBe(0);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(readFileSync(f.env.TAP_BUN_ROUTE_TRACE, "utf8")).toBe(`native ${args[0]}\n`);
     const action = args[0] === "shutdown" ? "shutdown" : "out-hard";
     expect(JSON.parse(result.stdout)).toMatchObject({ lifecycle_action: action, mechanism: "hard-removal", outcome: "stopped", crews: ["crew"] });
@@ -140,7 +147,7 @@ test("hard removal of a stopped durable row retires without claiming a stop", ()
 test("hard removal refuses a reused name or mismatched crew provenance", () => {
   const f = trackedFixture(), owner = session(f);
   const crew = tm(f.env, "split-window", "-d", "-t", owner, "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-  for (const seats of [{ owner: row("%9999") }, { owner: { ...row(owner), server_socket: "/unrelated/server" } }, { owner: row(owner), crew: { ...row(crew, true), session: "foreign" } }]) {
+  for (const seats of [{ owner: row("%9999") }, { owner: { ...row(owner), server_socket: "/unrelated/server" } }, { owner: row(owner), crew: { ...crewRow(f, crew), session: "foreign" } }]) {
     f.put(seats);
     const before = readFileSync(f.registry, "utf8");
     expect(f.run("shutdown", "owner", "--json").status).toBe(1);
@@ -169,21 +176,21 @@ test("self hard removal leaves exactly one receipt, stamp, event and tombstone b
   expect(readFileSync(join(f.bus, "registry-events.log"), "utf8")).toContain("lifecycle_action=shutdown;mechanism=hard-removal;outcome=stop_requested");
 }, 20000);
 
-test("crew out keeps the last pane and explains the retained process", () => {
+test("crew out stops a crew that is its session's last pane, ending that session", () => {
   const f = trackedFixture(), pane = session(f);
-  f.put({ crew: row(pane, true) });
+  f.put({ crew: crewRow(f, pane) });
   const result = f.run("out", "crew", "--json");
   expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({ mechanism: "crew-dismiss", outcome: "retired_pane_retained" });
-  expect(result.stdout).toContain("last in session");
-  expect(alive(f, pane)).toBe(true); expect(f.get().seats.crew).toBeUndefined();
+  expect(JSON.parse(result.stdout)).toMatchObject({ mechanism: "crew-dismiss", outcome: "dismissed", pane_id: pane });
+  expect(alive(f, pane)).toBe(false); expect(f.get().seats.crew).toBeUndefined();
+  expect(tm(f.env, "has-session", "-t", "team/owner").status).not.toBe(0);
 });
 
 for (const failed of [false, true]) test(`owner-wide JSON is one value with each crew outcome (save failure=${failed})`, () => {
   const f = trackedFixture(), owner = session(f);
   const a = tm(f.env, "new-window", "-d", "-t", "team/owner", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
   const b = tm(f.env, "new-window", "-d", "-t", "team/owner", "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-  f.put({ owner: row(owner), a: { ...row(a, true), instance: "a|stable" }, b: { ...row(b, true), instance: "b|stable" } });
+  f.put({ owner: row(owner), a: { ...crewRow(f, a), instance: "a|stable" }, b: { ...crewRow(f, b), instance: "b|stable" } });
   if (failed) f.env.TAP_TEST_UNREGISTER_SAVE_FAIL = "1";
   const result = f.run("crew", "shutdown", "--owner", "owner", "--json");
   expect(result.status).toBe(failed ? 1 : 0);
@@ -199,7 +206,7 @@ for (const failed of [false, true]) test(`owner-wide JSON is one value with each
 test("selected retirement refuses a replacement instance before row or pane effects", async () => {
   const f = trackedFixture(), owner = session(f);
   const crew = tm(f.env, "split-window", "-d", "-t", owner, "-P", "-F", "#{pane_id}", "sleep 120").stdout.trim();
-  f.put({ owner: row(owner), crew: row(crew, true) });
+  f.put({ owner: row(owner), crew: crewRow(f, crew) });
   const barrier = join(f.root, "barrier");
   const proc = Bun.spawn([process.execPath, join(repo, "runtime/bun/main.ts"), "out", "crew", "--json"], {
     cwd: f.root, env: { ...f.env, TAP_SCRATCH_ONLY: f.root, TAP_OUT_RETIRE_TEST_BARRIER: barrier, TAP_OUT_RETIRE_TEST_STAGE: "after-select" },
@@ -208,7 +215,7 @@ test("selected retirement refuses a replacement instance before row or pane effe
   const deadline = Date.now() + 10000;
   while (!existsSync(barrier + ".ready") && Date.now() < deadline) await Bun.sleep(20);
   expect(existsSync(barrier + ".ready")).toBe(true);
-  const replacement = { ...row(crew, true), instance: "crew|replacement" };
+  const replacement = { ...crewRow(f, crew), instance: "crew|replacement" };
   f.put({ owner: row(owner), crew: replacement });
   const before = readFileSync(f.registry, "utf8");
   writeFileSync(barrier + ".continue", "");

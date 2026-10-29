@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { bootId } from "../src/tmux";
-import { crewLifetimeBinding, processGeneration, reconcileCrewLifetime, stopCrewLifetimeHelper,
-  type CrewLifetimeBinding } from "../src/crew-lifetime";
+import { crewLifetimeBinding, processGeneration, stopCrewLifetimeHelper } from "../src/crew-lifetime";
 import { captureParentHarnessLifetime } from "../src/crew-lifetime";
 import { retireFamilyRows, restoreFamilyRows } from "../src/out-retire";
 import { fileMatches, fzfTool } from "../src/fzf-tool";
@@ -225,7 +224,7 @@ test("typed unknown team seeds the pinned picker; selection previews and Escape 
     const result = Bun.spawnSync(["python3", "-c", pickerDriver, process.execPath, MAIN, "team", "out", "missing", "--dry-run", mode],
       { cwd: f.root, env: { ...f.env, TERM: "xterm-256color" }, timeout: 20000 });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
-    const record = JSON.parse(result.stdout.toString());
+    const record = JSON.parse(result.stdout.toString()) as { code: number; output: string };
     expect(record.code).toBe(0);
     if (mode === "select") expect(record.output).toContain("tap team out t: retire 1 parent family");
     else expect(record.output).not.toContain("tap team out t: retire");
@@ -383,6 +382,21 @@ function stopFamilyHelper(f: ReturnType<typeof liveFamily>): void {
   });
 }
 
+test("family retirement preserves rows on other generations with the same session and pane", () => {
+  const f = liveFamily();
+  try {
+    const document = JSON.parse(readFileSync(f.registry, "utf8"));
+    document.seats.oldParent = { ...document.seats.parent, server_epoch: "srv:1:1" };
+    document.seats.oldChild = { ...document.seats.child, server_epoch: "srv:1:1" };
+    const otherRows = { oldParent: document.seats.oldParent, oldChild: document.seats.oldChild };
+    writeFileSync(f.registry, JSON.stringify(document));
+    const result = f.run("--only", "parent", "--json");
+    expect(result.code, result.out + result.err).toBe(0);
+    expect(f.doc().seats).toEqual(otherRows);
+    expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
+  } finally { stopFamilyHelper(f); f.tmux("kill-server"); }
+}, 30000);
+
 for (const observation of ["no-terminal", "unreadable"] as const) test(`hard out refuses a ${observation} caller with a live private server`, () => {
   const f = liveFamily();
   try {
@@ -454,7 +468,7 @@ test("bare --only picker retires a live parent without crew and leaves both sess
       "team", "out", "t", "--only", "--yes", "cohort"],
     { cwd: f.root, env: { ...f.env, TERM: "xterm-256color" }, timeout: 20000 });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
-    const record = JSON.parse(result.stdout.toString());
+    const record = JSON.parse(result.stdout.toString()) as { code: number; output: string };
     expect(record.code).toBe(0);
     expect(record.output).toContain("tap team out: 1 registration retired; 0 retained/refused");
     expect(f.doc().seats).toEqual({});
@@ -464,60 +478,24 @@ test("bare --only picker retires a live parent without crew and leaves both sess
   } finally { tmux("kill-server"); }
 }, 30000);
 
-for (const alreadyBound of [false, true]) test(`crew added during consent ${alreadyBound ? "follows an existing parent binding" : "cannot gain a new parent binding"}`, async () => {
+test.each([false, true])("a late crew follows only its durable selected owner (linked=%s)", async linked => {
   const f = liveFamily();
-  let binding: CrewLifetimeBinding | undefined;
   try {
     expect(f.tmux("new-session", "-d", "-s", "operator", "sleep 600").status).toBe(0);
-    const seats = f.doc().seats as Record<string, Record<string, unknown>>;
-    const lateChild = seats.child!;
-    if (alreadyBound) {
-      const priorPath = process.env.TAP_TMUX_SOCKET_PATH, priorName = process.env.TAP_TMUX_SOCKET;
-      process.env.TAP_TMUX_SOCKET_PATH = f.socket;
-      delete process.env.TAP_TMUX_SOCKET;
-      try { binding = await reconcileCrewLifetime({ registryPath: f.registry, team: "t" } as ResolvedContext, "parent", "child"); }
-      finally {
-        if (priorPath === undefined) delete process.env.TAP_TMUX_SOCKET_PATH;
-        else process.env.TAP_TMUX_SOCKET_PATH = priorPath;
-        if (priorName === undefined) delete process.env.TAP_TMUX_SOCKET;
-        else process.env.TAP_TMUX_SOCKET = priorName;
-      }
-    }
+    const seats = f.doc().seats as Record<string, Record<string, unknown>>, lateChild = { ...seats.child!,
+      ...(linked ? { crew_owner: "parent", crew_owner_instance: seats.parent!.instance } : {}) };
     writeFileSync(f.registry, JSON.stringify({ ...f.doc(), seats: { parent: seats.parent } }));
     const result = Bun.spawnSync(["python3", "-c", pickerDriver, process.execPath, MAIN,
-      "team", "out", "t", alreadyBound ? "confirm-late-bound" : "confirm-late"],
-    { cwd: f.root, env: { ...f.env, TERM: "xterm-256color", TAP_TEST_LATE_REGISTRY: f.registry,
-      TAP_TEST_LATE_ROW: JSON.stringify(lateChild) }, timeout: 20000 });
+      "team", "out", "t", "confirm-late"],
+      { cwd: f.root, env: { ...f.env, TERM: "xterm-256color", TAP_TEST_LATE_REGISTRY: f.registry,
+        TAP_TEST_LATE_ROW: JSON.stringify(lateChild) }, timeout: 20000 });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
-    const record = JSON.parse(result.stdout.toString());
-    expect(record.code).toBe(alreadyBound ? 0 : 1);
-    if (alreadyBound) {
-      expect(f.doc().seats).toEqual({});
-      expect(f.history()).toHaveLength(2);
-    } else {
-      expect(record.output).toContain("late crew 'child' has no valid binding");
-      expect(Object.keys(f.doc().seats as object).sort()).toEqual(["child", "parent"]);
-      expect(f.history()).toHaveLength(0);
-    }
-    expect(f.read("display-message", "-p", "-t", f.parentPane, "#{pane_id}")).toBe(f.parentPane);
+    const record = JSON.parse(result.stdout.toString()) as { code: number; output: string };
+    expect(record.code, record.output).toBe(linked ? 0 : 1);
+    expect(Object.keys(f.doc().seats as object).sort()).toEqual(linked ? [] : ["child", "parent"]);
+    expect(f.history()).toHaveLength(linked ? 2 : 0);
     expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
-    expect(f.tmux("has-session", "-t", "operator").status).toBe(0);
-  } finally {
-    if (binding) {
-      const priorPath = process.env.TAP_TMUX_SOCKET_PATH, priorName = process.env.TAP_TMUX_SOCKET;
-      process.env.TAP_TMUX_SOCKET_PATH = f.socket;
-      delete process.env.TAP_TMUX_SOCKET;
-      try { stopCrewLifetimeHelper(binding); }
-      finally {
-        if (priorPath === undefined) delete process.env.TAP_TMUX_SOCKET_PATH;
-        else process.env.TAP_TMUX_SOCKET_PATH = priorPath;
-        if (priorName === undefined) delete process.env.TAP_TMUX_SOCKET;
-        else process.env.TAP_TMUX_SOCKET = priorName;
-      }
-    }
-    f.tmux("kill-server");
-    if (binding) expect(await waitFor(() => processGeneration(binding!.helper) === "gone")).toBe(true);
-  }
+  } finally { f.tmux("kill-server"); }
 }, 30000);
 
 async function waitFor(predicate: () => boolean, max = 5000): Promise<boolean> {
@@ -529,7 +507,7 @@ async function waitFor(predicate: () => boolean, max = 5000): Promise<boolean> {
   return false;
 }
 
-test("plain family out keeps both processes of a legacy crew, then parent exit ends the retired child", async () => {
+test("plain family out leaves both processes running after the parent later exits", async () => {
   const f = liveFamily();
   try {
     const result = f.run("--only", "parent", "--json");
@@ -539,11 +517,12 @@ test("plain family out keeps both processes of a legacy crew, then parent exit e
     expect(f.read("display-message", "-p", "-t", f.parentPane, "#{pane_id}")).toBe(f.parentPane);
     expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
     expect(f.tmux("kill-pane", "-t", f.parentPane).status).toBe(0);
-    expect(await waitFor(() => f.tmux("display-message", "-p", "-t", f.childPane, "#{pane_id}").status !== 0)).toBe(true);
+    await Bun.sleep(3000);
+    expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
   } finally { f.tmux("kill-server"); }
 }, 30000);
 
-test("full plain out retires a row whose parent is absent when its lifetime binding is valid", async () => {
+test("full plain out retires an orphan row with a current crew process proof", async () => {
   const f = liveFamily();
   try {
     const child = (f.doc().seats as Record<string, unknown>).child;
@@ -555,7 +534,8 @@ test("full plain out retires a row whose parent is absent when its lifetime bind
     expect(f.doc().seats).toEqual({});
     expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
     expect(f.tmux("kill-pane", "-t", f.parentPane).status).toBe(0);
-    expect(await waitFor(() => f.tmux("display-message", "-p", "-t", f.childPane, "#{pane_id}").status !== 0)).toBe(true);
+    await Bun.sleep(3000);
+    expect(f.read("display-message", "-p", "-t", f.childPane, "#{pane_id}")).toBe(f.childPane);
   } finally { f.tmux("kill-server"); }
 }, 30000);
 

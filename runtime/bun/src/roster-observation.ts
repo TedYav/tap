@@ -28,7 +28,7 @@ export interface ObservedRow {
   attached: string;
   unattended: boolean;
   crew: boolean;
-  crewLifetime?: "supervised" | "unsupervised" | "unknown";
+  crewLifetime?: "independent" | "legacy_supervised" | "unknown";
   preset: string;
   /** Vendor lineage: the recorded preset's `metadata.model_family`, else the seat harness's single vendor; null when unknown. */
   family?: string | null;

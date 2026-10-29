@@ -50,7 +50,9 @@ sleep 60
       }
       const activated = readFileSync(registry, "utf8");
       const deadline = Date.now() + 8000;
-      while (!existsSync(status) && Date.now() < deadline) await Bun.sleep(50);
+      // `echo $? > status` creates the file empty before it writes the code: wait for the content.
+      const written = () => existsSync(status) && readFileSync(status, "utf8").trim() !== "";
+      while (!written() && Date.now() < deadline) await Bun.sleep(50);
       expect(existsSync(status)).toBe(true);
       const text = readFileSync(output, "utf8");
       if (mode === "delayed") {

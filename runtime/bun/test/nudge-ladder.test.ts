@@ -256,3 +256,27 @@ test("an effect that throws after its keys (a failed receipt write) is a possibl
   expect(p.effects.map(e => e.keys)).toEqual([["-l", "/queue [[TAP v0.23 nudge]]"]]);
   expect(p.out.join("\n")).toContain("EISDIR");
 });
+
+test("a diagnosis guard is rechecked at each key and stops after the first changed observation", () => {
+  const before = pane();
+  expect(() => runLadder(opts("codex", { guard: () => "diagnosed seat changed" }), before.io)).toThrow("diagnosed seat changed");
+  expect(before.effects).toHaveLength(0);
+  const after = pane();
+  expect(runLadder(opts("codex", { guard: keyed => keyed ? "work started" : "" }), after.io)).toBe(5);
+  expect(after.effects.map(e => e.action)).toEqual(["nudge interrupt"]);
+});
+
+test("a staged-only recovery cannot fall through when its sentinel disappears", () => {
+  const missing = pane();
+  expect(() => runLadder(opts("codex", { stagedOnly: true }), missing.io)).toThrow("staged");
+  expect(missing.effects).toHaveLength(0);
+  const present = pane({ staged: 0 });
+  expect(runLadder(opts("codex", { stagedOnly: true }), present.io)).toBe(0);
+  expect(present.effects).toHaveLength(0);
+});
+
+test("a changed diagnosis after typing prevents the final Enter", () => {
+  const p = pane();
+  expect(runLadder(opts("codex", { interrupt: false, guard: keyed => keyed ? "work started before Enter" : "" }), p.io)).toBe(5);
+  expect(p.effects.map(e => e.action)).toEqual(["nudge type"]);
+});

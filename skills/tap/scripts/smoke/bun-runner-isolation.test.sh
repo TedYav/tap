@@ -11,6 +11,7 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/engine" "$WORK/guard" "$WORK/caller-home" "$WORK/outer-tmux" \
   "$FIXTURE/runtime/bun/test" "$FIXTURE/scripts"
 cp "$ROOT/runtime/bun/test/run.sh" "$RUNNER"
+cp "$ROOT/scripts/test-secret-env.sh" "$FIXTURE/scripts/test-secret-env.sh"
 cp "$ROOT/scripts/ignored-state-tripwire.py" "$FIXTURE/scripts/ignored-state-tripwire.py"
 
 # Attribution inputs read by verbs/register.ts and session-store.ts.

@@ -43,6 +43,8 @@ import { teamRegistryRefusal } from "./register-authority";
 import { childBusEnv } from "./panelock";
 import { versionBriefing } from "./version-briefing";
 import { startupTrace, withStartupTrace } from "./startup-trace";
+import { observeSessionStartAncestry, readProcessTableMemoized } from "./observe";
+import { parentPid } from "./process-ancestry";
 
 const REPO = resolve(import.meta.dir, "../../..");
 
@@ -126,7 +128,7 @@ export function walkUpSessionRoot(start: string, indexHome?: string): string {
  * it only binds one the launcher already placed on this exact pane. */
 export interface LaunchEvidence { root: string; authority: SessionAuthority; seen: CallingPaneObservation }
 
-export function resolveLaunchEvidence(env: NodeJS.ProcessEnv, observe: () => CallingPaneObservation = () => observeCallingPane(env)): LaunchEvidence | null {
+export function resolveLaunchEvidence(env: NodeJS.ProcessEnv, observe: () => CallingPaneObservation = () => observeCallingPane(env, false, true)): LaunchEvidence | null {
   const root = env[LAUNCH_ROOT_ENV] ?? "";
   if (!root || !(env[LAUNCH_ID_ENV] || env.TAP_CLEAR_ID)) return null;
   const authority = resolveSessionAuthority(root, env.TAP_INDEX_HOME);
@@ -238,6 +240,17 @@ function warnIfQuarantined(doc: Json | null, handle: string, sessionId: string):
   process.stderr.write(`tap session: WARNING: quarantined captured harness identity for ${handle}: ${reason}\n`);
 }
 
+/** Shared by SessionStart and agy's native invocation hook, before any bind. */
+export function automaticBindAllowed(panePid: string, env: NodeJS.ProcessEnv, fields: Record<string, unknown>): boolean {
+  const ancestry = observeSessionStartAncestry(panePid, process.pid,
+    readProcessTableMemoized(env).table, pid => parentPid(pid, env), env);
+  if (ancestry.state === "seat") return true;
+  startupTrace("sessionstart_skipped", { ...fields, reason: ancestry.state === "nested" ? "nested_harness" : "ancestry_unobservable",
+    ...(ancestry.state === "nested" ? { intervening_pid: ancestry.pid, intervening_family: ancestry.family }
+      : { detail: ancestry.reason, next: "tap in" }) });
+  return false;
+}
+
 /**
  * The shared context for ROOT. Every direct-identity fire binds, and resume|clear
  * keeps the idempotent ensure-bound fallback for harness-native resumes that
@@ -270,10 +283,25 @@ function sessionContextTraced(root: string, input: string, env: NodeJS.ProcessEn
   startupTrace("sessionstart_begin", { ...traceJoin, authority_source: launch ? "launch" : "cwd" });
   const out: string[] = [];
 
+  // Resolve before tap in: inherited pane/launch evidence identifies the team,
+  // but a nested harness must neither overwrite its parent nor receive its mail.
+  const chainMs = performance.now();
+  const chain = observeCallerPaneChain({ ...env, TAP_HOME: authority.bus, TAP_HARNESS_SESSION_ID: sessionId }, root, true, launch?.seen);
+  const paneJoin = { ...traceJoin, pane_id: chain.ok ? chain.paneId : paneHint };
+  startupTrace("sessionstart_chain_done", { ...paneJoin, ok: chain.ok, duration_ms: Math.round(performance.now() - chainMs) });
+  if (chain.ok && !(chain.viaHarnessSession && sessionId)) {
+    if (!automaticBindAllowed(chain.panePid ?? "", env, paneJoin)) return [];
+  } else if (!chain.ok) {
+    startupTrace("sessionstart_skipped", { ...paneJoin, reason: "caller_unobservable", detail: chain.reason });
+  }
+  // Row-selected Claude desktop/job callers already proved the payload's
+  // session id against the current row or validated job state. They need not
+  // physically descend from the interactive pane they independently selected.
+
   const shouldBind = source === "resume" || source === "clear" || sessionId !== "" || transcript !== "";
   let bound = false;
   let bindStdout = "";
-  if (shouldBind) {
+  if (shouldBind && chain.ok) {
     const bindMs = performance.now();
     const bind = spawnSync(join(REPO, "bin/tap"), ["in", ...(sessionId ? ["--harness-session-id", sessionId] : [])], {
       encoding: "utf8",
@@ -318,10 +346,6 @@ function sessionContextTraced(root: string, input: string, env: NodeJS.ProcessEn
   // generations, unresolvable callers and address-only bindings stay silent: a
   // misresolved handle would advance another seat's last-seen record
   // (tap-j4sj / tap-rl9z).
-  const chainMs = performance.now();
-  const chain = observeCallerPaneChain({ ...env, TAP_HOME: authority.bus, TAP_HARNESS_SESSION_ID: sessionId }, root, false, launch?.seen);
-  const paneJoin = { ...traceJoin, pane_id: chain.ok ? chain.paneId : paneHint };
-  startupTrace("sessionstart_chain_done", { ...paneJoin, ok: chain.ok, duration_ms: Math.round(performance.now() - chainMs) });
   const observable = chain.ok && chain.paneId !== "" && chain.serverEpoch !== "";
   let handle = "";
   let oldStore: ReturnType<typeof teamRegistryRefusal> = null;
@@ -479,6 +503,7 @@ async function main(argv: string[]): Promise<number> {
       const root = launch?.root ?? codexRoot(input, process.env);
       if (root) {
         const lines = sessionContext(root, input, process.env, launch);
+        if (!lines.length) return 0;
         const registered = lines.findIndex(line => line.startsWith("TAP: registered as "));
         if (registered >= 0) lines.splice(registered + 1, 0, "If TAP reports 'identity unobservable' or denied writes under ~/.tap or another team's .tap, retry the exact authorized command once with approved sandbox escalation; unobservable does not mean stale.");
         const context = [...lines, CODEX_SKILLS].join("\n");

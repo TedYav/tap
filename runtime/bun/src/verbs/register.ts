@@ -42,7 +42,7 @@ import { pidHasAncestor } from "../process-ancestry";
 import { isPaneId } from "../lifecycle-target";
 import { SEAT_ALIVE, SEAT_PANE_GONE, SEAT_PANE_RECYCLED, SEAT_UNOBSERVABLE, isLaunchReservation, samePaneIdentity, seatVerdict, type ChooserObservation } from "../seat-verdict";
 import { MAX_ADOPTED_HANDLES, frontmatter } from "../seat-adopt";
-import { bootId, legacyBootId, physicalSocketPath, serverEpochFromRaw, tmux, paneCurrentPath, observePaneResult, type PaneObservation as TmuxPaneObservation } from "../tmux";
+import { bootId, bootIdsMatch, legacyBootId, physicalSocketPath, serverEpochFromRaw, tmux, paneCurrentPath, observePaneResult, type PaneObservation as TmuxPaneObservation } from "../tmux";
 import { serverEpochNow } from "../spool-park-report";
 import { isMap, loads, pyStr, pyTruthy, dumps, type JsonMap, type JsonValue } from "../watch-detect";
 import { windowSeconds, driverConfigPath, updateConfig } from "../digest-window";
@@ -1650,7 +1650,8 @@ function paneTransaction(ctx: TxnCtx): number {
     // namespace. --namespace-crossing is the only bypass.
     if (form.delivery !== "poll" && observedSocket !== "" && !form.namespaceCrossing) {
       for (const [, row] of agents.entries()) {
-        if (isMap(row) && fieldStr(row, "server_socket") !== "" && fieldStr(row, "server_socket") !== observedSocket) {
+        if (isMap(row) && fieldStr(row, "server_socket") !== "" && fieldStr(row, "server_socket") !== observedSocket
+          && bootIdsMatch(fieldStr(row, "boot_id"), observedBootId, env) !== "mismatch") {
           fail(1, "namespace_crossing", `pin TAP_INDEX_HOME and TAP_HOME for probes, or tap register ${base} --namespace-crossing`, "team has pane rows bound under another tmux socket; pin probe TAP state or explicitly pass --namespace-crossing");
         }
       }
@@ -1768,10 +1769,12 @@ function paneTransaction(ctx: TxnCtx): number {
   entry = existingEntry();
   priorExistingChosen = entry !== null;
 
-  // Crew add starts a fresh process even when the chooser reuses a dead
-  // residue row. Its old conversation and occupant cannot describe this child.
-  const replacingCrewBootstrap = form.crew && (env.TAP_REGISTER_CREW_OWNER_PANE ?? "") !== ""
-    && entry !== null && !samePaneIdentity(entry, observed!.paneId, epochNow, form.pane);
+  // Crew rows retain their conversation after process loss. Creation cannot consume one.
+  if (form.crew && (env.TAP_REGISTER_CREW_OWNER_PANE ?? "") !== "" && entry !== null
+    && !samePaneIdentity(entry, observed!.paneId, epochNow, form.pane)) {
+    fail(1, "handle_collision", `tap crew resume ${chosen} or tap crew remove ${chosen}`,
+      `crew name '${chosen}' is retained; nothing was replaced`);
+  }
 
   // Instance lineage: restore/fresh validation, mint otherwise.
   let instanceId = fieldStr(entry, "instance");
@@ -1793,13 +1796,6 @@ function paneTransaction(ctx: TxnCtx): number {
   // Copy of the existing row preserving unknown per-agent keys; the identity
   // ladder below mutates only the known fields.
   const next = new Map<string, JsonValue>(entry ?? new Map<string, JsonValue>());
-  if (replacingCrewBootstrap) {
-    instanceId = "";
-    for (const key of ["harness_session_id", "transcript_path", "identity_capture", "identity_capture_result",
-      "quarantined_harness_session_id", "quarantined_transcript_path", "identity_quarantine_reason", "crew_identity_capture",
-      "session_attribution_trust", "derived_at", "session_store_path", "session_store_kind", "derived_harness_session_id",
-      "session_attribution_candidates", "session_attribution_detail", "agy_ls"]) next.delete(key);
-  }
 
   // Identity capture: the verified session id + transcript ride the entry;
   // suppression (crew pre-registration, daemon jobs) blanks them.
@@ -1964,7 +1960,7 @@ function paneTransaction(ctx: TxnCtx): number {
   if (observed!.session !== "") next.set("session", observed!.session);
   if (form.crew) next.set("crew", true);
   else if (!samePaneOwner) next.delete("crew");
-  if (form.crew && (replacingCrewBootstrap || !(entry?.get("crew") === true || entry?.get("crew") === 1n))) {
+  if (form.crew && !(entry?.get("crew") === true || entry?.get("crew") === 1n)) {
     // Only creation may establish parentage. A later SessionStart preserves
     // even a missing/wrong legacy link until the operator recreates the crew.
     const callerPane = env.TAP_REGISTER_CREW_OWNER_PANE ?? "";
@@ -2114,6 +2110,11 @@ function paneTransaction(ctx: TxnCtx): number {
       const verdict = next.get("identity_capture_result");
       if (isMap(verdict)) for (const [key, value] of verdict) outcome.set(key, value);
       next.set("crew_identity_capture", outcome);
+    } else if (env.TAP_REGISTER_CREW_CAPTURE_ONLY === "1" && samePaneOwner && priorHarness === harness
+      && isMap(next.get("crew_identity_capture"))
+      && ["accepted", "quarantined"].includes(str((next.get("crew_identity_capture") as JsonMap).get("decision")))) {
+      // A hook can bind while the post-add probe starts. No observation from
+      // that weaker probe cannot erase the hook's result on this exact crew.
     } else {
       outcome.set("decision", "unavailable");
       outcome.set("reason", paneHarness !== harness
@@ -2145,7 +2146,7 @@ function paneTransaction(ctx: TxnCtx): number {
     // Pane-session lineage: the rebind/restore/fresh fact rides the shared
     // team-history contract. Failures are warning-only, never a refusal.
     if (instanceId !== "") {
-      const note = form.restoreId !== "" ? "restore" : form.fresh || replacingCrewBootstrap || !priorExistingChosen ? "fresh" : "rebind";
+      const note = form.restoreId !== "" ? "restore" : form.fresh || !priorExistingChosen ? "fresh" : "rebind";
       try {
         appendPaneSessionLog(bus.busHome, chosen, instanceId, form.pane, observed!.paneId, harnessSessionId, note);
       } catch (e) {

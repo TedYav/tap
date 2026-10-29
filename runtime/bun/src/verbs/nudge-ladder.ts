@@ -111,7 +111,13 @@ export interface LadderIO {
   out(line: string): void;
 }
 
-export interface LadderOptions { harness: string; interrupt: boolean; wire: string; label: string; deliver: boolean }
+export interface LadderOptions {
+  harness: string; interrupt: boolean; wire: string; label: string; deliver: boolean;
+  /** Additional readonly admission, repeated inside every recorded key boundary. */
+  guard?(keyed: boolean): string;
+  /** Complete the selected staged input only; never fall through to a new nudge. */
+  stagedOnly?: boolean;
+}
 
 export const DISMISS_SETTLE_MS = 400;
 export const INTERRUPT_SETTLE_MS = 400;
@@ -134,7 +140,7 @@ export function runLadder(opts: LadderOptions, io: LadderIO): number {
   const tracked: LadderIO = { ...io, effect(action, keys, gate, verify) {
     let result: EffectResult;
     // An effect that throws (e.g. its receipt write failed) cannot prove its keys did not land.
-    try { result = io.effect(action, keys, gate, verify); } catch (error) {
+    try { result = io.effect(action, keys, () => opts.guard?.(keyed) || gate?.() || "", verify); } catch (error) {
       if (error instanceof PreKeyRefusal) throw error.refusal;
       keyed = true;
       throw error;
@@ -196,6 +202,7 @@ function ladder(opts: LadderOptions, io: LadderIO, keyed: () => boolean): number
   // Rung 2: a staged sentinel gets its one Enter and ends the run.
   const staged = io.submitStaged(dismissed !== "");
   if (staged !== null) return staged;
+  if (opts.stagedOnly) held("the selected staged sentinel is no longer present");
   if (!opts.deliver) {
     say(`${dismissed}no staged sentinel; delivery skipped because --pane overrides the registered seat`);
     return 0;

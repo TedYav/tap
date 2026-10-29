@@ -93,6 +93,17 @@ test("failed OpenCode capture holds readiness instead of admitting an empty band
   expect(f.ready()).toBe("busy:booting");
 });
 
+test("Codex update menu is recovery eligible after identity and copy-mode gates", () => {
+  const f = fixture("codex");
+  writeFileSync(f.frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt")));
+  expect(f.ready()).toBe("recover:codex-update");
+  f.env.FAKE_MODE = "1";
+  expect(f.ready()).toBe("busy");
+  delete f.env.FAKE_MODE;
+  f.writeSeat({ pane_id: "%999" });
+  expect(f.ready()).toBe("gone");
+});
+
 test("native harness reuse follows the expected fallback ladder, including no process walk for known commands or missing pid", () => {
   const f = fixture();
   for (const [command, pid, psFail, expected] of [

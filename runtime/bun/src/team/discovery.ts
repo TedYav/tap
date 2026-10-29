@@ -1,3 +1,5 @@
+import { crewFamilyHandles } from "../crew-ownership";
+import type { CrewProcess } from "../crew-lifetime";
 import { TapError, resolveContext, type ResolvedContext } from "../context";
 import { loadGlobalRegistry, resolveTeamFromDoc } from "../index-home";
 import { validToken } from "../ids";
@@ -90,8 +92,8 @@ export async function chooseTeam(verb: string, query: string | undefined, picker
 }
 
 export interface BoundSeat { handle: string; instance: string; session: string; paneId: string; serverEpoch: string; status?: string; delivery?: string }
-export interface CrewInstance { instance: string; session: string }
-export interface BoundCohort { team: BoundTeam; seats: Map<string, BoundSeat>; selection: Selection; original: Selection; restartRows?: Map<string, Seat>; parentLifetimes?: Map<string, ParentHarnessLifetime>; crewAtSelection?: Map<string, CrewInstance>; approvedCrewAtConsent?: Map<string, CrewInstance> }
+export interface CrewInstance { instance: string; session: string; paneId?: string; serverEpoch?: string; owner?: string; ownerInstance?: string }
+export interface BoundCohort { team: BoundTeam; seats: Map<string, BoundSeat>; selection: Selection; original: Selection; restartRows?: Map<string, Seat>; parentLifetimes?: Map<string, ParentHarnessLifetime>; crewAtSelection?: Map<string, CrewInstance>; approvedCrewAtConsent?: Map<string, CrewInstance>; approvedCrewProcesses?: Map<string, CrewProcess | null> }
 
 function field(row: Seat, key: string): string { return typeof row[key] === "string" ? row[key] as string : ""; }
 
@@ -162,12 +164,13 @@ export function assertBoundParentLifetimes(bound: BoundCohort): void {
 }
 
 function crewSessions(rows: Record<string, Seat>): Set<string> {
-  return new Set(Object.values(rows).filter(row => row?.crew === true).map(row => field(row, "session")).filter(Boolean));
+  return new Set(Object.entries(rows).filter(([handle, row]) => row?.crew !== true && crewFamilyHandles(rows, handle).length > 0)
+    .map(([, row]) => field(row, "session")).filter(Boolean));
 }
 
 function crewInstances(rows: Record<string, Seat>): Map<string, CrewInstance> {
   return new Map(Object.entries(rows).filter(([, row]) => row?.crew === true)
-    .map(([handle, row]) => [handle, { instance: field(row, "instance"), session: field(row, "session") }]));
+    .map(([handle, row]) => [handle, { instance: field(row, "instance"), session: field(row, "session"), paneId: field(row, "pane_id"), serverEpoch: field(row, "server_epoch"), owner: field(row, "crew_owner"), ownerInstance: field(row, "crew_owner_instance") }]));
 }
 
 export function captureCohortParentLifetimes(bound: BoundCohort): void {

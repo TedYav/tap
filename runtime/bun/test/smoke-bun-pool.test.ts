@@ -12,7 +12,7 @@ test('one pool discovers shell and Bun once, isolates same-name state, and retai
     mkdirSync(join(fixture, dir), { recursive: true });
   }
   for (const path of [
-    'scripts/smoke-all.sh', 'scripts/ignored-state-tripwire.py', 'scripts/suite-slot-run.py', 'scripts/suite_slot.py',
+    'scripts/smoke-all.sh', 'scripts/ignored-state-tripwire.py', 'scripts/suite-slot-run.py', 'scripts/suite_slot.py', 'scripts/test-secret-env.sh',
     'runtime/bun/test/run.sh', `${smoke}/smoke-preflight.sh`, `${smoke}/smoke_hermeticity_lint.py`,
   ]) copyFileSync(join(repo, path), join(fixture, path));
   const keys = ['HOME', 'TAP_INDEX_HOME', 'TAP_SESSION_MANIFEST', 'OPENCODE_DB_PATH', 'TAP_VERSION_SEEN_PATH', 'TMUX_TMPDIR', 'TMPDIR'];

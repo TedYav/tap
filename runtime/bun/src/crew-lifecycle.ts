@@ -1,6 +1,5 @@
 // Crew lifecycle: shutdown one crew seat or an owner's whole crew (tap-yih6n.1).
-// Durable parentage gates rearm/relaunch. Explicit teardown keeps its existing
-// session-scoped family selection so legacy crews can always be removed.
+// Durable links select the family; process proofs guard each explicit stop.
 import { observeCallerIdentity, TapError, type ResolvedContext } from "./context";
 import { validToken } from "./ids";
 import { isFile } from "./watch-lease";
@@ -10,7 +9,7 @@ import { assertActingRegistryMatches, SelectorError } from "./selector";
 import { tmux, tmuxReadOnly, tmuxTimeoutMs } from "./tmux";
 import { scratchOnlyGuard, retireSelected, retirementReceipt, type RetirementDisposition, type PlainForm } from "./out-retire";
 import { lifecycleDisposition } from "./lifecycle-target";
-import { acquireRegistryLock } from "./panelock";
+import { acquirePathLock, acquireRegistryLock } from "./panelock";
 import { acquireResetMutationLock, assertResetUnfenced, RESET_HELD_LOCK_WAIT_MS } from "./reset";
 import { checkCrewRegistry } from "./crew-registry";
 import { crewRecipeInvocation, crewRecipeWithOverrides } from "./launcher/crew-invocation";
@@ -19,7 +18,8 @@ import { LaunchInterrupted } from "./launcher/transaction";
 import { launchTmux } from "./launcher/process";
 import { LauncherError } from "./launcher/types";
 import { prepareCodexAutoReceipts } from "./launcher/permissions";
-import { assertCrewOwnerLink, crewLifetimeBinding, rearmCrewLifetime, rearmReplacedCrewLifetime, stopCrewLifetimeHelper } from "./crew-lifetime";
+import { assertCrewOwnerLink, captureCrewProcess, fenceCrewLifetime, stopCrewProcess } from "./crew-lifetime";
+import { crewFamilyHandles, sameCrewSession } from "./crew-ownership";
 
 const HELP = "tap help crew";
 export const OWNER_GRAMMAR = "tap crew shutdown --owner <handle> or --owner <team>/<handle>";
@@ -66,28 +66,27 @@ export function seats(ctx: ResolvedContext): Record<string, Row> {
 // The numeric marker is the supported legacy spelling the census also accepts.
 const isCrew = (row: Row | undefined): boolean => row?.crew === true || row?.crew === 1;
 
-/** The crew of an owner: rows sharing its session. Two owners in one session never guess. */
+/** Durable linked crews follow their owner across sessions; unlinked legacy rows remain explicitly removable. */
 export function crewOf(all: Record<string, Row>, owner: string): string[] {
-  const session = str(all[owner]?.session);
-  if (!session) throw new TapError(1, "crew_owner_unidentified", OWNER_GRAMMAR, `owner '${owner}' has no recorded session`);
-  const owners = Object.keys(all).filter(h => !isCrew(all[h]) && str(all[h]!.session) === session);
-  if (owners.length > 1) {
-    throw new TapError(1, "crew_owner_ambiguous", "tap crew shutdown <crew-handle>",
-      `session '${session}' holds ${owners.length} non-crew seats (${owners.sort().join(", ")}); crew ownership is ambiguous, name crew seats individually`);
-  }
-  return Object.keys(all).filter(h => isCrew(all[h]) && str(all[h]!.session) === session).sort();
+  const parent = all[owner];
+  if (!parent) throw new TapError(1, "crew_owner_unidentified", OWNER_GRAMMAR, `owner '${owner}' is not retained`);
+  const ambiguous = Object.values(all).some(row => isCrew(row) && !str(row.crew_owner) && sameCrewSession(row, parent))
+    && Object.values(all).filter(row => !isCrew(row) && sameCrewSession(row, parent)).length > 1;
+  if (ambiguous) throw new TapError(1, "crew_owner_ambiguous", "tap crew shutdown <crew-handle>", "unlinked legacy crew shares a session with multiple owners; name that crew explicitly");
+  return crewFamilyHandles(all, owner);
 }
 
 /** The caller's own non-crew row, or the owner-inference refusal. */
 function inferOwner(ctx: ResolvedContext, all: Record<string, Row>): string {
   const refuse = (why: string) => new TapError(1, "crew_owner_unidentified", OWNER_GRAMMAR,
     `cannot identify crew owner; pass the crew owner explicitly (${why})`);
-  const seen = observeCallerIdentity();
+  const seen = observeCallerIdentity(process.env, false, true);
   if (seen.state !== "inside") throw refuse("caller is not in an attributable tmux pane");
   // tap-zk1w: pane ids recycle across tmux servers, so only a row stamped with
   // the caller's observed generation can name the owner.
   const matches = Object.keys(all).filter(h => str(all[h]!.pane_id) === seen.paneId
-    && str(all[h]!.server_epoch) !== "" && str(all[h]!.server_epoch) === seen.serverEpoch);
+    && str(all[h]!.server_epoch) !== "" && str(all[h]!.server_epoch) === seen.serverEpoch
+    && (!str(all[h]!.server_socket) || str(all[h]!.server_socket) === (seen.socketPath || seen.selectedSocket)));
   if (matches.length !== 1 || isCrew(all[matches[0]!])) {
     throw refuse(matches.length === 0 ? `pane ${seen.paneId} is not registered on team ${ctx.team}`
       : matches.length > 1 ? `pane ${seen.paneId} holds ${matches.length} rows` : `pane ${seen.paneId} is a crew seat`);
@@ -111,21 +110,6 @@ function recordedPaneRefusal(row: Row): string {
   return "";
 }
 
-/**
- * The pane a crew shutdown may stop, or the reason it may not. Only the row's
- * recorded pane on the row's recorded tmux server and session — never a
- * sibling split, never a session's last pane (that would end the session).
- */
-export function killablePane(row: Row): { paneId: string; skip: string; hint: string } {
-  const paneId = str(row.pane_id), session = str(row.session);
-  const refusal = recordedPaneRefusal(row);
-  if (refusal) return { paneId: "", skip: refusal, hint: refusal.startsWith("pane_live_elsewhere") ? paneId : "" };
-  const windows = read(["display-message", "-p", "-t", paneId, "#{session_windows}"]);
-  const panes = read(["display-message", "-p", "-t", paneId, "#{window_panes}"]);
-  if (!(Number(windows) > 1) && !(Number(panes) > 1)) return { paneId: "", skip: `pane ${paneId} is the last in session '${session}'`, hint: "" };
-  return { paneId, skip: "", hint: "" };
-}
-
 export function dismissCrew(ctx: ResolvedContext, handle: string, row: Row, disposition: RetirementDisposition,
   options: { verb?: string; callerPane?: string; deadOnly?: boolean; retirementForm?: PlainForm; collect?: (receipt: Record<string, unknown>) => void } = {}): number {
   const verb = options.verb ?? "tap out";
@@ -138,30 +122,23 @@ export function dismissCrew(ctx: ResolvedContext, handle: string, row: Row, disp
   if (callerPane && str(row.pane_id) === callerPane) {
     throw new TapError(1, "usage_error", `run ${verb} from another pane`, `'${handle}' is the calling pane; a crew seat cannot shut itself down`);
   }
-  const before = killablePane(row);
-  const lifetime = crewLifetimeBinding(str(row.pane_id));
+  const proof = captureCrewProcess(ctx.team, handle, row);
+  if (proof && !options.deadOnly) fenceCrewLifetime(ctx, handle, row);
   if (options.deadOnly && read(["display-message", "-p", "-t", str(row.pane_id), "#{pane_id}"]) === str(row.pane_id) && row.pane_id) {
     throw new TapError(1, "lifecycle_refused", "inspect the live crew seat", "dash-selected crew became live; nothing removed");
   }
   // No lock is held here. The registry-only leaf owns reset → registry custody,
   // validates this exact identity and returns without re-entering a public door.
   retireSelected(ctx, options.retirementForm ?? { name: handle, team: ctx.team, pane: "", kill: false, dash: false }, handle, row, disposition);
-  // Decide again at the effect: retirement can take long enough for identity to change.
-  const { paneId, skip, hint } = options.deadOnly ? { paneId: "", skip: "dead-only selector never stops panes", hint: "" }
-    : before.paneId ? killablePane(row) : before;
-  if (paneId && paneId === before.paneId) {
-    if (tmux(["kill-pane", "-t", paneId]).code !== 0) {
-      throw new TapError(1, "tmux_error", `tmux kill-pane -t '${paneId}'`, `removed registry row for '${handle}' but could not stop crew pane '${paneId}'`);
-    }
-    retirementReceipt(ctx, handle, disposition, { outcome: "dismissed", pane_id: paneId }, options.collect);
-    if (lifetime && lifetime.crew === handle && lifetime.crewInstance === str(row.instance)) stopCrewLifetimeHelper(lifetime);
-    if (process.env.TAP_JSON !== "1") process.stdout.write(`${verb}: removed ${handle} and stopped pane ${paneId}\n`);
+  if (proof && !options.deadOnly) {
+    const stopped = stopCrewProcess(proof);
+    if (stopped.outcome !== "stopped") throw new TapError(1, "crew_stop_unverified", `inspect pane ${proof.crewPane}; do not retry blindly`,
+      `retired '${handle}' but crew stop is ${stopped.outcome}: ${stopped.detail}`);
+    retirementReceipt(ctx, handle, disposition, { outcome: "dismissed", pane_id: proof.crewPane }, options.collect);
+    if (process.env.TAP_JSON !== "1") process.stdout.write(`${verb}: removed ${handle} and stopped pane ${proof.crewPane}\n`);
   } else {
-    retirementReceipt(ctx, handle, disposition, { outcome: "retired_pane_retained", reason: skip || "crew pane changed" }, options.collect);
-    if (process.env.TAP_JSON !== "1") {
-      process.stdout.write(`${verb}: removed ${handle} (pane not stopped: ${skip || "crew pane changed"})\n`);
-      if (hint) process.stdout.write(`${verb}: next: tmux kill-pane -t '${hint}'\n`);
-    }
+    retirementReceipt(ctx, handle, disposition, { outcome: "retired_pane_retained", reason: "crew already stopped" }, options.collect);
+    if (process.env.TAP_JSON !== "1") process.stdout.write(`${verb}: removed ${handle} (crew already stopped)\n`);
   }
   return 0;
 }
@@ -232,7 +209,7 @@ export function cmdCrewShutdown(argv: string[], scriptsDir: string, crewOnly = f
 
 // Identity a relaunch must not carry into the fresh process: the old
 // conversation's id and transcript, and any attestation made about them.
-const STALE_IDENTITY = ["harness_session_id", "transcript_path", "identity_capture_result", "crew_identity_capture"] as const;
+const STALE_IDENTITY = ["harness_session_id", "transcript_path", "identity_capture", "identity_capture_result", "crew_identity_capture"] as const;
 
 // Result codes shared with the relaunch receipt: 2 refused before any effect,
 // 1 the effect failed, 7 replaced but the new process was not verified.
@@ -284,6 +261,8 @@ async function replacementVerified(paneId: string, oldPid: string, signal?: Abor
 export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row>, handle: string, callerPane: string,
   opts: { dryRun?: boolean; expect?: Row; signal?: AbortSignal; progress?: (line: string) => void; overrides?: Overrides } = {}): Promise<string> {
   let respawnAttempted = false, unpersisted = "";
+  const operation = opts.dryRun ? null : acquirePathLock(`${ctx.registryPath}.crew-${handle}.lock`, 0);
+  if (!opts.dryRun && !operation) throw refused("crew_resume_busy", "inspect tap crew list", "another operation owns this crew; nothing replaced");
   try {
     opts.signal?.throwIfAborted();
     const row = Object.hasOwn(all, handle) ? all[handle] : undefined;
@@ -319,9 +298,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     if (opts.dryRun) return paneId;
     recipe = await crewRecipeInvocation(ctx.team, handle, recipeFields ? { ...row, ...recipeFields } : row, process.env, true, opts.signal);
     prepareCodexAutoReceipts(str(row.harness), row.permissions);
-    // Preserve the original parent generation when replacing a supervised child.
-    const lifetime = crewLifetimeBinding(paneId);
-    if (lifetime) await rearmCrewLifetime(ctx, handle);
+    fenceCrewLifetime(ctx, handle, row);
     // Reset first holding nothing, then the registry alone with a short bound;
     // both released before any tmux effect (tap-0p7hx).
     await Bun.sleep(0);
@@ -372,7 +349,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", recipe.cwd, recipe.command], process.env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], process.env));
     // The new process runs with the overrides once respawn succeeds, so the row records them before an
     // interruption is honored (a bounded, synchronous registry write). A failed save is reported only
-    // after verification and lifetime re-arm, which must still happen.
+    // after verification, which must still happen.
     if (respawn.code === 0 && recipeFields) {
       const fields = recipeFields;
       try {
@@ -399,7 +376,6 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
         `respawned crew pane ${paneId}, but no stable new process was observed`);
     }
     opts.signal?.throwIfAborted();
-    if (lifetime) await rearmReplacedCrewLifetime(ctx, handle, lifetime, replacementPid);
     if (unpersisted) throw new TapError(1, "crew_recipe_unpersisted", `inspect tap crew list, then repeat the overrides with tap session relaunch ${ctx.team}/${handle}`,
       `replaced crew pane ${paneId} with the overrides, but could not save them to the row (${unpersisted}); a later relaunch would drop them`);
     return paneId;
@@ -411,7 +387,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
           : "interrupted before replacement; nothing was replaced");
     }
     throw error;
-  }
+  } finally { operation?.release(); }
 }
 
 /** `tap crew relaunch <crew>` */

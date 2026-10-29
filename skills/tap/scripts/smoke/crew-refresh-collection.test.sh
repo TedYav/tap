@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# crew-refresh-collection.test.sh — crew rows are collected by pane liveness,
-# not session liveness (tap-zhx82). Both plain and --hard refresh delete a crew
-# row whose pane is dead, regardless of whether its parent session is alive.
+# crew-refresh-collection.test.sh — stopped crews retain their conversation.
+# Both plain and --hard refresh keep crew rows across pane and server loss.
 # A non-crew row from an earlier boot remains a retained offline control.
 # Counterexamples: address_rebound and harness_exited keep live crew panes.
 set -euo pipefail
@@ -122,7 +121,7 @@ chmod +x "$WORK/bin/tmux"
 
 event_log="$WORK/userhome/registry-events.log"
 
-# --- ARM 1: plain refresh collects dead crew, keeps live crew and offline teammate ---
+# --- ARM 1: plain refresh retains dead crew, keeps live crew and offline teammate ---
 write_registry
 : > "$event_log" 2>/dev/null || true
 out="$(bash "$ROOT/bin/tap" team refresh --json 2>/dev/null)"
@@ -133,15 +132,12 @@ import json, sys
 d = json.loads(sys.stdin.read())
 trimmed = {r['handle']: r['reason'] for r in d['trimmed']}
 kept = {r['handle'] for r in d['kept']}
-assert 'crew-dead-pane' in trimmed, f'crew-dead-pane not trimmed: trimmed={list(trimmed)}'
-assert 'crew-h660' in trimmed, f'crew-h660 not trimmed: trimmed={list(trimmed)}'
+assert 'crew-dead-pane' in kept, f'crew-dead-pane not trimmed: trimmed={list(trimmed)}'
+assert 'crew-h660' in kept, f'crew-h660 not trimmed: trimmed={list(trimmed)}'
 assert 'crew-alive' in kept, f'crew-alive not kept: kept={kept}'
 assert 'driver' in kept, f'driver not kept: kept={kept}'
 assert 'teammate-offline' in kept, f'teammate-offline not kept: kept={kept}'
-assert len(d['trimmed']) == 2, f'expected 2 trimmed, got {len(d[\"trimmed\"])}'
-for r in d['trimmed']:
-  assert r['reason'].startswith('crew_collected:'), f'{r[\"handle\"]} reason not crew_collected: {r[\"reason\"]}'
-  assert 'parent=driver' in r['reason'], f'{r[\"handle\"]} reason missing parent=driver: {r[\"reason\"]}'
+assert len(d['trimmed']) == 0, f'expected no trimmed rows, got {len(d[\"trimmed\"])}'
 " || fail "ARM 1 (plain): wrong classification"
 [ "$bash_rc" -eq 0 ] || fail "ARM 1 (plain): exit $bash_rc"
 
@@ -150,27 +146,24 @@ python3 -c "
 import json
 reg = json.load(open('$TAP_REGISTRY'))
 seats = reg.get('seats', reg.get('agents', {}))
-assert 'crew-dead-pane' not in seats, 'crew-dead-pane still in registry'
-assert 'crew-h660' not in seats, 'crew-h660 still in registry'
+assert 'crew-dead-pane' in seats, 'crew-dead-pane still in registry'
+assert 'crew-h660' in seats, 'crew-h660 still in registry'
 assert 'crew-alive' in seats, 'crew-alive missing from registry'
 assert 'driver' in seats, 'driver missing'
 assert 'teammate-offline' in seats, 'teammate-offline missing'
 " || fail "ARM 1 (plain): registry not updated correctly"
 
-# Verify exactly 2 crew_collected events with reason and parent
+# Verify no crew collection event
 python3 -c "
 import sys
 events = open('$event_log').readlines()
 crew_events = [l for l in events if 'crew_collected' in l]
-assert len(crew_events) == 2, f'expected 2 crew_collected events, got {len(crew_events)}: {crew_events}'
-for e in crew_events:
-  assert 'reason=' in e, f'event missing reason=: {e.strip()}'
-  assert 'parent=driver' in e, f'event missing parent=driver: {e.strip()}'
+assert len(crew_events) == 0, f'expected no crew_collected events, got {len(crew_events)}: {crew_events}'
 trimmed_events = [l for l in events if 'action=trimmed' in l]
 assert len(trimmed_events) == 0, f'unexpected trimmed events for crew: {trimmed_events}'
 " || fail "ARM 1 (plain): event log incorrect"
 
-# --- ARM 2: --hard collects dead crew (same as plain for crew) ---
+# --- ARM 2: --hard retains dead crew (same as plain for crew) ---
 write_registry
 out="$(bash "$ROOT/bin/tap" team refresh --hard --json 2>/dev/null)"
 echo "$out" | python3 -c "
@@ -178,8 +171,8 @@ import json, sys
 d = json.loads(sys.stdin.read())
 trimmed = {r['handle'] for r in d['trimmed']}
 kept = {r['handle'] for r in d['kept']}
-assert 'crew-dead-pane' in trimmed, f'crew-dead-pane not trimmed: trimmed={trimmed}'
-assert 'crew-h660' in trimmed, f'crew-h660 not trimmed: trimmed={trimmed}'
+assert 'crew-dead-pane' in kept, f'crew-dead-pane not trimmed: trimmed={trimmed}'
+assert 'crew-h660' in kept, f'crew-h660 not trimmed: trimmed={trimmed}'
 assert 'crew-alive' in kept, f'crew-alive not kept: kept={kept}'
 assert 'driver' in kept, f'driver not kept: kept={kept}'
 " || fail "ARM 2 (--hard): crew classification wrong"
@@ -192,8 +185,9 @@ echo "$out" | python3 -c "
 import json, sys
 d = json.loads(sys.stdin.read())
 trimmed = {r['handle'] for r in d['trimmed']}
-assert 'crew-dead-pane' in trimmed, f'dry-run: crew-dead-pane not trimmed'
-assert 'crew-h660' in trimmed, f'dry-run: crew-h660 not trimmed'
+kept = {r['handle'] for r in d['kept']}
+assert 'crew-dead-pane' in kept, f'dry-run: crew-dead-pane not trimmed'
+assert 'crew-h660' in kept, f'dry-run: crew-h660 not trimmed'
 " || fail "ARM 3 (dry-run): wrong classification"
 python3 -c "
 import json
@@ -231,15 +225,12 @@ import json, sys
 d = json.loads(sys.stdin.read())
 trimmed = {r['handle']: r['reason'] for r in d['trimmed']}
 kept = {r['handle'] for r in d['kept']}
-assert 'crew-dead-pane' in trimmed, f'native: crew-dead-pane not trimmed: trimmed={list(trimmed)}'
-assert 'crew-h660' in trimmed, f'native: crew-h660 not trimmed: trimmed={list(trimmed)}'
+assert 'crew-dead-pane' in kept, f'native: crew-dead-pane not trimmed: trimmed={list(trimmed)}'
+assert 'crew-h660' in kept, f'native: crew-h660 not trimmed: trimmed={list(trimmed)}'
 assert 'crew-alive' in kept, f'native: crew-alive not kept: kept={kept}'
 assert 'driver' in kept, f'native: driver not kept: kept={kept}'
 assert 'teammate-offline' in kept, f'native: teammate-offline not kept: kept={kept}'
-assert len(d['trimmed']) == 2, f'native: expected 2 trimmed, got {len(d[\"trimmed\"])}'
-for r in d['trimmed']:
-  assert r['reason'].startswith('crew_collected:'), f'native: {r[\"handle\"]} reason not crew_collected: {r[\"reason\"]}'
-  assert 'parent=driver' in r['reason'], f'native: {r[\"handle\"]} reason missing parent=driver: {r[\"reason\"]}'
+assert len(d['trimmed']) == 0, f'native: expected no trimmed rows, got {len(d[\"trimmed\"])}'
 " || fail "ARM 5 (native): wrong classification"
   echo "crew-refresh-collection: native parity: ok"
 else
@@ -365,57 +356,4 @@ assert 'crew-harness-exited' not in trimmed, f'harness_exited: crew should NOT b
 " || fail "ARM 7 (harness_exited): live crew pane was collected"
 rm -f "$WORK/bin/ps"
 
-# --- ARM 8: parent that sorts FIRST is correctly attributed ---
-# Handle "alice" sorts before "crew-*" — the old sed '2,$p' skipped it.
-cat > "$TAP_REGISTRY" <<REGISTRY
-{
-  "schema": "0.20", "team": {"name": "demo"},
-  "seats": {
-    "alice": {
-      "status": "active", "delivery": "pane", "harness": "codex",
-      "pane": "demo/seat:0.0", "pane_id": "%1", "session": "demo/seat",
-      "server_epoch": "$EPOCH", "registered_at": "2026-09-03T00:00:00Z"
-    },
-    "crew-h660-first": {
-      "status": "suspended", "status_reason": "server_restarted",
-      "delivery": "pane", "harness": "codex",
-      "pane": "", "pane_id": "", "session": "demo/seat",
-      "server_epoch": "$EPOCH", "crew": true, "registered_at": "2026-09-03T00:00:00Z"
-    }
-  }
-}
-REGISTRY
-cat > "$WORK/bin/tmux" <<'TMUX'
-#!/usr/bin/env bash
-set -uo pipefail
-while [ "${1:-}" = -L ] || [ "${1:-}" = -S ]; do shift 2; done
-case "${1:-}" in
-  list-sessions) printf 'demo/seat\t%s\n' "$TAP_SERVER_EPOCH"; exit 0 ;;
-  list-panes)
-    shift; target=""
-    while [ "$#" -gt 0 ]; do case "$1" in -t) target="${2#=}"; shift 2 ;; *) shift ;; esac; done
-    case "$target" in demo/seat) printf 'demo/seat\tdemo/seat:0.0\t%%1\tcodex\t100\t%s\t0\n' "$TAP_SERVER_EPOCH" ;; esac
-    exit 0 ;;
-  display-message) printf '\n'; exit 0 ;;
-esac
-exit 0
-TMUX
-chmod +x "$WORK/bin/tmux"
-: > "$event_log" 2>/dev/null || true
-out="$(bash "$ROOT/bin/tap" team refresh --json 2>/dev/null)"
-echo "$out" | python3 -c "
-import json, sys
-d = json.loads(sys.stdin.read())
-trimmed = {r['handle']: r['reason'] for r in d['trimmed']}
-assert 'crew-h660-first' in trimmed, f'first-parent: crew not trimmed: {list(trimmed)}'
-assert 'parent=alice' in trimmed['crew-h660-first'], f'first-parent: wrong parent in reason: {trimmed[\"crew-h660-first\"]}'
-" || fail "ARM 8 (first-parent): parent that sorts first not attributed"
-python3 -c "
-events = open('$event_log').readlines()
-crew_events = [l for l in events if 'crew_collected' in l]
-assert len(crew_events) == 1, f'first-parent: expected 1 event, got {len(crew_events)}'
-assert 'parent=alice' in crew_events[0], f'first-parent: event missing parent=alice: {crew_events[0].strip()}'
-" || fail "ARM 8 (first-parent): event missing parent=alice"
-
-echo "crew-refresh-collection: counterexamples (address_rebound, harness_exited): ok"
-echo "crew-refresh-collection: all arms: ok"
+echo "crew-refresh-collection: retained offline, dead, rebound and exited crew: ok"

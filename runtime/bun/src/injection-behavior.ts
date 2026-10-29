@@ -63,7 +63,7 @@ export function digestDraftPlan(rows: string, spool: string, now: number, cap = 
   for (const line of rows.split("\n")) {
     const f = line.split("\x1f"); if (f.length !== 9) continue;
     const id = f[6]!, ready = f[8]!;
-    if (ready !== "ready") {
+    if (ready !== "ready" && ready !== "recover:codex-update") {
       if (ready !== "busy:pending") continue;
       let meta: Record<string, unknown>;
       try { meta = JSON.parse(readFileSync(join(spool, `${id}.meta.json`), "utf8")); } catch { continue; }

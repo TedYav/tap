@@ -25,9 +25,24 @@ trap 'rm -rf "$WORK"' EXIT
 
 MOCKBIN="$WORK/bin"
 mkdir -p "$MOCKBIN"
+# SessionStart binds only a hook that descends from the pane's own harness, so
+# this ps shows a real-shaped chain: the hook (this script's parent, the calling bun
+# process) -> a wrapper (4243) -> the seat's harness, which is the pane pid 4242.
 cat > "$MOCKBIN/ps" <<'PS'
 #!/usr/bin/env bash
-printf '1 faketty\n'
+harness="${FAKE_HARNESS:-codex}"
+case "$*" in
+  *pid=,pgid=,tpgid=,comm=,command=*)
+    printf '%s 4243 4243 bun bun /repo/session-start.ts\n4243 4242 4242 sh sh -c hook\n4242 4242 4242 %s %s\n' "$PPID" "$harness" "$harness" ;;
+  *tty=*) printf '1 faketty\n' ;;
+  *ppid=*)
+    case "${*: -1}" in
+      4243) printf '4242\n' ;;
+      4242) printf '1\n' ;;
+      *) printf '4243\n' ;;
+    esac ;;
+  *) printf '1 faketty\n' ;;
+esac
 PS
 chmod +x "$MOCKBIN/ps"
 cat > "$MOCKBIN/tmux" <<'TMUX'

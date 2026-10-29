@@ -9,7 +9,7 @@ import { resetFenceRefusal } from "../src/reset";
 import { removeScratchTree } from "./support/scratch";
 
 type Fence = "none" | "Sender" | "Target" | "Target-clear" | "Sender-clear";
-function fixture(fenced: Fence, afterEnterReadFails = false, sentinelRecipient?: "other") {
+function fixture(fenced: Fence, afterEnterReadFails = false, sentinelRecipient?: "other", guard = false) {
   const dir = realpathSync(mkdtempSync(join(process.env.TAP_HOME!, "nudge-xteam-fence-")));
   const bin = join(dir, "bin"), index = join(dir, "index");
   mkdirSync(bin); mkdirSync(index);
@@ -64,10 +64,19 @@ else if (cmd==="send-keys") { appendFileSync(root+"/effects",args.join(" ")+"\\n
   }
   const env = { ...process.env, HOME: dir, XDG_CONFIG_HOME: join(dir, "config"), PATH: `${bin}:${process.env.PATH}`,
     FAKE_ROOT: dir, TAP_HOME: homes.Sender!, TAP_INDEX_HOME: index, TAP_BOOT_ID: "boot:1",
-    TAP_SERVER_EPOCH: "srv:900:100", TAP_TUI_SETTLE_SCALE: "0.01", REVIEW_FAIL_AFTER_SENT: afterEnterReadFails ? "1" : "0" };
+    TAP_SERVER_EPOCH: "srv:900:100", TAP_TUI_SETTLE_SCALE: "0.01", REVIEW_FAIL_AFTER_SENT: afterEnterReadFails ? "1" : "0", REVIEW_NUDGE_GUARD: guard ? "1" : "0" };
   const r = spawnSync("bun", [join(import.meta.dir, "support/nudge-cross-team-entry.ts")], { cwd: join(dir, "Sender"), env, encoding: "utf8", timeout: 25000 });
   return { dir, r, effects: readFileSync(join(dir, "effects"), "utf8") };
 }
+
+test("a caller's diagnosis guard can refuse the staged Enter at its effect boundary", () => {
+  const f = fixture("none", false, undefined, true);
+  try {
+    expect(f.effects).toBe("");
+    expect(f.r.status).not.toBe(0);
+    expect(f.r.stderr).toContain("diagnosis changed before Enter");
+  } finally { removeScratchTree(f.dir); }
+}, 30000);
 
 test("observation failure after nudge Enter retains unverified exit and terminal phase", () => {
   const f = fixture("none", true);

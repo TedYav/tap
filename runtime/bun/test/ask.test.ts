@@ -82,7 +82,25 @@ printf '%s' "${'${PRESET_FLAG:-absent}'}" > "$ASK_CAPTURE/env"
 if [ "${'${FAKE_MODE:-}'}" = early ]; then exit 23; fi
 if [ "${'${FAKE_MODE:-}'}" = pre-diagnostic-block ]; then while :; do sleep 1; done; fi
 cat > "$ASK_CAPTURE/stdin"
-if [ "${'${FAKE_MODE:-}'}" != silent ]; then printf 'answer\\000bytes\\n'; fi
+format=""; output=""; usage=""; previous=""
+for arg in "$@"; do
+  case "$previous" in --output-format|--format) format="$arg" ;; --output-last-message) output="$arg" ;; --usage-file) usage="$arg" ;; esac
+  [ "$arg" = --json ] && format=codex
+  previous="$arg"
+done
+if [ "${'${FAKE_MODE:-}'}" != silent ]; then
+  if [ "$format" = codex ]; then
+    printf '%s\\n' '{"type":"thread.started","thread_id":"fixture-id"}'
+    printf 'answer\\000bytes\\n' > "$output"
+  elif [ "$format" = json ]; then
+    case "${'${0##*/}'}" in
+      opencode) printf '%s\\n' '{"type":"text","sessionID":"ses_fixture","part":{"type":"text","text":"answer\\u0000bytes\\n"}}' ;;
+      cursor-agent) printf '%s\\n' '{"type":"result","is_error":false,"session_id":"fixture-id","result":"answer\\u0000bytes\\n"}' ;;
+      agy) printf '%s\\n' '{"status":"SUCCESS","conversation_id":"fixture-id","response":"answer\\u0000bytes\\n"}' ;;
+    esac
+  else printf 'answer\\000bytes\\n'; fi
+fi
+[ -n "$usage" ] && printf '%s\\n' '{"session_id":"fixture-id","completed":true,"failed":false}' > "$usage"
 printf 'harness diagnostic\\n' >&2
 case "${'${FAKE_MODE:-}'}" in
   term) kill -TERM $$ ;;
@@ -94,6 +112,13 @@ exit "${'${FAKE_EXIT:-0}'}"
   for (const binary of ["claude", "codex", "opencode", "cursor-agent", "hermes", "agy"]) writeFileSync(join(f.dir, "bin", binary), script, { mode: 0o755 });
 }
 const argvOf = (f: ReturnType<typeof fixture>) => readFileSync(join(f.dir, "argv"), "utf8").split("\0").slice(0, -1);
+const captureArgs = (f: ReturnType<typeof fixture>, harness: string): string[] => {
+  const argv = argvOf(f), value = (flag: string) => argv[argv.indexOf(flag) + 1]!;
+  if (harness === "claude") return ["--session-id", value("--session-id")];
+  if (harness === "codex") return ["--json", "--output-last-message", value("--output-last-message")];
+  if (harness === "hermes") return ["--usage-file", value("--usage-file")];
+  return [harness === "opencode" ? "--format" : "--output-format", "json"];
+};
 
 import { askDuration } from "../src/verbs/ask";
 import { readdirSync, chmodSync, unlinkSync } from "node:fs";
@@ -114,17 +139,18 @@ test("all six adapters preserve literal prompt bytes, streams, model and argv or
   const prompt = "\uFEFFliteral `ticks` $(false)\r\n\ud83d\ude00\n";
   const path = join(f.dir, "prompt"); writeFileSync(path, prompt);
   const expected = (harness: string, model: string[]): string[] =>
-    harness === "claude" ? ["--print", "--no-session-persistence", ...model]
-    : harness === "codex" ? ["exec", "--ephemeral", "--color", "never", ...model, "-"]
-    : harness === "opencode" ? ["run", ...model, "--", prompt]
-    : harness === "cursor" ? ["--print", "--mode", "ask", ...model, "--", prompt]
-    : harness === "hermes" ? [...model, `--oneshot=${prompt}`]
-    : [...model, `--print=${prompt}`];
+    harness === "claude" ? ["--print", ...model, ...captureArgs(f, harness)]
+    : harness === "codex" ? ["exec", "--color", "never", ...model, ...captureArgs(f, harness), "-"]
+    : harness === "opencode" ? ["run", ...model, ...captureArgs(f, harness), "--", prompt]
+    : harness === "cursor" ? ["--print", "--mode", "ask", ...model, ...captureArgs(f, harness), "--", prompt]
+    : harness === "hermes" ? [...model, ...captureArgs(f, harness), `--oneshot=${prompt}`]
+    : [...model, ...captureArgs(f, harness), `--print=${prompt}`];
   try {
     for (const harness of ["claude", "codex", "opencode", "cursor", "hermes", "agy"]) for (const model of [[], ["--model", "named-tier"]]) {
       const stdin = harness === "claude" || harness === "codex";
       const result = run(f, ["ask", harness, "-f", path, ...model]);
-      expect(result.status).toBe(0); expect(result.stdout).toBe("answer\0bytes\n"); expect(result.stderr).toBe("harness diagnostic\n");
+      expect(result.status).toBe(0); expect(result.stdout).toBe("answer\0bytes\n"); expect(result.stderr).toStartWith("harness diagnostic\n");
+      expect(result.stderr).toContain("no crew adoption command");
       expect(argvOf(f)).toEqual(expected(harness, model));
       expect(readFileSync(join(f.dir, "stdin"), "utf8")).toBe(stdin ? prompt : "");
     }
@@ -163,7 +189,9 @@ if [ -z "$value" ] || [[ "$value" == --* ]]; then
   printf '%s\\n' "stub: a flag-shaped token was swallowed as the prompt" >&2
   exit 0
 fi
-printf '%s' "$value"
+if [ "${'${0##*/}'}" = agy ]; then
+  printf '%s' "$value" | bun -e 'console.log(JSON.stringify({status:"SUCCESS",conversation_id:"fixture-id",response:await Bun.stdin.text()}))'
+else printf '%s' "$value"; fi
 `;
   writeFileSync(join(f.dir, "bin/agy"), stub, { mode: 0o755 });
   writeFileSync(join(f.dir, "bin/hermes"), stub, { mode: 0o755 });
@@ -176,22 +204,22 @@ params.effort="high"
     const direct = run(f, ["ask", "agy", "-m", "say hi"], doors.bin, { FAKE_FLAG: "--print" });
     expect(direct.status).toBe(0);
     expect(direct.stdout).toBe("say hi");
-    expect(argvOf(f)).toEqual(["--print=say hi"]);
+    expect(argvOf(f)).toEqual(["--output-format", "json", "--print=say hi"]);
     const modelled = run(f, ["ask", "agy", "-m", "say hi", "--model", "named-tier"], doors.bin, { FAKE_FLAG: "--print" });
     expect(modelled.status).toBe(0);
     expect(modelled.stdout).toBe("say hi");
-    expect(argvOf(f)).toEqual(["--model", "named-tier", "--print=say hi"]);
+    expect(argvOf(f)).toEqual(["--model", "named-tier", "--output-format", "json", "--print=say hi"]);
     // A preset passthrough between the flag and the prompt is the exact shape
     // that used to feed --oneshot the passthrough token instead of the prompt.
     const tuned = run(f, ["ask", "tuned", "-m", "real prompt"], doors.bin, { FAKE_FLAG: "--oneshot" });
     expect(tuned.status).toBe(0);
     expect(tuned.stdout).toBe("real prompt");
-    expect(argvOf(f)).toEqual(["--effort", "high", "--oneshot=real prompt"]);
+    expect(argvOf(f)).toEqual(["--effort", "high", ...captureArgs(f, "hermes"), "--oneshot=real prompt"]);
     // The joined form keeps a leading-dash prompt a prompt, not a new flag.
     const dashed = run(f, ["ask", "hermes", "-m", "-not-a-flag"], doors.bin, { FAKE_FLAG: "--oneshot" });
     expect(dashed.status).toBe(0);
     expect(dashed.stdout).toBe("-not-a-flag");
-    expect(argvOf(f)).toEqual(["--oneshot=-not-a-flag"]);
+    expect(argvOf(f)).toEqual([...captureArgs(f, "hermes"), "--oneshot=-not-a-flag"]);
   } finally { f.close(); }
 });
 
@@ -202,7 +230,7 @@ test("positional-prompt harnesses get a -- separator, so a leading-dash prompt s
       const result = run(f, ["ask", harness, "-m", "--not-a-flag"]);
       expect(result.status).toBe(0);
       expect(result.stdout).toBe("answer\0bytes\n");
-      expect(argvOf(f)).toEqual([...head, "--", "--not-a-flag"]);
+      expect(argvOf(f)).toEqual([...head, ...captureArgs(f, harness), "--", "--not-a-flag"]);
     }
   } finally { f.close(); }
 });
@@ -301,12 +329,13 @@ permissions="auto"
   try {
     const result = run(f, ["ask", "--preset=rich", "-m", "x"], doors.bin, { PRESET_FLAG: "ambient-private" });
     expect(result.status).toBe(0);
-    expect(argvOf(f)).toEqual(["--print", "--no-session-persistence", "--model", "opus", "--effort", "high"]);
+    expect(argvOf(f)).toEqual(["--print", "--model", "opus", "--effort", "high", ...captureArgs(f, "claude")]);
     expect(readFileSync(join(f.dir, "env"), "utf8")).toBe("declared-private");
     expect(result.stderr.match(/overriding ambient ENV var PRESET_FLAG/g)?.length).toBe(1);
     expect(result.stderr).not.toContain("ambient-private"); expect(result.stderr).not.toContain("declared-private");
     const quiet = run(f, ["ask", "rich", "-m", "x"], doors.bin, { TAP_JSON: "1", PRESET_FLAG: "ambient-private" });
-    expect(quiet.status).toBe(0); expect(quiet.stderr).toBe("harness diagnostic\n");
+    expect(quiet.status).toBe(0); expect(quiet.stderr).toStartWith("harness diagnostic\n");
+    expect(quiet.stderr).not.toContain("overriding ambient");
     for (const preset of ["conflict"]) {
       unlinkSync(join(f.dir, "argv"));
       const refused = run(f, ["ask", preset, "-m", "x"], doors.bin, { TAP_JSON: "1" });
@@ -318,9 +347,9 @@ permissions="auto"
     // own --print-timeout is legitimate passthrough ahead of the prompt, not a
     // duplicate of something tap fixes.
     expect(run(f, ["ask", "timeout", "-m", "x"]).status).toBe(0);
-    expect(argvOf(f)).toEqual(["--print-timeout", "5s", "--print=x"]);
+    expect(argvOf(f)).toEqual(["--print-timeout", "5s", "--output-format", "json", "--print=x"]);
     expect(run(f, ["ask", "false", "-m", "x"]).status).toBe(0);
-    expect(argvOf(f)).toEqual(["--print", "--mode", "ask", "--foo=--mode", "--", "x"]);
+    expect(argvOf(f)).toEqual(["--print", "--mode", "ask", "--foo=--mode", "--output-format", "json", "--", "x"]);
   } finally { f.close(); }
 });
 
@@ -333,7 +362,7 @@ test("timeout grammar, outer deadline and independently signalled child statuses
     }
     for (const raw of ["1_000_000", "١٢٣", " 1e3 "]) {
       expect(run(f, ["ask", "agy", "-m", "x"], doors.bin, { TAP_ASK_TIMEOUT_SECONDS: raw }).status).toBe(0);
-      expect(argvOf(f)).toEqual(["--print=x"]);
+      expect(argvOf(f)).toEqual(["--output-format", "json", "--print=x"]);
     }
     expect(run(f, ["ask", "claude", "-m", "x"], doors.bin, { TAP_ASK_TIMEOUT_SECONDS: "1e30" }).status).toBe(0);
     for (const [mode, code] of [["term", 241], ["kill", 247], ["early", 23]] as const) expect(run(f, ["ask", "claude", "-m", "x"], doors.bin, { FAKE_MODE: mode }).status).toBe(code);
@@ -428,7 +457,7 @@ test("headless ask suppresses inherited startup hooks without touching the paren
 import {spawnSync} from "node:child_process";
 const payload=JSON.stringify({session_id:"child-review",source:"startup",cwd:process.cwd(),workspace_roots:[process.cwd()]});
 const results=["claude","cursor","codex","context"].map(mode=>spawnSync(${JSON.stringify(process.execPath)},[${JSON.stringify(join(root,"runtime/bun/src/session-start.ts"))},mode,process.cwd()],{input:payload,encoding:"utf8",env:{...process.env,CLAUDE_PROJECT_DIR:process.cwd()}}));
-console.log(JSON.stringify({stateless:process.env.TAP_STATELESS,hooks:results.map(r=>({code:r.status,out:r.stdout,err:r.stderr}))}));
+console.log(JSON.stringify({type:"result",is_error:false,session_id:"child-review",result:JSON.stringify({stateless:process.env.TAP_STATELESS,hooks:results.map(r=>({code:r.status,out:r.stdout,err:r.stderr}))})}));
 `, {mode:0o755});
     const r = run(f, ["ask","cursor","-m","review"], doors.main, {TAP_STATELESS:"0"});
     expect(r.status,r.stderr).toBe(0);

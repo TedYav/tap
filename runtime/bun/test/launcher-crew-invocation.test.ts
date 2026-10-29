@@ -8,6 +8,8 @@ import { removeScratchTree } from "./support/scratch";
 import { enrollScratchRoot } from "./support/enroll-scratch";
 import { INHERITED_IDENTITY_ENV } from "../src/session-store";
 import { crewRecipeInvocation, crewRecipeWithOverrides } from "../src/launcher/crew-invocation";
+import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 
 const root = realpathSync(mkdtempSync(join(process.env.TMUX_TMPDIR ?? tmpdir(), "crew-inv.")));
 const door = resolve(import.meta.dir, "../src/launcher/crew-invocation.ts");
@@ -22,6 +24,24 @@ function fixture(config = "version = 3\n") {
     TAP_LAUNCH_SHELL: "/bin/sh", TAP_JSON: "1", TAP_VERBOSE: "0" } };
 }
 type Fixture = ReturnType<typeof fixture>;
+const resumeId = "11111111-2222-4333-8444-555555555555";
+function nativeConversation(f: Fixture, harness: string, cwd = f.cwd): string {
+  const base = join(f.cwd, "native");
+  Object.assign(f.env, { CLAUDE_CONFIG_DIR: join(base, "claude"), CODEX_HOME: join(base, "codex"),
+    CURSOR_HOME: join(base, "cursor"), GEMINI_HOME: join(base, "gemini"), HERMES_HOME: join(base, "hermes"), XDG_DATA_HOME: base });
+  const file = (path: string, contents = "") => { mkdirSync(resolve(path, ".."), { recursive: true }); writeFileSync(path, contents); return path; };
+  if (harness === "claude") file(join(base, "claude/projects/fixture", `${resumeId}.jsonl`), JSON.stringify({ type: "user", sessionId: resumeId, cwd }) + "\n");
+  if (harness === "codex") file(join(base, "codex/sessions/2026/10/28", `rollout-now-${resumeId}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id: resumeId, cwd, source: "exec" } }) + "\n");
+  if (harness === "cursor") file(join(base, "cursor/chats", createHash("md5").update(cwd).digest("hex"), resumeId, "store.db"));
+  if (harness === "agy") file(join(base, "gemini/antigravity-cli/conversations", `${resumeId}.db`));
+  if (harness === "opencode" || harness === "hermes") {
+    const db = new Database(file(join(base, harness, harness === "opencode" ? "opencode.db" : "state.db")));
+    if (harness === "opencode") { db.exec("CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT)"); db.query("INSERT INTO session_v2 VALUES (?, ?)").run("ses_adopt", cwd); }
+    else { db.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY)"); db.query("INSERT INTO sessions VALUES (?)").run(resumeId); }
+    db.close();
+  }
+  return harness === "opencode" ? "ses_adopt" : resumeId;
+}
 function run(f: Fixture, harness = "codex", flags: string[] = ["--model", "model-x"]) {
   return spawnSync("bun", [door, harness, "team/crew", "--cwd", f.cwd, ...flags], {
     cwd: f.cwd, env: f.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000,
@@ -40,6 +60,80 @@ function refusal(f: Fixture, flags: string[], errorClass: string, harness = "cod
   expect(typeof error.action).toBe("string");
   return error;
 }
+
+test.each(["claude", "codex", "opencode", "cursor", "agy", "hermes"])("%s crew adopts only the explicit existing native conversation", harness => {
+  const f = fixture(), id = nativeConversation(f, harness);
+  const command = success(f, harness, ["--model", "model-x", "--resume", id]);
+  const selector = harness === "codex" ? `resume ${id}` : harness === "opencode" ? `--session ${id}` : harness === "agy" ? `--conversation ${id}` : `--resume ${id}`;
+  expect(command).toContain(selector);
+  expect(command).not.toContain("--continue");
+  expect(command).not.toContain("--session-id");
+  if (["claude", "codex", "opencode"].includes(harness)) expect(command).not.toContain("--model model-x");
+  refusal(f, ["--model", "model-x", "--resume", "missing-native-id"], "no_exact_resume_identity", harness);
+});
+
+test.each(["claude", "cursor", "opencode"])("%s adoption refuses a native conversation from a different cwd", harness => {
+  const f = fixture(), other = join(f.cwd, "other"); mkdirSync(other);
+  const id = nativeConversation(f, harness, other);
+  refusal(f, ["--model", "model-x", "--resume", id], "no_exact_resume_identity", harness);
+});
+
+test("adoption checks the preset's effective native store before any row write", () => {
+  const f = fixture(preset("claude", 'env.CLAUDE_CONFIG_DIR="/does-not-exist/crew-test-store"\n'));
+  nativeConversation(f, "claude");
+  const r = registry(f), before = readFileSync(r.path, "utf8");
+  refusal(f, [...r.args, "--resume", resumeId], "no_exact_resume_identity", "claude");
+  expect(readFileSync(r.path, "utf8")).toBe(before);
+});
+
+test("adoption writes the exact expectation before launch while fresh recipe replay remains fresh", async () => {
+  const f = fixture(preset("claude")), id = nativeConversation(f, "claude"), r = registry(f);
+  const command = success(f, "claude", [...r.args, "--resume", id]);
+  expect(command).toContain(`--resume ${id}`);
+  const saved = JSON.parse(readFileSync(r.path, "utf8")).seats.crew;
+  expect(saved.instance).toBe(r.row.instance);
+  expect(saved.harness_session_id).toBe(id);
+  expect(saved.identity_capture).toEqual({ mode: "exact_resume", expected_harness_session_id: id });
+  const fresh = await crewRecipeInvocation("team", "crew", saved, f.env);
+  expect(fresh.command).not.toContain(id); expect(fresh.command).not.toContain("--resume");
+});
+
+test.each(["", "--latest", "bad id", "../other"])("invalid crew adoption id %j refuses before recipe write", id => {
+  const f = fixture(preset("claude")), r = registry(f), before = readFileSync(r.path, "utf8");
+  refusal(f, [...r.args, `--resume=${id}`], "launch_arg_invalid", "claude");
+  expect(readFileSync(r.path, "utf8")).toBe(before);
+});
+
+test("adoption refuses a native identity held in another enrolled team", () => {
+  const f = fixture(preset("claude")), id = nativeConversation(f, "claude"), r = registry(f);
+  const index = join(f.cwd, "index"), other = join(f.cwd, "other");
+  mkdirSync(index); mkdirSync(other);
+  const foreign = join(other, "registry.json");
+  writeFileSync(foreign, JSON.stringify({ schema: "0.20", team: { name: "other", worktree_root: other }, seats: {
+    held: { harness: "claude", harness_session_id: id, instance: "foreign", status: "active" },
+  } }));
+  writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
+    team: { root: f.cwd, registry_location: r.path, state: "registered" },
+    other: { root: other, registry_location: foreign, state: "registered" },
+  } }));
+  Object.assign(f.env, { TAP_INDEX_HOME: index });
+  const before = readFileSync(r.path, "utf8");
+  refusal(f, [...r.args, "--resume", id], "duplicate_identity_owner", "claude");
+  expect(readFileSync(r.path, "utf8")).toBe(before);
+  writeFileSync(foreign, JSON.stringify({ agents: { held: { harness: "claude", harness_session_id: id } } }));
+  const oldStore = run(f, "claude", [...r.args, "--resume", id]);
+  expect(oldStore.status).toBe(1);
+  expect(JSON.parse(oldStore.stdout)).toMatchObject({ error_class: "old_store" });
+  expect(readFileSync(r.path, "utf8")).toBe(before);
+});
+
+test.each(["claude", "opencode", "cursor", "agy", "hermes"])("%s exact adoption refuses a second selector in preset or tail", harness => {
+  const key = harness === "opencode" ? "session" : harness === "agy" ? "conversation" : "resume";
+  const f = fixture(preset(harness, `params.${key}="other-id"\n`)), id = nativeConversation(f, harness);
+  refusal(f, ["--preset", "chosen", "--resume", id], "launch_arg_invalid", harness);
+  const g = fixture(), otherId = nativeConversation(g, harness);
+  refusal(g, ["--model", "model-x", "--resume", otherId, `--harness-arg=--${key}=other-id`], "launch_arg_invalid", harness);
+});
 
 for (const harness of ["claude", "codex", "opencode", "cursor", "agy", "hermes"]) {
   test(`${harness}: fresh explicit model, no borrowed conversation`, () => {
@@ -340,12 +434,12 @@ test("override refusals: same key twice, the env fence on unset keys, conversati
   expect(refusal(f, ["--model", "m", "--unset-env=TAP_HOME"], "launch_env_forbidden", "claude").action).toBe("remove --unset-env TAP_HOME from the command");
   expect(refusal(f, ["--model", "m", "--unset-env=BAD-KEY"], "launch_arg_invalid", "claude").detail).toContain("--unset-env key 'BAD-KEY'");
   for (const flag of ["--resume=abc", "--continue", "-c", "--session-id"]) {
-    expect(refusal(f, ["--preset", "chosen", `--harness-arg=${flag}`], "launch_arg_invalid", "claude").detail).toContain("a crew seat always starts a fresh one");
+    expect(refusal(f, ["--preset", "chosen", `--harness-arg=${flag}`], "launch_arg_invalid", "claude").detail).toContain("outside the crew's explicit selector");
   }
   for (const [harness, flags] of [["codex", ["resume"]], ["codex", ["fork"]], ["cursor", ["--resume=abc"]], ["cursor", ["--continue"]],
     ["agy", ["--conversation", "abc"]], ["agy", ["--continue"]]] as const) {
     const detail = refusal(fixture(), ["--model", "m", ...flags.map(flag => `--harness-arg=${flag}`)], "launch_arg_invalid", harness).detail;
-    expect(detail).toContain("a crew seat always starts a fresh one");
+    expect(detail).toContain("outside the crew's explicit selector");
   }
   expect(refusal(f, ["--preset", "chosen", "--harness-arg=--dangerously-skip-permissions"], "session_error", "claude").detail).toContain("harness_permissions_conflict");
   const oc = fixture();

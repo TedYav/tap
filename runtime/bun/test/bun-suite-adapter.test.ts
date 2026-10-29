@@ -11,7 +11,7 @@ test('full-suite adapter preserves discovery, reference environment, pass marker
   mkdirSync(join(scratch, 'scripts'));
   mkdirSync(join(scratch, 'runtime/bun/test'), { recursive: true });
   expect(spawnSync('git', ['init', '-q', scratch]).status).toBe(0);
-  for (const path of ['scripts/serial-trigger.sh', 'skills/tap/scripts/smoke/sandbox-pins.sh', 'skills/tap/scripts/smoke/bun-suite.test.sh']) {
+  for (const path of ['scripts/serial-trigger.sh', 'scripts/test-secret-env.sh', 'skills/tap/scripts/smoke/sandbox-pins.sh', 'skills/tap/scripts/smoke/bun-suite.test.sh']) {
     copyFileSync(join(repo, path), join(scratch, path));
   }
   const runner = join(scratch, 'runtime/bun/test/run.sh');

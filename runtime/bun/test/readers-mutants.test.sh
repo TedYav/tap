@@ -9,6 +9,7 @@ mkdir -p "$WORK/runtime/bun" "$WORK/scripts"
 cp -R "$ROOT/runtime/bun/src" "$ROOT/runtime/bun/test" "$WORK/runtime/bun/"
 cp "$ROOT/runtime/bun/main.ts" "$ROOT/runtime/bun/package.json" "$WORK/runtime/bun/"
 cp "$ROOT/scripts/ignored-state-tripwire.py" "$WORK/scripts/ignored-state-tripwire.py"
+cp "$ROOT/scripts/test-secret-env.sh" "$WORK/scripts/test-secret-env.sh"  # run.sh sources it
 # Helpers are copied too: the shared-resolver mutant must never follow a
 # symlink back into the author checkout.
 cp -R "$ROOT/skills" "$WORK/skills"

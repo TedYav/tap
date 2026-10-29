@@ -648,3 +648,14 @@ test("claude live record binds without a transcript file (lazy creation)", () =>
   expect(observed.identity?.store_path).toBe(join(hm, ".claude", "projects", WT.replaceAll("/", "-"), `${sid}.jsonl`));
   expect(observed.refusal).toBe("");
 });
+
+test("process-bound Codex verification can use the exact child's custom store", () => {
+  const hm = home(), custom = home(), sid = "11111111-1111-4111-8111-111111111111";
+  codex(custom, [["2026", "09", "05", "2026-09-05T01-00-00", sid, WT, 1000]]);
+  const path = rolloutFiles(custom)[0]!;
+  const run = (argv: string[]): ProcResult => ({ status: 0, stderr: "", stdout: argv[0] === "ps"
+    ? "100 1 Fri Sep  5 01:00:00 2026 /bin/zsh\n101 100 Fri Sep  5 01:00:01 2026 /bin/codex\n"
+    : `p101\nfcwd\nn${WT}\nn${path}\n` });
+  expect(observeProcessStore(run, "codex", WT, hm, "100").identity).toBeNull();
+  expect(observeProcessStore(run, "codex", WT, hm, "100", { CODEX_HOME: join(custom, ".codex") }).identity?.harness_session_id).toBe(sid);
+});

@@ -115,8 +115,9 @@ function fixture() {
   expect(paneId).toMatch(/^%/);
   expect(diePaneId).toMatch(/^%/);
 
+  const epoch = "srv:" + spawn(["display-message", "-p", "#{pid}:#{start_time}"]).stdout.toString().trim();
   const crewRow = (pane: string, env: Record<string, string>) => ({
-    status: "active", delivery: "pane", harness: "codex", pane_id: pane, instance: `crew-${pane}`,
+    status: "active", delivery: "pane", harness: "codex", pane_id: pane, instance: `crew-${pane}`, server_epoch: epoch, server_socket: socket!,
     session: "Demo/lead", registered_at: "t", crew: true, crew_owner: "lead", crew_owner_instance: "lead-one", model: "gpt-test", permissions: "bypass",
     harness_env: env, passthrough: [], passthrough_from_config: false, preset: null, cwd: demo,
   });
@@ -349,7 +350,7 @@ test.each([undefined, "replaced-parent"])("relaunch refuses a missing or stale d
     const pane = String(current['crew-a']!.pane_id);
     const pid = () => Bun.spawnSync([realTmux!, "-S", socket!, "display-message", "-p", "-t", pane, "#{pane_pid}"]).stdout.toString().trim();
     const originalPid = pid();
-    await expect(relaunchCrew(ctx, current, "crew-a", "")).rejects.toThrow("recreate");
+    await expect(relaunchCrew(ctx, current, "crew-a", "")).rejects.toMatchObject({ errorClass: "crew_owner_unidentified" });
     expect(pid()).toBe(originalPid);
     expect(readFileSync(ctx.registryPath, "utf8")).toBe(unchanged);
   } finally { writeFileSync(ctx.registryPath, before); }

@@ -22,7 +22,7 @@ import { capturePane, tmuxReadOnly } from "./tmux";
 import { acquirePaneLock } from "./panelock";
 import { observePaneResult } from "./tmux";
 import { paneState } from "./pane-state";
-import { updateInputProtection, readInputProtection, protectionUntil, observeUntilDraftEnds } from "./input-protection";
+import { updateInputProtection, readInputProtection, protectionUntil, observeUntilDraftEnds, composerControlWord } from "./input-protection";
 import { emitWaitCue } from "./wait-cues";
 import { envelopeField } from "./envelope";
 import { observedBand } from "./spool-readiness";
@@ -161,9 +161,10 @@ export async function runWaiter(input: {
             message: raw ? { home, id, sender: envelopeField(raw, "from") ?? "" } : undefined });
           // The waiter's own poll carries the snooze cues: BLUE at the latch, then
           // GREEN/RED as the deadline nears — claimed once in the pane-shared record.
-          if (state && state.snoozeUntil > Date.now()) emitWaitCue(pane, { pane, home, ownerId: id, env });
+          if (state && (state.stopUntil || state.snoozeUntil > Date.now())) emitWaitCue(pane, { pane, home, ownerId: id, env });
           protectionDeadline = state ? protectionUntil(state) : 0;
           if (state && protectionDeadline > Date.now()) return null;
+          if (state?.startRequested && composerControlWord(band) === "START") return "operator-start";
           if (band.state !== "ready") return null;
           return JSON.stringify([row.instance, pane, row.server_epoch]);
         } finally { lock.release(); }

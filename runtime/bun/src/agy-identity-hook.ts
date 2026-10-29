@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { isAbsolute, join, resolve } from "node:path";
 import { observeCallingPane, type CallingPaneObservation } from "./context";
 import { childBusEnv } from "./panelock";
-import { registryDoc, resolveLaunchEvidence, resolveSessionAuthority, walkUpSessionRoot } from "./session-start";
+import { automaticBindAllowed, registryDoc, resolveLaunchEvidence, resolveSessionAuthority, walkUpSessionRoot } from "./session-start";
 import { teamRegistryRefusal } from "./register-authority";
 import { agyRootStatus } from "./agy-conversation";
 
@@ -43,7 +43,7 @@ export function captureAgyIdentity(input: string, env: NodeJS.ProcessEnv = proce
   if (typeof id !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)
     || env.ANTIGRAVITY_CONVERSATION_ID !== id) return;
 
-  const seen = (effects.observe ?? (() => observeCallingPane(env, true)))();
+  const seen = (effects.observe ?? (() => observeCallingPane(env, true, true)))();
   if (seen.state !== "inside") return;
   const launch = resolveLaunchEvidence(env, () => seen);
   const workspaces = Array.isArray(data.workspacePaths)
@@ -70,6 +70,9 @@ export function captureAgyIdentity(input: string, env: NodeJS.ProcessEnv = proce
   // Subagents fire the same native hook in the parent's pane. Only the exact
   // volunteered id's root record permits a bind; absent metadata waits for a later hook.
   if (!acceptedIdentity && agyRootStatus(id, env).kind !== "root") return;
+  // A separately spawned headless process can have a root conversation too.
+  // Accepted identities above remain a cheap no-op on subsequent invocations.
+  if (!automaticBindAllowed(seen.panePid ?? "", env, { source: "agy_invocation", harness_session_id: id, pane_id: seen.paneId })) return;
   (effects.bind ?? bind)({ root, bus: authority.bus, sessionId: id,
     transcript: typeof data.transcriptPath === "string" ? data.transcriptPath : "", env });
 }

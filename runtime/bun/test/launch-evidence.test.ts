@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchPlacedInWorktree, launchTokenMatches, launchedRowForPane } from "../src/launch-evidence";
-import { resolveLaunchEvidence } from "../src/session-start";
+import { resolveLaunchEvidence, sessionContext } from "../src/session-start";
 import type { CallingPaneObservation } from "../src/context";
 import { removeScratchTree } from "./support/scratch";
 import { validateDurable } from "../src/seat-updown";
@@ -86,6 +86,16 @@ test("a root the index does not enroll, or an unreadable registry, is no authori
   expect(resolveLaunchEvidence(env({ TAP_INDEX_HOME: other.index, TAP_LAUNCH_ROOT: t.root, TAP_LAUNCH_ID: "L" }), () => inside)).toBeNull();
   writeFileSync(t.registry, "{not json");
   expect(resolveLaunchEvidence(env({ TAP_INDEX_HOME: t.index, TAP_LAUNCH_ROOT: t.root, TAP_LAUNCH_ID: "L" }), () => inside)).toBeNull();
+});
+
+test("a shared caller's selected handle does not bypass automatic-capture ancestry", () => {
+  const t = team("shared-child", { ada: { ...PANE, harness: "opencode", harness_session_id: "parent", instance: "ada|one" } });
+  const before = readFileSync(t.registry, "utf8");
+  const seen: CallingPaneObservation = { ...inside, selectedHandle: "ada", selectedInstance: "ada|one" };
+  const lines = sessionContext(t.root, JSON.stringify({ session_id: "new-child", transcript_path: join(t.root, "child.jsonl") }),
+    { ...process.env, TAP_INDEX_HOME: t.index }, { root: t.root, authority: { bus: join(t.root, ".tap/bus"), registry: t.registry, team: "shared-child" }, seen });
+  expect(lines).toEqual([]);
+  expect(readFileSync(t.registry, "utf8")).toBe(before);
 });
 
 test("the worktree guard accepts only the launcher-placed incarnation inside a team worktree", () => {

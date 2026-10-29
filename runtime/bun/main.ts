@@ -43,8 +43,10 @@ import { cmdTeardown } from "./src/verbs/teardown";
 import { cmdHealth } from "./src/verbs/health";
 import { cmdSeatRefresh } from "./src/verbs/seat-refresh";
 import { cmdDetective } from "./src/verbs/detective";
+import { cmdOperate } from "./src/verbs/operate";
 import { cmdDoctor } from "./src/verbs/doctor";
 import { cmdNudge } from "./src/verbs/nudge";
+import { cmdUnwedge } from "./src/verbs/unwedge";
 import { cmdWorktree } from "./src/verbs/worktree";
 import { cmdSetupMachine, cmdUninstall } from "./src/verbs/machine";
 import { cmdSetup } from "./src/verbs/setup";
@@ -123,6 +125,11 @@ const nativeHandlers = {
   shutdown: (argv) => cmdOutRetire(argv, "shutdown"),
   // Same cutover shape as health: the Bash body is deleted in this commit.
   nudge: (argv) => cmdNudge(argv, tapScriptsDir(), AGENT_FAMILIES),
+  operate: argv => {
+    if (argv.includes("--json")) process.env.TAP_JSON = "1";
+    return cmdOperate(argv, tapScriptsDir());
+  },
+  unwedge: (argv) => cmdUnwedge(argv, tapScriptsDir(), AGENT_FAMILIES),
   // Same cutover shape as health: the Bash body (tap-worktree.sh) is deleted in
   // this commit.
   worktree: cmdWorktree,
@@ -392,6 +399,9 @@ export function composeReplyAlias(argv: string[]): string[] | null {
 }
 
 function reserved(argv: string[]): boolean {
+  // Doctor now accepts a seat named help; keep the router's shortcut aligned
+  // with isHelpForm's data-bearing exception.
+  if (argv.length === 2 && argv[0] === "doctor" && argv[1] === "help") return false;
   return RESERVED.has(argv[0] ?? "") || (argv.length === 2 && HELP.has(argv[1] ?? ""));
 }
 

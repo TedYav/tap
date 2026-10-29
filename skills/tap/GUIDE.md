@@ -26,6 +26,8 @@ rg -n -i -C 2 'term|alias' <tap-skill-dir>/GUIDE.md <tap-skill-dir>/protocol
 | did they receive it, queued, injected, processed | [delivery policies](protocol/delivery/delivery-policies-tap-gzn-pr-a-polite-pr-b-urgent-part-01.md) | `tap help outstanding` |
 | wake later, remind, wake when CI finishes | [reminders](protocol/supervision/health-liveness-not-integrity-part-01.md) | `tap help remind` |
 | cancel reminder, kill command, UNOBSERVABLE | [quick reference](QUICK-REFERENCE.md) then [reminders](protocol/supervision/health-liveness-not-integrity-part-01.md) | `tap help remind` |
+| abandoned harness menu blocks old mail | [harness operator](protocol/delivery/harness-operator.md) | `/tap:harness-operator`, `tap help operate` |
+| diagnosed stopped seat, recorded recovery rungs | [unwedge](protocol/delivery/unwedge.md) | `tap help unwedge` |
 | stuck message, nudge, uncertain delivery | [sentinel and recovery](protocol/delivery/sentinel-the-wire-poke-zero-authority-part-01.md) | `tap help nudge`, `tap help detective` |
 | temporary reviewer, consult, durable lane | [getting started](guide/getting-started.md) | `tap help ask`, `tap help crew`, `tap help session` |
 | roster, teams summary, status dots, `--details` | [team CLI](protocol/delivery/cli-surface-the-whole-thing-part-09.md) | `tap help team`, `tap help teams` |

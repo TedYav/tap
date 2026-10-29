@@ -57,7 +57,7 @@ export const HELP_TOMBSTONES: Record<string, { stderr: string }> = {
 export const HELP_COMPOSITES: Record<string, readonly string[]> = {
   team: ["list", "roster", "calibration", "attach", "detach", "doctor", "refresh", "shutdown", "down", "out", "up", "reset", "purge", "restore"],
   session: ["launch", "resume", "restart", "relaunch", "fork", "repair", "list"],
-  crew: ["list", "add", "shutdown", "relaunch", "remove", "rearm"],
+  crew: ["list", "add", "resume", "shutdown", "relaunch", "remove", "rearm"],
   admin: ["dashboard", "ps", "refresh", "retire", "rebuild-registry", "migrate-registry", "prune"],
   watch: ["reminders", "on", "pause", "resume", "off", "status", "ack", "tick", "run"],
   remind: ["list", "cancel", "kill"],
@@ -141,13 +141,13 @@ const PAGES: Record<string, string> = {
     "SEE ALSO",
     "  tap help admin ps · tap teams (machine-wide summary) · tap help team",
   ),
-  "advisory": "# TAP Transport Advisory\n\nSkill files: `tap help skill <name>` prints the resolved path. TAP ships `skills/<name>/SKILL.md`; personal roots are `~/.agents/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, and `~/.codex/skills/<name>/SKILL.md`. Use these direct paths; do not search the home directory.\n\nAgent guide: resolve `tap help skill tap`, then open sibling `GUIDE.md` or `QUICK-REFERENCE.md` directly; SKILL and CONTRACT are not required detours.\n\nTAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] ask and note sentinels are authorized work; read them with `tap read <id>`\n\nThe watcher can wake you later with `tap remind me --in 8m -f reminder.md`; use `tap team --context` to check teammate context and pending asks before clearing between reviews.\n\nTAP is a file bus + tmux courier. Bare composers receive immediately without a flash. Human drafts get green at park, red with 10 seconds remaining, then the existing backup/clear/submit at 30 seconds (urgent: 10-second draft grace and red). Queued followups hold without a flash until clear. Plain notes are settled by recipient tap read; the courier never writes .done.\nUse installed `tap`, `bash scripts/tap.sh` (same grammar), or run ./install.sh once.\n\n## Identity\n  tap whoami   your registered handle; use for --from / --by\n  tap in       manual reconnect / bare-pane join; alias: tap register; idempotent; TAP-launched seats are already registered\n  tap team     your teammates\n\n## Need another seat? `tap presets` lists launch options\n  tap ask <preset|harness> -f <p.md>          one-shot, no pane or handle\n  tap crew add <preset|harness> [name]        consult here; dies with the pane\n  tap session launch <preset|harness> [name]  durable seat; bare name defaults to the preset\n  Before UNRELATED work: settle the lane, return any Writer Token, `tap clear <seat> -m \"fresh start\"`, then send the assignment by bus.\n\n## Literal messages (--from derives from your registered pane)\n  tap send <to> -f <path>   # preferred: write a body file; backticks stay literal\n  tap send <to> -f - <<'EOF'\nyour message here\nEOF\n  Quote EOF: unquoted delimiters expand backticks and $(). Plain send = NOTE, settled by recipient tap read; --ask wants an answer; --wake remains an accepted note spelling without changing arrival. To explicitly permit aborting a turn: --delivery interrupt.\n  Work orders: tap assign <to> -f <path> (order-shaped notes refuse). Cross-team: <team>/<handle>, any enrolled team.\n\n## v0.23 (protocol/delivery/sentinel): [[TAP v0.23 ask <id>]] / [[TAP v0.23 note <team>/<id>]]\n  Read the body before acting: tap read <id>, including digest ids and <team>/<id>. The prefix names the sender's bus; keep it for read and reply.\n  [[TAP v0.23 nudge]] (optionally message=\"...\") has no id, sender or reply and adds no task: continue your work and check tap poll; nothing to read or settle.\n  ask -> tap reply <id> -f <path> (answer file); note -> tap read <id> settles on success, with nothing further to settle. Replies accept bare ids across teams.\n  Stdin reply (quoted EOF keeps shell syntax literal):\n  tap reply <id> -f - <<'EOF'\nyour answer here\nEOF\n  Payload frontmatter: reply: expected / reply: settle-only. No got-it for notes; reply only to report a problem. Foreign paths: tap reply <payload-path> -f <answer-file>; for a still-unsettled note, tap read path=<payload-path>.\n  Reading a digest records its envelope; tap read <id> --all reads its items and settles notes; asks still need replies. Skip settlement for settled: true; never settle the digest. For manual relays or unindexed teams, use tap read path=<file>. Ask the sender about unknown shapes; on version drift load /tap.\n\n## Continue work; never poll-sleep\nAfter sending or replying, continue any useful work that does not depend on the response. Never sleep, loop-poll or watch inbound traffic: push wakes cannot interrupt blocked sleep; a delivered send starts your turn.\nReview freezes a mutable artifact; pin a commit to continue work. Yield only when the next step needs the response or nothing remains. Settlement never cancels assigned work.\nLiveness, recipient discipline, shared-worktree safety: /tap. Parallel reviews and wakes: resolve `tap help skill tap-choreography` and read the returned file.\n\n## Trust, reach and footguns\nTAP moves bytes between consenting panes on ONE machine and is not a security boundary; safety requires sensible agent deployment. Enrollment makes a team pane-injectable by any local agent: convenience, not opt-in trust. Debate costly or hard-to-reverse work first.\nSave user-only questions for later; if blocked while the user may be away, `tap escalate` and continue other work.\nSettle payloads: unsettled ones block the sender's `tap outstanding`. Only the courier writes bus payloads/; never write there by hand. Never forward a sentinel; send a NEW message. Leave: tap out (alias: tap unregister).\n",
+  "advisory": "# TAP Transport Advisory\n\nSkill files: `tap help skill <name>` prints the resolved path. TAP ships `skills/<name>/SKILL.md`; personal roots are `~/.agents/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, and `~/.codex/skills/<name>/SKILL.md`. Use these direct paths; do not search the home directory.\n\nAgent guide: resolve `tap help skill tap`, then open sibling `GUIDE.md` or `QUICK-REFERENCE.md` directly; SKILL and CONTRACT are not required detours.\n\nTAP is your operator's file bus + tmux courier between agents on this machine, installed by the user as the authorized communication mechanism; your team registration is the user's consent to communicate; [[TAP …]] ask and note sentinels are authorized work; read them with `tap read <id>`\n\nThe watcher can wake you later with `tap remind me --in 8m -f reminder.md`; use `tap team --context` to check teammate context and pending asks before clearing between reviews.\n\nTAP is a file bus + tmux courier. Bare composers receive immediately without a flash. Human drafts get green at park, red with 10 seconds remaining, then the existing backup/clear/submit at 30 seconds (urgent: 10-second draft grace and red). Queued followups hold without a flash until clear. Plain notes are settled by recipient tap read; the courier never writes .done.\nUse installed `tap`, `bash scripts/tap.sh` (same grammar), or run ./install.sh once.\n\n## Identity\n  tap whoami   your registered handle; use for --from / --by\n  tap in       manual reconnect / bare-pane join; alias: tap register; idempotent; TAP-launched seats are already registered\n  tap team     your teammates\n\n## Need another seat? `tap presets` lists launch options\n  tap ask <preset|harness> -f <p.md>          one-shot, no pane or handle\n  tap crew add <preset|harness> [name]        continuing consult; retains its conversation\n  tap session launch <preset|harness> [name]  durable seat; bare name defaults to the preset\n  Before UNRELATED work: settle the lane, return any Writer Token, `tap clear <seat> -m \"fresh start\"`, then send the assignment by bus.\n\n## Literal messages (--from derives from your registered pane)\n  tap send <to> -f <path>   # preferred: write a body file; backticks stay literal\n  tap send <to> -f - <<'EOF'\nyour message here\nEOF\n  Quote EOF: unquoted delimiters expand backticks and $(). Plain send = NOTE, settled by recipient tap read; --ask wants an answer; --wake remains an accepted note spelling without changing arrival. To explicitly permit aborting a turn: --delivery interrupt.\n  Work orders: tap assign <to> -f <path> (order-shaped notes refuse). Cross-team: <team>/<handle>, any enrolled team.\n\n## v0.23 (protocol/delivery/sentinel): [[TAP v0.23 ask <id>]] / [[TAP v0.23 note <team>/<id>]]\n  Read the body before acting: tap read <id>, including digest ids and <team>/<id>. The prefix names the sender's bus; keep it for read and reply.\n  [[TAP v0.23 nudge]] (optionally message=\"...\") has no id, sender or reply and adds no task: continue your work and check tap poll; nothing to read or settle.\n  ask -> tap reply <id> -f <path> (answer file); note -> tap read <id> settles on success, with nothing further to settle. Replies accept bare ids across teams.\n  Stdin reply (quoted EOF keeps shell syntax literal):\n  tap reply <id> -f - <<'EOF'\nyour answer here\nEOF\n  Payload frontmatter: reply: expected / reply: settle-only. No got-it for notes; reply only to report a problem. Foreign paths: tap reply <payload-path> -f <answer-file>; for a still-unsettled note, tap read path=<payload-path>.\n  Reading a digest records its envelope; tap read <id> --all reads its items and settles notes; asks still need replies. Skip settlement for settled: true; never settle the digest. For manual relays or unindexed teams, use tap read path=<file>. Ask the sender about unknown shapes; on version drift load /tap.\n\n## Continue work; never poll-sleep\nAfter sending or replying, continue any useful work that does not depend on the response. Never sleep, loop-poll or watch inbound traffic: push wakes cannot interrupt blocked sleep; a delivered send starts your turn.\nReview freezes a mutable artifact; pin a commit to continue work. Yield only when the next step needs the response or nothing remains. Settlement never cancels assigned work.\nLiveness, recipient discipline, shared-worktree safety: /tap. Parallel reviews and wakes: resolve `tap help skill tap-choreography` and read the returned file.\n\n## Trust, reach and footguns\nTAP moves bytes between consenting panes on ONE machine and is not a security boundary; safety requires sensible agent deployment. Enrollment makes a team pane-injectable by any local agent: convenience, not opt-in trust. Debate costly or hard-to-reverse work first.\nSave user-only questions for later; if blocked while the user may be away, `tap escalate` and continue other work.\nSettle payloads: unsettled ones block the sender's `tap outstanding`. Only the courier writes bus payloads/; never write there by hand. Never forward a sentinel; send a NEW message. Leave: tap out (alias: tap unregister).\n",
   "ask": lines(
     "NAME",
     "  tap ask — run one fresh headless invocation and print the answer",
     "",
     "USAGE",
-    "  tap ask <preset|harness> -f <prompt.md> | -m \"...\" [--model <tier>]",
+    "  tap ask <preset|harness> -f <prompt.md> | -m \"...\" [--model <tier>] [--ephemeral]",
     "",
     "DESCRIPTION",
     "  Run one fresh headless invocation and print the harness answer on stdout.",
@@ -168,13 +168,25 @@ const PAGES: Record<string, string> = {
     "  --preset <name> name a preset explicitly; unlike the positional, an explicit",
     "                  --preset never falls back to a harness. A preset is complete, so",
     "                  it cannot be combined with --model",
+    "  --ephemeral    Claude/Codex only: disable native conversation persistence;",
+    "                  no adoption command. Other harnesses refuse before execution.",
     "",
     "CONTRACT",
     "  Stateless: each invocation starts fresh; no TAP registration, bus, pane, or lifecycle state is created.",
-    "  The answer is stdout; harness diagnostics stay on stderr; the harness exit status passes through.",
+    "  Native conversations persist by default. After success, stderr reports the exact",
+    "  session id and a crew add --resume command when the native artifact is verified.",
+    "  The command carries the original cwd and preset/model; replace <name> (and <model> if absent).",
+    "  Missing or unverifiable capture reports its limitation without an adoption command.",
+    "  The answer is stdout; diagnostics and the receipt stay on stderr, including with TAP_JSON=1.",
+    "  Claude/Hermes relay answer bytes; Codex uses its final-message file verbatim;",
+    "  other adapters extract answer text from native JSON. Empty answers refuse with exit 1.",
+    "  Native history uses disk. Enabled harness memory jobs may use quota, and third-party",
+    "  memory hooks may capture prompts. TAP_STATELESS blocks TAP binding only;",
+    "  --ephemeral does not disable arbitrary third-party hooks.",
+    "  The harness exit status passes through. Invocation-private capture files are cleaned up.",
     "  The harness gets 900 s by default; set TAP_ASK_TIMEOUT_SECONDS to a positive number of seconds to change it (empty, zero, negative or malformed values are refused with exit 1). On expiry tap exits 124.",
     "  If the harness CLI is absent from PATH, tap refuses with exit 127 before starting anything.",
-    "  If the work needs a follow-up conversation, use `tap crew add`; if it needs a durable restartable address, use `tap session launch`.",
+    "  To continue this answer, use the printed crew adoption command; for a durable lane, use tap session launch.",
   ),
   "assign": lines(
     "NAME",
@@ -197,6 +209,8 @@ const PAGES: Record<string, string> = {
     "OPTIONS",
     "  -f <path>          body file; -f - reads literal stdin with a quoted heredoc",
     "  --from <me>        sender; normally derived from your registered pane",
+    "  --reply-to <seat>  route the tracked answer to a durable principal (handle or",
+    "                    team/handle), such as the lane consuming a crew's result",
     "  --team <name>      bus anchor for pane-less callers",
     "  --id <id>          explicit message id",
     "  --pane <target>    delivery pane override; send's relay restrictions apply",
@@ -206,6 +220,7 @@ const PAGES: Record<string, string> = {
     "",
     "EXAMPLES",
     "  tap assign builder -f task.md",
+    "  tap assign crew-reviewer --reply-to lane-driver -f review.md",
     "  tap outstanding    check assignments still awaiting an answer",
     "",
     "EXIT CODES",
@@ -416,11 +431,24 @@ SEE ALSO
 
 USAGE
   tap doctor [--json]
+  tap doctor <handle> [--json]
   tap doctor --fix [--json]
   tap doctor [--prune-input-backups] [--prune-watch-logs] [--json]
 
 DESCRIPTION
-  Plain tap doctor is read-only: normal and refusal paths mutate nothing. It reports torn payloads, registry health (including unbound seats and live crew supervision), the resolved bus and its rule, input-backup and watch-log metadata, and checkout freshness (a STALE or CANNOT-CHECK warning that does not change the exit). It scans no content. It also reports the selected notifier and executable availability without sending a notification.
+  Without a handle, tap doctor is read-only: normal and refusal paths mutate nothing. It reports torn payloads, registry health (including unbound seats and live crew supervision), the resolved bus and its rule, input-backup and watch-log metadata, and checkout freshness (a STALE or CANNOT-CHECK warning that does not change the exit). It scans no content. It also reports the selected notifier and executable availability without sending a notification.
+  With a handle, diagnoses one registered seat on the resolved team, read-only.
+  Uses the same lifecycle, pane-state and activity readers as tap team, with
+  session-bound harness evidence and current-instance delivery receipts. Verdicts:
+  healthy, thinking, busy-unproven, parked-on-dialog, severed, gone,
+  unverified-but-processing, unknown. A failed observation is not checked,
+  with a null verdict; it is never healthy or gone. Severed means a stopped
+  API/provider/usage error, not necessarily a network disconnect.
+  Busy-unproven means the screen is working but progress was not observed.
+  A last harness write older than the existing readiness bound (600 seconds,
+  TAP_STUCK_READINESS_SECONDS) raises attention, never permission to interrupt.
+  Wedge detection is not checked: a silent tool call and a hang can look alike.
+  Peek reports pane/input facts; doctor interprets seat health. Neither acts.
   Stored-active seats observed gone or offline are named; retained durable seats get a session resume command. Failed observations never establish that a seat is dead. Bus integrity and seat attention are reported separately; JSON summary.clean and the exit code describe bus integrity, while summary.seat_attention counts named seats with warning findings.
   Other tmux servers are summarized without claiming that old sockets are unhealthy. Use tap --verbose doctor for their socket inventory; --json includes the inventory too.
   Read-only tmux client hazards are also reported: attach clients whose command line begins with tmux (argv[0]) running outside their terminal's foreground process group (finding background_attach_client, with pid, pgid, tty and foreground pgid) and, for a responsive selected-socket server, client terminal file descriptors missing O_NONBLOCK (finding blocking_client_tty_fd, with server pid, fd, tty and open flags). Evidence that cannot be read — a missing or failing ps or lsof, an unreadable ps or lsof shape, a probe that times out or answers off-contract — is finding tmux_client_hazards_unverified, severity warning (not checked), never a clean bill. On macOS a server's /dev/ttysN fds are client terminals; on Linux pane ptys share the name space, so an fd counts only when a live attach client corroborates it and the remaining tty-like fds are named not checked. The scan observes only; it mutates no client or server and does not explain what put a client in the background.
@@ -431,18 +459,31 @@ OPTIONS THAT CHANGE THINGS
   --fix                  prune team-index rows whose root directory is gone (an index snapshot is written first and its restore command printed), then run the team refresh reconciler. Cannot be combined with the prune flags.
   --prune-input-backups  delete retained input-backup files
   --prune-watch-logs     delete retained watch-log files
-  --json                 {ok, bus, findings[], summary} on stdout with empty stderr
+  --json                 without a handle: {ok, bus, findings[], summary}
+                         with a handle: {ok, scope:"seat", handle, verdict,
+                         evidence:[{source,fact,value}], not_checked:[string],
+                         sampled_at, action}. ok means exit 0; optional missing
+                         instruments remain in not_checked. sampled_at is ISO UTC.
+                         Both forms use stdout with empty stderr.
+  A handle cannot combine with --fix or either prune option. Use -- before a handle.
+  The word help is a seat name here; use tap help doctor or tap doctor --help.
 
 EXAMPLES
   tap doctor
   tap --verbose doctor
   tap doctor --json
   tap doctor --fix
+  tap doctor scout --json
 
 EXIT CODES
   0  bus integrity clean; seat-health warnings may still need attention
-  1  torn payloads or an authority error (bus integrity fail), or a refusal
+     with a handle: healthy/progress, or busy-unproven without an aged file witness
+  1  torn payloads or an authority error (bus integrity fail), a refusal, or seat not checked
+  2  with a handle: evidenced seat attention; no action was taken
   4  no bus to diagnose (unanchored_bus)
+
+SEE ALSO
+  tap peek · tap team · tap team doctor
 `,
   "draft": lines(
     "NAME",
@@ -565,6 +606,62 @@ DESCRIPTION
     "  tap init                      name the team after this folder",
     "  tap init --team api --yes     choose the name; answer the outside-git prompt",
   ),
+  "unwedge": lines(
+    "NAME",
+    "  tap unwedge — diagnose a stopped seat and take one explicit recovery action",
+    "",
+    "USAGE",
+    "  tap unwedge <handle> [--json]",
+    "  tap unwedge <handle> --rung message [--json]",
+    "  tap unwedge <handle> --rung nudge --after <recovery-id> [--json]",
+    "  tap unwedge <handle> --rung continue --after <recovery-id> [--json]",
+    "  tap unwedge <handle> --rung restart --after <recovery-id> [--json]",
+    "",
+    "DESCRIPTION",
+    "  One local registered handle. With no --rung (or --rung report), diagnose and",
+    "  write an audit record when the target can be bound; dispatch nothing. Each",
+    "  acting invocation performs one named rung. There is no automatic escalation.",
+    "  Acting recovery requires a stopped Claude api_error or Codex model_capacity,",
+    "  a session-bound ended turn, and an empty readable composer. Active work,",
+    "  STOP/WAIT, drafts, queued follow-ups, permission dialogs and unknown evidence",
+    "  refuse. Identity and evidence are checked again at the effect boundary.",
+    "",
+    "  message: one ordinary fixed observation note through tap send. It needs a",
+    "    registered sender. Queued or submitted mail is not recipient processing.",
+    "  nudge: one recorded doorbell with no interrupt. continue: Escape followed by",
+    "    one cause-naming Continue doorbell for the existing task.",
+    "  restart: exact native resume of the recorded conversation through the existing",
+    "    restart transaction. Missing identity, artifact, executable or workdir refuses.",
+    "    Another pane/crew or the calling pane in the session refuses. A started",
+    "    harness without process-bound conversation proof is verification pending.",
+    "",
+    "  --after names the immediately preceding recovery record for this same target.",
+    "  After a completed stimulus, allow at least two minutes before the next rung;",
+    "  the command reports next_eligible_at and does not sleep. Productive or unknown",
+    "  transcript changes end eligibility. Time alone never proves a failed recovery.",
+    "  An uncertain message with its exact sentinel still staged may receive one Enter",
+    "  immediately via the nudge rung. It never retypes or falls through to a new nudge.",
+    "  An uncertain control cannot authorize another rung. Inspect it; do not retry it.",
+    "",
+    "  Custody: follow the owner/leader custody rule in",
+    "    skills/tap/protocol/delivery/unwedge.md#custody",
+    "  Recovery uses the existing recovery policy; report-only dispatches nothing.",
+    "  No model switch, payload replay or new work order is part of this command.",
+    "",
+    "OUTPUT",
+    "  --json prints one result object: code, handle, requested_rung, diagnosis,",
+    "  recovery_id (when written), predecessor, outcome, effect, next_eligible_at,",
+    "  next_action, detail, audit_written and event_written. outcome is completed,",
+    "  refused_pre_effect or uncertain_effect; effect is none or possible.",
+    "  completed describes publication or the verified actuator, never task recovery.",
+    "",
+    "EXIT CODES",
+    "  0 report/action completed; 1 effect-free refusal or cannot check;",
+    "  2 report needs attention; 5 possible or unverified effect: inspect, do not repeat.",
+    "",
+    "SEE ALSO",
+    "  tap help doctor · tap help nudge · tap debug recovery <recovery-id>",
+  ),
   "nudge": lines(
     "NAME",
     "  tap nudge — unstick a seat: clear a known blocker, submit a stuck line, or wake it",
@@ -663,7 +760,7 @@ DESCRIPTION
     "  <me> defaults to TAP_SELF, then the caller's verified registered identity. If the caller cannot be observed, pass the positional handle: tap outstanding <handle>.",
     "  List your unsettled, uncancelled outbound messages, including parked sends — the rest-refusal signal: any row means you still owe supervision. Exit 0 whether or not sends are open (open sends are state, not an error; branch on `--json` `outstanding` and `spool_conditions` (parked sends can collapse into a backlog condition); nothing is owed only when both are empty); non-zero only for a usage error or a bus that cannot be read. --stale <secs> lists only sends older than the threshold (age from the id timestamp, never reset by bus activity). --team anchors the bus for pane-less callers.",
   ),
-  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets                       saved launch recipes\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap --version                     installed release and development commit\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap models → tap presets or tap launch; tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
+  "overview": "TAP Agent Protocol — agents working together in your terminal.\n\nStart here\n  tap launch claude                 launch and visit Claude in this project\n  tap launch codex reviewer         add a named Codex seat\n  tap attach <seat|team/seat>        visit a seat; --next hops to the next one\n  tap team                          show this project's agents\n  tap help launch                   launch options and examples\n\nCommunicate\n  tap send <peer> -f <file>          send a note; --ask requests an answer\n  tap assign <peer> -f <file>        assign work with a reply obligation\n  tap read <id>                     read incoming mail; settles notes\n  tap reply <id> -f <file>           answer and settle an ask\n  tap ask <harness> -f <file>        one headless opinion, no seat\n  tap escalate -f <file>            ask the human\n\nManage\n  tap init · setup · config         start a project, set up the machine, edit config\n  tap presets                       saved launch recipes\n  tap down · up · shutdown <seat>    stop, resume, or retire one seat\n  tap team down · up · shutdown      whole-team lifecycle\n  tap session · crew                durable sessions and temporary helpers\n  tap whoami · in · out              identity and membership\n  tap teams · admin · doctor         fleet and diagnostics\n  tap unwedge · operate            explicit recovery and opted-in menu navigation\n  tap --version                     installed release and development commit\n  tap poll · outstanding · peek      inspect mail and teammates\n  tap nudge · cancel · resend · withdraw · show  unstick, retract, or inspect a message\n  tap pick · keybinding · tmux-defaults  teammate popup and managed tmux defaults\n  tap compact · clear · refresh      conversation controls\n  tap watch · remind · goalie        supervision and scheduled work\n  tap bus · spool · worktree         storage and checkout operations\n  tap completion zsh · uninstall     shell integration and removal\n\nRenamed: tap roster → tap team; tap done → tap read or tap reply.\nDeprecated: tap models → tap presets or tap launch; tap command compact|clear → tap compact|clear.\nDetails: tap help <verb>; full reference: skills/tap/QUICK-REFERENCE.md\nGolden rule: after sending or replying, continue independent work; never poll-sleep.\nSettlement never cancels assigned work.\n",
   "peek": "NAME\n  tap peek — read a teammate's pane without touching it\n\nUSAGE\n  tap peek <handle> [--pane <tmux-target>] [--json]\n\nDESCRIPTION\n  Supervision read. Prints the seat's input_state and a transcript tail with the\n  ACTIVE INPUT REGION STRIPPED, so a draft your teammate has not submitted is never\n  quoted back at them. It sends nothing, submits nothing, and wakes nobody.\n\n  <handle> names a seat on your team. `help` can never be a registered handle, so\n  the bare `tap peek help` is unambiguous and prints this page.\n\nOPTIONS\n  --pane   read an explicit tmux target instead of the handle's registered pane\n  --json   emit {handle, pane, harness, input_state, transcript}\n\nEXIT CODES\n  0  read\n  1  usage error, or the handle is not registered\n  3  the seat's pane is gone — re-register it against a live target\n\nSEE ALSO\n  tap team (who exists) · tap health (liveness) · tap nudge (recover a stuck sentinel)\n",
   "poll": lines(
     "NAME",
@@ -964,14 +1061,20 @@ SEE ALSO
     "  all incoming mail once, up to 2 minutes or until you submit/clear the draft. Pane flashes",
     "  signal pending mail; repeated WAITs or new mail do not renew the snooze. WAIT stays in",
     "  your submitted text.",
+    "  While mail is pending and the courier is watching, type only STOP to hold all mail,",
+    "  urgent included, across empty composers and side views. Wait for the acknowledgement.",
+    "  Type only START to release; the hold also expires after 10 minutes. Both words must be",
+    "  uppercase and fill the composer (surrounding whitespace is ignored). STOPPED and START",
+    "  HERE do not match. With no pending mail, STOP does nothing. TAP backs up and clears exact",
+    "  START once; if clearing is unverified, clear the composer yourself. Normal guards apply.",
     "",
     "  Queued followups hold without a flash until clear; existing queued siblings coalesce.",
     "  Existing queued entries retain their window measured from the LAST VERIFIED DELIVERY. The",
     "  courier never writes .done.",
     "",
     "  Routing",
-    "  --reply-to <handle|team/handle> routes replies to a deliverable seat; --team anchors a",
-    "    pane-less caller.",
+    "  --reply-to <handle|team/handle> routes the tracked answer to a durable principal,",
+    "    such as the lane consuming a crew's result. --team anchors a pane-less caller.",
     "  --reply-to <message-id> aliases tap reply: use the original sender as <to> and -f <path>;",
     "    a mismatched target, another body source, or a send-only option refuses. Manual",
     "    --cross-worktree --pane relays require an exact session and cannot spool. A remote poll",
@@ -1027,7 +1130,7 @@ SEE ALSO
     "  --dry-run validates the same choices and prints a TOML-key diff (starter calibration notes as one line per preset) and effect preview (for shellIntegration: the startup file and the managed block exactly as it would be written, alias lines included), without writing config/backups/shell files, installing plugins or sending notifications.",
     "",
     "WITHOUT --answers",
-    "  Interactive full kit defaults to No and gates optional plugin questions. Interactive preset selection defaults to skip; simple starters remain optional. Team setup asks first; arriving messages interrupt and may clear a draft, keeping the text TAP can capture; pasting it back is conditional, and when it does not happen `tap draft` recovers it (OpenCode drafts always need that, and pasted content or images may not be captured). Type WAIT in caps to hold deliveries for two minutes.",
+    "  Interactive full kit defaults to No and gates optional plugin questions. Interactive preset selection defaults to skip; simple starters remain optional. Team setup asks first; arriving messages interrupt and may clear a draft, keeping the text TAP can capture; pasting it back is conditional, and when it does not happen `tap draft` recovers it (OpenCode drafts always need that, and pasted content or images may not be captured). While incoming mail is watched, WAIT snoozes up to two minutes or until the draft clears; exact STOP holds across empty input and view changes for up to ten minutes, and exact START releases it.",
     "",
     "EXAMPLES",
     "  Preview a machine answers file first, then apply it:",
@@ -1319,6 +1422,46 @@ EXIT CODES
   0  scheduled, listed, cancelled, or kill requested
   1  refusal, with its reason. It can also mean the reminder was STORED but no live runner was confirmed: inspect with tap remind list [--team <name>], then run tap watch reminders --by <you> (with --team, pin the selected bus: TAP_HOME=<selected-bus> tap watch reminders --by <you>). Do not schedule it again.
 `,
+  "operate": lines(
+    "NAME",
+    "  tap operate — return an abandoned harness menu to its composer",
+    "",
+    "USAGE",
+    "  tap operate <seat|team/seat> --preset <name> [--team <name>] [--json]",
+    "  tap operate --approve <request-id> --reply-file <json-file> [--team <name>] [--json]",
+    "  tap operate --run <id> --observe [--team <name>] [--json]",
+    "  tap operate --run <id> --key <Escape|q|Enter> --sample <id> --reason-file <file> [--team <name>] [--json]",
+    "  tap operate --run <id> --stop --reason-file <file> [--team <name>] [--json]",
+    "",
+    "DESCRIPTION",
+    "  Scope: one bound target seat; caller and audit use the resolved team bus. A trusted visible crew reads the screen and chooses one guarded navigation key at a time. Five minutes, six effects, no renewal; delivery stays held through thinking and actions. No automatic launch, retry, restart or escalation ladder.",
+    "  recovery.operator defaults to off. ask requires an explicit human reply; on permits an authorized teammate to invoke the skill. recovery.operator_after defaults to 20m (positive integer s/m/h, at most 24h). No flag overrides off. Report-only recovery refuses effects.",
+    "  Requires old current-instance undelivered mail, an eligible seat-doctor verdict, quiet native ended-turn evidence, clear protection, and no target-window client activity or attachment for two minutes. All linked sessions and control clients count. New activity, identity/config changes, a draft or a protected prompt refuse keys.",
+    "  Escape needs an observed close/cancel/back hint; q needs a live close binding; Enter needs exactly one selected Close, Cancel or Back row. There are no movement keys. The operator never selects or applies a setting, model or account; ordinary cancel/back may restore the screen's prior state, which the harness may itself persist. No prompt grants, composer text, draft editing or mail submission.",
+    "",
+    "OPTIONS",
+    "  --preset <name>       explicit trusted crew recipe; required for a new request/run",
+    "  --approve <id>        attest to an explicit human reply for a notified ask request",
+    "  --reply-file <path>   bounded regular JSON file with request_id and reply; expires after five minutes, consumed once; not human authentication",
+    "  --run <id>            act only on this operator run as its initiator or bound worker",
+    "  --observe             retain a viewport/sample; no key",
+    "  --key/--sample/--reason-file  one key tied to a fresh sample and a short reason file",
+    "  --stop                end navigation, with a reason file",
+    "  --team <name>         resolve the caller's team bus explicitly",
+    "  --json                one result object (status, summary, optional request_id, recovery_id, status_file, cleanup); structured errors use the common envelope",
+    "",
+    "EXAMPLES",
+    "  tap operate helper --preset reader --json",
+    "  tap operate --approve operator-request-<uuid> --reply-file approval.json --json",
+    "  tap debug recovery <recovery-id>",
+    "",
+    "EXIT CODES",
+    "  0  request awaiting approval, observation/key recorded, explicit stop, or composer restored; message processing remains unconfirmed",
+    "  1  refusal, uncertain effect, notification failure or incomplete cleanup; inspect retained evidence before another action",
+    "",
+    "SEE ALSO",
+    "  tap help skill harness-operator; tap help doctor; tap help unwedge; skills/tap/protocol/delivery/harness-operator.md",
+  ),
   "detective": lines(
     "NAME",
     "  tap detective — start a fresh visible worker that inspects and recovers a stuck seat",
@@ -1329,7 +1472,7 @@ EXIT CODES
     "DESCRIPTION",
     "  Fresh visible worker; default aggressive, six effects/five minutes. Every effect has full before/after debug frames and a policy reason. Report-only records inspection without keys or a hold. Cautious stops on ambiguous recovery; aggressive attempts ordinary harness UI recovery. No target restart, kill or tap clear. Queued-in-harness work is never replayed. Use tap debug recovery <recovery-id|payload-id> for post-mortems. Internal worker/operator action: tap detective --run <id> (--key <key>...|--submit|--stop) --reason-file <path> [--team name].",
   ),
-  "crew rearm": "NAME\n  tap crew rearm — restore supervision for an existing crew\n\nUSAGE\n  tap crew rearm <crew|team/crew>\n\nDESCRIPTION\n  Re-arm the finite helper that ties a crew to its original live parent harness.\n  Requires current, provable parent and child process, pane and roster identities.\n  A replacement parent harness cannot adopt a crew from an earlier lifetime.\n  Unprovable ownership refuses without stopping or reassigning the crew.\n\n  Roster and doctor output report missing or unobservable supervision. Inspect\n  the family before rearming; use tap crew shutdown to dismiss a crew explicitly.\n\nEXIT CODES\n  0  supervision verified\n  1  usage error or lifetime could not be proved\n\nSEE ALSO\n  tap crew list · tap crew shutdown · tap team doctor\n",
+  "crew rearm": "NAME\n  tap crew rearm — retired parent-lifetime supervision\n\nUSAGE\n  tap crew rearm <crew|team/crew>\n\nDESCRIPTION\n  Crews now have independent lifetime. This spelling refuses without effects.\n  Inspect tap crew list; explicitly dismiss a crew with tap crew shutdown.\n\nEXIT CODES\n  1  retired_verb\n",
 };
 
 
@@ -1810,6 +1953,10 @@ DESCRIPTION
   seat whose stored chat never persisted refuses rather than start a different
   conversation.
 
+  Session-wide replacement refuses while a registered crew occupies the session
+  (crew_session_shared), including legacy crews and with --force. Use
+  tap session relaunch <team/handle> to replace the parent process in place.
+
 OPTIONS
   --force     restart despite busy seats
   --dry-run   resolve the target and preview the restart; nothing is killed
@@ -2149,8 +2296,8 @@ DESCRIPTION
                         cannot be combined with it. Lane and watch roles need an
                         explicit handoff.
     crew pane           plain out, --hard and --kill all retire the row and stop only the
-                        recorded crew pane when that is safe: sibling panes and a
-                        session's last pane stay. An unverifiable pane remains, with
+                        recorded crew pane when that is safe: sibling panes stay, and a
+                        crew that is its session's last pane ends that session. An unverifiable pane remains, with
                         an explanation, and obligations visible locally can refuse
                         dismissal. Exit 0 means the row is gone, not that a process stopped:
                         read the output for a pane that was kept. See tap help crew.
@@ -2186,44 +2333,52 @@ SEE ALSO
 
 /** Served by `tap help crew`; its subcommands fall back to this page except crew rearm. */
 export const CREW_HELP = `NAME
-  tap crew — short-lived helper seats bound to their parent's lifetime
+  tap crew — continuing consult and review seats
 
 USAGE
   tap crew add <preset|harness> [name] [--preset <name>] [--model <m>]
-               [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>] [-- harness-args...]
+               [--resume <native-id>] [--env KEY=VALUE] [--unset-env KEY] [--cwd <path>]
+               [--assign <brief-file> [--reply-to <handle|team/handle>]] [-- harness-args...]
   tap crew list
   tap crew shutdown [<crew>|<owner>|--owner <handle|team/handle>]
-  tap crew relaunch <crew>
+  tap crew resume <crew|team/crew> [--dry-run] [--json]
+  tap crew resume --owner <seat|team/seat> [--owner <seat> ...] [--dry-run] [--json]
+  tap crew relaunch <crew> [--resume [--dry-run] [--json]]
   tap crew rearm <crew>
   tap crew remove <crew>
 
 DESCRIPTION
-  A crew seat is an ephemeral pane for a consult or review that needs no durable
-  lane. It lives only while its parent harness process lives: natural parent exit
-  or relaunch ends it, even if the parent returns to a live shell. Saved native
-  sessions stay manually recoverable. Crew rows exist only while live, so there
-  are no crew up or down verbs. A bare handle is the current-folder team;
+  A crew seat is a consult or review conversation with a full bus identity.
+  Natural parent exit, crash or process replacement leaves it running. Stopped
+  crews retain their owner, recipe and native id, including after refresh --hard.
+  Explicit crew removal or parent/team shutdown still stops the selected family.
+  There are no crew up or down verbs. A bare handle is the current-folder team;
   <team>/<handle> names another. Harnesses: claude, codex, opencode, cursor,
   hermes, agy. add needs an explicit model: pass --model <model>, or use a
   preset that sets one (tap presets lists them); a bare harness refuses.
 
-    add        start a crew window bound to the parent's lifetime.
-    list       show only kind=CREW rows.
+    add        start a crew window in the caller's session.
+    list       show only kind=CREW rows, including stopped crews.
+    resume     continue each selected crew's exact saved native conversation;
+               a live matching conversation is an idempotent no-op.
     shutdown   <crew> stops that seat; <owner>, --owner, or a bare shutdown (owner
                inferred from the calling pane) stops the owner's whole crew. It
                retires the row and kill-panes only the recorded pane on the recorded
-               tmux server, never a sibling pane or a session's last pane.
+               tmux server, including its own last window; never a sibling pane.
     relaunch   replace the live crew process fresh in its recorded pane from the
-               row's saved recipe: no resume, no catalog read; parent lifetime kept.
-    rearm      restore a missing lifetime helper, only while the one live parent
-               is provable.
+               row's saved recipe; --resume explicitly replaces it on the saved
+               conversation. Neither form rereads the preset catalog.
+    rearm      retired: independent crews need no parent-death helper.
     remove     one-seat alias of shutdown <crew>.
 
-  Shutdown refuses the calling pane itself. Exit 0 can follow deleting the row
-  while an unverifiable pane, or a session's last pane, is deliberately kept;
-  read the output rather than assuming the process stopped. An owner that shares
-  its session with another non-crew seat is ambiguous: name the crew seat
-  directly.
+  Shutdown refuses the calling pane itself and unverifiable live processes.
+  Owner handle and retained instance select crews across sessions. Unlinked
+  legacy crews need one unambiguous owner in their recorded session/generation.
+  A retained crew name refuses add; explicitly remove it before reusing its name.
+
+  New crews start no parent-death helper. Refresh, relaunch, revival and removal
+  fence exact pre-upgrade helpers when touched; untouched helpers keep their old
+  behavior. An unverifiable transition refuses and preserves its evidence.
 
   --cwd must select the launcher's acting registry; otherwise add refuses
   (crew_registry_mismatch) before any pane, registration or keypress. A permitted
@@ -2233,23 +2388,77 @@ DESCRIPTION
   KEY=VALUE overrides preset environment and --unset-env KEY removes a variable
   even if shell startup exports it (both repeatable; one key in both refuses).
   Arguments after -- go literally to the harness, appended last. A preset keeps
-  its model, so --preset with --model refuses. A crew seat always starts fresh:
-  conversation selectors such as --resume or codex resume refuse. Overrides
+  its model, so --preset with --model refuses. add starts fresh unless its own
+  --resume <native-id> adopts an existing unheld conversation. Use the original
+  cwd and preset/environment: missing native artifacts or an id held by another
+  seat refuse before creating a window. The new crew requires that exact id at
+  SessionStart; a different observed id is quarantined. Hermes has no native
+  SessionStart hook, so its capture may remain unavailable; verify before assigning.
+  Conversation selectors in the harness tail refuse (fresh OpenCode strips them);
+  exact adoption also refuses selectors in presets or policy. No picker/latest/fresh fallback.
+  Native resume retains the harness's supported model/effort axes. Overrides
   persist in the crew recipe;
   tap crew relaunch replays them, and tap session relaunch --env, --unset-env
   and -- add to them.
 
+  On add, --resume selects this creation's conversation. On relaunch, --resume
+  keeps the recorded conversation while replacing the process. Plain relaunch
+  stays fresh; native conversations are never deleted.
+
+  resume requires the saved native artifact, recipe and matching retained owner
+  instance. It never uses a picker, latest session or fresh fallback. A missing
+  or replaced owner refuses; recreating its handle does not adopt old crews.
+  A live owner places resumed crews in its session. Otherwise, one dedicated
+  session holds that retained owner's crews. Resume works without a live caller
+  pane; an explicit team/handle still selects exactly one team.
+
+  Bulk resume snapshots linked crews, runs sequentially with a 30-second deadline
+  per crew, reports each result, and continues after a failure. Repeat --owner
+  for several owners in the same team. Ctrl-C stops future launches and lists
+  untouched crews. Possible effects are retained for inspection, never retried.
+  --json emits one object {ok, team, results}; human results stream per crew.
+  Outcomes are resumed, already_live, would_resume, refused, started_unverified
+  or untouched. A process with unaccepted native capture is started_unverified;
+  inspect it before assigning or retrying. A retained row is not live proof.
+
+OPTIONS
+  --assign <brief-file>  after creation's bounded registration wait, verify the
+                        exact crew row, preset/model and accepted native identity,
+                        then send the file unchanged as a tracked work order.
+                        Use a readable regular file; stdin is not accepted here.
+  --reply-to <seat>      with --assign, route the answer to a durable principal
+                        such as the lane consuming the crew's result.
+
+  Put "run tap whoami and include the handle in your first receipt" in the brief.
+  A refused identity check starts the crew but assigns nothing. If assignment
+  fails or is unconfirmed, the receipt names the existing crew and any pending
+  message. Inspect that state before retrying tap assign; do not rerun crew add.
+  The capture window is not a startup-time guarantee for any harness family.
+  If capture finishes later, inspect the existing crew with tap team, then after
+  identity is verified and capture accepted use:
+    tap assign <crew> -f <brief-file> [--reply-to <seat>]
+
 EXAMPLES
   tap crew add codex reviewer --model gpt-6-astra   start a codex helper named reviewer
   tap crew add astra reviewer              same, from a preset that carries its model
+  tap crew add astra reviewer --assign review.md --reply-to lane-driver
   tap crew add astra reviewer --env CODEX_LOG=debug -- --search
                                            a preset plus an env var and a harness flag
   tap crew list                            show crew rows only
   tap crew shutdown reviewer               stop that one helper
   tap crew shutdown --owner fable          stop every helper that fable owns
+  tap crew resume --owner fable            continue each retained conversation
+  tap crew resume reviewer                 continue one crew
+  tap crew relaunch reviewer --resume      replace it on the same conversation
   tap crew relaunch reviewer               fresh process, same pane and recipe
-  tap crew rearm reviewer                  restore a missing lifetime helper
   tap crew remove reviewer                 same as shutdown reviewer
+
+EXIT CODES
+  0  crew created; with --assign, work order accepted (injected or queued)
+  1  usage, launch or identity refusal; inspect any started crew in the receipt
+  3  assignment target unavailable before placement; crew creation already happened
+  5  assignment submission unconfirmed; supervise its pending id
+  130, 143  resume interrupted; inspect attempted crews and untouched results
 
 SEE ALSO
   tap out · tap session relaunch · tap team doctor
@@ -2928,6 +3137,7 @@ export function helpCatalogIndex(): HelpIndexRow[] {
 export function isHelpForm(argv: readonly string[]): boolean {
   if (isLaunchHelp(argv)) return true;
   if (argv.length === 0) return false;
+  if (argv.length === 2 && argv[0] === "doctor" && argv[1] === "help") return false;
   if (HELP_SPELLING.has(argv[0]!)) {
     const topic = argv[1];
     if (argv[0] === "help" && (topic === "skill" || topic === "debug")) return false;
@@ -2939,7 +3149,7 @@ export function isHelpForm(argv: readonly string[]): boolean {
 }
 
 
-PAGES["team out"] = "NAME\n  tap team out — retire selected parent families while keeping the team initialized\n\nUSAGE\n  tap team out [TEAM] [--only h,... | --except h,...] [--kill|--hard] [--yes] [--dry-run] [--json]\n\nDESCRIPTION\n  Plain out retires parent and owned crew registrations with per-seat history while their processes continue. --kill/--hard stops their exact bound processes. The registry envelope, enrollment, bus, mail, watch state and prior history remain even when the roster empties. A crew handle follows its parent and cannot be selected independently. With full-team out, a crew whose parent row is absent is retired only when its process-lifetime binding is valid; an unbound row is retained and reported as partial. The empty roster is an idempotent no-op.\n\nOPTIONS\n  --only h,...  act on these parents; a missing list opens the managed picker\n  --except h,...  spare these parents; a missing list opens the managed picker\n  --kill, --hard  stop selected parent and child processes\n  --yes  accept the preview without a prompt\n  --dry-run  show the selected families and process fate without effects; helper arming is rechecked on execution\n  --json  one result object with preview, families, retired and retained_orphan\n\nEXAMPLES\n  tap team out myteam --only ann --dry-run\n  tap team out myteam --only ann --hard --yes\n\nEXIT CODES\n  0  selected registrations retired, or roster empty\n  1  invalid target, unsafe identity, stop failure or partial retention\n\nSEE ALSO\n  tap team roster · tap out · tap team shutdown\n";
+PAGES["team out"] = "NAME\n  tap team out — retire selected parent families while keeping the team initialized\n\nUSAGE\n  tap team out [TEAM] [--only h,... | --except h,...] [--kill|--hard] [--yes] [--dry-run] [--json]\n\nDESCRIPTION\n  Plain out retires parent and owned crew registrations with per-seat history while their processes continue. --kill/--hard stops their exact bound processes. The registry envelope, enrollment, bus, mail, watch state and prior history remain even when the roster empties. A crew handle follows its parent and cannot be selected independently. With full-team out, a crew whose parent row is absent is retired only when its current crew process proof is valid; an unbound row is retained and reported as partial. The empty roster is an idempotent no-op.\n\nOPTIONS\n  --only h,...  act on these parents; a missing list opens the managed picker\n  --except h,...  spare these parents; a missing list opens the managed picker\n  --kill, --hard  stop selected parent and child processes\n  --yes  accept the preview without a prompt\n  --dry-run  show the selected families and process fate without effects; process identity is rechecked on execution\n  --json  one result object with preview, families, retired and retained_orphan\n\nEXAMPLES\n  tap team out myteam --only ann --dry-run\n  tap team out myteam --only ann --hard --yes\n\nEXIT CODES\n  0  selected registrations retired, or roster empty\n  1  invalid target, unsafe identity, stop failure or partial retention\n\nSEE ALSO\n  tap team roster · tap out · tap team shutdown\n";
 
 if (import.meta.main) {
   // `--if-help <argv...>` is the Bash door's probe: exit 3 silently when the

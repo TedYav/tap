@@ -417,6 +417,61 @@ export function nativeClaudeCommand(command: string, env: NodeJS.ProcessEnv = pr
   } catch { return false; }
 }
 
+export type SessionStartAncestry =
+  | { state: "seat" }
+  | { state: "nested"; pid: string; family: string }
+  | { state: "unobservable"; reason: string };
+
+/** SessionStart owns the pane harness, not another harness it started. Use
+ * the shared executable classifier, never argv words such as the hook's
+ * trailing `claude`. A version-named Claude counts only toward refusal here;
+ * its HOME-relative evidence must never grant identity in the holder proof.
+ * The pane boundary prevents counting the harness that launched a tmux server.
+ */
+export function observeSessionStartAncestry(
+  panePid: string, caller: number, table: PsTable | null,
+  parent: (pid: number) => string, env: NodeJS.ProcessEnv = process.env,
+): SessionStartAncestry {
+  const unknown = (reason: string): SessionStartAncestry => ({ state: "unobservable", reason });
+  if (!table || !/^[1-9][0-9]*$/.test(panePid)) return unknown("pane process or process table unavailable");
+  let pid = String(caller);
+  let previous = "";
+  let child: { pid: string; family: string; words: string[] } | undefined;
+  const visited = new Set<string>();
+  for (let steps = 0; steps < 64; steps++) {
+    if (visited.has(pid)) return unknown("process ancestry cycle");
+    visited.add(pid);
+    const row = table.get(pid);
+    if (!row) return unknown(`process ${pid} unavailable`);
+    const words = shlexSplit(row[3]);
+    // The hook itself is an adapter, even if its installation path names a harness.
+    if (pid !== String(caller)) {
+      const family = classifyHolderCommand(row[2], row[3], DEFAULT_AGENT_FAMILIES)
+        || ([row[2], words[0] ?? ""].some(word => nativeClaudeCommand(pyBasename(word), env)) ? "claude" : "");
+      if (family) {
+        if (child) {
+          // npm's codex shim directly forwards argv to the native executable.
+          // Two native harnesses, different families, or a shell/tool between
+          // them are nested. A shim starting a different invocation is too.
+          const forwarding = child.pid === previous && child.family === family
+            && HOLDER_RUNTIMES.test(pyBasename(words[0] ?? ""))
+            && classifyHolderCommand("", row[3], DEFAULT_AGENT_FAMILIES) === family
+            && !HOLDER_RUNTIMES.test(pyBasename(child.words[0] ?? ""))
+            && JSON.stringify(words.slice(2)) === JSON.stringify(child.words.slice(1));
+          if (!forwarding) return { state: "nested", pid: child.pid, family: child.family };
+        }
+        child = { pid, family, words };
+      }
+    }
+    if (pid === panePid) return { state: "seat" };
+    const next = parent(Number(pid));
+    if (!/^[1-9][0-9]*$/.test(next) || Number(next) <= 1) return unknown("process ancestry ended before pane");
+    previous = pid;
+    pid = next;
+  }
+  return unknown("process ancestry exceeded 64 steps");
+}
+
 /**
  * Observation can CONFIRM an attested expectation but never mint one: an empty
  * expected family is a repairable write-boundary omission, not a matches-any

@@ -7,6 +7,8 @@ import { acquirePaneLock } from "../panelock";
 import { physicalSocketPath, tmuxReadOnly } from "../tmux";
 import type { OwnedCrew } from "./crew";
 import type { RecoveryMode } from "../recovery-policy";
+import type { UnwedgeAttempt } from "./unwedge-policy";
+import { operatorAdmissionRecord, validOperatorRecord, type OperatorRecord } from "./operator-record";
 
 export const WALL_MS = 300_000;
 export const MAX_EFFECTS = 6;
@@ -21,6 +23,9 @@ export interface RecoveryRun {
   effects: number; payloads: PayloadRef[]; state: "active" | "released" | "stopped";
   nudgeExpected?: string; summary?: string; escalationAttemptedAt?: string; escalationStatus?: "attempted" | "delivered" | "unconfirmed"; escalationCode?: number; operatorPaused?: boolean; submission?: PayloadRef; worker?: OwnedCrew;
   caller?: { team: string; actor: string; registry: string; root: string; home: string };
+  unwedge?: UnwedgeAttempt;
+  purpose?: "operator";
+  operator?: OperatorRecord;
 }
 export interface Liveness {
   now: number;
@@ -53,7 +58,9 @@ export function readRun(id: string, env = process.env): RecoveryRun {
       !Number.isFinite(r.started) || !Number.isFinite(r.deadline) ||
       r.deadline - r.started !== WALL_MS || !Number.isSafeInteger(r.effects) || r.effects < 0 ||
       !["report-only", "cautious", "aggressive"].includes(r.mode) ||
-      !["active", "released", "stopped"].includes(r.state) || !Array.isArray(r.payloads)) {
+      !["active", "released", "stopped"].includes(r.state) || !Array.isArray(r.payloads)
+      || (r.purpose !== undefined && r.purpose !== "operator")
+      || (r.purpose === "operator" ? !validOperatorRecord(r.operator, r.target) || r.unwedge !== undefined : r.operator !== undefined)) {
     throw new Error("invalid recovery ownership record");
   }
   return r;
@@ -63,8 +70,11 @@ export function writeRun(run: RecoveryRun, env = process.env): void {
   const path = join(runDirectory(run.id, env), "run.json");
   if (existsSync(path)) {
     const previous = readRun(run.id, env);
-    for (const key of ["id", "mode", "hold", "target", "ownerPane", "ownerPid", "started", "deadline"] as const) {
+    for (const key of ["id", "mode", "hold", "target", "ownerPane", "ownerPid", "started", "deadline", "purpose"] as const) {
       if (JSON.stringify(previous[key]) !== JSON.stringify(run[key])) throw new Error(`recovery ${key} is immutable`);
+    }
+    if (JSON.stringify(operatorAdmissionRecord(previous.operator)) !== JSON.stringify(operatorAdmissionRecord(run.operator))) {
+      throw new Error("operator admission is immutable");
     }
   }
   atomicWrite(path, JSON.stringify(run, null, 2) + "\n");
@@ -99,9 +109,10 @@ export function recoveryHold(paneId: string, env = process.env, facts?: Liveness
 }
 export function createRun(
   target: RecoveryTarget, mode: RecoveryMode, payloads: PayloadRef[],
-  ownerPane: string, ownerPid: number, env = process.env, facts = live(env), hold = true,
+  ownerPane: string, ownerPid: number, env = process.env, facts = live(env), hold = true, operator?: OperatorRecord,
 ): RecoveryRun {
   if (!/^%\d+$/.test(target.paneId)) throw new Error("recovery requires a bound pane id");
+  if (operator && (!validOperatorRecord(operator, target) || mode === "report-only" || !hold)) throw new Error("invalid operator admission");
   if (hold && mode !== "report-only" && (!/^%\d+$/.test(ownerPane) || !facts.processAlive(ownerPid) || !facts.paneAlive(ownerPane))) {
     throw new Error("recovery requires a live owner pane and process");
   }
@@ -111,7 +122,8 @@ export function createRun(
     if (mode !== "report-only" && recoveryHold(target.paneId, env, facts)) throw new Error("target already has a recovery owner");
     const run: RecoveryRun = { v: 1, id: `recovery-${randomUUID()}`, mode, hold: hold && mode !== "report-only", target, payloads,
       ownerPane, ownerPid, started: facts.now, deadline: facts.now + WALL_MS,
-      effects: 0, state: mode === "report-only" ? "released" : "active" };
+      effects: 0, state: mode === "report-only" ? "released" : "active",
+      ...(operator ? { purpose: "operator" as const, operator } : {}) };
     mkdirSync(runDirectory(run.id, env), { recursive: true, mode: 0o700 });
     writeRun(run, env);
     if (run.hold) atomicWrite(holdPath(target.paneId, env), JSON.stringify({ id: run.id }));

@@ -686,9 +686,10 @@ describe("register recovery and session door pages (docs lane 2)", () => {
 
   test("crew help gives every subcommand an example", () => {
     const page = lookupHelp(["crew"]).stdout;
-    for (const sub of ["add", "list", "shutdown", "relaunch", "rearm", "remove"]) expect(page).toContain(`tap crew ${sub} `.trimEnd());
+    for (const sub of ["add", "list", "resume", "shutdown", "relaunch", "rearm", "remove"]) expect(page).toContain(`tap crew ${sub} `.trimEnd());
     expect(page).toContain("tap crew shutdown --owner fable");
-    expect(page).toContain("tap crew rearm reviewer");
+    expect(page).toContain("tap crew resume reviewer");
+    expect(page).toMatch(/rearm\s+retired:/);
   });
 
   test("crew add examples supply a model and draft help promises no full restoration", () => {
@@ -839,9 +840,9 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
     expect(JSON.stringify(helpCatalogIndex(), null, 2) + "\n").toBe(frozen);
 
     const index = JSON.parse(frozen) as ReturnType<typeof helpCatalogIndex>;
-    expect(index.filter((row) => row.dedicated)).toHaveLength(92);
+    expect(index.filter((row) => row.dedicated)).toHaveLength(94);
     expect(index.filter((row) => row.tombstone)).toHaveLength(3);
-    expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(46);
+    expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(47);
 
     for (const row of index) {
       const live = lookupHelp(row.topic);
@@ -1173,4 +1174,10 @@ test("cancel and withdraw share the resend recovery ladder", () => {
     expect(page).toContain("  Only resend rings again, under the same id; a repeat is safe to read.\n");
     expect(page).not.toContain("proven never attempted");
   }
+});
+
+test("unwedge help keeps report, explicit rungs, exact predecessor and uncertainty visible", () => {
+  const page = lookupHelp(["unwedge"]);
+  expect(page.exit).toBe(0);
+  for (const text of ["--rung message", "--rung nudge", "--rung continue", "--rung restart", "--after <recovery-id>", "two minutes", "no automatic", "exact native", "5 possible", "custody", "--json"]) expect(page.stdout).toContain(text);
 });

@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { resolveContext } from "../src/context";
 import { observePaneResult } from "../src/tmux";
 import { cleanupIO, cleanupRecoveryCrew, tapCommand, type OwnedCrew } from "../src/recovery/crew";
+import { captureOwnedCrew } from "../src/recovery/worker";
 import { submitVerify } from "../src/courier";
 import { redeliver } from "../src/spool-drain-effects";
 import type { DrainContext } from "../src/spool-drain";
@@ -41,6 +42,21 @@ test("real private crew timeout cancels the unanswered canonical assignment with
     const id = "driver-20260907T000000Z-abc12345";
     writeFileSync(join(home, `payloads/${id}.md`), `---\nid: ${id}\nfrom: driver\nto: worker\nkind: order\npath: assignment.md\nreply: expected\nsender_instance: driver-instance\nrecipient_instance: worker-instance\n---\nUnanswered infrastructure job.\n`);
     const ctx = resolveContext(root);
+    const captured = captureOwnedCrew(ctx, "worker", "fixture/driver");
+    expect(captured.crew).toMatchObject({ handle: "worker", paneId: workerPane, windowId: workerWindow, instance: "worker-instance" });
+    expect(captured.error).toContain("accepted native identity");
+    const captureDoc = JSON.parse(readFileSync(registry, "utf8"));
+    for (const decision of ["unavailable", "quarantined", "accepted"]) {
+      const altered = structuredClone(captureDoc);
+      altered.seats.worker.harness_session_id = "native-worker";
+      altered.seats.worker.crew_identity_capture = { decision, observed_harness_session_id: "native-worker" };
+      writeFileSync(registry, JSON.stringify(altered));
+      const result = captureOwnedCrew(ctx, "worker", "fixture/driver");
+      expect(result.crew).toEqual(captured.crew);
+      if (decision === "accepted") expect(result.error).toBeUndefined();
+      else expect(result.error).toContain("accepted native identity");
+    }
+    writeFileSync(registry, JSON.stringify(captureDoc));
     const target: RecoveryTarget = { team: "fixture", handle: "driver", registry, pane: ownerPane, paneId: ownerPane,
       session: "fixture/driver", instance: "driver-instance", harness: "codex" };
     const identityId = "driver-20260907T000001Z-abc12345";
@@ -56,8 +72,7 @@ test("real private crew timeout cancels the unanswered canonical assignment with
     pollDoc.seats.driver.delivery = "pane"; writeFileSync(registry, JSON.stringify(pollDoc));
     const run = createRun(target, "aggressive", [], ownerPane, process.pid, process.env,
       { now: Date.now() - WALL_MS, processAlive: () => true, paneAlive: () => true });
-    const crew: OwnedCrew = { handle: "worker", paneId: workerPane, windowId: workerWindow, session: "fixture/driver",
-      instance: "worker-instance", serverEpoch: obs.observation.serverEpoch, assignments: [identityId, id] };
+    const crew: OwnedCrew = { ...captured.crew, assignments: [identityId, id] };
     // A later caller deadline cannot extend the run. The unanswered canonical job really reaches the timer.
     await expect(waitWorkerReply(ctx, run.id, id, "worker", "driver", Date.now() + 3600000)).rejects.toThrow("deadline");
     // A retained dead worker still needs identity checks before its window is

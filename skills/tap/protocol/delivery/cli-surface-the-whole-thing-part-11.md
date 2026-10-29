@@ -4,7 +4,7 @@
 
 <!-- tap-source id=source-0085 start=562543 end=567002 sha256=d266df56dc32288135de7a49389aa9b046437220b7109b62cff2d38f99de6f7e fragment=11/11 transform=wrapper_prefix -->
 <!-- TAP_SOURCE_BYTES_BEGIN -->
-Human `team` and `roster` target misses, and target misses on team attach, detach, down, up, and shutdown, may use the installed fzf team picker. On those action doors, an omitted `--only` or `--except` value picks parent seats; an ordinary following token is always an exact comma-list. The picker needs a foreground terminal and human output. JSON, redirected input/output, `TERM=dumb`, corrupt or absent machine authority, and conflicting selectors refuse with an explicit-target remedy. Choice alone never authorizes a changed row: action owners receive a finite positive parent cohort and revalidate selected instances under their existing mutation custody. Parent stop actions bind the foreground harness process generation; crew children follow only a proven parent lifetime. An already-armed late child may join that family, while an unbound child makes the stop partial rather than granting name-based authority. Preview precedes `[Y/n]`; `--yes` skips that confirmation only, and dry-run has no action effect. Existing supplied-list automation keeps its direct path.
+Human `team` and `roster` target misses, and target misses on team attach, detach, down, up, and shutdown, may use the installed fzf team picker. On those action doors, an omitted `--only` or `--except` value picks parent seats; an ordinary following token is always an exact comma-list. The picker needs a foreground terminal and human output. JSON, redirected input/output, `TERM=dumb`, corrupt or absent machine authority, and conflicting selectors refuse with an explicit-target remedy. Choice alone never authorizes a changed row: action owners receive a finite positive parent cohort and revalidate selected instances under their existing mutation custody. Parent stop actions bind the foreground harness process generation; crew selection follows durable owner handle and instance, while current process proofs guard stops. A changed crew row refuses instead of inheriting earlier consent. Preview precedes `[Y/n]`; `--yes` skips that confirmation only, and dry-run has no action effect. Existing supplied-list automation keeps its direct path.
 
 Checkpoint inventory `files` counts regular files only, matching existing archives: symlinks are copied verbatim, never followed, and excluded from the count.
 
@@ -16,15 +16,24 @@ both the command and its exact help spellings before sourcing `lib.sh`; therefor
 it cannot create, reconcile, or advise through a TAP bus as a side effect. It
 creates no pane, registry row, payload, receipt, or lifecycle record. Every call
 starts a fresh native harness invocation and supplies no resume or continuation
-flag. A second question that needs the first answer is no longer this rung: a
-follow-up conversation uses `tap crew add`, and a durable restartable address
-uses `tap session launch`.
+flag. Native conversations persist by default. After a successful answer, stderr
+reports the exact native id and, when its artifact is verified, one
+`tap crew add <harness> <name> --preset <preset> --resume <id> --cwd <original-cwd>`
+command (or `--model <model>` for a bare harness). The cwd is canonical and all
+values are shell-quoted. A missing launch model stays an explicit placeholder.
+Missing, malformed, conflicting or unverifiable capture gets a limitation and
+no adoption command. No newest-session inference is permitted. A follow-up uses
+that crew command; a durable lane uses `tap session launch`.
 
 The prompt is the literal UTF-8 contents of the required regular file passed to
 `-f`. Non-regular paths refuse before reading, so a pipe or device cannot block
-outside the invocation timeout. The final answer streams to stdout unchanged,
-harness diagnostics stay on inherited stderr, and the harness exit status passes
-through; an exit-0 harness that wrote nothing to stdout refuses as a TAP
+outside the invocation timeout. Claude and Hermes relay raw answer bytes. Codex
+captures its id from `thread.started` and relays its final-message file verbatim;
+Cursor and Antigravity extract their final result text; OpenCode relays native
+text events. JSON event metadata never enters answer stdout. Diagnostics and the
+receipt stay on stderr, also under `TAP_JSON=1`. Invocation-private capture files
+are removed on success, error, timeout and signal. The harness exit status passes
+through; an exit-0 harness that produced no answer bytes refuses as a TAP
 validation failure rather than passing as a silent success. TAP validation
 failures exit 1, a missing harness executable exits 127 while
 naming it, and the outer timeout exits 124 while naming the harness and duration.
@@ -35,12 +44,28 @@ the only timeout TAP enforces; no harness-native timeout flag is forwarded.
 
 | harness | executable | fresh headless argv (prompt placement) | explicit model | timeout |
 | --- | --- | --- | --- | --- |
-| Claude | `claude` | `--print --no-session-persistence` (stdin) | `--model <tier>` | 900s outer |
-| Codex | `codex` | `exec --ephemeral --color never -` (stdin) | `--model <tier>` before `-` | 900s outer |
-| OpenCode | `opencode` | `run -- <prompt>` | `--model <tier>` | 900s outer |
-| Cursor | `cursor-agent` | `--print --mode ask -- <prompt>` | `--model <tier>` | 900s outer |
-| Hermes | `hermes` | `--oneshot=<prompt>` | `--model <tier>` before `--oneshot=` | 900s outer |
-| Antigravity | `agy` | `--print=<prompt>` | `--model <tier>` before `--print=` | 900s outer |
+| Claude | `claude` | `--print --session-id <uuid>` (stdin) | `--model <tier>` | 900s outer |
+| Codex | `codex` | `exec --color never --json --output-last-message <private-file> -` (stdin) | `--model <tier>` before `-` | 900s outer |
+| OpenCode | `opencode` | `run --format json -- <prompt>` | `--model <tier>` | 900s outer |
+| Cursor | `cursor-agent` | `--print --mode ask --output-format json -- <prompt>` | `--model <tier>` | 900s outer |
+| Hermes | `hermes` | `--usage-file <private-file> --oneshot=<prompt>` | `--model <tier>` before `--oneshot=` | 900s outer |
+| Antigravity | `agy` | `--output-format json --print=<prompt>` | `--model <tier>` before `--print=` | 900s outer |
+
+`--ephemeral` opts out on Claude and Codex: Claude uses
+`--no-session-persistence` without an assigned id; Codex uses `--ephemeral`
+without JSON/final-file capture. Other harnesses refuse before execution because
+they expose no verified no-persistence switch. Presets cannot override the
+adapter's persistence, conversation-selection or capture flags. Persistent
+native history uses disk and can be selected by enabled memory jobs that use
+model quota. Third-party memory hooks may capture prompts regardless of native
+persistence; `TAP_STATELESS` prevents TAP binding, not those hooks.
+
+The native artifact check reads the child's effective store environment. Claude
+requires transcript metadata with the exact id and cwd; Codex resolves exact ids
+across its rollout store; OpenCode requires its exact session_v2 row and directory;
+Cursor uses its cwd-hashed chat store; Antigravity uses the exact conversation
+database; Hermes requires its exact sessions.id in the native state database.
+An unavailable reader is not proof of resumability.
 
 When `--model` is present its value is always forwarded through the named
 adapter flag; it is never silently replaced by a TAP default. When absent, the

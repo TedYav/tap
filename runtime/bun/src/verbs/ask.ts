@@ -1,5 +1,5 @@
 /** One fresh headless invocation; no TAP context, registration or lifecycle. */
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { constants as osConstants } from "node:os";
 import { ASK_HELP } from "../help";
 import { HARNESSES, configDirectory, isRegularFile } from "../launcher/catalog";
@@ -11,6 +11,7 @@ import { LauncherError } from "../launcher/types";
 import { facadeSecureRead } from "../slices/preset-api";
 import { INHERITED_IDENTITY_ENV } from "../session-store";
 import { pyFloatString } from "../spool-publication";
+import { AskConversation } from "../ask-conversation";
 
 // promptFlag: the harness takes the prompt as that flag's VALUE (agy's Go-style
 // --print, hermes's argparse --oneshot), so the prompt rides the joined
@@ -20,8 +21,8 @@ import { pyFloatString } from "../spool-publication";
 // adapter; no harness-native timeout flag is forwarded.
 type Adapter = { binary: string; args?: string[]; stdin?: boolean; suffix?: string[]; modelFirst?: boolean; promptFlag?: string; dashDash?: boolean };
 const ADAPTERS: Record<string, Adapter> = {
-  claude: { binary: "claude", args: ["--print", "--no-session-persistence"], stdin: true },
-  codex: { binary: "codex", args: ["exec", "--ephemeral", "--color", "never"], stdin: true, suffix: ["-"] },
+  claude: { binary: "claude", args: ["--print"], stdin: true },
+  codex: { binary: "codex", args: ["exec", "--color", "never"], stdin: true, suffix: ["-"] },
   opencode: { binary: "opencode", args: ["run"], dashDash: true },
   cursor: { binary: "cursor-agent", args: ["--print", "--mode", "ask"], dashDash: true },
   hermes: { binary: "hermes", modelFirst: true, promptFlag: "--oneshot" },
@@ -37,16 +38,19 @@ function refuse(env: NodeJS.ProcessEnv, errorClass: string, detail: string, acti
   return 1;
 }
 
-type Parsed = { harness: string; path?: string; body?: string; model?: string | null; extra: string[]; env: Record<string, string> };
+type Parsed = { harness: string; path?: string; body?: string; model?: string | null; preset?: string; ephemeral: boolean; extra: string[]; env: Record<string, string> };
 function parse(argv: string[], env: NodeJS.ProcessEnv, notices: Notices): Parsed | number {
   if (argv.length === 1 && ["help", "-h", "--help"].includes(argv[0]!)) { process.stdout.write(ASK_HELP); return 0; }
   const usage = () => fail('usage: tap ask <preset|harness> -f <prompt.md> | -m "..."');
   if (!argv.length) return usage();
   let harness = "", path: string | undefined, body: string | undefined, model: string | undefined, preset: string | undefined;
-  let positional = false;
+  let positional = false, ephemeral = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (["-f", "-m", "--model", "--preset"].includes(arg) || arg.startsWith("--preset=")) {
+    if (arg === "--ephemeral") {
+      if (ephemeral) return fail("--ephemeral may be passed only once");
+      ephemeral = true;
+    } else if (["-f", "-m", "--model", "--preset"].includes(arg) || arg.startsWith("--preset=")) {
       const key = arg.startsWith("--preset=") ? "--preset" : arg;
       const previous = key === "-f" ? path : key === "-m" ? body : key === "--model" ? model : preset;
       if (previous !== undefined) return fail(`${key} may be passed only once`);
@@ -90,15 +94,18 @@ function parse(argv: string[], env: NodeJS.ProcessEnv, notices: Notices): Parsed
     if (model !== undefined) return refuse(env, "preset_not_composable", `preset '${preset}' is complete; --model cannot override it`, "drop the preset and pass tuning by flag, or drop --model");
     if (explicit && isHarness(harness) && harness !== resolved.harness) return refuse(env, "preset_harness_mismatch", `preset '${preset}' uses harness '${resolved.harness}', not requested harness '${harness}'`, `pass '${resolved.harness}' as the harness, or choose a preset whose harness is '${harness}'`);
     const adapter = ADAPTERS[resolved.harness]!;
-    const owned = new Set([...(adapter.args ?? []).filter(a => a.startsWith("-")), "--model", ...(adapter.promptFlag ? [adapter.promptFlag] : [])]);
+    const owned = new Set([...(adapter.args ?? []).filter(a => a.startsWith("-")), "--model", ...(adapter.promptFlag ? [adapter.promptFlag] : []),
+      "--ephemeral", "--no-session-persistence", "--session-id", "--resume", "--continue", "--conversation", "--session",
+      "--output-format", "--format", "--json", "--output-last-message", "--usage-file"]);
     const clash = resolved.param_keys.map(key => `--${key}`).filter(key => owned.has(key)).sort();
     if (clash.length) return refuse(env, "preset_adapter_conflict", `preset '${preset}' sets ${clash.join(" and ")}, which tap ask already fixes for harness '${resolved.harness}'`, `drop ${clash[0]} from the preset, or use tap crew add / tap session launch, which do not fix it`);
     harness = resolved.harness;
   }
   if (!isHarness(harness)) return fail(`unknown harness '${harness}' (choose: ${harnessList})`);
+  if (ephemeral && harness !== "claude" && harness !== "codex") return fail(`${harness} does not provide a verified no-persistence mode; --ephemeral started nothing`);
   if (path !== undefined && body !== undefined) return fail("-f and -m are alternatives; pass exactly one");
   if (path === undefined && body === undefined) return fail('-f <prompt.md> or -m "..." is required');
-  return { harness, path, body, model: resolved ? resolved.model : model, extra: resolved?.harness_passthrough ?? [], env: resolved?.env ?? {} };
+  return { harness, path, body, model: resolved ? resolved.model : model, preset, ephemeral, extra: resolved?.harness_passthrough ?? [], env: resolved?.env ?? {} };
 }
 
 function readPrompt(path: string): string | number {
@@ -176,10 +183,12 @@ async function invoke(parsed: Parsed, prompt: string, env: NodeJS.ProcessEnv, no
   const timeout = raw === undefined ? 900 : pyFloatString(raw);
   if (timeout === null || !Number.isFinite(timeout) || timeout <= 0) return fail(`TAP_ASK_TIMEOUT_SECONDS must be positive, got '${raw}'`);
   const duration = askDuration(timeout), model = modelArgv(parsed.harness, parsed.model);
+  const capture = new AskConversation(parsed.harness, parsed.ephemeral, bytes => { process.stdout.write(bytes); });
   const tail = adapter.promptFlag ? [`${adapter.promptFlag}=${prompt}`] : adapter.dashDash ? ["--", prompt] : [prompt];
   const args = [executable, ...(adapter.modelFirst ? model : []), ...(adapter.args ?? []),
-    ...(adapter.modelFirst ? [] : model), ...parsed.extra, ...(adapter.stdin ? adapter.suffix ?? [] : tail)];
-  if (args.some(arg => arg.includes("\0"))) return fail("embedded null byte");
+    ...(parsed.ephemeral ? [parsed.harness === "claude" ? "--no-session-persistence" : "--ephemeral"] : []),
+    ...(adapter.modelFirst ? [] : model), ...parsed.extra, ...capture.args, ...(adapter.stdin ? adapter.suffix ?? [] : tail)];
+  if (args.some(arg => arg.includes("\0"))) { capture.close(); return fail("embedded null byte"); }
   const childEnv = { ...env };
   // A headless one-shot owns no seat: the invoker's harness identity and tmux pane pins must not
   // reach it (a preset may still set one explicitly below).
@@ -206,14 +215,12 @@ async function invoke(parsed: Parsed, prompt: string, env: NodeJS.ProcessEnv, no
     const stream = child.stdout;
     if (!(stream instanceof ReadableStream)) return fail(`could not capture ${parsed.harness} stdout`);
     const reader = stream.getReader();
-    let relayed = 0;
     const relay = (async () => {
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          relayed += value.byteLength;
-          process.stdout.write(value);
+          capture.feed(value);
         }
       } catch { /* a failing tap stdout ends the relay; already-counted bytes stand */ }
     })();
@@ -242,13 +249,16 @@ async function invoke(parsed: Parsed, prompt: string, env: NodeJS.ProcessEnv, no
       return result === "timeout" ? fail(`${parsed.harness} timed out after ${duration}s`, 124) : 128 + result.signal;
     }
     await settle();
+    const relayed = capture.finish();
     // CPython exposes an independently signalled child as SystemExit(-signal).
     if (child.signalCode) return (256 - osConstants.signals[child.signalCode]) & 255;
     if (result.status === 0 && relayed === 0) return fail(`${parsed.harness} produced no output (exit 0)`);
+    if (result.status === 0) process.stderr.write(capture.receipt(realpathSync(process.cwd()), childEnv, parsed.preset, parsed.model));
     return result.status;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     process.off("SIGINT", onInt); process.off("SIGTERM", onTerm);
+    capture.close();
   }
 }
 

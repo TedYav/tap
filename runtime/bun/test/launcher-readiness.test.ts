@@ -6,6 +6,81 @@ import { bindFingerprintOf, bindBaselineAfterPlaceholderBind, sessionBindSignal 
 
 const first:PaneFacts={pane:"fixture/seat:0.0",pane_id:"%1",server_epoch:"srv:1:1",pane_pid:2002,command:"codex",dead:false,path:"/fixture"};
 const makeFacts = (): PaneFacts => ({ ...first });
+
+test("a launch observation skips the real Codex update menu once and verifies painted empty input", async () => {
+  const root = mkdtempSync(join(process.env.TAP_INDEX_HOME!, "update-skip-"));
+  const before = readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt"), "utf8");
+  const after = readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/idle.ansi"), "utf8");
+  writeFileSync(join(root, "before"), before); writeFileSync(join(root, "after"), after);
+  writeFileSync(join(root, "tmux"), `#!/bin/sh
+case "$*" in
+  *capture-pane*) if [ -e "$UPDATE_ROOT/skipped" ]; then cat "$UPDATE_ROOT/after"; else cat "$UPDATE_ROOT/before"; fi ;;
+  *) printf 'tap\\n' ;;
+esac
+`, { mode: 0o755 });
+  let keys = 0;
+  const events: unknown[] = [];
+  const observe = memoizedStartupObservation({ ...process.env, PATH: `${root}:${process.env.PATH}`, UPDATE_ROOT: root }, undefined, true, 5000, {
+    authorize: async () => true,
+    escape: async () => { keys++; writeFileSync(join(root, "skipped"), ""); return true; },
+    record: (event: unknown) => { events.push(event); },
+  });
+  const observed = await observe(makeFacts());
+  expect(codexComposerIdle(observed.screen, observed.title)).toBe(true);
+  expect(keys).toBe(1);
+  expect(events).toContainEqual(expect.objectContaining({ outcome: "skipped", current: "0.164.0", available: "0.165.0" }));
+  // The same operation cannot send another Escape when the dialog remains/reappears.
+  writeFileSync(join(root, "after"), before);
+  const repeated = await observe(makeFacts());
+  expect(repeated.updateSkipFailure).toContain("already attempted");
+  expect(keys).toBe(1);
+});
+
+for (const afterText of ["still-menu", "› Ask Codex to do anything\n", "› a human draft\n"]) {
+  test(`update dismissal stops after one key without a painted empty composer: ${afterText.trim()}`, async () => {
+    const root = mkdtempSync(join(process.env.TAP_INDEX_HOME!, "skip-held-"));
+    const menu = readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt"), "utf8");
+    writeFileSync(join(root, "frame"), menu);
+    writeFileSync(join(root, "tmux"), '#!/bin/sh\ncase "$*" in *capture-pane*) cat "$UPDATE_FRAME" ;; *) echo tap ;; esac\n', { mode: 0o755 });
+    let keys = 0;
+    const observe = memoizedStartupObservation({ ...process.env, PATH: `${root}:${process.env.PATH}`, UPDATE_FRAME: join(root, "frame") }, undefined, true, 5000, {
+      authorize: async () => true,
+      escape: async () => { keys++; writeFileSync(join(root, "frame"), afterText === "still-menu" ? menu : afterText); return true; },
+      record: () => {},
+    });
+    expect((await observe(makeFacts())).updateSkipFailure).toContain("empty composer");
+    await observe(makeFacts());
+    expect(keys).toBe(1);
+  });
+}
+
+test("a lost startup owner cannot send Escape into the update menu", async () => {
+  const root = mkdtempSync(join(process.env.TAP_INDEX_HOME!, "skip-owner-"));
+  writeFileSync(join(root, "frame"), readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt")));
+  writeFileSync(join(root, "tmux"), '#!/bin/sh\ncase "$*" in *capture-pane*) cat "$UPDATE_FRAME" ;; *) echo tap ;; esac\n', { mode: 0o755 });
+  let keys = 0;
+  const observe = memoizedStartupObservation({ ...process.env, PATH: `${root}:${process.env.PATH}`, UPDATE_FRAME: join(root, "frame") }, undefined, true, 5000, {
+    authorize: async () => false, escape: async () => { keys++; return true; }, record: () => {},
+  });
+  expect((await observe(makeFacts())).updateSkipFailure).toContain("ownership");
+  expect(keys).toBe(0);
+});
+
+test.each(["before-key", "after-key"])("cancellation %s halts update recovery and records possible effects", async stage => {
+  const root = mkdtempSync(join(process.env.TAP_INDEX_HOME!, "skip-cancel-"));
+  writeFileSync(join(root, "frame"), readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt")));
+  writeFileSync(join(root, "tmux"), '#!/bin/sh\ncase "$*" in *capture-pane*) cat "$UPDATE_FRAME" ;; *) echo tap ;; esac\n', { mode: 0o755 });
+  const controller = new AbortController(), events: string[] = [];
+  let keys = 0;
+  const observe = memoizedStartupObservation({ ...process.env, PATH: `${root}:${process.env.PATH}`, UPDATE_FRAME: join(root, "frame") }, controller.signal, true, 5000, {
+    authorize: async () => { if (stage === "before-key") controller.abort(new Error("cancelled")); return true; },
+    escape: async () => { keys++; controller.abort(new Error("cancelled")); return true; },
+    record: event => { events.push(event.outcome); },
+  });
+  await expect(observe(makeFacts())).rejects.toThrow("cancelled");
+  expect(keys).toBe(stage === "before-key" ? 0 : 1);
+  expect(events).toEqual(stage === "before-key" ? [] : ["intent", "unverified"]);
+});
 test("only retained dead panes may omit their process id", () => {
   expect(parsePaneFacts("fixture/seat:0.0\t%1\t\t1:1\t1\t\t/fixture")).toMatchObject({ pane_id: "%1", dead: true, pane_pid: 0 });
   expect(parsePaneFacts("fixture/seat:0.0\t%1\tclaude\t1:1\t0\t\t/fixture")).toBeNull();

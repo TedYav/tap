@@ -18,7 +18,7 @@ Use installed `tap`, `bash scripts/tap.sh` (same grammar), or run ./install.sh o
 
 ## Need another seat? `tap presets` lists launch options
   tap ask <preset|harness> -f <p.md>          one-shot, no pane or handle
-  tap crew add <preset|harness> [name]        consult here; dies with the pane
+  tap crew add <preset|harness> [name]        continuing consult; retains its conversation
   tap session launch <preset|harness> [name]  durable seat; bare name defaults to the preset
   Before UNRELATED work: settle the lane, return any Writer Token, `tap clear <seat> -m "fresh start"`, then send the assignment by bus.
 

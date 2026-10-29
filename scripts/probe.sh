@@ -9,8 +9,8 @@
 # The file runs inside the same boundary as `smoke-all.sh --only`: a clean
 # environment (env -i admission), private HOME, TAP state pins and tmux
 # namespace, the tmux guard, recorded-process reaping and the post-run
-# operator-state checks. Inherited HOME, TAP_HOME, TMUX, CLAUDE_CONFIG_DIR and
-# session-id variables never reach the probe.
+# operator-state checks. Inherited HOME, TAP_HOME, TMUX, CLAUDE_CONFIG_DIR,
+# session-id variables and credentials never reach the probe.
 #
 # The probe's cwd is a fresh scratch directory outside every checkout, removed
 # with the runner's own roots. The reviewed checkout is TAP_PROBE_CHECKOUT.

@@ -30,11 +30,13 @@ const FLAGS: Record<string, string[]> = {
   "team up": ["--only", "--except", "--dry-run", "--json", "--yes"],
   "team shutdown": ["--only", "--except", "--dry-run", "--json", "--yes"],
   "team out": ["--only", "--except", "--dry-run", "--json", "--yes", "--kill", "--hard"],
+  "crew resume": ["--owner", "--dry-run", "--json"],
+  "crew relaunch": ["--resume"],
   "session resume": ["--all", "--dry-run", "--json"],
   "session restart": ["--force", "--dry-run", "--json"],
   "session fork": ["--dry-run", "--json"],
-  send: ["--team", "--from", "--json", "--ask", "--urgent", "-f"],
-  assign: ["--team", "--from", "--json", "-f"],
+  send: ["--team", "--from", "--reply-to", "--json", "--ask", "--urgent", "-f"],
+  assign: ["--team", "--from", "--reply-to", "--json", "-f"],
   reply: ["--team", "--by", "-f"],
   out: ["--team", "--hard", "--kill", "--json"],
   shutdown: ["--team", "--json"],
@@ -43,6 +45,7 @@ const FLAGS: Record<string, string[]> = {
   poll: ["--team", "--json", "--quiet"],
   outstanding: ["--team", "--json", "--stale"],
   peek: ["--pane", "--json"],
+  operate: ["--preset", "--team", "--json", "--approve", "--reply-file", "--run", "--observe", "--key", "--sample", "--reason-file", "--stop"],
   nudge: ["--to", "--pane", "--message", "--no-interrupt", "--dry-run", "--harness", "--team", "--active-within", "--yes"],
   pick: ["--pane", "--list", "--json"],
   "keybinding install": ["--key", "--tap", "--dry-run", "--json"],
@@ -54,10 +57,10 @@ const FLAGS: Record<string, string[]> = {
 };
 const TEAM_VALUE = new Set(["--team"]);
 const LIST_VALUE = new Set(["--only", "--except"]);
-const ACTOR_VALUE = new Set(["--from", "--by", "--handle", "--to"]);
-const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--ref", "--effort", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "--harness", "--active-within", "-m", "--tap", "--key"]);
-const TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "peek", "clear", "poll", "outstanding", "send", "assign", "nudge"]);
-const QUALIFIED_TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "clear", "send", "assign", "nudge"]);
+const ACTOR_VALUE = new Set(["--from", "--by", "--handle", "--to", "--reply-to", "--owner"]);
+const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--ref", "--effort", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "--harness", "--active-within", "-m", "--tap", "--key", "--approve", "--reply-file", "--run", "--sample", "--reason-file"]);
+const TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "peek", "clear", "poll", "outstanding", "send", "assign", "nudge", "operate"]);
+const QUALIFIED_TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "clear", "send", "assign", "nudge", "operate"]);
 const FILE_SENTINEL = "\x1fFILES";
 
 function row(value: unknown): value is Seat { return typeof value === "object" && value !== null && !Array.isArray(value); }
@@ -106,6 +109,7 @@ function currentTeam(all: TeamRows[], words: string[], env: NodeJS.ProcessEnv, c
 }
 
 function seatEligible(command: string, seat: Seat, flag: string): boolean {
+  if (command.startsWith("crew ")) return flag === "--owner" ? seat.crew !== true && seat.crew !== 1 : seat.crew === true || seat.crew === 1;
   if (LIST_VALUE.has(flag)) return seat.crew !== true;
   if (command === "up" || command === "session resume") return seatIsRelaunchable(seat, true);
   if (command === "session fork") return FORKABLE_HARNESSES.includes(String(seat.harness));
@@ -123,16 +127,19 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   if (before[0]?.split("/").at(-1) === "tap") before.shift();
   else if (before[0] === "tap") before.shift();
   const verb = before[0] ?? "";
-  const sub = ["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? before[1] ?? "" : "";
+  const sub = ["team", "session", "crew", "keybinding", "tmux-defaults"].includes(verb) ? before[1] ?? "" : "";
   const command = sub ? `${verb} ${sub}` : verb;
+  const crewTarget = verb === "crew" && ["resume", "relaunch", "shutdown", "remove"].includes(sub);
   const previous = before.at(-1) ?? "";
   if (previous === "-f" && (verb === "send" || verb === "assign" || verb === "reply" || verb === "calibrate")) return [{ value: FILE_SENTINEL, description: "file position" }];
+  if (verb === "operate" && ["--reply-file", "--reason-file"].includes(previous)) return [{ value: FILE_SENTINEL, description: "file position" }];
   if (previous === "--tap" && verb === "keybinding") return [{ value: FILE_SENTINEL, description: "file position" }];
   const result: Candidate[] = [];
   const add = (value: string, description: string) => { if (value.startsWith(prefix)) result.push({ value, description }); };
   if (!verb) for (const name of TOP) add(name, "command");
   else if (verb === "team" && !sub && !prefix.startsWith("-")) for (const name of TEAM) add(name, "team command");
   else if (verb === "session" && !sub && !prefix.startsWith("-")) for (const name of SESSION) add(name, "session command");
+  else if (verb === "crew" && !sub && !prefix.startsWith("-")) for (const name of HELP_COMPOSITES.crew ?? []) add(name, "crew command");
   else if ((verb === "keybinding" || verb === "tmux-defaults") && before.length === 1 && !prefix.startsWith("-")) for (const name of KEYBINDING) add(name, `${verb} command`);
   const optionalSelector = LIST_VALUE.has(previous) && prefix.startsWith("-");
   const flag = !optionalSelector && (previous === "--team" || previous === "--only" || previous === "--except" || ACTOR_VALUE.has(previous)) ? previous : "";
@@ -143,19 +150,19 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
     if (LIST_VALUE.has(before[i]!) && before[i + 1]?.startsWith("-")) continue;
     consumed.add(++i);
   }
-  const operands = before.slice(["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)
-    .filter((word, index) => !word.startsWith("-") && !consumed.has(index + (["team", "session", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)));
+  const operands = before.slice(["team", "session", "crew", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)
+    .filter((word, index) => !word.startsWith("-") && !consumed.has(index + (["team", "session", "crew", "keybinding", "tmux-defaults"].includes(verb) ? 2 : 1)));
   const targetPosition = operands.length === 0 && !before.includes("--next") && !before.includes("--interactive") && !before.includes("-i");
   const teamOperandCommand = verb === "team" && ["roster", "list", "attach", "detach", "down", "up", "shutdown", "out"].includes(sub);
   const omittedSelector = before.some((word, i) => LIST_VALUE.has(word) && (!before[i + 1] || before[i + 1]!.startsWith("-")));
   const teamPosition = targetPosition && !omittedSelector && (verb === "teams" || teamOperandCommand);
-  const needsTeams = flag === "--team" || flag === "--only" || flag === "--except" || ACTOR_VALUE.has(flag) || prefix.includes("/") || (TARGET_VERBS.has(verb) && targetPosition) || (verb === "session" && ["resume", "restart", "fork"].includes(sub) && targetPosition) || teamPosition;
+  const needsTeams = flag === "--team" || flag === "--only" || flag === "--except" || ACTOR_VALUE.has(flag) || prefix.includes("/") || ((TARGET_VERBS.has(verb) || crewTarget) && targetPosition) || (verb === "session" && ["resume", "restart", "fork"].includes(sub) && targetPosition) || teamPosition;
   const all = needsTeams ? teams(env) : [];
   if (flag === "--team") for (const team of all) add(team.name, "enrolled team");
   else if (teamPosition && !flag && !prefix.startsWith("-")) for (const team of all) add(team.name, "enrolled team");
-  else if (flag === "--only" || flag === "--except" || ACTOR_VALUE.has(flag) || (TARGET_VERBS.has(verb) && targetPosition) || (verb === "session" && ["resume", "restart", "fork"].includes(sub) && targetPosition)) {
+  else if (flag === "--only" || flag === "--except" || ACTOR_VALUE.has(flag) || ((TARGET_VERBS.has(verb) || crewTarget) && targetPosition) || (verb === "session" && ["resume", "restart", "fork"].includes(sub) && targetPosition)) {
     const targetFlag = flag || command;
-    const canQualify = !flag && QUALIFIED_TARGET_VERBS.has(verb);
+    const canQualify = flag === "--reply-to" || flag === "--owner" || (!flag && (QUALIFIED_TARGET_VERBS.has(verb) || crewTarget));
     const qualified = canQualify && prefix.includes("/");
     if (prefix.includes("/") && !canQualify) return result;
     const slash = prefix.indexOf("/");
@@ -175,7 +182,7 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
       }
     }
   }
-  if (prefix.startsWith("-") && (!TAKES_VALUE.has(previous) || optionalSelector)) for (const option of FLAGS[command] ?? []) if (!before.includes(option)) add(option, "option");
+  if (prefix.startsWith("-") && (!TAKES_VALUE.has(previous) || optionalSelector)) for (const option of FLAGS[command] ?? []) if (option === "--owner" || !before.includes(option)) add(option, "option");
   return result.filter((candidate, i, arr) => arr.findIndex(x => x.value === candidate.value) === i);
 }
 

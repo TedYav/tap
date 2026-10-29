@@ -40,6 +40,16 @@ function fixture(text?: string, mode = 0o600): string {
 
 const pathOf = (dir: string) => join(dir, "tap/config.toml");
 
+test("operator opt-in and age defaults are visible without creating a config", () => {
+  const dir = fixture();
+  for (const [key, value] of [["recovery.operator", "off"], ["recovery.operator_after", "20m"]]) {
+    const result = run(["get", key!, "--json"], dir);
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ key, value, source: "default" });
+  }
+  expect(existsSync(pathOf(dir))).toBe(false);
+});
+
 test("notification argv round-trips through the locked config editor without touching neighboring values", () => {
   const original = '# keep\n[notifications]\nnotifier = "system" # selected\ncommand = ["old", "#literal"] # argv\n\n[other]\nvalue = "unchanged"\n';
   const dir = fixture(original);

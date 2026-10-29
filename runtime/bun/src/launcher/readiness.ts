@@ -7,6 +7,7 @@ import { serverEpochFromRaw } from "../tmux";
 import { launchTmux } from "./process";
 import { LauncherError } from "./types";
 import { InvocationError } from "./invocation";
+import { codexUpdateDismissed, codexUpdatePrompt, type CodexUpdatePrompt } from "../codex-update";
 
 export class PaneObservationTimeout extends LauncherError {
   constructor(target: string) {
@@ -83,33 +84,69 @@ export interface StartupObservation {
   /** null when the title read itself failed: no signal may rest on a title
    * this observation could not take. */
   title: string | null;
+  updateSkipFailure?: string;
 }
-export function memoizedStartupObservation(env: NodeJS.ProcessEnv, signal?: AbortSignal, nativeSocket = true, timeoutMs = 5000): (facts: PaneFacts) => Promise<StartupObservation> {
+export interface UpdateSkipEvent extends CodexUpdatePrompt {
+  outcome: "intent" | "skipped" | "unverified" | "refused";
+  pane: string;
+}
+export interface StartupUpdateSkip {
+  authorize(facts: PaneFacts): Promise<boolean>;
+  escape(facts: PaneFacts): Promise<boolean>;
+  record(event: UpdateSkipEvent): void;
+}
+export function memoizedStartupObservation(env: NodeJS.ProcessEnv, signal?: AbortSignal, nativeSocket = true, timeoutMs = 5000,
+  skip?: StartupUpdateSkip): (facts: PaneFacts) => Promise<StartupObservation> {
   const cache = new WeakMap<PaneFacts, Promise<StartupObservation>>();
+  let skipAttempted = false;
+  const capture = async (facts: PaneFacts): Promise<StartupObservation> => {
+    let screen: string | null = null, title: string | null = null;
+    try {
+      const result = await launchTmux(["capture-pane", "-p", "-e", "-J", "-t", facts.pane_id], env, signal, nativeSocket, timeoutMs);
+      signal?.throwIfAborted();
+      if (result.code === 124) throw new PaneObservationTimeout(facts.pane_id);
+      if (result.code === 0) screen = result.stdout;
+      const titled = await launchTmux(["display-message", "-p", "-t", facts.pane_id, "#{pane_title}"], env, signal, nativeSocket, timeoutMs);
+      signal?.throwIfAborted();
+      if (titled.code === 124) throw new PaneObservationTimeout(facts.pane_id);
+      if (titled.code === 0) title = titled.stdout.split("\n", 1)[0] ?? "";
+    } catch (error) {
+      signal?.throwIfAborted();
+      if ((error as NodeJS.ErrnoException).code) return { screen: null, title: null };
+      throw error;
+    }
+    return { screen, title };
+  };
   return facts => {
     let observed = cache.get(facts);
     if (observed === undefined) {
       observed = (async () => {
-        let screen: string | null = null, title: string | null = null;
+        const before = await capture(facts);
+        if (!skip || before.screen === null || detectAgentState("codex", before.screen).reason !== "codex-update-available") return before;
+        const prompt = codexUpdatePrompt(before.screen);
+        const failed = (reason: string): StartupObservation => ({ ...before, updateSkipFailure: `codex-update-skip: ${reason}; attach and inspect before continuing` });
+        if (!prompt) return failed("update versions are unreadable");
+        if (skipAttempted) return failed("Skip was already attempted in this launch");
+        if (!await skip.authorize(facts)) { skip.record({ ...prompt, pane: facts.pane_id, outcome: "refused" }); return failed("launch ownership changed or is unobservable"); }
+        signal?.throwIfAborted();
+        skipAttempted = true;
         try {
-          // -e keeps SGR sequences: the idle classifier corroborates the dim
-          // placeholder against them; consumers that want plain text strip.
-          const result = await launchTmux(["capture-pane", "-p", "-e", "-J", "-t", facts.pane_id], env, signal, nativeSocket, timeoutMs);
+          skip.record({ ...prompt, pane: facts.pane_id, outcome: "intent" });
+          if (!await skip.escape(facts)) { skip.record({ ...prompt, pane: facts.pane_id, outcome: "unverified" }); return failed("Escape outcome is unverified"); }
+          await Bun.sleep(100);
           signal?.throwIfAborted();
-          if (result.code === 124) throw new PaneObservationTimeout(facts.pane_id);
-          if (result.code === 0) screen = result.stdout;
-          const titled = await launchTmux(["display-message", "-p", "-t", facts.pane_id, "#{pane_title}"], env, signal, nativeSocket, timeoutMs);
-          // A title read that times out ends the observation with the same
-          // timeout the capture raises, instead of repeating a second
-          // full-length read back to back.
-          if (titled.code === 124) throw new PaneObservationTimeout(facts.pane_id);
-          if (titled.code === 0) title = titled.stdout.split("\n", 1)[0] ?? "";
+          const after = await capture(facts);
+          if (!await skip.authorize(facts) || !codexUpdateDismissed(after.screen, after.title)) {
+            skip.record({ ...prompt, pane: facts.pane_id, outcome: "unverified" });
+            return failed("Escape sent; an empty composer on the same pane is unverified");
+          }
+          skip.record({ ...prompt, pane: facts.pane_id, outcome: "skipped" });
+          return after;
         } catch (error) {
+          skip.record({ ...prompt, pane: facts.pane_id, outcome: "unverified" });
           signal?.throwIfAborted();
-          if ((error as NodeJS.ErrnoException).code) return { screen: null, title: null };
-          throw error;
+          return failed(`Escape sent or possible; observation failed (${error instanceof Error ? error.message : String(error)})`);
         }
-        return { screen, title };
       })();
       cache.set(facts, observed);
     }

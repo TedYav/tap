@@ -77,6 +77,10 @@ try {
     process.env.TAP_TMUX_SOCKET_PATH = join(root, "wrong-socket"); process.env.TMUX_PANE = "%99";
     const ctx = context.resolveContext();
     console.log(JSON.stringify({ team: ctx.team, root: ctx.root, pin: process.env.TAP_HOME, socket: process.env.TAP_TMUX_SOCKET_PATH }));
+  } else if (mode === "crew-owner") {
+    const { cmdCrewShutdown } = await import("../../src/crew-lifecycle");
+    const code = cmdCrewShutdown([], join(import.meta.dir, "../../../../skills/tap/scripts"));
+    console.log(JSON.stringify({ code, unchanged: originalRegistry === readFileSync(registry, "utf8"), mutations }));
   } else if (mode === "declared") {
     const body = join(root, "message.txt"); writeFileSync(body, "bounded test message");
     const { cmdSend } = await import("../../src/verbs/send");

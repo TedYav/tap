@@ -5,7 +5,7 @@ import { makeRefresh, reexecImage } from "./watch-run";
 // Checked against the import closure by spool-waiter.test.ts.
 export const WAITER_SOURCES: readonly string[] = [
   "agent-state.ts", "agy-survey.ts", "bus-archive-index.ts", "bus-maintenance-trigger.ts", "bus.ts", "bushome.ts", "clear-fence.ts",
-  "config-error.ts", "config-file.ts", "context.ts", "courier-argv.ts", "courier-contract.ts", "courier.ts",
+  "codex-update.ts", "config-error.ts", "config-file.ts", "context.ts", "courier-argv.ts", "courier-contract.ts", "courier.ts",
   "debug-capture.ts", "deliver.ts", "delivery-attempt.ts", "delivery-clock.ts", "delivery-custody.ts",
   "delivery-permissions.ts", "digest-index.ts", "digest-items.ts", "digest-window.ts", "envelope.ts",
   "events.ts", "existing-sentinel.ts", "forwarding.ts", "fsatomic.ts", "git-root.ts", "harness-families.ts",
@@ -13,7 +13,7 @@ export const WAITER_SOURCES: readonly string[] = [
   "lock-attribution.ts", "lossless-json.ts", "native-error.ts", "notice-submit.ts", "notice.ts",
   "observe-gather.ts", "observe.ts", "opencode-composer.ts", "opencode-service.ts", "opencode-shared-seat.ts", "opencode-shared.ts", "opencode-store.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts",
   "pane/draft.ts", "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "proc-row.ts", "process-ancestry.ts", "pyint.ts",
-  "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
+  "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/operator-admission.ts", "recovery/operator-record.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
   "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "retry.ts", "scripts-dir.ts", "selector.ts",
   "sentinel-preview.ts", "sentinel.ts", "slices/control-payload.ts", "slices/delivery-disposition.ts",
   "slices/digest-outcome.ts", "slices/redelivery-eligibility.ts", "slices/result-pairs.ts",

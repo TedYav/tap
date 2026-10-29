@@ -168,8 +168,9 @@ registry_path, raw, healthy_session, label = sys.argv[1:5]
 receipt = json.loads(raw)
 trimmed = {item["handle"]: item["reason"] for item in receipt["trimmed"]}
 kept = {item["handle"]: item["reason"] for item in receipt["kept"]}
-assert trimmed == {"crew-corpse": "crew_collected:reason=server_restarted parent="}, (label, receipt)
+assert trimmed == {}, (label, receipt)
 assert kept == {
+    "crew-corpse": "crew_retained:server_restarted",
     "dead": "offline:server_restarted",
     "healthy": "rebound:server_revived",
     "missing": "offline:server_restarted",
@@ -178,7 +179,7 @@ assert kept == {
     "retired": "no-pane",
 }, (label, receipt)
 agents = json.load(open(registry_path))["seats"]
-assert set(agents) == {"healthy", "missing", "dead", "rebooted", "repair", "retired"}, (label, agents)
+assert set(agents) == {"healthy", "missing", "dead", "rebooted", "repair", "retired", "crew-corpse"}, (label, agents)
 row = agents["healthy"]
 assert row["status"] == "active" and row.get("status_reason", "") == "", (label, row)
 assert row["session"] == healthy_session and row["pane"].startswith(healthy_session + ":"), (label, row)

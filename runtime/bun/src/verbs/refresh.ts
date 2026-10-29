@@ -61,6 +61,7 @@ import { pendingExpired, pendingGrace } from "../pending-reservation";
 import { observe, type RegistryRow } from "./team";
 import type { ObserveEngine } from "../observe";
 import { appendRegistryEventOrWarn, registryEventsPath } from "../events";
+import { fenceCrewLifetime } from "../crew-lifetime";
 import { verbArgv } from "../courier-argv";
 
 const US = "\x1f";
@@ -476,13 +477,6 @@ async function runRefresh(
     }
   }
 
-  const parentBySession = new Map<string, string>();
-  for (const row of rows) {
-    if (!row.crew && row.session && !parentBySession.has(row.session)) {
-      parentBySession.set(row.session, row.handle);
-    }
-  }
-
   // ONE snapshot for the run, taken when the FIRST row actually needs it.
   //
   // Still one call, so every row is classified against the same observation —
@@ -545,6 +539,21 @@ async function runRefresh(
       skipped.push({ handle: row.handle, reason: "poll-mode", pane: row.pane });
       continue;
     }
+    // Retained crews are not expiring launch reservations, even after an interrupted resume.
+    if (row.crew) {
+      const [state, reason] = observation(row.handle);
+      if (!options.dryRun && state === "active") {
+        try { await fenceCrewLifetime(ctx, row.handle); }
+        catch (error) {
+          if (!(error instanceof TapError)) throw error;
+          kept.push({ handle: row.handle, reason: "crew_retained:legacy_fence_refused", pane: row.pane });
+          process.stderr.write(`tap team refresh: crew '${row.handle}': legacy helper transition refused: ${error.detail}; next: ${error.action}\n`);
+          continue;
+        }
+      }
+      kept.push({ handle: row.handle, reason: state === "active" ? "active" : `crew_retained:${reason || state}`, pane: row.pane });
+      continue;
+    }
     const pendingish = row.status === "pending"
       || (row.status === "active" && row.statusReason === "launching" && !!row.launchId);
     if (pendingish) {
@@ -560,43 +569,6 @@ async function runRefresh(
         } else {
           kept.push({ handle: row.handle, reason: base, pane: row.pane });
         }
-      }
-      continue;
-    }
-    // Crew collection: a crew row is residue when its pane is gone. The
-    // session-keyed predicates above are wrong for crew because crew do not own
-    // their session — the parent teammate does. Under --hard, crew rows skip the
-    // session check and fall through here, making plain and --hard identical for
-    // crew by construction.
-    if (row.crew) {
-      const crewParent = parentBySession.get(row.session) ?? "";
-      const crewTrim = (collectReason: string) => {
-        const reason = `crew_collected:reason=${collectReason} parent=${crewParent}`;
-        trimmed.push({ handle: row.handle, reason, pane: row.pane,
-          crew: true, collectReason, parent: crewParent });
-        candidates.push(`${row.handle}${US}${row.fingerprint}`);
-      };
-      if (row.status === "suspended" || row.status === "offline") {
-        const trimReason = row.statusReason === "server_restarted" ? "server_restarted" : "pane_dead";
-        crewTrim(trimReason);
-        continue;
-      }
-      if (!row.pane && !row.paneId) {
-        crewTrim("pane_dead");
-        continue;
-      }
-      const [crewState, crewReason] = observation(row.handle);
-      if (crewState === "active") {
-        kept.push({ handle: row.handle, reason: "active", pane: row.pane });
-      } else if (crewState === "gone") {
-        crewTrim("pane_dead");
-      } else if (crewReason === "designated_pane_missing") {
-        crewTrim("pane_dead");
-      } else if (crewReason === "boot_id_stale" || crewReason === "server_epoch_stale") {
-        crewTrim("server_restarted");
-      } else {
-        const suffix = crewReason && crewReason !== "stored_status" ? `:${crewReason}` : "";
-        kept.push({ handle: row.handle, reason: `${crewState}${suffix}`, pane: row.pane });
       }
       continue;
     }

@@ -244,7 +244,7 @@ worker_socket="$(cat "$FIXTURE_HOME/suite-tmux-socket")"
 worker_tmux_root="$(cat "$FIXTURE_HOME/suite-tmux-root")"
 [ ! -e "$worker_tmux_root" ] || fail "(2) runner left its recorded tmux root behind: $worker_tmux_root"
 case "$out" in
-  *"inherited TAP_* from the launching shell:"*"TAP_BASH_ENV_MARKER=from-bash-env"*"TAP_FAKE_KNOB=sentinel-value"*) ;;
+  *"inherited TAP_* from the launching shell:"*"TAP_BASH_ENV_MARKER"*"TAP_FAKE_KNOB"*) ;;
   *) fail "(2) pre-boundary TAP_* report was not preserved: $out" ;;
 esac
 case "$out" in

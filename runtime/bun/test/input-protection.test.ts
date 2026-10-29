@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { classifyPane } from "../src/pane-state";
 import { textHasPasteCollapse } from "../src/pane/geometry";
 import { advanceProtection, dueWaitCue, protectionUntil } from "../src/input-protection";
 const obs = { paneId: "%1", serverEpoch: "epoch1", currentCommand: "claude" };
@@ -106,4 +107,56 @@ test("no cue is due before WAIT latches; a fresh record earns its own blue", () 
   expect(dueWaitCue(g, 21_000)).toBeNull();
   const fresh = advanceProtection(null, obs, busy("WAIT"), 4_000)!;
   expect(dueWaitCue(fresh, 4_000)).toBe("blue");
+});
+
+test("STOP holds through empty composers, side views, new and urgent mail without renewing", () => {
+  let state = advanceProtection(null, obs, busy("  STOP  "), 1000, false, "alice")!;
+  expect(protectionUntil(state)).toBe(601000);
+  state = advanceProtection(state, obs, { state: "ready" }, 2000)!;
+  state = advanceProtection(state, obs, { state: "ready" }, 10000)!;
+  expect(protectionUntil(state)).toBe(601000);
+  state = advanceProtection(state, obs, { state: "unobservable", reason: "side-view" }, 20000)!;
+  state = advanceProtection(state, obs, busy("side question"), 30000, true, "bob", true)!;
+  state = advanceProtection(state, obs, busy("STOP"), 40000, true, "carol")!;
+  expect(protectionUntil(state)).toBe(601000);
+  expect(state.senders).toEqual(["alice", "bob", "carol"]);
+});
+
+test("only exact uppercase STOP and START control the hold", () => {
+  for (const text of ["STOPPED", "please STOP", "stop", "S T O P"]) {
+    expect(protectionUntil(advanceProtection(null, obs, busy(text), 1000)!)).toBe(31000);
+  }
+  const stopped = advanceProtection(null, obs, busy("STOP"), 1000)!;
+  for (const text of ["START HERE", "RESTART", "start", "S T A R T"]) {
+    expect(protectionUntil(advanceProtection(stopped, obs, busy(text), 2000)!)).toBe(601000);
+  }
+  const released = advanceProtection(stopped, obs, busy(" START \n"), 2000)!;
+  expect(protectionUntil(released)).toBeLessThanOrEqual(2000);
+  expect(protectionUntil(advanceProtection(released, obs, busy("STOP"), 3000)!)).toBeLessThanOrEqual(3000);
+});
+
+test("STOP expiry cannot rearm from the same word or new mail; next draft may hold", () => {
+  const stopped = advanceProtection(null, obs, busy("STOP"), 1000)!;
+  const expired = advanceProtection(stopped, obs, busy("STOP"), 602000, true, "later", true)!;
+  expect(expired.stopUntil).toBe(601000);
+  expect(protectionUntil(expired)).toBe(612000);
+  const bare = advanceProtection(expired, obs, { state: "ready" }, 603000)!;
+  expect(advanceProtection(bare, obs, { state: "ready" }, 603250)).toBeNull();
+  expect(protectionUntil(advanceProtection(null, obs, busy("STOP"), 604000)!)).toBe(1204000);
+});
+
+test("a Claude viewport whose visible tail is START cannot release hidden composer text", () => {
+  const frame = "────────────────────────────────────────\n❯ \n  \n  START\n────────────────────────────────────────\n";
+  const band = classifyPane(frame, "claude", false, 16);
+  if (band.kind !== "draft") throw new Error("fixture must contain a visible draft tail");
+  const stopped = advanceProtection(null, obs, busy("STOP"), 1000)!;
+  const visibleTail = { ...band, state: "busy" as const };
+  expect(protectionUntil(advanceProtection(stopped, obs, visibleTail, 2000)!)).toBe(601000);
+});
+
+test("a new batch after STOP expiry receives its ordinary draft grace", () => {
+  const stopped = advanceProtection(null, obs, busy("STOP"), 1000)!;
+  const fresh = advanceProtection(stopped, obs, busy("hello"), 602000, false, "new", true)!;
+  expect(fresh.stopUntil).toBe(601000);
+  expect(protectionUntil(fresh)).toBe(632000);
 });

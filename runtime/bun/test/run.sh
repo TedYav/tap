@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Remove inherited credentials before any runner child can print its env.
+. "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/test-secret-env.sh"
+
 # A bare invocation means the Bun suite, independent of the caller's cwd.
 # Include colocated src tests; explicit paths/filters keep the caller's cwd.
 if [ "$#" -eq 0 ]; then

@@ -36,4 +36,4 @@ Whitespace-only input (one blanking rule, part 2) earns no draft backup, flash, 
    **Not every path that ends in a cleared band is covered, and the gap is named rather than implied.** The urgent-interrupt path (tap-u7ra7) closes one such gap: when the interrupt's `Escape` itself empties the composer, the clobber pipeline never runs and its backup would stay silent, so the owner notice fires after that submission finishes (verified or ended — never while the urgent payload is still in flight), worded incomplete when the backup says `capture_status: incomplete`; the urgent paste-collapse notice waits likewise (tap-xhb1l). The landed-check exit — `input did not land`, reached after the clobber has already backed up and cleared the band — still returns `5` without notifying. That leaves a live pane, an emptied band, a saved draft, and silence: the same experience this clause exists to remove, on a path it does not reach. Tracked as **tap-4fh3**; until it lands, the guarantee here is the five paths above and no more.
 
 
-Draft grace and WAIT semantics are specified in part2 of this page.
+Draft grace, WAIT and STOP/START are specified in part2.

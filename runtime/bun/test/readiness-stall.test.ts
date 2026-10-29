@@ -1,6 +1,7 @@
 // tap-bprtg's harness evidence: each instrument needs a positive turn-ended
 // marker, and anything unreadable is unknown (null), which never alarms.
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,6 +59,20 @@ test("agy, cursor and hermes have no instrument", () => {
   for (const h of ["agy", "cursor", "hermes", ""]) expect(harnessEvidence(h, { transcript_path: "/etc/hosts" }, {})).toBeNull();
 });
 
+test("session-bound evidence refuses another session's transcript and an unbound path", () => {
+  for (const harness of ["claude", "codex"]) {
+    const path = join(root, `${harness}-bound.jsonl`);
+    const lines = harness === "claude"
+      ? [{ type: "assistant", sessionId: "actual", message: { stop_reason: "tool_use" } }]
+      : [{ type: "session_meta", payload: { id: "actual" } }, { type: "event_msg", payload: { type: "task_started" } }];
+    writeFileSync(path, lines.map(j).join("\n") + "\n");
+    const seat = { transcript_path: path, harness_session_id: "actual" };
+    expect(harnessEvidence(harness, seat, {}, true)?.ended).toBe(false);
+    expect(harnessEvidence(harness, { ...seat, harness_session_id: "other" }, {}, true)).toBeNull();
+    expect(harnessEvidence(harness, { transcript_path: path }, {}, true)).toBeNull();
+  }
+});
+
 function db(name: string, rows: object[]): string {
   const path = join(root, name);
   const store = createOpenCodeStore(path);
@@ -93,6 +108,14 @@ test("opencode: no session, no rows, a missing or junk store are unknown", () =>
   const junk = join(root, "junk.db");
   writeFileSync(junk, "not a database");
   expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: junk })).toBeNull();
+});
+
+test("OpenCode in-place streaming updates are activity even without a new message or completion", () => {
+  const path = db("streaming.db", [msg("assistant", 2000, null, null)]);
+  const store = new Database(path);
+  store.exec("UPDATE session_message SET time_updated = 9000 WHERE session_id = 's1'");
+  store.close();
+  expect(opencodeEvidence("s1", { OPENCODE_DB_PATH: path })?.lastActivity).toBe(9);
 });
 
 // Fault probes from review: each failed quiet in the wrong direction before the fix.

@@ -77,6 +77,13 @@ export function serverEpochNow(env: NodeJS.ProcessEnv = process.env, run: typeof
 /** Notify the clients that owned the backed-up draft, using the caller's captured identity. */
 export function notifyDraftBackedUp(pane: string, paneId: string, epoch: string, session: string,
   env: NodeJS.ProcessEnv = process.env, incomplete = false): void {
+  notifyPaneOperator(pane, paneId, epoch, session,
+    incomplete ? INCOMPLETE_DRAFT_NOTICE : "tap: your draft was saved, not lost -- recover it with: tap draft", env);
+}
+
+/** A non-blocking cue to the attached clients, never a popup or composer input. */
+export function notifyPaneOperator(pane: string, paneId: string, epoch: string, session: string,
+  message: string, env: NodeJS.ProcessEnv = process.env): void {
   if (!paneId || !epoch || !session) return;
   try {
     if (observe(pane, env)?.paneId !== paneId) return;
@@ -85,7 +92,7 @@ export function notifyDraftBackedUp(pane: string, paneId: string, epoch: string,
     for (const client of clients.stdout.split("\n").filter(Boolean)) {
       if (serverEpochNow(env) !== epoch || observe(pane, env)?.paneId !== paneId) return;
       tmux(["display-message", "-c", client, "-t", paneId, "-d", "8000",
-        incomplete ? INCOMPLETE_DRAFT_NOTICE : "tap: your draft was saved, not lost -- recover it with: tap draft"], env);
+        message], env);
     }
   } catch { /* Cosmetic failure never changes delivery. */ }
 }

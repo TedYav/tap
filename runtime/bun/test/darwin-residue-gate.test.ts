@@ -34,7 +34,7 @@ function candidate(source: string): string {
   const root = mkdtempSync(join(tmpdir(), "tap-residue-candidate-"));
   writeFileSync(join(root, "filler.txt"), source);
   // A small committed shell surface, plus the exact platform probes and dependencies.
-  for (const name of ["bin/tap", "scripts/smoke-all.sh", "scripts/darwin-platform-probes.sh",
+  for (const name of ["bin/tap", "scripts/smoke-all.sh", "scripts/darwin-platform-probes.sh", "scripts/test-secret-env.sh",
     "skills/tap/scripts/smoke/bash32-parse.test.sh", "skills/tap/scripts/smoke/sandbox-pins.sh",
     "skills/tap/scripts/smoke/health-fixture-env.sh"]) {
     mkdirSync(join(root, name, ".."), { recursive: true });

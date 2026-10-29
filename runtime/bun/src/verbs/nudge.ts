@@ -138,7 +138,8 @@ function terminalityRefusal(bus: string, id: string, digest = false): TapError |
  * payload's.
  */
 function submitRecorded(input: { runId: string; pane: string; paneId: string; paneCmd: string; id: string; expected: string;
-  registry: string; handle: string; bus: string; recipientBus: string; scriptsDir: string; families: ReadonlySet<string>; repainted: boolean }): number {
+  registry: string; handle: string; bus: string; recipientBus: string; scriptsDir: string; families: ReadonlySet<string>; repainted: boolean;
+  boundary?: NudgeBoundary }): number {
   const row = seatMap(loadRegistry(input.registry))[input.handle] as Record<string, unknown> | undefined;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
   const bound: BoundRecipient = { paneId: input.paneId, serverEpoch: text(row?.server_epoch), harness: input.paneCmd,
@@ -153,7 +154,7 @@ function submitRecorded(input: { runId: string; pane: string; paneId: string; pa
   const fx: PaneEffects = { ...REAL_EFFECTS, pressEnter: () => {
     const run = readRun(input.runId, effectEnv);
     const result = recoveryEffect(input.runId, "nudge Enter", `${run.mode}: complete visible sentinel and canonical recipient authorized by nudge`,
-      ["send-keys", "-t", run.target.paneId, "Enter"], REAL_RECOVERY_IO, effectEnv);
+      ["send-keys", "-t", run.target.paneId, "Enter"], REAL_RECOVERY_IO, effectEnv, undefined, () => input.boundary?.check(false) || "");
     if (result.event.incident) escalateRecovery(input.runId, result.event.summary, effectEnv);
     if (result.code !== 0) process.stderr.write(`tap recovery: ${result.event.summary}; tap debug recovery ${input.runId}\n`);
     // A positively recorded pre-key refusal sent nothing: stop, never press again.
@@ -260,12 +261,21 @@ function argvTargetRefusal(parsed: { team: string }, error: SelectorError): TapE
 }
 
 /** One fan-out seat's nudge, pinned to the instance the fan-out selected (exported for its handoff test). */
-export function nudgePinnedSeat(argv: string[], scriptsDir: string, families: ReadonlySet<string>, instance: string): number {
-  return nudge(argv, scriptsDir, families, instance);
+export interface NudgeBoundary {
+  /** Must not acquire recovery locks: this runs within the key's pane mutex. */
+  check(keyed: boolean): string;
+  onRun?(id: string): void;
+  stagedId?: string;
+  out?(text: string): void;
+}
+
+export function nudgePinnedSeat(argv: string[], scriptsDir: string, families: ReadonlySet<string>, instance: string, boundary?: NudgeBoundary): number {
+  return nudge(argv, scriptsDir, families, instance, boundary);
 }
 
 /** `pinnedInstance`: the fan-out's selected seat instance; a replaced seat refuses before any key. */
-function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>, pinnedInstance = ""): number {
+function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>, pinnedInstance = "", boundary?: NudgeBoundary): number {
+  const out = boundary?.out ?? ((text: string) => { process.stdout.write(text); });
   let to = "";
   let pane = "";
   let message = "";
@@ -366,7 +376,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     klass = classifyHarness(paneCmd, [...families]);
   }
   if (klass !== "agent" && dryRun) {
-    process.stdout.write(`tap nudge: dry run: '${paneCmd}' is not a supported agent harness; nothing would be sent\n`);
+    out(`tap nudge: dry run: '${paneCmd}' is not a supported agent harness; nothing would be sent\n`);
     return 0;
   }
   if (klass !== "agent") {
@@ -378,6 +388,11 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
   const captured = captureInputFrame(realPaneIo, pane, paneCmd, true);
   if (!captured.ok) return 1;
   let frame = captured.frame;
+  const boundaryRefusal = boundary?.check(false);
+  if (boundaryRefusal) throw new TapError(1, "target_changed", "tap peek " + toLabel, boundaryRefusal);
+  if (boundary && paneCmd !== "codex" && paneCmd !== "claude") {
+    throw new TapError(1, "unsupported_harness", USAGE, "bounded recovery supports Codex and Claude only");
+  }
   // tap-cl1es: the heal. An OpenCode pane whose band is unobservable — the
   // claude-mem-style overprint, or an input_band_absent booting shape — gets
   // the input-free repaint (resize and restore, never a keystroke), then a
@@ -424,9 +439,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     }
   }
   if (heal) {
-    process.stdout.write(`tap nudge: ${toLabel} (${pane}) band=${heal.before} -> repaint -> band=${heal.after}\n`);
+    out(`tap nudge: ${toLabel} (${pane}) band=${heal.before} -> repaint -> band=${heal.after}\n`);
     if (heal.after !== "readable") {
-      process.stdout.write(`tap nudge: band still ${heal.after} after the repaint — the paint is persistent; let it settle and repeat\n`);
+      out(`tap nudge: band still ${heal.after} after the repaint — the paint is persistent; let it settle and repeat\n`);
       return 8;
     }
   }
@@ -442,7 +457,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
   if (dryRun) {
     const lines = previewLadder({ harness: paneCmd, interrupt, wire, label: toLabel || pane, deliver: deliver && ladderHandle !== "" },
       tmuxReadOnly(["capture-pane", "-p", "-e", "-J", "-t", pane]).stdout, composerRead(pane, paneCmd), closedSentinelInput(sentinelInputTail(frame, paneCmd) ?? ""));
-    process.stdout.write(`tap nudge: dry run plan for ${toLabel || pane} (${pane}); nothing sent\n${lines.map(line => `  ${line}\n`).join("")}`);
+    out(`tap nudge: dry run plan for ${toLabel || pane} (${pane}); nothing sent\n${lines.map(line => `  ${line}\n`).join("")}`);
     return 0;
   }
   const actor = nudgeActor(ctx);
@@ -452,11 +467,11 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const staged = stagedRung(false);
     if (parentRun) {
       if (staged !== null) return staged;
-      process.stdout.write(`tap nudge: no staged sentinel in ${toLabel || pane}'s input; nothing submitted\n`);
+      out(`tap nudge: no staged sentinel in ${toLabel || pane}'s input; nothing submitted\n`);
       return 0;
     }
     if (staged !== null) return staged;
-    process.stdout.write(`tap nudge: ${toLabel || pane}: no staged sentinel; ${deliver ? "no active registered binding on this pane" : "--pane overrides the registered seat"}, so nothing else runs\n`);
+    out(`tap nudge: ${toLabel || pane}: no staged sentinel; ${deliver ? "no active registered binding on this pane" : "--pane overrides the registered seat"}, so nothing else runs\n`);
     return 0;
   }
   if (deliver && actor.team === ladderTeam && actor.handle === ladderHandle) {
@@ -472,6 +487,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const run = createRun(target, policy.mode, [],
       process.env.TMUX_PANE || "", process.pid, process.env, undefined, false);
     updateRun(run.id, current => { current.caller = { team: actor.team, actor: actor.handle, registry: ladderRegistry, root: ctx.root, home: ctx.bus.home }; });
+    boundary?.onRun?.(run.id);
     process.stderr.write(`tap nudge: recovery=${run.id} (tap debug recovery ${run.id})\n`);
     return runId = run.id;
   };
@@ -487,8 +503,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     } finally { if (prior === undefined) delete process.env.TAP_RECOVERY_RUN; else process.env.TAP_RECOVERY_RUN = prior; }
   };
   try {
-    exitCode = runLadder({ harness: paneCmd, interrupt, wire, label: toLabel || pane, deliver },
-      ladderIo(ensureRun, pane, ladderPaneId, paneCmd, stagedInRun));
+    exitCode = runLadder({ harness: paneCmd, interrupt, wire, label: toLabel || pane, deliver,
+      guard: boundary?.check, stagedOnly: Boolean(boundary?.stagedId) },
+      ladderIo(ensureRun, pane, ladderPaneId, paneCmd, stagedInRun, out));
     return exitCode;
   } catch (error) {
     exitCode = error instanceof TapError ? error.code : 1;
@@ -513,7 +530,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
       // tap-w85su: a copy-mode park that outlived the copy mode is what this
       // nudge recovers when the composer is clean. tap-zvuc9: a copy mode nobody
       // is viewing is left first, once, when a park would requeue but for it.
-      if (to !== "") {
+      if (to !== "" && !boundary) {
         const requeue: RequeueInput = { home: ctx.bus.home, team: ctx.team, recipientTeam: argvTeam,
           target: to, registry, paneId: argvBinding.paneId, scriptsDir, observeMode: () => observeCopyMode(pane),
           authorizePane: bound => {
@@ -528,6 +545,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
       return null;
     }
     const expected = visibleSentinel(frame, paneCmd);
+    if (boundary?.stagedId && (expected === null || parseNudgeWire(expected) !== null)) {
+      throw new TapError(1, "target_changed", "tap peek " + toLabel, "the exact predecessor sentinel is no longer visible; nothing submitted");
+    }
     // A staged nudge doorbell names no payload: it is submitted by shape, like a scrolled tail.
     // The bound expected text is the wire itself, so the Enter recheck proves it is the sole composer text.
     if (expected !== null && parseNudgeWire(expected) !== null) return nudgeScrolledTail(expected);
@@ -549,6 +569,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const wire = stored.fields.wire;
     let sentinelIdTeam = "";
     if (id.includes("/")) { sentinelIdTeam = id.slice(0, id.indexOf("/")); id = id.slice(id.indexOf("/") + 1); }
+    if (boundary?.stagedId && id !== boundary.stagedId) {
+      throw new TapError(1, "target_changed", "tap peek " + toLabel, "the staged sentinel is not the selected predecessor; nothing submitted");
+    }
     if (id === "") throw new TapError(1, "usage_error", USAGE, "stuck sentinel is missing id");
     if (!validId(id)) throw new TapError(1, "usage_error", USAGE, `stuck sentinel id '${id}' fails charset ${TOKEN_RE}`);
     let bus = "";
@@ -620,7 +643,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const effectBus = bus || ctx.bus.home; const lateRefusal = terminalityRefusal(effectBus, id, digest !== null); if (lateRefusal) throw lateRefusal;
     return runRecordedNudge({ policy, registry: sel2.registryLocation, handle: sentinelHandle, team: sentinelTeam, pane, paneId: sentinelBinding.paneId,
       paneCmd, id, expected, effectBus, recipientBus: busForRoot(sel2.rootReal), scriptsDir, families, toLabel, drift,
-      repainted: repaintedByHeal && paneCmd === "opencode", digest });
+      repainted: repaintedByHeal && paneCmd === "opencode", digest, boundary });
   }
 
   /**
@@ -649,7 +672,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     process.stderr.write(`tap nudge: composer of ${toLabel || pane} shows the scrolled tail of a TAP wire; submitting it by shape, not identity\n`);
     return runRecordedNudge({ policy, registry: registryLocation, handle, team, pane, paneId: bound.paneId, paneCmd, id: SCROLLED_TAIL_SLOT,
       expected: tail, effectBus: ctx.bus.home, recipientBus: busForRoot(rootReal), scriptsDir, families, toLabel, drift: tailDrift,
-      repainted: repaintedByHeal && paneCmd === "opencode" });
+      repainted: repaintedByHeal && paneCmd === "opencode", boundary });
   }
 }
 
@@ -681,7 +704,7 @@ function composerRead(paneId: string, harness: string): ComposerRead {
 
 /** Production ladder effects: every key is one recorded recovery effect on the bound pane. */
 function ladderIo(run: () => string, pane: string, paneId: string, harness: string,
-  staged: (reobserve: boolean) => number | null): LadderIO {
+  staged: (reobserve: boolean) => number | null, out: (text: string) => void): LadderIO {
   return {
     frame() {
       const captured = tmuxReadOnly(["capture-pane", "-p", "-e", "-J", "-t", paneId]);
@@ -700,7 +723,7 @@ function ladderIo(run: () => string, pane: string, paneId: string, harness: stri
     expect: wire => { updateRun(run(), current => { current.nudgeExpected = wire; }); },
     submitStaged: reobserve => staged(reobserve),
     sleep: ms => Bun.sleepSync(ms),
-    out: line => { process.stdout.write(`${line}\n`); },
+    out: line => { out(`${line}\n`); },
   };
 }
 
@@ -737,13 +760,15 @@ export function finishRecordedNudge(runId: string, exitCode: number): void {
 /** One recorded, bounded recovery run around the shared staged-submit loop; both the identified and the scrolled-tail paths end here. */
 function runRecordedNudge(input: { policy: { mode: string }; registry: string; handle: string; team: string; pane: string; paneId: string; paneCmd: string;
   id: string; expected: string; effectBus: string; recipientBus: string; scriptsDir: string; families: ReadonlySet<string>; toLabel: string;
-  drift: (when: string) => TapError; repainted: boolean; digest?: { indexPath: string; from: string; toTeam: string; members: string[] } | null }): number {
+  drift: (when: string) => TapError; repainted: boolean; digest?: { indexPath: string; from: string; toTeam: string; members: string[] } | null;
+  boundary?: NudgeBoundary }): number {
+  const out = input.boundary?.out ?? ((text: string) => { process.stdout.write(text); });
   const { policy, pane, paneCmd, id, expected, effectBus, toLabel, drift } = input;
   const [startBin, ...startArgs] = recoveryCliArgv(input.scriptsDir, ["nudge-start", policy.mode, input.registry, input.handle, pane, input.paneId, id, effectBus, String(process.pid), expected]);
   const started = spawnSync(startBin!, startArgs, { encoding: "utf8" });
   if (started.status !== 0) {
     // Relay the child's own diagnostics: a start failure must name its reason, not exit silently.
-    if (started.stdout) process.stdout.write(started.stdout);
+    if (started.stdout) out(started.stdout);
     if (started.stderr) process.stderr.write(started.stderr);
     return 1;
   }
@@ -756,11 +781,13 @@ function runRecordedNudge(input: { policy: { mode: string }; registry: string; h
   catch (error) { finishRecordedNudge(runId, 1); throw error; }
   let exitCode = 0;
   try {
-    const copyRc = recordedCopyCancel(runId);
+    input.boundary?.onRun?.(runId);
+    // Bounded callers refuse copy mode in their observation; they never cancel it.
+    const copyRc = input.boundary ? 0 : recordedCopyCancel(runId);
     if (copyRc === 6) throw drift("before copy-mode cancel");
     if (copyRc !== 0) { exitCode = copyRc; return copyRc; }
     const submitRc = submitRecorded({ runId, pane, paneId: input.paneId, paneCmd, id, expected, registry: input.registry,
-      handle: input.handle, bus: effectBus, recipientBus: input.recipientBus, scriptsDir: input.scriptsDir, families: input.families, repainted: input.repainted });
+      handle: input.handle, bus: effectBus, recipientBus: input.recipientBus, scriptsDir: input.scriptsDir, families: input.families, repainted: input.repainted, boundary: input.boundary });
     if (submitRc === 6) throw drift("before submit");
     if (submitRc === 7) {
       if (input.digest) {
@@ -769,7 +796,7 @@ function runRecordedNudge(input: { policy: { mode: string }; registry: string; h
         for (const member of input.digest.members) recordHarnessQueued(effectBus, member);
         recordHarnessQueued(effectBus, id, { from: input.digest.from, to: `${input.digest.toTeam || input.team}/${input.handle}`, kind: "digest" });
       } else recordHarnessQueued(effectBus, id);
-      process.stdout.write(harnessQueueMessage(effectBus, id, process.env.TAP_JSON === "1", "tap nudge"));
+      out(harnessQueueMessage(effectBus, id, process.env.TAP_JSON === "1", "tap nudge"));
       return 0;
     }
     if (submitRc !== 0) { exitCode = submitRc; return submitRc; }
@@ -779,7 +806,7 @@ function runRecordedNudge(input: { policy: { mode: string }; registry: string; h
     // Every verified digest submit advances the recipient's delivery clock
     // (spool-part-02's digest outcome contract), as injectDigest does.
     if (input.digest) { try { deliveryClockStamp(input.registry, input.handle); } catch { /* best effort, as in the courier */ } }
-    process.stdout.write(`tap nudge: re-submitted a stuck sentinel for ${toLabel || pane} (${pane})\n`);
+    out(`tap nudge: re-submitted a stuck sentinel for ${toLabel || pane} (${pane})\n`);
     return 0;
   } catch (error) {
     exitCode = error instanceof TapError ? error.code : 1;

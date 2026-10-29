@@ -200,6 +200,18 @@ export function deadlineRow(row: SpoolRow): DeadlineRow {
 function integer(text: string): bigint | null {
   return /^[+-]?\d+$/.test(text.trim()) ? BigInt(text.trim()) : null;
 }
+/** Resume the disposition budget once at STOP release/expiry, never at each probe. */
+function afterOperatorStop(row: DeadlineRow, stopUntil: number | undefined): DeadlineRow {
+  if (!stopUntil) return row;
+  const first = integer(row.firstEpoch), deadline = integer(row.deadlineEpoch);
+  const resume = BigInt(Math.ceil(stopUntil / 1000));
+  if (first === null || deadline === null || first > resume) return row;
+  // Pending-input parks may encode the STOP duration itself as grace; their
+  // normal post-hold window is still the ordinary/urgent draft grace.
+  const window = row.reason === "pending-input" ? (row.policy === "urgent" ? 10n : 30n) : deadline - first;
+  if (window <= 0n) return row;
+  return { ...row, deadlineEpoch: String(resume + window) };
+}
 function before(a: string, b: string): boolean {
   const left = integer(a), right = integer(b);
   return left !== null && right !== null && left < right;
@@ -453,12 +465,12 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
     if (row.escalatedAt || !files(ctx, id)) continue;
     if (await bestEffortAsync(ctx, "spool-deadline", id, () => disposeUnrouted(ctx, row)) !== "routable") continue;
     if (isDone(ctx, id)) continue;
-    const sharedState = protectedMessageState(ctx.home, id, row.paneId, env);
-    const sharedDeadline = sharedState === undefined ? undefined
+    let sharedState = protectedMessageState(ctx.home, id, row.paneId, env);
+    let sharedDeadline = sharedState === undefined ? undefined
       : sharedState === null ? null : protectionUntil(sharedState) / 1000;
     if (sharedDeadline === undefined) continue;
-    const effectiveDeadline = sharedDeadline === null ? row.deadlineEpoch : String(Math.floor(sharedDeadline));
-    const deadlinePassed = !!effectiveDeadline && atLeast(now, effectiveDeadline);
+    let effectiveDeadline = sharedDeadline === null ? row.deadlineEpoch : String(Math.floor(sharedDeadline));
+    let deadlinePassed = !!effectiveDeadline && atLeast(now, effectiveDeadline);
     if (row.policy === "autosettle" && !deadlinePassed && sharedDeadline === null) continue;
     if (inWindow(row, now) && !deadlinePassed && sharedDeadline === null) continue;
     const heldSlot = row.deadlineSource === "readiness-gate" && deadlinePassed;
@@ -470,6 +482,18 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
     }
     if (!ownedProbe) seen++;
     let ready = await effects.readiness(row);
+    // Readiness can observe STOP or START. Use that updated deadline in this
+    // same pass, rather than disposing against the stale pre-observation clock.
+    sharedState = protectedMessageState(ctx.home, id, row.paneId, env);
+    if (sharedState === undefined) continue;
+    sharedDeadline = sharedState ? protectionUntil(sharedState) / 1000 : null;
+    effectiveDeadline = sharedDeadline === null ? row.deadlineEpoch : String(Math.floor(sharedDeadline));
+    deadlinePassed = !!sharedState?.stopUntil && protectionUntil(sharedState) <= Date.now()
+      || !!effectiveDeadline && atLeast(now, effectiveDeadline);
+    if (sharedState?.stopUntil && effects.flashCue) await effects.flashCue(row, id);
+    // An operator STOP outranks even a watcher's bounded probe deadline.
+    if ((sharedState?.stopUntil ?? 0) > Date.now()) continue;
+    const dispositionRow = afterOperatorStop(row, sharedState?.stopUntil);
     await drainTestBarrier(env, id, ready);
     if (ready === "busy:shell-mode" || ready === "busy:feedback-draft") { const held = ready.slice(5) as "shell-mode" | "feedback-draft"; bestEffort(`${held}-notice`, id, () => notifyHeld(ctx, row, held)); continue; }
     let reprobe = ready === "busy:pending" && pendingReprobe(ctx.home, id);
@@ -501,7 +525,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
       // Held mail stays parked for redelivery; the owned probe alone takes the
       // existing deadline disposition (one sticky human alert, then escalated_at).
       if (!ownedProbe) continue;
-      await bestEffortAsync(ctx, "spool-deadline", id, () => disposeAtDeadline(ctx, row, ready));
+      await bestEffortAsync(ctx, "spool-deadline", id, () => disposeAtDeadline(ctx, dispositionRow, ready));
       continue;
     }
     let force = false, due = false;
@@ -516,7 +540,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
       due = deadlinePassed && row.reasonClass === "busy";
     }
     let delivered = false, rc = 0;
-    if (row.policy !== "autosettle" && (ready === "ready" || due || force || reprobe || idleStaged)) {
+    if (row.policy !== "autosettle" && (ready === "ready" || ready === "recover:codex-update" || due || force || reprobe || idleStaged)) {
       const lock = acquireObligationLock(id, 0, env);
       if (!lock) continue;
       let claimToken: ClaimToken | null = null;
@@ -532,7 +556,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
         if (["busy:queued", "busy:decision-unavailable", "busy:recovery", "busy:operator-wait"].includes(ready)) continue;
         due = ready !== "busy:clearing" && (ready === "busy" || ready.startsWith("busy:")) && deadlinePassed && row.reasonClass === "busy";
         if (["busy:modal", "busy:clearing", "gone", "unsafe"].includes(ready)) force = false;
-        if (ready === "ready" || due || force || reprobe || idleStaged) {
+        if (ready === "ready" || ready === "recover:codex-update" || due || force || reprobe || idleStaged) {
           bestEffort("spool-sidecar", id, () => bumpAttempts(ctx.spoolDir, id));
           rc = await effects.redeliverLocked(id, row, force);
           delivered = rc === 0;
@@ -551,7 +575,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
     if (delivered) continue;
     // The redelivery itself published the deterministic notice and receipt (tap-67y3s).
     if (rc === 5) continue;
-    await bestEffortAsync(ctx, "spool-deadline", id, () => disposeAtDeadline(ctx, row, ready));
+    await bestEffortAsync(ctx, "spool-deadline", id, () => disposeAtDeadline(ctx, dispositionRow, ready));
   }
   // Phase C stays after every solo urgent/lone attempt; no same-pass solo retry.
   for (const group of groups) {

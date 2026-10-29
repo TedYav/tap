@@ -36,14 +36,18 @@ infrastructure enrollment, not a mission staffing choice. `CONCEPTS.md` defines 
 the four staffed forms is the LEADER's call (`skills/lead/references/choreography-best-practices.md`,
 *the work lands in the right hands*).
 
-**Floor — identity-gate a new Crew Seat before its first work dispatch.** Send one
-`reply: expected` request asking the new seat to run `tap whoami` and return the exact handle; dispatch
-work only after that handle matches the seat you addressed. A healthy registry row and successful
-courier receipts show routing, not what identity the seat learned at SessionStart. Keep this gate as
-defense-in-depth, not as an independent resolver check: the SessionStart banner and `tap whoami` now
-share `tap_calling_pane_observe`, so the round trip cannot detect a defect in that resolver. It still catches
-a mis-addressed dispatch, a silent seat, registry drift, or any stricter generation refusal surfaced by
-the `tap whoami` command path because the addressed handle is an independent input.
+**Floor — verify a new Crew Seat before its first work dispatch.** The creating
+command satisfies the gate when it checks the requested handle and preset/model
+against the row and verifies `crew_identity_capture.decision=accepted` before
+assigning. `tap crew add <preset> <name> --assign <brief-file>` performs this check;
+`--reply-to <seat>` routes the tracked result to its durable consumer. Require the
+first receipt to include `tap whoami`; a mismatch stops work and returns MISMATCH.
+A separate reply-expected identity exchange remains optional for sensitive briefs.
+The command and `tap whoami` share the resolver, so this is not an independent
+resolver test.
+
+This gate is the dispatcher's own pre-dispatch step. Never apply it retroactively,
+hold an already-working seat for it, or use it to message another owner's crew.
 
 **Floor — context boundary on reassignment.** Handing a seat a new
 workstream unrelated to its previous one starts with a context reset: clear the seat first, with
@@ -97,10 +101,11 @@ Choose the form by **how long the work needs the seat**:
 - **One bounded question that closes the matter** → `tap ask <preset|harness> -f <prompt.md>`
   (or `-m "..."` for a short body). Stateless: no pane, no registration, no lifecycle.
 - **Follow-up conversation, consult, or review** → `tap crew add <preset|harness> [name]`. A Crew
-  Seat with a full bus identity in a window of your own tmux session, and **its working life ends
-  with that pane** — never staff one as a parallel writer. A preset supplies *tuning only*: crew
-  still owns the handle, the window, and the cwd.
-- **A lane, a restartable address, or anything that must survive a restart** → `tap session launch
+  Seat with a full bus identity, initially in your tmux session. Natural parent exit leaves it
+  running; a stopped crew retains its conversation and row. Never staff one as a parallel writer. A preset supplies *tuning only*: crew
+  still owns the handle, the window, and the cwd. `tap crew resume <crew>` or
+  `--owner <seat>` continues stopped conversations with their retained owner instance.
+- **A lane with its own worktree and durable handoff** → `tap session launch
   <preset|harness> [name]`. A bare harness with model/effort needs no saved preset; its continuity truth is a durable on-disk
   handoff, never conversation memory.
 

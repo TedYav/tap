@@ -1,32 +1,19 @@
 # Reviving a seat beside its surviving crews (tap-9rrat)
 
-A crew outlives its parent only when its helper is gone too, as after a stray
-kill. The parent's tmux session then survives, held by crew windows with no pane
-running the seat's harness. The launcher classifies that session `seat-gone`: a
-seat-aware classification counts only a pane of the seat's own harness that is
-not a registered crew pane. Launch's chooser reports it ("<harness> exited;
-other windows still hold the session") and its `[r]` resumes; without a
-terminal, launch exits 2 naming `tap session resume <handle>`.
+Crew windows can keep a parent's session alive after its harness exits. The
+launcher classifies that session `seat-gone`: it counts only a pane of the
+seat's own harness that is not a registered crew pane. Launch's chooser offers
+resume; without a terminal it names `tap session resume <handle>`.
 
-Resume revives a `seat-gone` seat into that session in a new window and stops
-nothing. It requires the seat's recorded native id to resolve as its exact
-resume target; otherwise it refuses `no_exact_resume_identity` and the crews
-keep running. A failed revival, synchronous or through the pane-died callback,
-removes only the window it created.
+Resume revives the retained seat into a new window and stops nothing. It requires
+the seat's exact native conversation; otherwise `no_exact_resume_identity`
+leaves the crews running. Failed revival removes only the window it created.
+The owner instance remains unchanged, so linked crews keep their owner authority
+without acquiring a new process lifetime.
 
-After the revival binds, each crew snapshotted before the launch moves to the
-revived harness generation. This is the one continuation of a crew past its
-original parent generation, and it refuses unless the seat row keeps the same
-instance, the crew's durable `crew_owner` and `crew_owner_instance` match that
-seat, the crew's row, pane and process are unchanged, the binding's original
-parent process is provably gone, and its old helper is gone or is stopped
-(TERM, then KILL, of that exact process generation) and confirmed gone. The new
-token voids the old helper's guarded stop. Only this resume path reclaims: a
-fresh replacement stops the session instead, and an unreadable registry or a
-crew that changed since the snapshot refuses. A refused reclaim leaves the crew
-running unsupervised and says so. Legacy crews without a matching durable link
-are excluded from revival; remove and recreate them from the intended parent.
-A missing pane-local binding never permits shared-session ownership inference.
+Before revival, the launcher snapshots linked live crews and fences any exact
+pre-upgrade helper. Changed crew identity or an unverifiable helper refuses;
+it never infers ownership from a shared session. Legacy crews without a matching
+durable link need explicit removal and recreation from the intended parent.
 
-The base crew lifetime contract is in
-[crew process lifetime](./cli-surface-the-whole-thing-part-03.md).
+See [crew ownership and independent lifetime](../identity/crew-ownership.md).

@@ -17,6 +17,7 @@ fail() {
 fixture="$WORK/repo"
 mkdir -p "$fixture/runtime/bun/test/nested" "$fixture/runtime/bun/src" "$fixture/scripts" "$fixture/tmp/seat" "$WORK/elsewhere"
 cp "$ROOT/runtime/bun/test/run.sh" "$fixture/runtime/bun/test/run.sh"
+cp "$ROOT/scripts/test-secret-env.sh" "$fixture/scripts/test-secret-env.sh"
 cp "$ROOT/scripts/ignored-state-tripwire.py" "$fixture/scripts/ignored-state-tripwire.py"
 printf 'tmp/\n' > "$fixture/.gitignore"
 for location in test/nested src; do

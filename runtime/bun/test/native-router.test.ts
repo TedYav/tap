@@ -402,6 +402,17 @@ esac
     expect(readFileSync(trace, "utf8")).toBe("native nudge\nnative nudge\n");
   });
 
+  test("unwedge argument refusal is native and identical through both entry points", () => {
+    const { dir, env, worktree } = fixture(), trace = join(dir, "trace");
+    env.TAP_BUN_ROUTE_TRACE = trace;
+    const { bus } = seedLiveTeam(worktree, env.TAP_INDEX_HOME!, {}); env.TAP_HOME = bus;
+    const expected = run("bash", [incumbent, "unwedge"], worktree, env);
+    const actual = run("bun", [candidate, "unwedge"], worktree, env);
+    expect(actual.status).toBe(1); expect(actual.stdout).toBe(expected.stdout); expect(actual.stderr).toBe(expected.stderr);
+    expect(actual.stderr).toContain("registered handle is required");
+    expect(readFileSync(trace, "utf8")).toBe("native unwedge\nnative unwedge\n");
+  });
+
   for (const tombstone of [
     {
       verb: "roster",

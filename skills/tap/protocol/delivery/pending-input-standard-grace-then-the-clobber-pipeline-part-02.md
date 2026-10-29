@@ -16,7 +16,7 @@ Machine configuration selects draft handling with `[injection] behavior = "clobb
 `tap config set injection.behavior wait` changes the next delivery attempt. Unknown
 values refuse delivery without clearing input.
 
-In `clobber` mode, notes and asks honor the 30-second draft grace (explicit interrupts:10s), with the shared one-snooze WAIT protection described in part1. Notes keep
+In `clobber` mode, notes and asks honor the 30-second draft grace (explicit interrupts:10s), with the shared one-snooze WAIT protection described below. Notes keep
 `draft_deadline_epoch` separate from their sender-escalation deadline. Only due
 members enter a digest; fresh notes neither postpone older notes nor ride along
 early. A batch admitted against an empty composer still preserves a draft that
@@ -94,12 +94,5 @@ a held delivery is recoverable, and typing over a hidden draft is not.
 
 ## Draft grace and one WAIT snooze per draft
 
-The pane flash is the arrival cue. There is no countdown/status-line banner while the human types: tmux clears transient messages on keystrokes, causing flicker. A persistent, non-focusing notice remains deferred (tap-jf2b8); TAP does not change the operator's border or status settings. Normal draft grace is30s; urgent draft grace is10s. Bare composers still receive immediately. A new urgent arrival can shorten an ordinary countdown to at most10s but cannot extend an earlier deadline or override an active snooze.
-
-Uppercase `WAIT` anywhere in the observed input region latches one snooze for that draft. Normalized input comparison tolerates visual wrapping; transcript text is not the search surface. Incidental matches are accepted. The snooze ends after120s or on two positively bare, same-identity observations at least250ms apart. Unreadable output, a modal, queued input or a hidden attachment is not an empty composer. Deleting WAIT does not cancel the snooze. Repeated WAITs and new arrivals do not extend it. WAIT remains ordinary user text and reaches the harness if the user submits it.
-
-The durable record is scoped to physical tmux server and pane generation. Its consumed marker survives expiry and restoration of the same draft. All courier effects, including interrupt and copy-mode cancellation, honor the active record. The existing waiter keeps one read-only pane observer until the draft is observed empty or its identity ends; it does not send input. A later message batch can get a fresh grace without renewing the same draft's consumed snooze. A submit-and-retype transition entirely between samples remains unobservable and conservatively retains the consumed marker.
-
-The snooze itself is visible only through pane flashes; nothing takes keyboard focus and no banner is rendered. Latching the snooze flashes the pane background blue exactly once. Thirty seconds before the snooze deadline the background flashes green, and ten seconds before it flashes red; each milestone flashes at most once per snooze. The next due milestone is claimed in the pane-shared record before the flash, so whichever observer — send path, waiter draft probe, or spool drain — sees it first, the pane flashes once and parallel observers add nothing. While a snooze is active every arrival parks silently: ordinary and urgent parks suppress their usual green and red arrival cues so they cannot mask the milestones. Arrival cues outside an active snooze are unchanged. The snooze is per draft: once the snoozed draft releases and its record clears, a fresh WAIT latches a fresh snooze with its own blue.
-
-Queue explanations and sender outstanding show the effective hold and expiry. Observers never sleep with the pane submit lock held.
+See [operator input controls](operator-input-holds.md) for WAIT, STOP and START,
+their lifetimes, acknowledgements and delivery guards.

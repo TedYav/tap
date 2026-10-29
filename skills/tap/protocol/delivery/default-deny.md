@@ -26,12 +26,38 @@ Every path that writes into a harness pane reads the frame first.
 | Seat picker typing (`tap pick --pane`) | Types nothing when any harness's prompt rule matches | Types: the one operator-directed exception, below |
 | agy survey `0`, Codex compact Escape/Enter, the clear chain | Fire only on a positively read survey, working or idle state | Hold |
 | Copy-mode cancel (`-X cancel`) | Not application input | Not application input |
+| Codex startup update Skip | One Escape only for `codex-update-available`, under the launch or delivery license below | Holds |
 | [Approval timeout](approval-timeout.md) reject | Only a lone Escape, from a recovery run, on a positively classified request past its harness's timeout, gated on the team policy and that row's captured evidence; never an approve key | Holds: no request, no key |
 
 The recovery door decides by the frame, never by the caller's action label.
 Escape is the one key every harness treats as dismissal, so it is the only key
-a recognized prompt may receive. That key comes from a recovery run, never from
-delivery.
+a recognized approval or trust prompt may receive. That key comes from a
+recovery run. The startup update menu has its own narrow delivery exception below.
+
+## Codex update Skip
+
+Launcher readiness and courier delivery may send one Escape when the shared
+classifier positively identifies `codex-update-available` and both version
+numbers are readable. Escape chooses Skip; TAP never selects the update or
+runs an installer. Fresh, resumed and restarted session creation use the same
+readiness path. Diagnosis remains read-only.
+
+Before Escape, the owner rechecks the pane, server generation, process and
+operation authority. Operator holds, copy-mode and effect fences still refuse.
+Delivery spends its existing attempt license before this first key and may
+continue only within that attempt. An urgent send omits its usual interrupt
+after a verified Skip. Drain readiness reports `recover:codex-update` so queued
+mail can reach this guarded recovery before its delivery deadline; the result
+grants no payload input.
+
+After Escape, an escaped capture and a successful title read must prove an
+empty composer on the same process. A draft, unreadable frame, changed target
+or remaining dialog stops the operation without a second Escape. Uncertain
+delivery retains its spent license; uncertain startup retains its session for
+inspection. A lost launch owner or cancellation grants no further pane or
+binding mutation. Before the key, the launcher disarms its failure callback so
+a subsequent harness exit cannot delete the retained pane. Trace and delivery events record actor, pane, versions and
+outcome; a successful launch receipt also reports both versions.
 
 **The one operator-directed exception.** `tap pick --pane` runs from the
 operator's own tmux popup and types a seat name into the operator's own pane.

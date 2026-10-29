@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { atomicWrite } from "./fsatomic";
@@ -15,6 +15,12 @@ export interface InputProtection {
   pending?: { home: string; id: string; sender: string }[];
   /** Highest WAIT cue flashed for the live snooze; milestones never repeat within one snooze. */
   cueEmitted?: "" | WaitCue;
+  /** Retained after expiry/release until a confirmed empty composer prevents rearming STOP. */
+  stopUntil?: number;
+  /** An exact START released this hold; the control word may be cleared once. */
+  startRequested?: boolean;
+  startClearAttempted?: boolean;
+  operatorCueEmitted?: "stop" | "start";
 }
 export type WaitCue = "blue" | "green" | "red";
 const CUE_RANK: Record<"" | WaitCue, number> = { "": 0, blue: 1, green: 2, red: 3 };
@@ -26,13 +32,30 @@ export function dueWaitCue(state: InputProtection, now: number): WaitCue | null 
   const due: WaitCue = remaining <= 10_000 ? "red" : remaining <= 30_000 ? "green" : "blue";
   return CUE_RANK[due] > CUE_RANK[state.cueEmitted ?? ""] ? due : null;
 }
-export const protectionUntil = (s: InputProtection) => s.snoozeUntil || s.graceUntil;
-export const protectionDetail = (s: InputProtection) => `${s.snoozeUntil > Date.now() ? "held by operator WAIT" : "draft grace"} until ${new Date(protectionUntil(s)).toISOString()}`;
+export const protectionUntil = (s: InputProtection) => Math.max(s.stopUntil ?? 0, s.snoozeUntil || s.graceUntil);
+export const protectionDetail = (s: InputProtection) => `${(s.stopUntil ?? 0) > Date.now() ? "held by operator STOP" : s.snoozeUntil > Date.now() ? "held by operator WAIT" : "draft grace"} until ${new Date(protectionUntil(s)).toISOString()}`;
+
+export function composerControlWord(band: PaneBand): "STOP" | "START" | null {
+  if (band.state !== "busy" || band.queued || band.scrolled || band.mayBeTruncated) return null;
+  const text = band.text.trim();
+  return text === "STOP" || text === "START" ? text : null;
+}
 
 /** One draft owns one deadline. Callers serialize updates with the pane submit lock. */
 export function advanceProtection(previous: InputProtection | null, obs: Pick<PaneObservation, "paneId" | "serverEpoch" | "currentCommand">,
   band: PaneBand, now: number, urgent = false, sender = "", newBatch = false): InputProtection | null {
   let state = previous?.pane === obs.paneId && previous.epoch === obs.serverEpoch ? { ...previous, senders: [...previous.senders] } : null;
+  // STOP belongs to the pane, not to the currently visible draft or TUI view.
+  if (state && (state.stopUntil ?? 0) > now) {
+    if (sender && !state.senders.includes(sender)) state.senders.push(sender);
+    if (composerControlWord(band) === "START") {
+      state.stopUntil = now;
+      state.snoozeUntil = 0;
+      state.graceUntil = now;
+      state.startRequested = true;
+    }
+    return { ...state, bareSince: null };
+  }
   if (band.state === "ready") {
     if (!state || newBatch && !state.consumed) return null;
     if (state.bareSince !== null && now - state.bareSince >= 250) return null;
@@ -49,6 +72,11 @@ export function advanceProtection(previous: InputProtection | null, obs: Pick<Pa
   state.graceUntil = Math.min(state.graceUntil || deadline, deadline);
   if (sender && !state.senders.includes(sender)) state.senders.push(sender);
   if (!draft) return state;
+  if (!state.stopUntil && composerControlWord(band) === "STOP") {
+    state.stopUntil = now + 600_000;
+    state.snoozeUntil = 0;
+    state.consumed = true;
+  }
   if (!state.consumed && normalizeInputMatch(band.text).includes("WAIT")) {
     state.consumed = true;
     state.snoozeUntil = now + 120_000;
@@ -60,12 +88,25 @@ function path(pane: string, env: NodeJS.ProcessEnv): string {
   const key = createHash("sha256").update(`${physicalSocketPath(env)}\0${pane}`).digest("hex");
   return join(env.TAP_INDEX_HOME || join(env.HOME || homedir(), ".tap"), "input-protection", `${key}.json`);
 }
+/** Status readers must not hang on a damaged record replaced by a FIFO. */
+function readRecord(pane: string, env: NodeJS.ProcessEnv): InputProtection {
+  const fd = openSync(path(pane, env), constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error("input protection record is not a bounded regular file");
+    return JSON.parse(readFileSync(fd, "utf8"));
+  } finally { closeSync(fd); }
+}
 export function readInputProtection(pane: string, epoch: string, env = process.env): InputProtection | null {
   try {
-    const s = JSON.parse(readFileSync(path(pane, env), "utf8"));
+    const s = readRecord(pane, env);
     if (s.pane !== pane || s.epoch !== epoch) return null;
     if (!Number.isFinite(s.graceUntil) || !Number.isFinite(s.snoozeUntil)
       || typeof s.consumed !== "boolean" || !(s.bareSince === null || Number.isFinite(s.bareSince))
+      || !(s.stopUntil === undefined || Number.isFinite(s.stopUntil) && s.stopUntil > 0)
+      || !(s.startRequested === undefined || typeof s.startRequested === "boolean")
+      || !(s.startClearAttempted === undefined || typeof s.startClearAttempted === "boolean")
+      || !(s.operatorCueEmitted === undefined || ["stop", "start"].includes(s.operatorCueEmitted))
       || !Array.isArray(s.senders) || !s.senders.every((v: unknown) => typeof v === "string")
       || !(s.cueEmitted === undefined || s.cueEmitted in CUE_RANK)) throw new Error("invalid input protection");
     return s;
@@ -93,7 +134,11 @@ export function updateInputProtection(obs: PaneObservation, band: PaneBand, opti
   const newBatch = pending.length === 0 && !!options.message;
   if (options.message && !pending.some(m => m.home === options.message!.home && m.id === options.message!.id)) pending.push(options.message);
   if (!old && !pending.length) return null;
-  const state = advanceProtection(old, obs, band, now, options.urgent, options.sender, newBatch);
+  // A retained WAIT/STOP marker without pending mail is observed only to retire
+  // it; typing STOP while no courier is watching never creates a new hold.
+  const advanceBand = !pending.length && band.state === "busy" && band.text.trim() === "STOP" && !old?.stopUntil
+    ? { state: "unobservable" as const, reason: "no-pending-mail" } : band;
+  const state = advanceProtection(old, obs, advanceBand, now, options.urgent, options.sender, newBatch);
   if (state) {
     state.pending = pending;
     state.senders = [...new Set(pending.map(m => m.sender).filter(Boolean))];
@@ -115,7 +160,7 @@ export function updateInputProtection(obs: PaneObservation, band: PaneBand, opti
 /** Read-only status for spool scheduling and operator reports. */
 function observedInputProtection(pane: string, env = process.env): InputProtection | null {
   let stored: InputProtection;
-  try { stored = JSON.parse(readFileSync(path(pane, env), "utf8")); }
+  try { stored = readRecord(pane, env); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   const observed = observePaneResult(pane, env);
   if (observed.status === "pane_gone" || observed.status === "pane_dead") return null;
@@ -128,9 +173,37 @@ export function activeInputForPane(pane: string, env = process.env): InputProtec
   return state && protectionUntil(state) > Date.now() ? state : null;
 }
 
-/** The pane's live WAIT snooze, or null: parks stay silent while one is active. */
+/** The pane's live WAIT/STOP hold, or null: arrivals stay silent while held. */
 export function snoozedInputForPane(pane: string, env = process.env, now = Date.now()): InputProtection | null {
-  try { const s = observedInputProtection(pane, env); return s && s.snoozeUntil > now ? s : null; } catch { return null; }
+  try { const s = observedInputProtection(pane, env); return s && Math.max(s.snoozeUntil, s.stopUntil ?? 0) > now ? s : null; } catch { return null; }
+}
+
+/** Under the pane lock, persist cosmetic acknowledgement before emitting it. */
+export function claimOperatorCue(pane: string, env = process.env, now = Date.now()): { word: "STOP" | "START"; until: number } | null {
+  const state = observedInputProtection(pane, env);
+  if (!state?.stopUntil) return null;
+  const cue = state.startRequested ? "start" : !state.startClearAttempted && state.stopUntil > now ? "stop" : null;
+  if (!cue || state.operatorCueEmitted === cue) return null;
+  state.operatorCueEmitted = cue;
+  atomicWrite(path(pane, env), JSON.stringify(state) + "\n");
+  return { word: cue === "stop" ? "STOP" : "START", until: state.stopUntil };
+}
+
+/** Separate one-shot license for the no-byte START clear, never a payload attempt. */
+export function claimStartClear(pane: string, epoch: string, env = process.env): boolean {
+  const state = readInputProtection(pane, epoch, env);
+  if (!state?.startRequested || state.startClearAttempted) return false;
+  state.startClearAttempted = true;
+  atomicWrite(path(pane, env), JSON.stringify(state) + "\n");
+  return true;
+}
+
+/** Keep the spent license, but retire the cleanup request after positive empty-input proof. */
+export function completeStartClear(pane: string, epoch: string, env = process.env): void {
+  const state = readInputProtection(pane, epoch, env);
+  if (!state?.startRequested || !state.startClearAttempted) return;
+  state.startRequested = false;
+  atomicWrite(path(pane, env), JSON.stringify(state) + "\n");
 }
 
 /**
@@ -153,10 +226,11 @@ export function claimWaitCue(pane: string, env: NodeJS.ProcessEnv = process.env,
   return due;
 }
 
-/** The shared record applies only to members of this message's pending cohort. */
+/** Draft grace/WAIT belong to their cohort; STOP covers all mail for the pane. */
 export function protectedMessageState(home: string, id: string, pane: string, env = process.env): InputProtection | null | undefined {
   try {
     const state = observedInputProtection(pane, env);
+    if ((state?.stopUntil ?? 0) > Date.now()) return state;
     if (!state?.pending?.some(m => m.id === id && (m.home === home || realpathSync(m.home) === realpathSync(home)))) return null;
     return state;
   } catch (error) {
@@ -175,7 +249,7 @@ export function protectedMessageDeadline(home: string, id: string, pane: string,
 /** The manual drain must also notice submission when no background waiter is running. */
 export function refreshInputProtection(pane: string, env = process.env): InputProtection | null {
   let stored: InputProtection;
-  try { stored = JSON.parse(readFileSync(path(pane, env), "utf8")); }
+  try { stored = readRecord(pane, env); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   const lock = acquirePaneLock(pane, 0, env);
   if (!lock) return activeInputForPane(pane, env);

@@ -55,7 +55,7 @@ Triggers to notice on the way, each stated to the person when it fires:
   draft when mail arrives: `clobber` may clear a draft to deliver and keeps the text TAP can
   capture. Pasting it back is conditional; when it does not happen, `tap draft` recovers it
   (OpenCode drafts always need that, and pasted content or images may not be captured). Typing
-  WAIT in capitals holds deliveries for two minutes. `wait` holds ordinary arrivals until the
+  `WAIT` in capitals snoozes up to two minutes or until the draft clears. While incoming mail is watched, exact `STOP` holds across empty input and view changes for up to ten minutes; exact `START` releases it. `wait` holds ordinary arrivals until the
   input is empty. If setup offers the clobber-or-wait choice, it is asked here, once.
 
 Two Claude sessions count. Mention `tap launch` once, after the reply, as the convenience for the

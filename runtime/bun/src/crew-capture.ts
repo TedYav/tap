@@ -13,9 +13,10 @@ import { pyDumpIndent } from "./lossless-json";
 import { validateLockedRegistryAuthority } from "./slices/registry-authority";
 
 export async function captureNewCrewIdentity(ctx: ResolvedContext, scriptsDir: string,
-  handle: string, pane: string, instance: string, harness: string): Promise<void> {
+  handle: string, pane: string, instance: string, harness: string, signal?: AbortSignal, launch?: { root: string; token: string }): Promise<void> {
   const env = { ...process.env };
   for (const key of [...INHERITED_IDENTITY_ENV, "TAP_CLEAR_ID", "TAP_CALLER_SELECTED_JOB", "TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE"]) delete env[key];
+  if (launch) { env.TAP_LAUNCH_ROOT = launch.root; env.TAP_LAUNCH_ID = launch.token; }
   env.TAP_REGISTER_EXPECTED_HARNESS = harness;
   env.TAP_CALLER_SELECTED_INSTANCE = instance;
   env.TAP_REGISTER_CREW_CAPTURE_ONLY = "1";
@@ -25,6 +26,7 @@ export async function captureNewCrewIdentity(ctx: ResolvedContext, scriptsDir: s
   let failure = "native identity observation timed out";
   do {
     await Bun.sleep(100);
+    signal?.throwIfAborted();
     const result = spawnSync(cmd!, args, { env, encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "pipe"] });
     if (result.status !== 0) failure = result.error ? `registration observation failed: ${result.error.message}`
       : `registration observation refused: ${(result.stdout || result.stderr).trim()}`;
@@ -39,6 +41,7 @@ export async function captureNewCrewIdentity(ctx: ResolvedContext, scriptsDir: s
       if (outcome.get("decision") === "unavailable") failure = String(outcome.get("reason"));
     }
   } while (performance.now() < deadline);
+  signal?.throwIfAborted();
 
   // A failed registration must not leave a not_started outcome forever. Pin
   // the exact child again under reset -> registry custody; never overwrite a

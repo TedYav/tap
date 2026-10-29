@@ -149,7 +149,7 @@ test("a fork whose source worktree sits outside the team root still reserves on 
   expect([row.status, row.registered_from_worktree]).toEqual(["active", f.root]);
 }, 20_000);
 
-function incumbent(f: ReturnType<typeof fixture>, extra: Record<string, unknown> = {}) {
+function incumbent(f: ReturnType<typeof fixture>, extra: Record<string, unknown> = {}, siblingCrew = false) {
   const created = spawnSync(tmux, ["-S", f.socket, "new-session", "-d", "-s", f.record.name, "-P", "-F", "#{pane_id}\t#{pid}:#{start_time}", "/bin/sleep 600"], { env: f.env, encoding: "utf8" });
   expect(created.status, created.stderr).toBe(0);
   const [pane, server] = created.stdout.trim().split("\t");
@@ -158,7 +158,8 @@ function incumbent(f: ReturnType<typeof fixture>, extra: Record<string, unknown>
     permissions: "auto", future: { nested: ["retained", 17] }, ...extra };
   const doc = JSON.parse(readFileSync(f.registry, "utf8"));
   doc.seats.seat = row;
-  doc.seats.sibling = { ...row, instance: "sibling-instance", crew: true };
+  // A seat by default: session replacement refuses while a crew occupies the session.
+  doc.seats.sibling = { ...row, instance: "sibling-instance", ...(siblingCrew ? { crew: true } : {}) };
   delete doc.seats.sibling.harness_session_id;
   writeFileSync(f.registry, JSON.stringify(doc));
   return row;
@@ -166,7 +167,7 @@ function incumbent(f: ReturnType<typeof fixture>, extra: Record<string, unknown>
 
 test.each([false, true])("team up --last --yes recreates the pinned parent after private-server loss (json=%p)", async json => {
   const f = fixture("claude");
-  incumbent(f, { boot_id: bootId(f.env), server_socket: f.socket });
+  incumbent(f, { boot_id: bootId(f.env), server_socket: f.socket }, true);
   const stopped = spawnSync(tmux, ["-S", f.socket, "kill-server"], { env: f.env, encoding: "utf8" });
   expect(stopped.status, stopped.stderr).toBe(0);
   let output = "";
@@ -233,7 +234,7 @@ test("restart preserves sibling metadata, writes the pre-claim bundle, and the r
   expect(JSON.parse(readFileSync(join(bundle, "registry-row.json"), "utf8")).agent).toEqual(before);
   expect(readFileSync(join(bundle, "COMPLETE"), "utf8")).toBe("complete\n");
   const after = JSON.parse(readFileSync(f.registry, "utf8"));
-  expect(after.seats.sibling).toEqual({ ...before, instance: "sibling-instance", crew: true, status: "suspended", status_reason: "session_restarted" });
+  expect(after.seats.sibling).toEqual({ ...before, instance: "sibling-instance", status: "suspended", status_reason: "session_restarted" });
   expect(after.seats.seat.future).toEqual(before.future);
   expect(after.seats.seat.instance).toBe(before.instance);
   // Restore refuses any extant row. Remove the fixture's current seat through
@@ -1124,3 +1125,70 @@ test.each([true, false])("a plain resume prints the picker receipt once (dry_run
   const count = await pickerReceiptsPrinted(async () => { expect((await launchTransaction({ kind: "resume", record: f.record, dry_run: dryRun }, f.env)).code).toBe(0); });
   expect(count).toBe(1);
 }, 20_000);
+
+test("exact restart guard runs before reservation and again under stop custody", async () => {
+  const f = fixture("codex"); incumbent(f); f.record.replaces_session = f.record.name; f.record.harness_session_id = "native-id";
+  const doc = JSON.parse(readFileSync(f.registry, "utf8")); delete doc.seats.sibling; doc.seats.seat.harness_session_id = "native-id"; writeFileSync(f.registry, JSON.stringify(doc));
+  const before = readFileSync(f.registry, "utf8");
+  const exact = { id: "native-id", invocation: { argv: [join(f.root, "bin/codex"), "resume", "native-id"], env: {} },
+    verify: async () => { throw new Error("diagnosis changed before reservation"); } };
+  await expect(launchTransaction({ kind: "restart", record: f.record, incumbent_live: true, exact_restart: exact }, f.env)).rejects.toThrow("diagnosis changed before reservation");
+  expect(readFileSync(f.registry, "utf8")).toBe(before);
+  const { reserveTransaction, suspendAndStop, rollbackOwned } = await import("../src/launcher/transaction");
+  const selection = (await import("../src/selector")).selectCaller({ cwd: f.root, env: f.env, verbClass: "lifecycle" });
+  const evidence: import("../src/launcher/transaction").FailureEvidence = { selection, handle: "seat", token: "", instance: null, record: f.record, vessel: null, backup: { status: "not-needed" }, reason: "restart_failed", output_path: "" };
+  const request = { kind: "restart" as const, record: f.record, incumbent_live: true, exact_restart: { ...exact,
+    verify: async (original?: Record<string, unknown>, token?: string) => {
+      expect(original?.instance).toBe("original-instance"); expect(token).toBe(evidence.token);
+      expect(JSON.parse(readFileSync(f.registry, "utf8")).seats.seat.status).toBe("pending");
+      throw new Error("artifact removed before stop");
+    } } };
+  await reserveTransaction(selection, request, evidence, f.env);
+  const stop = { attempted: false, killed: false, uncertain: false, adoptedShell: false };
+  await expect(suspendAndStop(evidence, request, stop, f.env)).rejects.toThrow("artifact removed before stop");
+  expect(stop.attempted).toBe(false);
+  expect(spawnSync(tmux, ["-S", f.socket, "has-session", "-t", `=${f.record.name}`]).status).toBe(0);
+  expect(await rollbackOwned(evidence, null, f.env, false)).toBe(true);
+}, 30000);
+
+test("unwedge session stop refuses the caller and every additional pane", async () => {
+  const f = fixture("codex"), row = incumbent(f);
+  const { soleRestartPane } = await import("../src/recovery/unwedge-restart");
+  const snapshot = { binding: { paneId: row.pane_id!, session: f.record.name } } as import("../src/verbs/doctor-seat").SeatSnapshot;
+  expect(() => soleRestartPane(snapshot, f.env)).not.toThrow();
+  expect(() => soleRestartPane(snapshot, { ...f.env, TMUX_PANE: row.pane_id! })).toThrow("calling pane");
+  expect(spawnSync(tmux, ["-S", f.socket, "new-window", "-d", "-t", `=${f.record.name}:`, "/bin/sleep 600"], { env: f.env }).status).toBe(0);
+  expect(() => soleRestartPane(snapshot, f.env)).toThrow("sole pane");
+  expect(spawnSync(tmux, ["-S", f.socket, "has-session", "-t", `=${f.record.name}`]).status).toBe(0);
+});
+
+test.each(["started", "artifact-removed", "progress"])("unwedge exact transaction: %s never falls back or retries", async mode => {
+  const f = fixture("codex"), id = "11111111-1111-4111-8111-111111111111";
+  const store = join(f.root, ".codex/sessions/2026/10/28"); mkdirSync(store, { recursive: true });
+  const transcript = join(store, `rollout-2026-10-28T00-00-00-${id}.jsonl`);
+  writeFileSync(transcript, JSON.stringify({ type: "session_meta", payload: { id, cwd: f.root } }) + "\n");
+  const row = incumbent(f, { harness_session_id: id, transcript_path: transcript, server_socket: f.socket });
+  const doc = JSON.parse(readFileSync(f.registry, "utf8")); delete doc.seats.sibling; writeFileSync(f.registry, JSON.stringify(doc));
+  const pid = spawnSync(tmux, ["-S", f.socket, "display-message", "-p", "-t", row.pane_id!, "#{pane_pid}"], { encoding: "utf8" }).stdout.trim();
+  const snapshot: import("../src/verbs/doctor-seat").SeatSnapshot = { binding: { team: "fixture", handle: "seat", registry: f.registry,
+    pane: row.pane, paneId: row.pane_id!, session: f.record.name, instance: "original-instance", harness: "codex", processPid: pid,
+    serverSocket: f.socket, serverEpoch: row.server_epoch, nativeSessionId: id }, seat: row, root: f.root, busHome: join(f.root, ".tap/bus") };
+  const { restartUnwedge } = await import("../src/recovery/unwedge-restart");
+  let effects = 0, guarded = 0, reserved = 0;
+  const work = restartUnwedge(snapshot, reservation => {
+    guarded++; if (reservation) { reserved++; expect(reservation.original.instance).toBe("original-instance"); }
+    if (mode === "artifact-removed" && guarded === 2) writeFileSync(transcript, "corrupt artifact\n");
+    return mode === "progress" && reservation ? "productive work resumed before teardown" : "";
+  }, "recovery-test", () => { effects++; }, tapScriptsDir(), f.env);
+  if (mode === "started") {
+    const result = await work; expect(result.code).toBe(5); expect(result.detail).toContain("verification pending");
+    const argv = readFileSync(join(f.root, "argv"), "utf8").trim().split("\n"); expect(argv).toContain("resume"); expect(argv.filter(v => v === id)).toHaveLength(1);
+    expect(reserved).toBe(1);
+  } else {
+    await expect(work).rejects.toThrow(mode === "artifact-removed" ? "artifact" : "productive work");
+    expect(existsSync(join(f.root, "argv"))).toBe(false);
+    expect(spawnSync(tmux, ["-S", f.socket, "display-message", "-p", "-t", row.pane_id!, "#{pane_pid}"], { encoding: "utf8" }).stdout.trim()).toBe(pid);
+  }
+  expect(effects).toBe(1);
+  expect(spawnSync(tmux, ["-S", f.socket, "has-session", "-t", `=${f.record.name}`]).status).toBe(0);
+}, 30000);

@@ -13,6 +13,8 @@ Superseded 2026-10-05 (tap-xe42x): the `--interrupt` form and its urgent note, t
 `[Y/n]` prompt, the `--from` sender, `--reason`, `-m`/`-f` and `--aggressiveness`. Each retired
 flag now refuses with `retired_option`, names its replacement and sends nothing.
 
+For diagnosis-gated recovery with recorded lower-rung evidence, use [`tap unwedge`](./unwedge.md). Its selected nudge/Continue actions reuse this actuator with additional evidence guards.
+
 ## The ladder
 
 One pass, top to bottom. Each rung presses at most one recorded key action. After any key may

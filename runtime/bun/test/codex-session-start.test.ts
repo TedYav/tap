@@ -32,6 +32,7 @@ test("Codex workers stay silent and preserve the parent; persisted starts still 
   const cases = [
     ...invalid.map((transcript_path, i) => ({ session_id: `worker-${i}`, source: "startup", transcript_path })),
     ...sources.map(source => ({ session_id: `live-${source}`, source, transcript_path: join(root, `missing-${source}.jsonl`) })),
+    { session_id: "live-relaunch", source: "clear", transcript_path: join(root, "missing-relaunch.jsonl") },
   ];
   try {
     for (const path of [env.HOME!, env.TAP_HOME!, index]) mkdirSync(path, { recursive: true });
@@ -39,9 +40,11 @@ test("Codex workers stay silent and preserve the parent; persisted starts still 
     const script = join(root, "run.sh");
     const lines = ["#!/bin/bash", `while [ ! -e ${q(join(root, "start"))} ]; do sleep 0.02; done`];
     for (const [i, payload] of cases.entries()) {
+      const relaunch = payload.session_id === "live-relaunch";
       writeFileSync(join(root, `${i}.json`), JSON.stringify({ cwd: root, hook_event_name: "SessionStart", ...payload }));
+      if (relaunch) lines.push(`${q(process.execPath)} -e ${q(`import {readFileSync,writeFileSync} from 'node:fs'; const path=${JSON.stringify(registry)}; const doc=JSON.parse(readFileSync(path,'utf8')); doc.seats.agent.expected_clear_nonce='clear-relaunch'; writeFileSync(path,JSON.stringify(doc));`)}`);
       lines.push(
-        `bash ${q(join(REPO, "hooks/tap-codex-session-start.sh"))} < ${q(join(root, `${i}.json`))} > ${q(join(root, `${i}.out`))} 2> ${q(join(root, `${i}.err`))}`,
+        `${relaunch ? "TAP_CLEAR_ID=clear-relaunch " : ""}bash ${q(join(REPO, "hooks/tap-codex-session-start.sh"))} < ${q(join(root, `${i}.json`))} > ${q(join(root, `${i}.out`))} 2> ${q(join(root, `${i}.err`))}`,
         `echo $? > ${q(join(root, `${i}.status`))}`,
         `cp ${q(registry)} ${q(join(root, `${i}.registry`))}`,
         // The first trace is created before any binding child. Checking after
@@ -81,6 +84,11 @@ test("Codex workers stay silent and preserve the parent; persisted starts still 
         expect(context).toContain("TAP skills:");
         expect(JSON.parse(saved).seats.agent.harness_session_id).toBe(payload.session_id);
         expect(JSON.parse(saved).seats.agent.instance).toBe("agent|parent");
+        if (payload.session_id === "live-relaunch") {
+          // Registration answers the nonce; the launcher clears its expectation.
+          expect(JSON.parse(saved).seats.agent.expected_clear_nonce).toBe("clear-relaunch");
+          expect(JSON.parse(saved).seats.agent.clear_nonce).toBe("clear-relaunch");
+        }
         expect(existsSync(payload.transcript_path as string)).toBe(false);
       }
     }

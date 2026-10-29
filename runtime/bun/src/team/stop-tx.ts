@@ -31,7 +31,8 @@ import { assertSharedStopCleared, quiesceSharedSession } from "../opencode-share
 import { atomicWrite } from "../fsatomic";
 import { codePointCompare, spared } from "./selection";
 import { destructiveSessionTarget, type LifecycleTmux } from "../lifecycle-target";
-import { crewLifetimeBinding, crewLifetimeMatchesRows, parentLifetimeMatchesRow, validateCrewLifetimeBinding, validateParentHarnessLifetime } from "../crew-lifetime";
+import { crewProcessMatchesRow, parentLifetimeMatchesRow, validateCrewProcess, validateParentHarnessLifetime, type CrewProcess } from "../crew-lifetime";
+import { crewFamilyHandles } from "../crew-ownership";
 import {
   isDict as pyIsDict,
   jsonDumpBytes,
@@ -94,6 +95,7 @@ export interface StopTxInput {
   approvedInstances?: ReadonlyMap<string, string>;
   approvedParentLifetimes?: ReadonlyMap<string, import("../crew-lifetime").ParentHarnessLifetime>;
   approvedCrewAtConsent?: ReadonlyMap<string, { instance: string; session: string }>;
+  approvedCrewProcesses?: ReadonlyMap<string, CrewProcess | null>;
   selfHandle: string;
   runId: string;
   selfRowsPath: string;
@@ -296,18 +298,13 @@ export function runStopTx(input: StopTxInput): StopTxResult {
     }
 
     const approvedFamilyCrew = (handle: string, row: Seat): boolean => {
-      if (row.crew !== true || !input.approvedParentLifetimes) return false;
-      const session = pyStr(row.session);
-      const owners = Object.entries(agents).filter(([, candidate]) => pyIsDict(candidate) && candidate.crew !== true && pyStr(candidate.session) === session);
+      if (row.crew !== true || !input.approvedCrewProcesses?.has(handle)) return false;
+      const owners = Object.keys(agents).filter(owner => agents[owner]?.crew !== true && crewFamilyHandles(agents, owner).includes(handle));
       if (owners.length !== 1) return false;
-      const [owner, parent] = owners[0]!;
-      const lifetime = input.approvedParentLifetimes.get(owner);
-      if (!lifetime || !parentLifetimeMatchesRow(lifetime, owner, parent)
-        || !validateParentHarnessLifetime(lifetime)) return false;
-      const binding = crewLifetimeBinding(pyStr(row.pane_id));
-      return !!binding && crewLifetimeMatchesRows(binding, owner, parent, handle, row)
-        && binding.parent.pid === lifetime.process.pid && binding.parent.start === lifetime.process.start
-        && binding.parent.boot === lifetime.process.boot && validateCrewLifetimeBinding(binding);
+      const owner = owners[0]!, parent = agents[owner]!, lifetime = input.approvedParentLifetimes?.get(owner);
+      if (lifetime && (!parentLifetimeMatchesRow(lifetime, owner, parent) || !validateParentHarnessLifetime(lifetime))) return false;
+      const proof = input.approvedCrewProcesses.get(handle);
+      return !!proof && crewProcessMatchesRow(proof, handle, row) && validateCrewProcess(proof);
     };
     if (input.approvedParentLifetimes) {
       for (const tuple of seats) {

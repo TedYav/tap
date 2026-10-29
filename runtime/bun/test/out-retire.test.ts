@@ -10,6 +10,7 @@ import { loads } from "../src/watch-detect";
 import { KERNEL_LOCK, kernelLockArgs } from "../src/panelock";
 import { claimTmuxStart, physicalSocketPath } from "../src/tmux";
 import { removeScratchTree } from "./support/scratch";
+import { disposeSenderGone, type DeadlineRow } from "../src/spool-deadline";
 
 const ROOT = join(import.meta.dir, "../..");
 const MAIN = join(import.meta.dir, "../main.ts");
@@ -40,7 +41,7 @@ function fix(o: { team?: string; tmux?: boolean } = {}): Fix {
     writeFileSync(join(state, "panes"), "%900\tobserver\t@900\n");
     writeFileSync(join(fakeBin, "tmux"), TMUX_SH, { mode: 0o755 });
   } else {
-    writeFileSync(join(fakeBin, "tmux"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    writeFileSync(join(fakeBin, "tmux"), "#!/bin/sh\necho 'no server running on /fixture/absent' >&2\nexit 1\n", { mode: 0o755 });
   }
   const env: Record<string, string> = { ...process.env, HOME: join(root, "u"), TAP_HOME: bus, TAP_INDEX_HOME: index, TAP_LOCK_DIR: join(root, "locks"), TAP_TMUX_SOCKET: `r3out-${process.pid}`, TAP_SESSION_MANIFEST: join(root, "sess.json"), TAP_VERSION_SEEN_PATH: join(root, "seen.json"), TAP_SPOOL_DISABLE_DELIVERER: "1", FAKE_STATE: state } as Record<string, string>;
   delete (env as Record<string, string | undefined>).TMUX;
@@ -631,7 +632,7 @@ test("TAP_TEST_UNREGISTER_RESTORE_FAIL retains the tombstone and names the remed
   expect(tombs(f2).length).toBe(1);
 });
 
-test("crew --kill uses D and keeps the last pane instead of stopping the session", () => {
+test("crew --kill retires an already absent crew without a session stop", () => {
   const f = fix({ tmux: true });
   fakePanes(f, { "%1": ["t/alice", "@1"] });
   fakeSession(f, "t/alice");
@@ -855,6 +856,83 @@ test("crew out refuses on an unsettled canonical envelope with extra separator s
   expect(r2.code).toBe(0);
   expect(seatsOf(f2).alice).toBeUndefined();
   expect(events(f2).length).toBe(1);
+});
+
+for (const command of [["out"], ["crew", "shutdown"]]) {
+  test(`${command.join(" ")} leaves outbound notes and replies readable after crew retirement`, () => {
+    const f = fix();
+    reg(f, { alice: row({ crew: true }), bob: row({ delivery: "poll", instance: "bob|b1", pane_id: "", session: "" }) });
+    for (const kind of ["note", "reply", "placed"]) {
+      const id = `crew-${kind}`, path = join(f.bus, "payloads", `${id}.md`);
+      writeFileSync(path, `---\nid: ${id}\nfrom: alice\nto: bob\nkind: ${kind}\nreply: settle-only\nrecipient_instance: bob|b1\npath: ${path}\n---\n\ncrew result\n`);
+      if (kind !== "placed") writeFileSync(join(f.bus, "receipts", `${id}.sent`), "");
+    }
+    const result = run(f, [...command, "alice", "--json"]);
+    expect(result.code, result.out + result.err).toBe(0);
+    expect(seatsOf(f).alice).toBeUndefined();
+    expect(result.err).toContain("delivered, unread by bob");
+    const poll = run(f, ["poll", "bob"], { TAP_SELF: "bob" });
+    expect(poll.code, poll.err).toBe(0);
+    expect(poll.out).toContain("crew-placed");
+    for (const kind of ["note", "reply", "placed"]) {
+      const id = `crew-${kind}`, done = join(f.bus, "receipts", `${id}.done`);
+      expect(result.err).toContain(id);
+      expect(existsSync(done)).toBe(false);
+      const read = run(f, ["read", id, "--by", "bob"], { TAP_SELF: "bob" });
+      expect(read.code, read.out + read.err).toBe(0);
+      expect(read.out).toContain("crew result");
+      expect(JSON.parse(readFileSync(done, "utf8"))).toMatchObject({ by: "bob", via: "read" });
+    }
+  });
+}
+
+for (const direction of ["inbound", "outbound"]) test(`crew retirement still blocks unanswered ${direction} asks`, () => {
+  const f = fix(); reg(f, { alice: row({ crew: true }) });
+  const id = `open-${direction}`, from = direction === "inbound" ? "bob" : "alice", to = direction === "inbound" ? "alice" : "bob";
+  writeFileSync(join(f.bus, "payloads", `${id}.md`), `---\nid: ${id}\nfrom: ${from}\nto: ${to}\nkind: order\nreply: expected\npath: p\n---\n\nwork\n`);
+  const result = run(f, ["crew", "shutdown", "alice"]);
+  expect(result.code).toBe(1);
+  expect(result.err).toContain(`${direction} ${from} id=${id}`);
+  expect(seatsOf(f).alice).toBeDefined();
+});
+
+test("crew retirement reports spooled outbound notes as queued, without settling them", () => {
+  const f = fix(); reg(f, { alice: row({ crew: true }) });
+  const path = join(f.bus, "spool", "queued-out.md");
+  writeFileSync(path, "---\nid: queued-out\nfrom: alice\nto: bob\nkind: note\nreply: settle-only\npath: p\n---\n\nbody\n");
+  const result = run(f, ["out", "alice"]);
+  expect(result.code, result.out + result.err).toBe(0);
+  expect(result.out).toContain("queued, unread by bob");
+  expect(result.out).toContain("may expire undelivered");
+  expect(result.out).not.toContain("delivered, unread");
+  expect(readFileSync(path, "utf8")).toContain("body");
+  expect(existsSync(join(f.bus, "receipts", "queued-out.done"))).toBe(false);
+});
+
+for (const deadlineSource of ["readiness-gate", "autosettle-hold"]) test(`retired crew queued note survives ${deadlineSource} expiry as readable canonical content`, async () => {
+  const f = fix();
+  reg(f, { alice: row({ crew: true }), bob: row({ delivery: "poll", instance: "bob|b1", pane_id: "", session: "" }) });
+  const id = "expired-crew-note", path = join(f.bus, "spool", `${id}.md`), canon = join(f.bus, "payloads", `${id}.md`);
+  const body = `---\nid: ${id}\nfrom: alice\nto: bob\nkind: note\nreply: settle-only\nrecipient_instance: bob|b1\npath: ${canon}\n---\n\nretained crew result\n`;
+  const escalatedAt = new Date(1000_000).toISOString();
+  writeFileSync(path, body);
+  writeFileSync(join(f.bus, "spool", `${id}.meta.json`), JSON.stringify({ id, target: "bob", escalated_at: escalatedAt, deadline_source: deadlineSource }));
+  expect(run(f, ["out", "alice"]).code).toBe(0);
+  const deadline: DeadlineRow = { id, target: "bob", reason: "pending-input", reasonClass: "busy", timeoutSeconds: "300", firstEpoch: "1", pane: "", paneId: "", toTeam: "t", targetRegistry: f.registry, policy: "standard", deadlineEpoch: "500", escalatedAt, deadlineSource, holdUntilEpoch: "0" };
+  expect(await disposeSenderGone({ home: f.bus, spoolDir: join(f.bus, "spool"), eventLog: join(f.bus, "registry-events.log"), team: "t", verbLabel: "tap test", actingRegistry: f.registry, scriptsDir: "", alert: { mode: "none" }, now: 2800, unroutedGrace: 1800, env: f.env }, deadline)).toBe(true);
+  expect(readFileSync(canon, "utf8")).toBe(body);
+  expect(existsSync(path)).toBe(false);
+  const cancelled = join(f.bus, "receipts", `${id}.cancelled`);
+  expect(existsSync(cancelled)).toBe(deadlineSource === "autosettle-hold");
+  if (deadlineSource === "autosettle-hold") expect(JSON.parse(readFileSync(cancelled, "utf8")).reason).toBe("sender_gone");
+  else {
+    const poll = run(f, ["poll", "bob"], { TAP_SELF: "bob" });
+    expect(poll.code, poll.err).toBe(0);
+    expect(poll.out).toContain(id);
+  }
+  const read = run(f, ["read", id, "--by", "bob"], { TAP_SELF: "bob" });
+  expect(read.code, read.err).toBe(0);
+  expect(read.out).toContain("retained crew result");
 });
 
 test("JSON crew retirement preserves sender-owned queued-mail notices on stderr", () => {

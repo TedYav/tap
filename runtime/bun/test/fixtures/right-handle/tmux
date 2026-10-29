@@ -7,7 +7,7 @@
 // the process-owning pane. MOCK_REBIRTH_* recycles %99999 onto another tty with
 // a bumped generation after the caller-tty reassertion, to prove the caller tty
 // and generation must come from one observation.
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const argv = process.argv.slice(2);
 const cmd = argv.shift() ?? "";
@@ -84,14 +84,19 @@ switch (cmd) {
         }
         break;
       case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}":
+      case "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{socket_path}\t#{pane_current_path}": {
+        const extra = fmt.includes("#{pane_pid}")
+          ? `\t${pane === "%99999" ? "fake:1.0" : "fake:0.0"}\t${Number(readFileSync(process.env.MOCK_PS_STATE!, "utf8")) - 1}\tclaude\t/tmp/fake\t/tmp`
+          : "";
         if (pane === "%99999" && process.env.MOCK_REBIRTH_AFTER_TTY === "1") {
-          console.log("%99999\t/dev/ttys111\tfake\t901:300");
+          console.log(`%99999\t/dev/ttys111\tfake\t901:300${extra}`);
         } else if (pane === "%99999") {
-          console.log(`%99999\t/dev/ttys999\tfake\t${serverRaw}`);
+          console.log(`%99999\t/dev/ttys999\tfake\t${serverRaw}${extra}`);
         } else {
-          console.log(`%11111\t/dev/ttys111\tfake\t${serverRaw}`);
+          console.log(`%11111\t/dev/ttys111\tfake\t${serverRaw}${extra}`);
         }
         break;
+      }
       case "#{pid}:#{start_time}":
         console.log("900:200");
         break;

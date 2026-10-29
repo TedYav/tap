@@ -1,0 +1,10 @@
+  Update available · 0.164.0
+  → 0.165.0
+  Release notes:
+  https://github.com/opena
+  i/codex/releases/latest
+↑
+› 3. Skip until next version
+
+  enter continue · esc
+  skip

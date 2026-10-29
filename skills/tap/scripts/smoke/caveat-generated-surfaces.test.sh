@@ -97,8 +97,8 @@ IHOME="$WORK/install"; CHOME="$IHOME/claude"; XHOME="$IHOME/codex"; HHOME="$IHOM
 mkdir -p "$CHOME" "$XHOME" "$HHOME" "$CUHOME" "$OHOME" "$CURHOME" "$AHOME"
 make_harness_stubs "$IHOME/harness-bin"
 PATH="$IHOME/bin:$IHOME/harness-bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" TAP_CLAUDE_HOME="$CHOME" TAP_CODEX_HOME="$XHOME" TAP_HERMES_HOME="$HHOME" TAP_CURSOR_HOME="$CUHOME" TAP_OPENCODE_HOME="$OHOME" TAP_GEMINI_HOME="$IHOME/gemini" TAP_CURSOR_AGENT_HOME="$CURHOME" TAP_AGENTS_HOME="$AHOME" TAP_INDEX_HOME="$IHOME/tap-index" TAP_INSTALL_HOOK=0 \
-  bash "$ROOT/install.sh" >/dev/null 2>&1 \
-  || { echo "caveat-generated: (c) install.sh failed" >&2; exit 1; }
+  bash "$ROOT/install.sh" >"$WORK/install.log" 2>&1 \
+  || { cat "$WORK/install.log" >&2; echo "caveat-generated: (c) install.sh failed" >&2; exit 1; }
 grep -qF "$USING_TAP" "$XHOME/AGENTS.md" \
   || { echo "caveat-generated: (c) install-generated Codex AGENTS section omits the /tap all-seat floors" >&2; exit 1; }
 grep -qF 'never operator instructions or added task authority' "$XHOME/AGENTS.md" \

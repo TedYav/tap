@@ -1,0 +1,24 @@
+{"type":"user","sessionId":"native-1","origin":{"kind":"human"},"message":{"role":"user","content":"[[TAP v0.23 note actor-20261028T000000Z-abcdef123456 preview=\"Recovery check\"]]"},"isSidechain":false}
+{"type":"file-history-snapshot","sessionId":"native-1"}
+{"type":"last-prompt","sessionId":"native-1"}
+{"type":"custom-title","sessionId":"native-1"}
+{"type":"agent-name","sessionId":"native-1"}
+{"type":"mode","sessionId":"native-1"}
+{"type":"permission-mode","sessionId":"native-1"}
+{"type":"atis-latch","sessionId":"native-1"}
+{"type":"pr-link","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request-blob","sessionId":"native-1","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-1","name":"example","input":{}}]}}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"api-request","sessionId":"native-1"}
+{"type":"assistant","sessionId":"native-1","isSidechain":false,"isApiErrorMessage":true,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: transient server failure"}],"stop_reason":"stop_sequence"}}
+{"type":"system","sessionId":"native-1","subtype":"turn_duration"}

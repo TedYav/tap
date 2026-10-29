@@ -1,5 +1,10 @@
 // Entry for nudge-cross-team-fences.test.ts: one cmdNudge call from the Sender team's root.
-import { cmdNudge } from "../../src/verbs/nudge";
+import { cmdNudge, nudgePinnedSeat } from "../../src/verbs/nudge";
 import { resolve } from "node:path";
-try { process.exitCode = cmdNudge(["Target/peer"], resolve(import.meta.dir, "../../../../skills/tap/scripts"), new Set(["codex"])); }
+try {
+  const args = ["Target/peer"], scripts = resolve(import.meta.dir, "../../../../skills/tap/scripts"), families = new Set(["codex"]);
+  process.exitCode = process.env.REVIEW_NUDGE_GUARD === "1"
+    ? nudgePinnedSeat(args, scripts, families, "", { check: () => process.env.TAP_RECOVERY_RUN ? "diagnosis changed before Enter" : "" })
+    : cmdNudge(args, scripts, families);
+}
 catch (error) { console.error(String(error)); process.exitCode = (error as { code?: number }).code ?? 1; }

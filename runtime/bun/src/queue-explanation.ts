@@ -17,8 +17,9 @@ export function queueExplanation(home: string, id: string, now = Date.now() / 10
     if (!meta || typeof meta !== "object" || Array.isArray(meta)) return "Queue schedule unavailable: invalid metadata.";
   } catch { return "Queue schedule unavailable: metadata missing or unreadable."; }
   const held = typeof meta.pane_id === "string" ? protectedMessageState(home, id, meta.pane_id, env) : null;
-  if (held === undefined) return "Queue: operator WAIT status unobservable; delivery remains guarded.";
-  if (held && protectionUntil(held) > now * 1000) return `Queue: ${protectionDetail(held)}; submits earlier when the composer is ready.`;
+  if (held === undefined) return "Queue: operator hold status unobservable; delivery remains guarded.";
+  if (held && protectionUntil(held) > now * 1000) return `Queue: ${protectionDetail(held)}; ${(held.stopUntil ?? 0) > now * 1000
+    ? "type START to release; an empty composer does not release STOP" : "submits earlier when the composer is ready"}.`;
   const reason = String(meta.reason || "unknown"), cls = String(meta.reason_class || "unknown");
   const words: Record<string, string> = {
     "codex-hook-trust": CODEX_HOOK_TRUST_REASON,

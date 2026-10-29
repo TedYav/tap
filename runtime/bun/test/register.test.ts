@@ -1899,7 +1899,25 @@ test.each(["instance", "pane"])("post-add capture refuses a changed crew %s unde
   } finally { removeScratchTree(f.root); }
 });
 
-test.each(["parent-one", "parent-two", undefined])("crew add replaces dead residue instead of inheriting its native identity or owner %j", oldOwnerInstance => {
+test.each(["accepted", "quarantined"])("post-add capture without identity preserves a %s hook observation", decision => {
+  const f = fixture();
+  try {
+    const capture = { decision, observed_harness_session_id: "hook-native", at: "2026-01-01T00:00:00Z" };
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
+      child: { status: "active", delivery: "pane", crew: true, instance: "child-one", pane: f.addr,
+        pane_id: "%2", session: "repo/seat", server_epoch: f.epoch, server_socket: "/fake/socket", harness: "claude",
+        harness_session_id: "saved-native", crew_identity_capture: capture },
+    } });
+    const result = f.door(["child", "--pane", f.addr, "--crew", "--json"], {
+      TAP_REGISTER_CREW_CAPTURE_ONLY: "1", TAP_CALLER_SELECTED_INSTANCE: "child-one",
+      TAP_TMUX_SOCKET_PATH: "/fake/socket", TAP_REGISTER_EXPECTED_HARNESS: "claude",
+    });
+    expect(result.code, result.out + result.err).toBe(0);
+    expect(f.seats().child!.crew_identity_capture).toEqual(capture);
+  } finally { removeScratchTree(f.root); }
+});
+
+test.each(["parent-one", "parent-two", undefined])("crew add preserves a retained conversation instead of reusing its name (owner=%j)", oldOwnerInstance => {
   const f = fixture();
   try {
     f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: {
@@ -1915,20 +1933,14 @@ test.each(["parent-one", "parent-two", undefined])("crew add replaces dead resid
         quarantined_harness_session_id: "OLD-QUARANTINE", quarantined_transcript_path: "/old/q.jsonl",
         identity_quarantine_reason: "old quarantine", session_attribution_trust: "process", session_store_path: "/old/t.jsonl" },
     } });
+    const before = f.seats().child;
     const result = f.door(["child", "--pane", f.addr, "--crew"], {
       TAP_TMUX_SOCKET_PATH: "/fake/socket", TAP_REGISTER_CREW_OWNER_PANE: "%1",
       TAP_REGISTER_EXPECTED_HARNESS: "codex", TAP_REGISTER_SUPPRESS_IDENTITY_CAPTURE: "1",
     });
-    expect({ code: result.code, err: result.err }).toMatchObject({ code: 0 });
-    const row = f.seats().child!;
-    expect(row).toMatchObject({ pane_id: "%2", crew_owner: "parent", crew_owner_instance: "parent-two",
-      crew_identity_capture: { decision: "not_started", reason: "crew harness has not started" } });
-    expect(row.instance).toBeTruthy();
-    expect(row.instance).not.toBe("child-old");
-    for (const field of ["harness_session_id", "transcript_path", "identity_capture", "identity_capture_result",
-      "quarantined_harness_session_id", "quarantined_transcript_path", "identity_quarantine_reason", "session_attribution_trust", "session_store_path"]) {
-      expect(row[field]).toBeUndefined();
-    }
+    expect(result.code).toBe(1);
+    expect(result.out + result.err).toContain("resume");
+    expect(f.seats().child).toEqual(before);
   } finally { removeScratchTree(f.root); }
 });
 

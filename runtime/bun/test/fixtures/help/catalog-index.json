@@ -379,6 +379,17 @@
   {
     "topic": [
       "crew",
+      "resume"
+    ],
+    "key": "crew resume",
+    "exit": 0,
+    "page": "crew",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "crew",
       "shutdown"
     ],
     "key": "crew shutdown",
@@ -621,6 +632,16 @@
     "key": "nudge",
     "exit": 0,
     "page": "nudge",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "operate"
+    ],
+    "key": "operate",
+    "exit": 0,
+    "page": "operate",
     "dedicated": true,
     "tombstone": false
   },
@@ -1284,6 +1305,16 @@
     "key": "unregister",
     "exit": 0,
     "page": "unregister",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "unwedge"
+    ],
+    "key": "unwedge",
+    "exit": 0,
+    "page": "unwedge",
     "dedicated": true,
     "tombstone": false
   },

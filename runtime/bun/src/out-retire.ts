@@ -1,3 +1,4 @@
+import { captureCrewProcess, fenceCrewLifetime, stopCrewProcess } from "./crew-lifetime";
 // out-retire.ts — the ordinary `tap out|unregister` retirement owner (R3,
 // tap-68lp.2.1): plain, dash (`-`), and `--kill` forms in one place. The
 // router's out|unregister dispatches here for every non-forwarding form, so
@@ -16,7 +17,7 @@ import { validToken } from "./ids";
 import { acquireRegistryLock, type RegistryLock } from "./panelock";
 import { canonicalSessionName, isPaneId, lifecycleDisposition, tmuxFateStopsNamedSession, type LifecycleDisposition } from "./lifecycle-target";
 import { dismissCrew } from "./crew-lifecycle";
-import { liveSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-stop";
+import { liveOwnerSeat, ownedCrewRows, seatSnapshot, stopExactPane } from "./seat-stop";
 import { mintInstanceId, resolveHandleByPane, type Seat } from "./registry";
 import { acquireResetMutationLock, assertResetUnfenced, markResetGenerationReused, resetFenceRefusal } from "./reset";
 import { assertSelectionCurrent, parseTarget, SelectorError, type Selection } from "./selector";
@@ -460,8 +461,9 @@ function gitRoot(env: NodeJS.ProcessEnv): string {
   return process.cwd();
 }
 
-function crewScan(bus: Bus, name: string, team: string): { blockers: string[]; queued: Array<[string, string]> } {
+function crewScan(bus: Bus, name: string, team: string): { blockers: string[]; queued: Array<[string, string]>; unread: string[] } {
   const blockers: string[] = [], queued: Array<[string, string]> = [];
+  const unread = new Map<string, string>();
   for (const dir of [bus.payloadsDir, join(bus.home, "spool")]) {
     let names: string[] = [];
     try { names = readdirSync(dir).sort(); } catch { continue; }
@@ -477,14 +479,20 @@ function crewScan(bus: Bus, name: string, team: string): { blockers: string[]; q
       const from = envelopeField(text, "from") ?? "", to = envelopeField(text, "to") ?? "";
       const reply = envelopeField(text, "reply") || "expected";
       const toTeam = envelopeField(text, "to_team") ?? "";
-      if (from === name) blockers.push(`  outbound ${from} id=${id}; next: tap outstanding ${name}`);
+      if (from === name) {
+        if (reply === "settle-only") {
+          const delivery = isFile(bus.sentPath(id)) ? "delivered" : dir === bus.payloadsDir ? "placed" : "queued";
+          unread.set(id, `outbound '${id}': ${delivery}, unread by ${toTeam && toTeam !== team ? `${toTeam}/` : ""}${to}`
+            + (delivery === "queued" ? `; delivery unconfirmed, retries may stop after sender retirement or may expire undelivered; content remains readable with tap read ${id}` : ""));
+        } else blockers.push(`  outbound ${from} id=${id}; next: tap outstanding ${name}`);
+      }
       else if (to === name && (toTeam === "" || toTeam === team)) {
         if (dir === bus.payloadsDir) blockers.push(`  inbound ${from} id=${id}; next: ${reply === "settle-only" ? `tap read ${id}` : `tap reply ${id} -f <file>`}`);
         else queued.push([id, from]);
       }
     }
   }
-  return { blockers, queued };
+  return { blockers, queued, unread: [...unread.values()] };
 }
 
 function cloneJson(v: JsonValue): JsonValue {
@@ -533,14 +541,16 @@ function retireSelectedBody(ctx: Ctx, form: PlainForm, name: string, expected: R
   }
   const narr = narrationLadder(facts, form.kill, env);
   let queuedInbound: Array<[string, string]> = [];
+  let unreadOutbound: string[] = [];
 
   if (!form.kill && facts.present && facts.crew) {
-    const { blockers, queued } = crewScan(ctx.bus, name, ctx.team);
+    const { blockers, queued, unread } = crewScan(ctx.bus, name, ctx.team);
     if (blockers.length > 0) {
       process.stderr.write(`tap unregister: crew '${name}' has unresolved local obligations:\n${blockers.join("\n")}\n`);
       throw new TapError(1, "lifecycle_refused", `settle the listed obligations, then tap out ${name}`, `crew member '${name}' still has unresolved local transport obligations`, "tap");
     }
     queuedInbound = queued;
+    unreadOutbound = unread;
   }
 
   // Transaction: reset custody outside the registry lock; re-prove the selected
@@ -570,7 +580,7 @@ function retireSelectedBody(ctx: Ctx, form: PlainForm, name: string, expected: R
         if (!rebind) {
           if (form.lastSelection) assertLastSelection(ctx, form, name, env);
           removed = retireRow(ctx, env, name, form.team !== undefined, expected, disposition, liveSessions);
-          if (removed) postCommit(ctx, form, name, facts.eventPane, facts.crew, narr.windowId, narr.sessionName, queuedInbound, disposition);
+          if (removed) postCommit(ctx, form, name, facts.eventPane, facts.crew, narr.windowId, narr.sessionName, queuedInbound, disposition, unreadOutbound);
         }
       } finally { lock.release(); }
     } finally { resetLock.release(); }
@@ -831,13 +841,14 @@ export function retirementReceipt(ctx: Ctx, name: string, disposition: Retiremen
   else if (process.env.TAP_JSON === "1") writeSync(1, JSON.stringify(receipt) + "\n");
 }
 
-function postCommit(ctx: Ctx, form: PlainForm, name: string, eventPane: string, crew: boolean, windowId: string, sessionName: string, queued: Array<[string, string]>, disposition?: RetirementDisposition): void {
+function postCommit(ctx: Ctx, form: PlainForm, name: string, eventPane: string, crew: boolean, windowId: string, sessionName: string, queued: Array<[string, string]>, disposition?: RetirementDisposition, unread: string[] = []): void {
   markResetGenerationReused(ctx.bus.home, "unregister");
   retirementEvent(ctx, name, eventPane, disposition);
   if (!crew && disposition) retirementReceipt(ctx, name, disposition, { outcome: "retired" });
   const json = process.env.TAP_JSON === "1";
   if (form.dash && !json) process.stdout.write(`tap unregister: '-' removed '${name}' (most recently exited)\n`);
   const notices = json ? process.stderr : process.stdout;
+  for (const notice of unread) notices.write(`tap unregister: ${notice}\n`);
   for (const [id, from] of queued) {
     notices.write(`tap unregister: queued inbound spool '${id}' from '${from}' remains sender-owned\n`);
     notices.write(`tap unregister: sender next: tap cancel ${id} --by ${from}\n`);
@@ -915,19 +926,24 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
       }
       if (seat.server_socket && seat.server_socket !== physicalSocketPath()) throw new TapError(1, "session_identity_mismatch", "select the recorded tmux server", "seat belongs to another tmux socket; nothing removed");
       const snapshot = seatSnapshot();
-      const pane = liveSeat(seat, expectedSession, snapshot);
       const all: Record<string, Seat> = {};
       for (const [handle, raw] of rows) if (isMap(raw)) {
         all[handle] = { ...Object.fromEntries(raw), crew: raw.get("crew") === true || raw.get("crew") === 1n } as Seat;
       }
+      const crews = disposition.row.crews === "consume-d-contract" ? ownedCrewRows(all, name) : [];
+      const pane = liveOwnerSeat(all, name, snapshot);
+      const crewProofs = crews.flatMap(handle => {
+        fenceCrewLifetime(ctx, handle, all[handle]);
+        const proof = captureCrewProcess(ctx.team, handle, all[handle]!);
+        return proof ? [proof] : [];
+      });
       for (const [handle, other] of Object.entries(all)) {
         if (handle === name || other.delivery === "poll") continue;
         const shares = other.session === expectedSession || snapshot.panes.some(p => p.id === other.pane_id && p.session === expectedSession);
-        if (shares && !(other.crew === true && other.session === expectedSession)) {
+        if (shares && !crews.includes(handle)) {
           throw new TapError(1, "shared_durable_session", "use the team lifecycle command", `seat '${handle}' shares this session; nothing removed`);
         }
       }
-      const crews = disposition.row.crews === "consume-d-contract" ? ownedCrewRows(all, expectedSession, snapshot) : [];
       const original = cloneJson(doc), tombs: string[] = [];
       const caller = observeCallerIdentity(env);
       quiesceSharedSession(seat, ctx.root, name, { env });
@@ -955,16 +971,30 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
       }
       markResetGenerationReused(ctx.bus.home, "unregister");
       const record = (outcome: string) => retirementEvent(ctx, name, facts.eventPane, disposition, outcome);
-      record(pane ? "stop_requested" : "already_stopped");
       const fields = { session: expectedSession, crews };
-      const self = !!pane && caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) && caller.session === pane.session &&
-        snapshot.panes.some(p => p.id === caller.paneId && p.sessionId === pane.sessionId);
+      const callerPane = caller.state === "inside" && (!caller.selectedSocket || caller.selectedSocket === physicalSocketPath()) ? caller.paneId : "";
+      const callingCrews = crewProofs.filter(proof => proof.crewPane === callerPane);
+      const deferred = callingCrews.filter(proof => !pane || proof.crewSession !== pane.session);
+      const self = deferred.length > 0 || (!!pane && callerPane !== "" &&
+        snapshot.panes.some(p => p.id === callerPane && p.sessionId === pane.sessionId));
+      record(pane || self ? "stop_requested" : "already_stopped");
       const render = (outcome: string) => {
         retirementReceipt(ctx, name, disposition, { ...fields, outcome });
         if (env.TAP_JSON !== "1") writeSync(1, `tap ${disposition.action}: '${name}' removed from the registry; ${outcome === "stopped" ? `stopped tmux session '${expectedSession}'` : outcome}\n`);
       };
       if (self) { render("stop_requested"); form.selfReported = true; }
-      if (!pane) { render("already_stopped"); outcome.retired = true; return 0; }
+      const stopChildren = (proofs: typeof crewProofs) => {
+        for (const proof of proofs) {
+          const stopped = stopCrewProcess(proof);
+          if (stopped.outcome !== "stopped") {
+            saveRetirement(ctx, original, env);
+            throw new TapError(1, "crew_stop_unverified", "inspect the retained family before retrying",
+              `crew '${proof.crew}' stop is ${stopped.outcome}; registry restored, some earlier panes may have stopped: ${stopped.detail}`);
+          }
+        }
+      };
+      stopChildren(crewProofs.filter(proof => !callingCrews.includes(proof)));
+      if (!pane) { if (!self) render("already_stopped"); outcome.retired = true; stopChildren(deferred); return 0; }
       // Publication always precedes the one guarded effect. An exception or
       // nonzero exit can have acted; only a fresh observation decides rollback.
       let effectDetail = "";
@@ -995,6 +1025,7 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
       }
       if (!self) render("stopped");
       outcome.retired = true;
+      stopChildren(deferred);
       return 0;
     } finally { lock.release(); }
   } finally { resetLock.release(); }

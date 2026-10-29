@@ -12,6 +12,8 @@ import { inputHash, writeInputBackup } from "./pane/draft";
 import { deliveryBand, deliveryDisposition, type DeliveryFacts, type DeliveryDisposition } from "./slices/delivery-disposition";
 import { captureCourierFailure } from "./debug-capture";
 import { beginDeliveryAttempts } from "./delivery-attempt";
+import { codexUpdateDismissed, codexUpdatePrompt, codexUpdateSkipReceipt } from "./codex-update";
+import { appendRegistryEventOrWarn } from "./events";
 // The courier: place the canonical, then submit-verify the sentinel into a real
 // pane.
 //
@@ -52,7 +54,7 @@ import { closedSentinelInput, sentinelShapedInput } from "./sentinel-tail";
 import { CLOBBER_BLINK, flashPaneLocked, notifyDraftBackedUp } from "./spool-park-report";
 import { emitWaitCue } from "./wait-cues";
 import type { ClobberBackupReq, ClobberVerdict } from "./deliver";
-import { updateInputProtection, inputProtectionHeld, protectionUntil, protectionDetail, type InputProtection } from "./input-protection";
+import { updateInputProtection, inputProtectionHeld, protectionUntil, protectionDetail, claimStartClear, completeStartClear, composerControlWord, type InputProtection } from "./input-protection";
 import { injectionBehavior } from "./injection-behavior";
 import { hasInputText } from "./terminal-text";
 import { BLANK_DRAFT_NOTICE, inputBackupBody, inputBackupIncomplete, restorePlainDraft, INCOMPLETE_DRAFT_NOTICE } from "./input-backup";
@@ -1277,6 +1279,62 @@ function submitVerifyLockedBody(
       return { status: "attempt_evidence_unwritable", detail: `cannot record delivery attempt: ${error}` };
     }
   };
+  let band = fx.paneState(target, bound?.harness ?? "", command);
+  if (band.state === "unobservable" && band.cause === "pane_dead") return {
+    status: attemptAdmitted ? "unverified" : "band_busy", cause: "pane_dead", detail: band.reason,
+  };
+  let updateSkipped = false;
+  if (command === "codex" && band.state === "unobservable" && fx.captureEscaped) {
+    const frame = fx.captureEscaped(target, command);
+    const prompt = frame.ok ? codexUpdatePrompt(frame.frame) : null;
+    if (prompt) {
+      if (!bound?.paneId || !bound.serverEpoch || !authority?.busHome
+        || !(authority.deliveryFacts || authority.attemptIds || authority.attemptLicense) || !fx.pressKeys || !fx.paneTitle) {
+        return { status: "band_busy", bandState: "unobservable", detail: "Codex update Skip needs a bound delivery attempt and frame readers" };
+      }
+      const record = (outcome: string) => appendRegistryEventOrWarn("tap send", {
+        log: authority.eventContext?.log ?? join(authority.busHome!, "registry-events.log"),
+        actor: authority.eventContext?.actor ?? authority.sender ?? "courier", action: "codex_update_skip",
+        handle: authority.recipient ?? "", pane: target, team: authority.eventContext?.team ?? "",
+        detail: `${outcome}: ${codexUpdateSkipReceipt(prompt)}; id=${id}`,
+      });
+      const before = authorize(pane, bound, fx, authority);
+      if (before.status !== "ok") return before;
+      if (before.observation.panePid !== authorized.observation.panePid) return { status: "identity_mismatch", detail: "Codex process changed before update Skip" };
+      const fence = paneEffectFence(authority) ?? copyModePreEffect(fx.copyMode?.(target), pane);
+      if (fence) return fence;
+      let refused: SubmitResult | null = null;
+      const admitted = admitEffect(() => {
+        const fresh = authorize(pane, bound, fx, authority);
+        refused = fresh.status === "ok" ? paneEffectFence(authority) ?? copyModePreEffect(fx.copyMode?.(target), pane) : fresh;
+        if (fresh.status === "ok" && fresh.observation.panePid !== before.observation.panePid)
+          refused = { status: "identity_mismatch", detail: "Codex process changed before update Skip" };
+        return refused === null;
+      });
+      if (refused) return refused;
+      if (admitted) return admitted;
+      record("intent");
+      const unverified = (detail: string): SubmitResult => {
+        record("unverified");
+        return { status: "unverified", detail: `Codex update Skip: ${detail}; attach and inspect before retrying` };
+      };
+      try {
+        if (fx.pressKeys(target, ["Escape"]) !== true) return unverified("Escape acceptance is unverified");
+        fx.settle(0.1);
+        const after = fx.captureEscaped(target, command), title = fx.paneTitle(target);
+        const current = authorize(pane, bound, fx, authority);
+        if (current.status !== "ok" || current.observation.panePid !== before.observation.panePid
+          || paneEffectFence(authority) || copyModePreEffect(fx.copyMode?.(target), pane)
+          || !codexUpdateDismissed(after.ok ? after.frame : null, title.ok ? title.title : null)) {
+          return unverified("Escape sent; empty composer on the same pane is unverified");
+        }
+        updateSkipped = true;
+        record("skipped");
+        process.stderr.write(`tap send: ${codexUpdateSkipReceipt(prompt)}\n`);
+        band = fx.paneState(target, bound?.harness ?? "", command);
+      } catch (error) { return unverified(`possible Escape effect; ${error instanceof Error ? error.message : String(error)}`); }
+    }
+  }
   // The staged-submit loop lives at module level so a caller that owns its own
   // locking (nudge's recorded recovery effects) runs the same loop; the body's
   // `command` follows the loop's per-attempt reread.
@@ -1288,7 +1346,6 @@ function submitVerifyLockedBody(
     finally { command = ctx.command; preBusy = ctx.initialBusy; }
   };
   // tap-vctb8: the pre-inject band, possibly REASSIGNED after one repaint.
-  let band = fx.paneState(target, bound?.harness ?? "", command);
   if (band.state === "unobservable" && band.cause === "pane_dead") return {
     status: attemptAdmitted ? "unverified" : "band_busy", cause: "pane_dead", detail: band.reason,
   };
@@ -1375,7 +1432,7 @@ function submitVerifyLockedBody(
   // The idle staged path expects a BUSY band — the staged sentinel itself —
   // so the auto seat's ready-band requirement does not apply to it; its own
   // frame gates below are stricter than this check.
-  if (auto && !authority?.idleStaged && (band.state !== "ready" || !fx.submitFrame)) {
+  if (auto && !authority?.idleStaged && (band.state !== "ready" || !fx.submitFrame) && !composerControlWord(band)) {
     return { status: "band_busy", detail: "auto seat has no positively ready empty band" };
   }
   // This is the courier-local band, REASSIGNED after an urgent interrupt: the
@@ -1412,17 +1469,21 @@ function submitVerifyLockedBody(
   // the skip's evidence, not noPromptOk alone: an URGENT hermes send zeroes
   // the prefix (U4) while keeping the no_prompt_ok bypass, and its draft
   // takes the same hold as every other harness.
-  if (fx.protectInput && bound?.serverEpoch && !sentinel.startsWith("/queue ")) {
+  const operatorWord = composerControlWord(band) !== null;
+  if (fx.protectInput && bound?.serverEpoch && (!sentinel.startsWith("/queue ") || operatorWord
+    || (fx.inputHeld?.(target, bound.serverEpoch)?.stopUntil ?? 0) > Date.now())) {
     const state = fx.protectInput(authorized.observation, band, {
       urgent, harness: bound.harness, sender: authority?.sender,
       message: authority?.busHome && (!authority.attemptIds || authority.attemptIds.includes(id))
         ? { home: authority.busHome, id, sender: authority.sender ?? "" } : undefined,
     });
+    if (state && authority?.busHome && (state.stopUntil || state.snoozeUntil > Date.now())) {
+      emitWaitCue(target, { pane, home: authority.busHome, ownerId: id });
+    }
     if (state && protectionUntil(state) > Date.now()) {
       // A WAIT latch observed through any send path flashes BLUE once; the pane-shared
       // record claims the milestone so parallel observers cannot repeat it. Without a
       // bus home there is nowhere to mint the effect token, so nothing is claimed.
-      if (state.snoozeUntil > Date.now() && authority?.busHome) emitWaitCue(target, { pane, home: authority.busHome, ownerId: id });
       return { status: "band_busy", bandState: "busy", detail: protectionDetail(state), disposition: {
         action: "park", parkReason: "pending-input", graceSeconds: Math.max(1, Math.ceil((protectionUntil(state) - Date.now()) / 1000)),
         // Snoozed arrivals queue silently: finishPark suppresses the park cue while
@@ -1430,6 +1491,39 @@ function submitVerifyLockedBody(
         cue: { initialStyle: urgent ? "red" : "green", redAtSecondsBeforeDeadline: 10 },
       } };
     }
+    if (state?.startRequested && band.state !== "ready") {
+      const refused = (): SubmitResult => ({ status: "band_busy", bandState: "busy",
+        detail: "START cleanup not verified; clear the composer to resume incoming mail",
+        disposition: { action: "park", parkReason: "pending-input", graceSeconds: 1,
+          cue: { initialStyle: null, redAtSecondsBeforeDeadline: null } } });
+      if (state.startClearAttempted || band.state !== "busy" || composerControlWord(band) !== "START" || !authority?.busHome || !fx.pressKeys) return refused();
+      // START is TAP's own command. Back it up, then recheck identity, fences and
+      // exact composer contents before spending its one no-byte control license.
+      // No payload attempt is consumed and no retry of this clear is permitted.
+      try {
+        writeInputBackup({ directory: join(authority.busHome, "input-backups"), handle: authority.recipient ?? id,
+          payloadId: id, pane, paneId: target, paneCommand: command, inputHash: inputHash(band.text),
+          recoveryPolicy: "operator-start", text: band.text });
+        const check = authorize(pane, bound, fx, authority);
+        if (check.status !== "ok") return check;
+        const fence = paneEffectFence(authority);
+        if (fence) return fence;
+        const fresh = fx.paneState(target, bound.harness ?? "", command);
+        if (composerControlWord(fresh) !== "START") return refused();
+        if (!claimStartClear(target, bound.serverEpoch)) return refused();
+        if (fx.pressKeys(target, ["C-u"]) !== true) return refused();
+        fx.settle(0.03);
+        band = fx.paneState(target, bound.harness ?? "", command);
+        if (band.state !== "ready") return refused();
+        completeStartClear(target, bound.serverEpoch);
+        effectiveBand = band;
+      } catch { return refused(); }
+    }
+  }
+  // The only exception above was an operator control word. After its handling,
+  // auto delivery still requires the same positively empty composer.
+  if (auto && !authority?.idleStaged && (band.state !== "ready" || !fx.submitFrame)) {
+    return { status: "band_busy", detail: "auto seat has no positively ready empty band" };
   }
   // THE IDLE STAGED SUBMIT (tap-9lqa7). Enter-only by construction: this arm
   // runs before every effect-ful branch below — interrupts, draft clobbers,
@@ -1638,7 +1732,7 @@ function submitVerifyLockedBody(
     // possible-effect evidence minted (the FIRST interrupt key is a delivery
     // effect — never retried, held by receipts/<id>.attempted); then, and only
     // then, the interrupt keys fall.
-    if (urgent) {
+    if (urgent && !updateSkipped) {
       // tap-rdy9n: the clear below never touches a [[TAP-anchored band, so a
       // sentinel already in the composer parks now, before an interrupt that
       // could not lead to delivery.

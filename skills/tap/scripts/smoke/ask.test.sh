@@ -41,7 +41,25 @@ if [ -n "${FAKE_PID_FILE:-}" ]; then
 fi
 printf 'diagnostic from %s\n' "$name" >&2
 if [ -n "${FAKE_BLOCK_FILE:-}" ]; then read -r _ < "$FAKE_BLOCK_FILE"; fi
-if [ -z "${FAKE_SILENT:-}" ]; then printf 'answer from %s\n' "$name"; fi
+# A persistent ask asks each harness for structured output or a usage file so it can
+# report the native session id; answer in the shape the flag requests.
+fmt=""; usage=""; prev=""
+for arg in "$@"; do
+  case "$prev" in --format|--output-format) fmt="$arg" ;; --usage-file) usage="$arg" ;; esac
+  prev="$arg"
+done
+[ -z "$usage" ] || printf '{"session_id":"fixture-id","completed":true,"failed":false}\n' > "$usage"
+if [ -z "${FAKE_SILENT:-}" ]; then
+  if [ "$fmt" = json ]; then
+    case "$name" in
+      opencode) printf '{"type":"text","sessionID":"ses_fixture","part":{"type":"text","text":"answer from %s\\n"}}\n' "$name" ;;
+      cursor-agent) printf '{"type":"result","is_error":false,"session_id":"fixture-id","result":"answer from %s\\n"}\n' "$name" ;;
+      agy) printf '{"status":"SUCCESS","conversation_id":"fixture-id","response":"answer from %s\\n"}\n' "$name" ;;
+    esac
+  else
+    printf 'answer from %s\n' "$name"
+  fi
+fi
 exit "${FAKE_EXIT:-0}"
 SH
 chmod +x "$WORK/fake-harness"
@@ -75,7 +93,11 @@ assert_adapter() { # <harness> <binary> <expected-argv-json> <stdin|argument>
   local harness="$1" binary="$2" expected="$3" prompt_mode="$4" out err
   rm -f "$CAPTURE/$binary.argv" "$CAPTURE/$binary.stdin"
   err="$WORK/$harness.success.err"
-  out="$(bash "$TAP" ask "$harness" -f "$PROMPT" --model named-tier 2>"$err")" \
+  # --ephemeral (the harnesses that take it) pins the one-shot argv this table records; the default now persists a
+  # conversation the caller can continue and carries a session id instead.
+  local eph=()
+  case "$harness" in claude|codex) eph=(--ephemeral) ;; esac
+  out="$(bash "$TAP" ask "$harness" -f "$PROMPT" --model named-tier "${eph[@]}" 2>"$err")" \
     || fail "$harness adapter exited nonzero"
   [ "$out" = "answer from $binary" ] \
     || fail "$harness stdout changed: [$out]"
@@ -90,6 +112,8 @@ got = pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")
 if got and got[-1] == b"":
     got.pop()
 got = [item.decode() for item in got]
+# A persistent ask hands hermes a private usage file; its path is not the contract.
+got = ["<usage-file>" if i and got[i - 1] == "--usage-file" else item for i, item in enumerate(got)]
 want = json.loads(sys.argv[2])
 if got != want:
     raise SystemExit(f"adapter argv mismatch\n got: {got!r}\nwant: {want!r}")
@@ -226,20 +250,20 @@ echo "ask: FIFO prompt path refuses without blocking or launching: ok"
 assert_adapter claude claude \
   '["--print","--no-session-persistence","--model","named-tier"]' stdin
 assert_adapter codex codex \
-  '["exec","--ephemeral","--color","never","--model","named-tier","-"]' stdin
+  '["exec","--color","never","--ephemeral","--model","named-tier","-"]' stdin
 assert_adapter opencode opencode \
-  "$(python3 -B -c 'import json,sys; print(json.dumps(["run","--model","named-tier","--",open(sys.argv[1]).read()]))' "$PROMPT")" argument
+  "$(python3 -B -c 'import json,sys; print(json.dumps(["run","--model","named-tier","--format","json","--",open(sys.argv[1]).read()]))' "$PROMPT")" argument
 assert_adapter cursor cursor-agent \
-  "$(python3 -B -c 'import json,sys; print(json.dumps(["--print","--mode","ask","--model","named-tier","--",open(sys.argv[1]).read()]))' "$PROMPT")" argument
+  "$(python3 -B -c 'import json,sys; print(json.dumps(["--print","--mode","ask","--model","named-tier","--output-format","json","--",open(sys.argv[1]).read()]))' "$PROMPT")" argument
 assert_adapter hermes hermes \
-  "$(python3 -B -c 'import json,sys; print(json.dumps(["--model","named-tier","--oneshot="+open(sys.argv[1]).read()]))' "$PROMPT")" argument
+  "$(python3 -B -c 'import json,sys; print(json.dumps(["--model","named-tier","--usage-file","<usage-file>","--oneshot="+open(sys.argv[1]).read()]))' "$PROMPT")" argument
 assert_adapter agy agy \
-  "$(python3 -B -c 'import json,sys; print(json.dumps(["--model","named-tier","--print="+open(sys.argv[1]).read()]))' "$PROMPT")" argument
+  "$(python3 -B -c 'import json,sys; print(json.dumps(["--model","named-tier","--output-format","json","--print="+open(sys.argv[1]).read()]))' "$PROMPT")" argument
 
 # Omitting --model must omit both the flag and any model value from the adapter
 # argv rather than smuggling a default named tier into the invocation.
 rm -f "$CAPTURE/claude.argv" "$CAPTURE/claude.stdin"
-out="$(bash "$TAP" ask claude -f "$PROMPT" 2>"$WORK/claude.no-model.err")" \
+out="$(bash "$TAP" ask claude -f "$PROMPT" --ephemeral 2>"$WORK/claude.no-model.err")" \
   || fail "claude no-model invocation exited nonzero"
 [ "$out" = "answer from claude" ] || fail "claude no-model stdout changed: [$out]"
 python3 -B - "$CAPTURE/claude.argv" <<'PY'
@@ -287,11 +311,11 @@ TOML
 # two ways to name one preset; if they diverged, the docs would be right about
 # one of them and silently wrong about the other.
 rm -f "$CAPTURE/codex.argv"
-XDG_CONFIG_HOME="$ASK_XDG" bash "$TAP" ask smokepreset -f "$PROMPT" >/dev/null 2>&1 \
+XDG_CONFIG_HOME="$ASK_XDG" bash "$TAP" ask smokepreset -f "$PROMPT" --ephemeral >/dev/null 2>&1 \
   || fail "(grammar) a preset positional did not run"
 positional_argv="$(tr '\0' ' ' < "$CAPTURE/codex.argv")"
 rm -f "$CAPTURE/codex.argv"
-XDG_CONFIG_HOME="$ASK_XDG" bash "$TAP" ask --preset smokepreset -f "$PROMPT" >/dev/null 2>&1 \
+XDG_CONFIG_HOME="$ASK_XDG" bash "$TAP" ask --preset smokepreset -f "$PROMPT" --ephemeral >/dev/null 2>&1 \
   || fail "(grammar) --preset did not run"
 flag_argv="$(tr '\0' ' ' < "$CAPTURE/codex.argv")"
 [ "$positional_argv" = "$flag_argv" ] \
@@ -420,7 +444,7 @@ import sys
 got = pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")
 if got and got[-1] == b"":
     got.pop()
-want = [b"--print-timeout", b"5s", b"--print=x"]
+want = [b"--print-timeout", b"5s", b"--output-format", b"json", b"--print=x"]
 if got != want:
     raise SystemExit(f"agy passthrough mismatch\n got: {got!r}\nwant: {want!r}")
 PY
@@ -496,7 +520,7 @@ echo "ask: a preset restating an adapter-owned flag refuses before the harness: 
 # The harness owns its own exit status; tap ask must not repaint a failed answer
 # as success or discard response text already written to stdout.
 set +e
-FAKE_EXIT=23 bash "$TAP" ask codex -f "$PROMPT" >"$WORK/failed.out" 2>"$WORK/failed.err"
+FAKE_EXIT=23 bash "$TAP" ask codex -f "$PROMPT" --ephemeral >"$WORK/failed.out" 2>"$WORK/failed.err"
 rc=$?
 set -e
 [ "$rc" -eq 23 ] || fail "harness exit 23 became $rc"
@@ -542,12 +566,12 @@ out="$(bash "$TAP" ask opencode -f "$DASH_PROMPT" 2>/dev/null)" \
   || fail "dash-prompt ask for opencode exited nonzero"
 [ "$out" = "answer from opencode" ] \
   || fail "dash-prompt stdout changed for opencode: [$out]"
-dash_argv_check "$CAPTURE/opencode.argv" '["run","--","-not-a-flag body\n"]'
+dash_argv_check "$CAPTURE/opencode.argv" '["run","--format","json","--","-not-a-flag body\n"]'
 out="$(bash "$TAP" ask agy -f "$DASH_PROMPT" 2>/dev/null)" \
   || fail "dash-prompt ask for agy exited nonzero"
 [ "$out" = "answer from agy" ] \
   || fail "dash-prompt stdout changed for agy: [$out]"
-dash_argv_check "$CAPTURE/agy.argv" '["--print=-not-a-flag body\n"]'
+dash_argv_check "$CAPTURE/agy.argv" '["--output-format","json","--print=-not-a-flag body\n"]'
 echo "ask: a leading-dash prompt stays the message: ok"
 
 # Cancellation must clean up the harness's whole session and return the shell's
@@ -658,9 +682,11 @@ grep -q "each invocation starts fresh" <<<"$help_a" \
   || fail "ask help is missing the fresh-invocation guarantee"
 grep -q "no TAP registration, bus, pane, or lifecycle state" <<<"$help_a" \
   || fail "ask help is missing the no-state guarantee"
-grep -q "needs a follow-up conversation.*tap crew add" <<<"$help_a" \
-  || fail "ask help is missing the crew escalation test"
-grep -q "needs a durable restartable address.*tap session launch" <<<"$help_a" \
+# A successful ask reports its native session and a crew adoption command;
+# a durable lane still goes through tap session launch.
+grep -q "To continue this answer, use the printed crew adoption command" <<<"$help_a" \
+  || fail "ask help is missing the crew continuation path"
+grep -q "for a durable lane, use tap session launch" <<<"$help_a" \
   || fail "ask help is missing the seat escalation test"
 echo "ask: help states the stateless guarantee and escalation test: ok"
 

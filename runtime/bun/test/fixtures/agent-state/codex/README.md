@@ -1,3 +1,7 @@
 The `fresh-warning` and `fresh-warning-fast` ANSI fixtures retain the warning and composer tails of the two Example-Checkpoint captures recorded for tap-7r3fn.165 on 2026-09-09 at 18:17 PDT. Unrelated conversation history is omitted; prompt and footer painting is preserved.
 
 The `idle`, `near-idle`, and `stale` ANSI fixtures add Codex's dim placeholder painting to their existing synthetic text counterparts. Working-state tests supply the observed pane title separately. Unpainted placeholder words are treated as typed input.
+
+The update-available fixtures reconstruct tap-e4mv2's reported 0.164.0 → 0.165.0 menu using the upstream Codex `tui/src/update_prompt.rs` renderer and its `update_prompt_modal` / `update_picker_selected_28x12` snapshots (checked 2026-10-28). They are reconstructed fixtures, not live captures. The narrow picker shows only the selected third choice; requiring all three choices would miss that layout.
+
+`update-available-real.txt` is the plain 200-column capture from a TAP-launched Codex 0.164.0 seat at 2026-10-28T04:58Z (`tmux capture-pane -J -p -S -15`). The capture filter omitted blank lines and banner art. Trailing padding on the curl-installer choice is preserved. The same menu appeared on four fresh seats; Escape selected Skip and exposed an empty composer. The post-Escape capture had no ANSI bytes, so it is not proof that placeholder words are empty input. Post-skip tests use the existing painted idle fixture and explicitly reject an unpainted placeholder. No test or runtime path runs the displayed installer command.

@@ -4,8 +4,9 @@
 // waiter draft probe, drain) sees it due first flashes exactly once, through
 // flashPaneLocked only. This module is the leaf that joins the record layer to
 // the flash engine; neither dependency imports it back.
-import { claimWaitCue, type WaitCue } from "./input-protection";
-import { beginPaneCue, endPaneCueAfter, type FlashInput } from "./spool-park-report";
+import { claimWaitCue, claimOperatorCue, type WaitCue } from "./input-protection";
+import { beginPaneCue, endPaneCueAfter, notifyPaneOperator, type FlashInput } from "./spool-park-report";
+import { observePaneResult } from "./tmux";
 
 /**
  * Claim the pane's due WAIT cue and flash it best-effort. Callers hold the pane
@@ -17,12 +18,20 @@ export function emitWaitCue(paneId: string, o: {
   flash?: (input: FlashInput) => void;
 }): WaitCue | null {
   const env = o.env ?? process.env;
-  const claimed = claimWaitCue(paneId, env, o.now);
+  let operator: ReturnType<typeof claimOperatorCue> = null;
+  try { operator = claimOperatorCue(paneId, env, o.now); } catch { /* cosmetic only */ }
+  const claimed = operator ? operator.word === "STOP" ? "blue" : "green" : claimWaitCue(paneId, env, o.now);
   if (!claimed) return null;
   try {
     const input = { home: o.home, pane: o.pane, paneId, ownerId: o.ownerId, style: `bg=${claimed}`, env };
     // Tint under the caller's lock; the dwell and clear come after it is released.
     if (o.flash) o.flash(input); else endPaneCueAfter(beginPaneCue(input));
+    if (operator) {
+      const observed = observePaneResult(paneId, env);
+      if (observed.status === "ok") notifyPaneOperator(o.pane, paneId, observed.observation.serverEpoch, observed.observation.session,
+        operator.word === "STOP" ? `tap: STOP holds incoming mail until ${new Date(operator.until).toISOString()} — type START to release`
+          : "tap: START released the STOP hold", env);
+    }
   } catch { /* the cue is best effort; the milestone is already persisted */ }
   return claimed;
 }

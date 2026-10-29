@@ -6,7 +6,7 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
 fi
 # tap-yih6n.1: `tap crew shutdown` stops exactly the recorded crew pane of one crew
 # seat or of one owner's crew — never a sibling pane, another server's pane, or a
-# session's last pane; up/down refuse.
+# sibling session; up/down refuse.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/sandbox-pins.sh"
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
@@ -72,8 +72,8 @@ import json, os, pathlib, sys
 w = pathlib.Path(sys.argv[1]); seats = {}
 for spec in sys.argv[2:]:
     handle, pane_id, session, *crew = spec.split("=")
-    seats[handle] = {"status": "active", "delivery": "pane", "harness": "codex", "pane_id": pane_id,
-                     "pane": f"{session}:0.0", "session": session, "registered_at": "t", "server_epoch": os.environ["EPOCH"],
+    seats[handle] = {"status": "active", "delivery": "pane", "harness": "codex", "instance": handle+"|fixture", "pane_id": pane_id,
+                     "pane": f"{session}:0.0", "session": session, "registered_at": "t", "server_epoch": os.environ["EPOCH"], "server_socket": os.environ["SOCKET"],
                      **({"crew": True} if crew else {}),
                      **({"server_socket": crew[1]} if len(crew) > 1 else {})}
 # Named removal must remain a repair even when a durable owner link is wrong.
@@ -95,7 +95,7 @@ row_pane() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["se
 CA="$(row_pane crew-a)"; CB="$(row_pane crew-b)"; CC="$(row_pane crew-c)"; CD="$(row_pane crew-d)"; CE="$(row_pane crew-e)"; CF="$(row_pane crew-f)"; CS="$(row_pane crew-s)"
 cd "$WORK/Demo"
 
-# up/down do not exist: crew rows exist only while live.
+# up/down remain retired spellings.
 for sub in up down; do
   cp "$REG" "$WORK/before"
   run tap crew "$sub"
@@ -134,7 +134,7 @@ echo "crew-shutdown: remove alias stays crew-only: ok"
 
 # Two owners in one session: never guess whose crew it is.
 run tap crew shutdown --owner owner1
-[ "$rc" != 0 ] && grep -q "crew_owner_ambiguous\|ownership is ambiguous" <<<"$out" && has crew-d && alive "$CD" || fail "ambiguous owner not refused: $out"
+[ "$rc" != 0 ] && grep -q "crew_owner_ambiguous\|multiple owners" <<<"$out" && has crew-d && alive "$CD" || fail "ambiguous owner not refused: $out"
 echo "crew-shutdown: two-owner session refuses: ok"
 
 # A bare owner resolves in the current-folder team only; the qualified form
@@ -158,21 +158,29 @@ echo "crew-shutdown: unstamped owner is not inferred: ok"
 
 # Inferred owner: lead's whole crew. crew-e is split into lead's window: only
 # its own pane stops, the owner's pane survives.
+python3 - "$REG" <<'PY'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]); d=json.loads(p.read_text())
+d['seats']['old-lead']={**d['seats']['lead'],'server_epoch':'srv:1:1'}
+d['seats']['old-child']={**d['seats']['crew-b'],'server_epoch':'srv:1:1'}
+p.write_text(json.dumps(d))
+PY
 run tap crew shutdown
 [ "$rc" = 0 ] || fail "inferred owner shutdown failed: $out"
 ! has crew-b && ! alive "$CB" && ! has crew-e || fail "inferred owner left crew: $out"
 ! alive "$CE" || fail "split crew pane survived: $out"
 alive "$LEAD" && has lead || fail "owner pane was killed: $out"
 has crew-d && has crew-f || fail "inferred owner reached another session's crew"
+has old-lead && has old-child || fail "inferred owner removed another generation's rows"
 echo "crew-shutdown: inferred owner's crew, owner pane kept: ok"
 
 # A row recorded on another tmux server names another server's pane: never stop it.
 run tap crew shutdown crew-s
-[ "$rc" = 0 ] && ! has crew-s && alive "$CS" && grep -q "row is on tmux server /nonexistent/other.sock" <<<"$out" || fail "foreign-server pane touched: $out"
+[ "$rc" != 0 ] && has crew-s && alive "$CS" && grep -q "another tmux server" <<<"$out" || fail "foreign-server pane touched: $out"
 echo "crew-shutdown: another server's pane id is never stopped: ok"
 
-# A crew window that is its session's last window is never killed.
+# An exact crew process may own its session's last window.
 run tap crew shutdown crew-f
-[ "$rc" = 0 ] && ! has crew-f && alive "$CF" && grep -q "last in session" <<<"$out" || fail "last-window guard failed: $out"
-T has-session -t Demo/lone || fail "crew shutdown ended a session"
-echo "crew-shutdown: last-window guard keeps the session: ok"
+[ "$rc" = 0 ] && ! has crew-f && ! alive "$CF" || fail "last-window crew shutdown failed: $out"
+if T has-session -t Demo/lone; then fail "crew-only session survived shutdown"; fi
+echo "crew-shutdown: exact last-window crew stopped: ok"

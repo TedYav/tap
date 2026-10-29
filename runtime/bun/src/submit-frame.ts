@@ -469,6 +469,9 @@ function readFrameText(frame: string, command: string, expected: string, width: 
       // (tap-2ajq8). It is chrome only directly under a status row the loop
       // below recognizes; anywhere else the row stays input.
       const warning = /^\s*⚠\s+\d+\s+warnings?\s+·\s+f2 to view\s*$/;
+      // Captured capacity-error footer: this help row is chrome only when the
+      // status row immediately above it is independently recognized below.
+      const shortcuts = /^\s*\? for shortcuts\s*$/.test(region.at(-1) ?? "") ? region.pop()! : null;
       const warned = warning.test(region.at(-1) ?? "") ? region.pop()! : null;
       const beforeFooter = region.length;
       // Recover a physically wrapped footer skeleton, never the prompt row.
@@ -490,6 +493,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
         }
       }
       if (warned !== null && region.length === beforeFooter) region.push(warned);
+      if (shortcuts !== null && region.length >= beforeFooter) region.push(shortcuts);
       while (region.length && !region.at(-1)!.trim()) region.pop();
       if (cue.test(region.at(-1) ?? "")) region.pop();
       // The paint strip must not widen the dim-placeholder blank: dim words

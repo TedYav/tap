@@ -752,6 +752,30 @@ test("the terminal disposition is idempotent: a repeat publishes no second notic
   expect(readFileSync(f.ctx.eventLog, "utf8").match(/action=spool_terminal_delivery_unconfirmed/g)).toHaveLength(1);
 });
 
+test.each([true, false])("drain reaches the Codex update dismissal before deadline and honors its postcondition: dismissed=%s", async dismissed => {
+  const f = fixture(); f.park("update");
+  const frame = f.ctx.env!.FAKE_FRAME!;
+  writeFileSync(frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-real.txt")));
+  const keys: string[] = [];
+  const readBand = f.fx.paneState;
+  f.fx.paneState = (...args) => keys.length && dismissed ? readBand(...args) : { state: "unobservable", reason: "approval prompt visible" };
+  f.fx.captureEscaped = () => ({ ok: true, frame: readFileSync(frame, "utf8") });
+  f.fx.paneTitle = () => ({ ok: true, title: "Codex" });
+  f.fx.pressKeys = (_pane, sent) => {
+    expect(existsSync(join(f.ctx.receiptsDir, "update.attempted"))).toBe(true);
+    keys.push(...sent);
+    if (dismissed) writeFileSync(frame, "› \x1b[2mAsk Codex to do anything\x1b[0m\n");
+    return true;
+  };
+  const effects = { ...realDrainEffects(f.ctx),
+    redeliverLocked: (id: string, b: SpoolBinding, force: boolean) => redeliver(f.ctx, id, b, { locked: true, force }, f.fx) };
+  expect(await drainOnce(f.ctx, effects)).toBe(dismissed ? 0 : 5);
+  expect(keys).toEqual(["Escape"]);
+  expect(f.calls()).toEqual(dismissed ? ["a"] : []);
+  await drainOnce(f.ctx, effects);
+  expect(keys).toEqual(["Escape"]);
+});
+
 test("one terminal failure through the drain orchestrator yields exactly one sender notice", async () => {
   const f = fixture(5); f.park("a");
   const effects = { ...realDrainEffects(f.ctx), readiness: async () => "ready" as const,

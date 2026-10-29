@@ -107,10 +107,10 @@ smoke_preflight_check() {
 # hazard is not a leaked knob that turns the suite RED — that is loud and
 # self-correcting. It is one that turns it GREEN.
 #
-# Values are printed, not just names: `TAP_PYTHON` inherited is a question,
-# `TAP_PYTHON=true` is the answer.
+# Arbitrary TAP_* values may be credentials. Report names only here; the
+# runner separately reports the values of its admitted nonsecret controls.
 smoke_env_inherited() {
-  local n v out=""
+  local n out=""
   while IFS= read -r n; do
     [ -n "$n" ] || continue
     # Skip what OUR OWN slot re-exec injects. suite-slot-run.py sets these and
@@ -121,11 +121,9 @@ smoke_env_inherited() {
     case "$n" in
       TAP_SUITE_SLOT_HELD|TAP_SUITE_SLOT_PID|TAP_SUITE_SLOT_PROBE) continue ;;
     esac
-    eval "v=\${$n-}"
-    [ "${#v}" -le 48 ] || v="${v:0:45}..."
-    out="${out:+$out }$n=$v"
+    out="${out:+$out }$n"
   done <<EOF
-$(env | sed -n 's/^\(TAP_[A-Za-z0-9_]*\)=.*/\1/p' | sort)
+$(compgen -e | sed -n '/^TAP_[A-Za-z0-9_]*$/p' | sort)
 EOF
   printf '%s' "$out"
 }

@@ -306,7 +306,7 @@ function requireMachineUniqueClaim(
   }
 }
 
-function gitCommonDir(dir: string, env: NodeJS.ProcessEnv): string | null {
+export function gitCommonDir(dir: string, env: NodeJS.ProcessEnv): string | null {
   // Repository discovery must not inherit the caller's Git routing vars:
   // GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR & co. can make an unrelated
   // repository report the SAME common directory and fake a same-repo match.
@@ -1002,6 +1002,7 @@ export function observeHarnessSessionPane(
 export type CallerPaneChain =
   | { ok: true; paneId: string; session: string; serverEpoch: string;
       selectedSocket: string; selectedHandle: string; selectedInstance: string; selectedPane: string; viaJob: boolean;
+      viaHarnessSession?: true;
       address?: string; panePid?: string; currentCommand?: string; currentPath?: string; socketPath?: string }
   | { ok: false; reason: string; observation?: Exclude<IdentityPaneObservation, { status: "ok" }> };
 
@@ -1053,13 +1054,13 @@ export function observeCallerPaneChain(env: NodeJS.ProcessEnv = process.env, anc
     // outside there keeps the job binding (incumbent 7845-7868).
     const onSocket: NodeJS.ProcessEnv = { ...env, TAP_TMUX_SOCKET_PATH: selected.selectedSocket };
     delete onSocket.TAP_TMUX_SOCKET;
-    const there = observeCallingPane(onSocket);
+    const there = observeCallingPane(onSocket, false, extended);
     if (there.state === "inside") return direct(there);
     if (there.state !== "outside") return { ok: false, reason: processRefusal };
   }
   return { ok: true, paneId: selected.paneId, session: selected.session, serverEpoch: selected.serverEpoch,
     selectedSocket: selected.selectedSocket ?? "", selectedHandle: selected.selectedHandle ?? "",
-    selectedInstance: selected.selectedInstance ?? "", selectedPane: selected.selectedPane ?? "", viaJob: jobDir !== "" };
+    selectedInstance: selected.selectedInstance ?? "", selectedPane: selected.selectedPane ?? "", viaJob: jobDir !== "", viaHarnessSession: true };
 }
 
 /**

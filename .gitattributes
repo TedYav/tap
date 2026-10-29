@@ -6,3 +6,4 @@ skills/tap/scripts/smoke/fixtures/submit-verify/*.ansi whitespace=-trailing-spac
 runtime/bun/test/fixtures/hermes-queue-row/*.ansi whitespace=-trailing-space,-blank-at-eof
 runtime/bun/test/fixtures/codex-warning-footer/*.ansi whitespace=-trailing-space,-blank-at-eof
 runtime/bun/test/fixtures/codex-status-footer/*.txt whitespace=-trailing-space,-blank-at-eof
+runtime/bun/test/fixtures/agent-state/codex/update-available-real.txt whitespace=-trailing-space,-blank-at-eof

@@ -13,7 +13,7 @@ An unresolved explicit target never reports successful retirement. Nameless
 | `up` | Resume retained row through launcher | Resume stored conversation | Never recreate |
 | `shutdown` | Retire row with history | Stop exact session | Retire rows with history; stop with owner |
 | `out --hard` / `out --kill` | Same hard-removal mechanism as shutdown | Same exact stop | Same retirement |
-| `team out` | Retire selected parent families with per-seat history; keep team initialized | Preserve every process | Retire owned crew rows; preserve processes under their parent lifetime |
+| `team out` | Retire selected parent families with per-seat history; keep team initialized | Preserve every process | Retire owned crew rows; preserve independently running processes |
 | `team reset` / `team out --hard` / `--kill` | Same family retirement | Stop exact parent and bound child processes | Stop owned crew panes before the parent session |
 
 `team reset [TEAM]` is an alias of `team out --hard [TEAM]`, with the same
@@ -62,8 +62,9 @@ same read-only identity and hard-stop preflight without arming a crew helper
 or publishing retirement.
 
 A crew target uses D's recorded-pane dismissal for out, shutdown and either hard
-spelling. It never stops the containing operator session or sibling split panes.
-The existing caller/last-pane/foreign-server protections remain; an unverified
+spelling. It never stops sibling split panes; a crew that is its session's last pane ends
+that session, since crews outlive their parent and can sit alone in one.
+The existing caller/foreign-server protections remain; an unverified
 crew pane is retained with an explicit reason. Crew up/down refuse.
 
 A supervised crew also ends when its original parent harness generation ends,

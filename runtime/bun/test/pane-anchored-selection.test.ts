@@ -122,7 +122,19 @@ function fixture(opts: FixtureOpts = {}) {
   // The fake ps/tmux pair models the calling pane without trusting the
   // runner's real ancestry; the tmux stub leaves a trace so tests can prove
   // the observation actually ran (or, in the unobservable arm, never ran).
-  writeFileSync(join(bin, "ps"), `#!/bin/sh\n${opts.noTty ? "" : "printf '123 faketty\\n'\n"}exit 0\n`);
+  // SessionStart binds only a hook that descends from the pane's own harness, so the
+  // observable arm shows a real-shaped chain: the hook (this script's parent, the
+  // calling bun process) -> a wrapper (124) -> the seat's harness, which is pane pid 123.
+  const chain = [
+    'for last in "$@"; do :; done',
+    'case "$*" in',
+    "  *pid=,pgid=,tpgid=,comm=,command=*) printf '%s 124 124 bun bun /repo/session-start.ts\\n124 123 123 sh sh -c hook\\n123 123 123 claude claude\\n' \"$PPID\" ;;",
+    "  *tty=*) printf '123 faketty\\n' ;;",
+    '  *ppid=*) case "$last" in 124) echo 123 ;; 123) echo 1 ;; *) echo 124 ;; esac ;;',
+    "  *) printf '123 faketty\\n' ;;",
+    "esac",
+  ].join("\n");
+  writeFileSync(join(bin, "ps"), `#!/bin/sh\n${opts.noTty ? "" : chain + "\n"}exit 0\n`);
   writeFileSync(join(bin, "tmux"), [
     "#!/bin/sh",
     `echo "tmux $1" >> '${trace}'`,
@@ -131,10 +143,12 @@ function fixture(opts: FixtureOpts = {}) {
     '  display-message)',
     '    for a in "$@"; do',
     '      case "$a" in',
+    "        *'#{pane_current_path}'*) printf '%%7\\t/dev/faketty\\t" + session + "\\t123:456\\t" + session + ":0.0\\t123\\tclaude\\t/fake\\t%s\\n' \"$PWD\"; exit 0 ;;",
     "        *'#{pane_tty}'*) printf '%%7\\t/dev/faketty\\t" + session + "\\t123:456\\n'; exit 0 ;;",
     "        *'#{pane_id}\t#{session_name}\t#{pid}:#{start_time}'*) printf '%%7\t" + session + "\t123:456\n'; exit 0 ;;",
     "        *'#{session_name}'*) printf '" + session + "\\t123:456\\n'; exit 0 ;;",
     "        *'#{pid}:#{start_time}'*) printf '123:456\\n'; exit 0 ;;",
+    "        '#{pane_pid}') printf '123\\n'; exit 0 ;;",
     "      esac",
     "    done",
     "    printf '%%7\\t/dev/faketty\\n' ;;",

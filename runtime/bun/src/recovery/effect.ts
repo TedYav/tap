@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { normalizeInputMatch } from "../terminal-text";
@@ -17,6 +17,7 @@ import { isOpenCodeCommand, tmux, tmuxReadOnly, type Run } from "../tmux";
 import { seatMap, loadCurrentRegistry } from "../registry";
 import { OldStoreError } from "../register-authority";
 import { MAX_EFFECTS, canAct, readRun, runDirectory, updateRun, writeRun, type RecoveryRun, type RecoveryTarget, type Liveness } from "./state";
+import { operatorKeyRefusal } from "./operator-screen";
 
 export interface PaneSnapshot {
   dead: string; command: string; windowCount: string; paneId: string;
@@ -212,13 +213,18 @@ export function recoveryEffect(
   try {
     const run = readRun(id, env);
     if (!canAct(run, env, facts?.()) || run.effects >= MAX_EFFECTS) throw new Error("recovery ownership expired, stopped, or exhausted; no keys sent");
+    const operator = run.purpose === "operator";
+    if (operator ? !gate || !run.operator?.sample || run.operator.sample.used || action !== `operator:${run.operator.sample.id}` : action.startsWith("operator:")) {
+      throw new Error("recovery purpose or operator sample does not authorize this action");
+    }
     // Caller-supplied effects remain bounded key sequences. OpenCode's typed
     // repaint helper is internal observation hygiene and cannot route argv.
     if (args[0] !== "send-keys" || args[1] !== "-t" || args[2] !== run.target.paneId || args.length < 4) {
       throw new Error("recovery effects are keys to the exact bound pane only");
     }
     const keys = args.slice(3);
-    const allowed = new Set(["Escape", "Enter", "C-u", "BSpace", "Up", "Down", "Left", "Right", "Tab", "BTab", "Home", "End", ..."0123456789"]);
+    const allowed = new Set(operator ? ["Escape", "Enter", "q"]
+      : ["Escape", "Enter", "C-u", "BSpace", "Up", "Down", "Left", "Right", "Tab", "BTab", "Home", "End", ..."0123456789"]);
     // The one literal-text license (tap-xe42x): `tap nudge` types its own doorbell,
     // byte-exact as rendered, and nothing else ever rides `-l`.
     // Hermes may type it behind its safe queue prefix (`tap nudge --no-interrupt`).
@@ -226,7 +232,7 @@ export function recoveryEffect(
     const typedText = keys.length === 2 && keys[0] === "-l" ? (prefix && keys[1]!.startsWith(prefix) ? keys[1]!.slice(prefix.length) : keys[1]!) : null;
     const nudgeWire = typedText === null ? null : parseNudgeWire(typedText);
     const typedNudge = nudgeWire !== null && action === "nudge type" && typedText === renderNudgeWire(nudgeWire.message);
-    if (keys.length > 6 || (!(keys.length === 2 && keys[0] === "-X" && keys[1] === "cancel") && !typedNudge && !keys.every(key => allowed.has(key)))) {
+    if ((operator && keys.length !== 1) || keys.length > 6 || (!(keys.length === 2 && keys[0] === "-X" && keys[1] === "cancel") && !typedNudge && !keys.every(key => allowed.has(key)))) {
       throw new Error("unsupported recovery key sequence");
     }
     event.state = io.snapshot(run.target);
@@ -240,7 +246,7 @@ export function recoveryEffect(
     const dir = runDirectory(id, env);
     event.before = join(dir, `${stem}.before.ansi`);
     event.after = join(dir, `${stem}.after.ansi`);
-    const beforeFrame = io.capture(run.target);
+    const beforeFrame = io.capture(run.target, !operator);
     writeFileSync(event.before, beforeFrame, { mode: 0o600, flag: "wx" });
     if (exited(run, event.state)) {
       event.outcome = "harness-exited"; event.incident = true;
@@ -248,11 +254,14 @@ export function recoveryEffect(
     }
     const lateDenial = authorize(run.target);
     if (lateDenial || !canAct(run, env, facts?.())) throw new Error(lateDenial || "recovery expired during before capture");
-    const refusal = keysAnswerPrompt(run.target.harness, beforeFrame, keys, action.startsWith("nudge "));
+    if (operator && createHash("sha256").update(beforeFrame).digest("hex") !== run.operator!.sample!.hash) throw new Error("operator sample no longer matches the current viewport");
+    const refusal = operator ? operatorKeyRefusal(run.target.harness, beforeFrame, keys[0]!)
+      : keysAnswerPrompt(run.target.harness, beforeFrame, keys, action.startsWith("nudge "));
     if (refusal) throw new Error(refusal);
     const countEffect = () => {
       if (counted) return;
       run.effects++;
+      if (operator) run.operator!.sample!.used = true;
       writeRun(run, env);
       counted = true;
     };
@@ -304,11 +313,12 @@ export function recoveryEffect(
     const result = io.effect(args);
     code = result.code;
     io.settle();
-    writeFileSync(event.after, io.capture(run.target), { mode: 0o600, flag: "wx" });
+    writeFileSync(event.after, io.capture(run.target, !operator), { mode: 0o600, flag: "wx" });
     event.state = io.snapshot(run.target);
     event.incident = exited(run, event.state);
     event.outcome = event.incident ? "harness-exited" : "unverified";
     event.summary = event.incident ? "INCIDENT: harness exited or registered instance changed after recovery; stopped" :
+      operator ? `attempted ${action}; frames recorded, composer restoration still needs independent observation` :
       `attempted ${action}; frames recorded, restored flow still requires submission evidence`;
     if (event.incident || result.code !== 0 || authorize(run.target)) {
       run.state = "stopped";
@@ -325,7 +335,7 @@ export function recoveryEffect(
     if (attempted && event.after && !existsSync(event.after)) {
       try {
         io.settle();
-        writeFileSync(event.after, io.capture(initial.target), { mode: 0o600, flag: "wx" });
+        writeFileSync(event.after, io.capture(initial.target, initial.purpose !== "operator"), { mode: 0o600, flag: "wx" });
         event.state = io.snapshot(initial.target);
         event.incident = exited(initial, event.state);
         if (event.incident) event.outcome = "harness-exited";

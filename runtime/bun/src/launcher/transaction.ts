@@ -32,6 +32,8 @@ import { ensureTmuxServer, tmuxBootstrapFailure } from "./tmux-bootstrap";
 import { seatIsRelaunchable } from "./complete";
 import { restartRowMatches } from "../team/up-last";
 import { appendRegistryEvent } from "../events";
+import { inputProtectionHeld } from "../input-protection";
+import { codexUpdateSkipReceipt } from "../codex-update";
 import { rootForCwd } from "./records";
 import { enrolledTeams } from "../index-home";
 import { oldStoreAction, oldStoreRefusalText, teamRegistryRefusal } from "../register-authority";
@@ -68,12 +70,15 @@ export type TransactionRequest = {
   rerun_command?: string;
   /** With dry_run: run every read-only validation the launch takes, then return without printing a launch receipt. */
   validate_only?: boolean;
+  /** Internal unwedge contract: one exact invocation and fresh evidence before teardown. */
+  exact_restart?: { id: string; invocation: Invocation; verify(original?: Row, token?: string): void | Promise<void> };
   script_dir?: string; worker_bun?: string;
 };
 export type Vessel = { server: string; session: string; window: string; pane: string; socket: string };
 export type Backup = { status: "backed-up"; path: string } | { status: "unavailable"; detail: string } | { status: "not-needed" };
 export type FailureEvidence = { selection: Selection; handle: string; token: string; instance: string | null;
-  record: LaunchRecord; vessel: Vessel | null; backup: Backup; reason: string; output_path: string };
+  record: LaunchRecord; vessel: Vessel | null; backup: Backup; reason: string; output_path: string;
+  retainStartupDialog?: boolean };
 export type TransactionResult = { code: number; record: LaunchRecord; adopted_shell: boolean; backup: Backup };
 export class LaunchInterrupted extends Error {
   constructor(readonly exitCode: number) { super("launcher_interrupted: launch cancelled"); }
@@ -545,9 +550,11 @@ export function vesselPredicate(vessel: Vessel): string {
   return terms.map(([format, value]) => `#{==:${format},${value}}`).reduce((a, b) => `#{&&:${a},${b}}`);
 }
 
-async function ownedEffect(vessel: Vessel, command: string[], env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<boolean> {
+async function ownedEffect(vessel: Vessel, command: string[], env: NodeJS.ProcessEnv, signal?: AbortSignal, panePid?: number): Promise<boolean> {
   // -F is essential: a shell test would separate authorization from the effect.
-  const run = await launchCommand(["tmux", "-S", vessel.socket, "if-shell", "-F", "-t", vessel.pane, vesselPredicate(vessel),
+  const predicate = panePid === undefined ? vesselPredicate(vessel)
+    : `#{&&:${vesselPredicate(vessel)},#{&&:#{==:#{pane_pid},${panePid}},#{==:#{pane_in_mode},0}}}`;
+  const run = await launchCommand(["tmux", "-S", vessel.socket, "if-shell", "-F", "-t", vessel.pane, predicate,
     command.map(shlexQuote).join(" "), "display-message -p TAP_LAUNCH_IDENTITY_MOVED"], { env, signal });
   if (run.code !== 0) {
     if (/no server running|no sessions|can't find pane|error connecting.*No such file/.test(run.stderr)) return false;
@@ -730,6 +737,35 @@ export async function bindTransaction(evidence: FailureEvidence, facts: PaneFact
 }
 
 type StopState = { attempted: boolean; killed: boolean; uncertain: boolean; adoptedShell: boolean };
+
+/** Session replacement cannot inherit authority to end independent crew work. */
+async function refuseCrewSessionTeardown(session: string, seats: Row, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+  const candidates: [string, Row][] = [];
+  for (const [handle, row] of Object.entries(seats)) {
+    if (isDict(row) && (row.crew === true || row.crew === 1) && await entrySession(row, env, signal) === session) candidates.push([handle, row]);
+  }
+  if (!candidates.length) return;
+  const action = `tap session relaunch ${session}`;
+  const seen = await launchTmux(["list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}"], env, signal);
+  if (seen.code !== 0) {
+    if (/^(no server running on |can't find session:|no sessions)/.test(seen.stderr.trim())) return;
+    throw new TransactionError(`cannot observe crews before replacing ${session}; nothing stopped; next: ${action}`, undefined, "crew_stop_unobservable", action);
+  }
+  const panes = seen.stdout.trim().split("\n").map(line => line.split("\t"));
+  if (panes.some(fields => fields.length !== 2 || !/^%\d+$/.test(fields[0]!))) {
+    throw new TransactionError(`cannot verify crew panes before replacing ${session}; nothing stopped; next: ${action}`, undefined, "crew_stop_unobservable", action);
+  }
+  const epoch = await currentEpoch(env, signal), socket = physicalSocketPath(env);
+  for (const [handle, row] of candidates) {
+    if (row.server_epoch && epoch && row.server_epoch !== epoch) continue;
+    if (row.server_socket && socket && row.server_socket !== socket) continue;
+    if (string(row.pane_id) ? !panes.some(([id]) => id === row.pane_id)
+      : string(row.pane) && !panes.some(([, address]) => address === row.pane)) continue;
+    throw new TransactionError(`session ${session} contains crew '${handle}'; session-wide replacement would end its work; next: ${action}`,
+      undefined, "crew_session_shared", action);
+  }
+}
+
 export async function suspendAndStop(evidence: FailureEvidence, request: TransactionRequest, state: StopState,
   env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
   const record = evidence.record;
@@ -754,6 +790,7 @@ export async function suspendAndStop(evidence: FailureEvidence, request: Transac
       record.revive_vessel = null;
       if (classification !== "shell") throw new TransactionError(`refusing to adopt ${session}: it is ${classification}, not a bare shell session; attach once it is live, or replace it with tap session restart --force`);
     }
+    await refuseCrewSessionTeardown(session, seats, env, signal);
     launchPhase(`Stopping ${session} for replacement`, true);
     const original = record.replacement_registry_entry ?? null;
     if (original) {
@@ -787,6 +824,10 @@ export async function suspendAndStop(evidence: FailureEvidence, request: Transac
     if (displaced.size) saveDoc(evidence.selection.registryLocation, doc);
     try {
       if (live) {
+        if (request.exact_restart) {
+          if (!original) throw new TransactionError("exact restart lost its original target");
+          await request.exact_restart.verify(original, evidence.token);
+        }
         state.attempted = true;
         const run = await launchTmux(["kill-session", "-t", `=${session}`], env, signal);
         if (run.code !== 0) {
@@ -1037,7 +1078,44 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     // The startup screen (and pane title) is captured once per poll and shared
     // by the Codex blocker regexes and the composer signal; Claude reads the
     // registry. OpenCode captures plain physical rows inside its own signal.
-    const codexObserved = record.harness === "codex" ? memoizedStartupObservation(env, signal) : null;
+    let updateIdentity: PaneFacts | null = null;
+    const updateOwner = async (facts: PaneFacts, escape = false): Promise<boolean> => {
+      signal?.throwIfAborted();
+      try {
+        return await registry(evidence.selection, signal, async (_doc, seats) => {
+          assertReset(evidence.selection, "codex-update-skip", env);
+          if (!owns(seats[evidence.handle], evidence)) return false;
+          if (inputProtectionHeld(facts.pane_id, facts.server_epoch, env)) return false;
+          const current = await paneFacts(vessel.pane, env, signal);
+          if (!current || current.dead || current.pane_id !== facts.pane_id || current.pane_pid !== facts.pane_pid
+            || current.server_epoch !== facts.server_epoch || paneHarness(current, env) !== "codex") return false;
+          const observed = await launchTmux(["display-message", "-p", "-t", vessel.pane, VESSEL_FORMAT], env, signal);
+          if (observed.code !== 0 || !sameVessel(vessel, parseVessel(observed.stdout))) return false;
+          const mode = await launchTmux(["display-message", "-p", "-t", vessel.pane, "#{pane_in_mode}"], env, signal);
+          if (mode.code !== 0 || mode.stdout.trim() !== "0") return false;
+          signal?.throwIfAborted();
+          if (!escape) return true;
+          // The detached callback captured pre-Skip evidence. Disarm it before
+          // the key so a later exit cannot roll back an uncertain Skip outcome.
+          if (!await ownedEffect(vessel, ["set-hook", "-p", "-u", "-t", vessel.pane, "pane-died"], env, signal, facts.pane_pid)) return false;
+          signal?.throwIfAborted();
+          assertReset(evidence.selection, "codex-update-skip", env);
+          if (inputProtectionHeld(facts.pane_id, facts.server_epoch, env)) return false;
+          return ownedEffect(vessel, ["send-keys", "-t", vessel.pane, "Escape"], env, signal, facts.pane_pid);
+        });
+      } catch { signal?.throwIfAborted(); return false; }
+    };
+    const codexObserved = record.harness === "codex" ? memoizedStartupObservation(env, signal, true, 5000, {
+      authorize: async facts => { updateIdentity ??= facts; evidence.retainStartupDialog = true; return updateOwner(facts); },
+      escape: facts => updateOwner(facts, true),
+      record: event => {
+        startupTrace("codex_update_skip", { ...event, actor: env.TAP_SELF || "launcher", launch_id: evidence.token });
+        if (event.outcome === "skipped") {
+          (record.ensure_receipts ??= []).push(codexUpdateSkipReceipt(event));
+          evidence.retainStartupDialog = false;
+        }
+      },
+    }) : null;
     const readySignal = harnessReadySignal(evidence, codexObserved, bindBaseline, env, signal);
     const result = await awaitStableHarness(async () => {
       const observed = await launchTmux(["display-message", "-p", "-t", vessel.pane, VESSEL_FORMAT], env, signal);
@@ -1065,12 +1143,14 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       }),
       blocker: codexObserved
       ? async facts => {
-        const { screen } = await codexObserved(facts);
-        return startupBlockerFromScreen(facts, record.harness, screen === null ? null : stripPaneSgr(screen));
+        const { screen, updateSkipFailure } = await codexObserved(facts);
+        return updateSkipFailure ?? startupBlockerFromScreen(facts, record.harness, screen === null ? null : stripPaneSgr(screen));
       } : undefined });
-    if (result.reason?.startsWith("codex-hook-trust:")) {
+    if (result.reason?.startsWith("codex-hook-trust:") || result.reason?.startsWith("codex-update-skip:")) {
       const facts = await paneFacts(vessel.pane, env, signal);
-      if (!facts || facts.dead || facts.pane_id !== vessel.pane || paneHarness(facts, env) !== record.harness) throw new TransactionError(result.reason);
+      const retainedOwner = result.reason.startsWith("codex-update-skip:") ? updateIdentity : facts;
+      if (!facts || !retainedOwner || !await updateOwner(retainedOwner)) throw new StartupDialog(`${result.reason}; launch ownership unverified; pending evidence retained`,
+        { selection: evidence.selection, backup: evidence.backup, session: record.name }, "harness_start_dialog", `tmux attach -t ${record.name}`);
       await configure(priorRemain ? ["set-option", "-p", "-t", vessel.pane, "remain-on-exit", priorRemain]
         : ["set-option", "-p", "-u", "-t", vessel.pane, "remain-on-exit"]);
       await configure(["set-hook", "-p", "-u", "-t", vessel.pane, "pane-died"]);
@@ -1128,6 +1208,10 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   signal?: AbortSignal, notices = new Notices()): Promise<TransactionResult> {
   const record = request.record;
   if (!["new", "adopted", "resume", "resume-all", "restart", "seat-up"].includes(request.kind)) throw new TransactionError("invalid launch transaction kind");
+  if (request.exact_restart) {
+    if (request.kind !== "restart" || !request.exact_restart.id || record.harness_session_id !== request.exact_restart.id) throw new TransactionError("exact restart identity changed");
+    await request.exact_restart.verify();
+  }
   request.script_dir ??= tapScriptsDir();
   request.worker_bun = artifactBun() ?? (env.TAP_SMOKE_BUN || Bun.which("bun", { PATH: env.PATH }) || undefined);
   if (!request.dry_run && (!request.worker_bun || !existsSync(resolve(request.script_dir, "../../../runtime/bun/src/launcher/worker.ts")))) {
@@ -1151,7 +1235,8 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   if (request.json) notices.suppress(true);
   const operation = request.kind === "restart" ? "session restart" : request.kind === "new" ? "session launch" : "session resume";
   assertReset(selection, operation, env);
-  const incumbent = seatRows(loadDoc(selection.registryLocation))[launchHandle(record)];
+  const currentSeats = seatRows(loadDoc(selection.registryLocation));
+  const incumbent = currentSeats[launchHandle(record)];
   if (request.approved_restart_row && !restartRowMatches(request.approved_restart_row, plain(incumbent))) {
     throw new TransactionError(`tap team up: '${launchHandle(record)}' changed after restart preview; nothing resumed for this seat`, undefined,
       "seat_changed", "retry tap team up --last");
@@ -1162,6 +1247,8 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   }
   record.last_launched ||= now();
   if (request.kind === "restart" && request.incumbent_live) record.replaces_session = record.name;
+  const stopSession = request.kind === "restart" ? record.name : record.replaces_session;
+  if (stopSession) await refuseCrewSessionTeardown(stopSession, currentSeats, env, signal);
   const action = request.kind === "new" ? record.ensure_action ?? "new" : "resume";
   if (action === "new") refusePreexistingIdOnNewMint(record);
   // Validate the FULL composed invocation first, read-only, for every new launch
@@ -1184,7 +1271,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   // refuses on: a stale cursor identity refuses the transaction before any
   // reservation or registry mutation.
   const invocationOptions: { env: NodeJS.ProcessEnv; nativeQuery?: string | null; resume: ResumeIdentity } = { env, nativeQuery: request.kind === "adopted" ? request.native_query ?? null : undefined,
-    resume: action === "resume" ? record.revive_vessel === "window" ? exactRevivalIdentity(record, env) : resumeIdentityBinding(request.kind, record, env) : UNBOUND_RESUME_IDENTITY };
+    resume: request.exact_restart?.id ?? (action === "resume" ? record.revive_vessel === "window" ? exactRevivalIdentity(record, env) : resumeIdentityBinding(request.kind, record, env) : UNBOUND_RESUME_IDENTITY) };
   if (request.kind === "restart" && !request.preflight_done) launchInvocation("resume", record, notices, { ...invocationOptions, notify: false, receipts: discardReceipts });
   const expectedReceipt = () => {
     if (action === "resume" && request.kind !== "adopted" && request.kind !== "seat-up") {
@@ -1203,7 +1290,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   if (request.dry_run) {
     idlessResumeWarning();
     expectedReceipt();
-    const invocation = launchInvocation(action, record, notices, invocationOptions);
+    const invocation = request.exact_restart?.invocation ?? launchInvocation(action, record, notices, invocationOptions);
     if (request.validate_only) return { code: 0, record, adopted_shell: false, backup: { status: "not-needed" } };
     process.stdout.write(request.json ? jsonDumpBytes({ ...(request.lifecycle_receipt ? { ...request.lifecycle_receipt, outcome: "would_resume" } : {}), name: record.name, harness: record.harness, cwd: launchWorkdir(record),
       env: invocation.env, argv: invocation.argv, ...(record.preset ? { preset: record.preset } : {}) }, { item: ",", key: ":" }, true) + "\n"
@@ -1237,12 +1324,13 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
     await suspendAndStop(evidence, request, stop, env, signal);
     signal?.throwIfAborted();
     expectedReceipt();
-    const invocation = launchInvocation(action, record, notices, invocationOptions);
+    const invocation = request.exact_restart?.invocation ?? launchInvocation(action, record, notices, invocationOptions);
     await runCreated(evidence, invocation, request, env, signal);
     return { code: 0, record, adopted_shell: stop.adoptedShell, backup: evidence.backup };
   } catch (error) {
     try {
-      if (evidence?.token && !(error instanceof StartupDialog)) {
+      if (evidence?.retainStartupDialog) process.stderr.write(`tap session: Codex update recovery did not complete; session ${record.name} and pending evidence retained; inspect with tmux attach -t ${record.name}\n`);
+      if (evidence?.token && !evidence.retainStartupDialog && !(error instanceof StartupDialog)) {
         if (stop.uncertain) throw await recoveryError(evidence, new Error("incumbent stop outcome is unobservable; reservation retained"));
         // A successful creation with no identity is deliberately retained. A
         // reused name is never enough evidence for rollback's destructive tail.

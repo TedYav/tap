@@ -12,16 +12,16 @@ import { lifecycleDisposition, tmuxFateStopsNamedSession } from "../lifecycle-ta
 import { refuseSharedSelfStop } from "../opencode-shared-stop";
 import { agentFamilies, harnessEvidence, readProcessTable } from "../observe";
 import { observePaneResult } from "../tmux";
+import { crewFamilyHandles, sameCrewSession } from "../crew-ownership";
 import { codePointCompare, rosterGate, scanOptionalSelection, selectedHandles, type Selection } from "./selection";
 import {
   chooseSeatCohort, chooseTeam, confirmAction, readDiscoverySeats, revalidateTeam,
   type BoundCohort, type BoundSeat, type BoundTeam,
 } from "./discovery";
 import {
-  captureParentHarnessLifetime, crewLifetimeBinding, crewLifetimeMatchesRows,
-  parentLifetimeMatchesRow, reconcileCrewLifetime, stopBoundCrewPane,
-  stopCrewLifetimeHelper, validateCrewLifetimeBinding, validateParentHarnessLifetime,
-  type CrewLifetimeBinding, type ParentHarnessLifetime,
+  captureParentHarnessLifetime, parentLifetimeMatchesRow, validateParentHarnessLifetime,
+  captureCrewProcess, crewProcessMatchesRow, fenceCrewLifetime, stopCrewProcess, validateCrewProcess,
+  type CrewProcess, type ParentHarnessLifetime,
 } from "../crew-lifetime";
 
 type Row = Record<string, unknown>;
@@ -84,49 +84,27 @@ function cohort(team: BoundTeam, selection: Selection, current: Record<string, S
 }
 
 function familyChildren(current: Record<string, Seat>, owner: string): string[] {
-  const parent = current[owner];
-  if (!parent) fail("target_changed", `parent '${owner}' disappeared`);
-  if (poll(parent)) return [];
-  const session = field(parent, "session");
-  if (!session) fail("crew_owner_unidentified", `parent '${owner}' has no recorded session`);
-  const owners = Object.keys(current).filter(h => !crew(current[h]) && !poll(current[h]) && field(current[h], "session") === session);
-  if (owners.length !== 1) fail("crew_owner_ambiguous", `session '${session}' has ${owners.length} parent rows; family ownership is ambiguous`);
-  return Object.keys(current).filter(h => crew(current[h]) && field(current[h], "session") === session).sort(codePointCompare);
+  if (!current[owner]) fail("target_changed", `parent '${owner}' disappeared`);
+  return crewFamilyHandles(current, owner);
 }
 
 function orphanChildren(current: Record<string, Seat>, approved: ReadonlySet<string>): string[] {
-  return Object.keys(current).filter(h => crew(current[h]) && !Object.keys(current).some(parent =>
-    approved.has(parent) && !crew(current[parent]) && !poll(current[parent])
-      && field(current[parent], "session") === field(current[h], "session"))).sort(codePointCompare);
+  const owned = new Set([...approved].flatMap(owner => crewFamilyHandles(current, owner)));
+  return Object.keys(current).filter(h => crew(current[h]) && !owned.has(h)).sort(codePointCompare);
 }
 
-function orphanBindingMatchesRow(binding: CrewLifetimeBinding, handle: string, row: Row): boolean {
-  return crew(row) && binding.crew === handle && field(row, "instance") === binding.crewInstance
-    && field(row, "pane_id") === binding.crewPane && field(row, "session") === binding.crewSession
-    && field(row, "server_epoch") === binding.serverEpoch
-    && (!field(row, "server_socket") || field(row, "server_socket") === binding.serverSocket);
-}
-
-function boundOrphan(ctx: ResolvedContext, current: Record<string, Seat>, handle: string): CrewLifetimeBinding | null {
+const orphanBindingMatchesRow = crewProcessMatchesRow;
+function boundOrphan(ctx: ResolvedContext, current: Record<string, Seat>, handle: string): CrewProcess | null {
   const row = current[handle];
-  if (!row || !crew(row)) return null;
-  const binding = crewLifetimeBinding(field(row, "pane_id"));
-  if (!binding || binding.team !== ctx.team || !orphanBindingMatchesRow(binding, handle, row)) return null;
-  if (Object.keys(current).some(parent => !crew(current[parent]) && !poll(current[parent])
-    && field(current[parent], "session") === binding.crewSession)) return null;
-  return validateCrewLifetimeBinding(binding) ? binding : null;
+  if (!row || !crew(row) || Object.keys(current).some(owner => !crew(current[owner]) && crewFamilyHandles(current, owner).includes(handle))) return null;
+  return captureCrewProcess(ctx.team, handle, row);
 }
 
-interface Family { owner: string; parent: Row; lifetime?: ParentHarnessLifetime; children: Map<string, CrewLifetimeBinding> }
+interface Family { owner: string; parent: Row; lifetime?: ParentHarnessLifetime; children: Map<string, CrewProcess>; crewRows: Map<string, Row> }
 
 function sameCrewApproval(row: Row, approved: Row | undefined): boolean {
-  return !!approved && ["instance", "session", "pane_id", "server_epoch", "server_socket", "harness"]
+  return !!approved && ["instance", "session", "pane_id", "server_epoch", "server_socket", "harness", "crew_owner", "crew_owner_instance"]
     .every(key => field(row, key) === field(approved, key));
-}
-
-function bindingMatchesApprovedParent(binding: CrewLifetimeBinding, lifetime: ParentHarnessLifetime): boolean {
-  return binding.parent.pid === lifetime.process.pid && binding.parent.start === lifetime.process.start
-    && binding.parent.boot === lifetime.process.boot;
 }
 
 /** A live shell may remain after its enrolled harness exits. Only a positive
@@ -158,7 +136,8 @@ async function prepareFamily(ctx: ResolvedContext, owner: string, current: Recor
   approvedLifetime: ParentHarnessLifetime | null, originalCrew: ReadonlyMap<string, Row>, dryRun = false): Promise<Family> {
   const parent = current[owner];
   if (!parent || crew(parent)) fail("target_changed", `parent '${owner}' changed after selection`);
-  const children = new Map<string, CrewLifetimeBinding>();
+  const children = new Map<string, CrewProcess>();
+  const crewRows = new Map<string, Row>();
   const handles = familyChildren(current, owner);
   let lifetime: ParentHarnessLifetime | undefined;
   if (approvedLifetime) {
@@ -171,29 +150,20 @@ async function prepareFamily(ctx: ResolvedContext, owner: string, current: Recor
     try { captureParentHarnessLifetime(ctx, owner); fail("target_changed", `parent '${owner}' harness started after approval`); }
     catch (error) { if (error instanceof TapError && error.errorClass === "target_changed") throw error; }
   }
-  if (handles.length) {
-    // Arm while both rows still exist. Registry absence is never evidence that
-    // an old crew's parent process ended.
-    if (!lifetime) fail("crew_lifetime_unprovable", `parent '${owner}' process generation was not bound before confirmation`);
-    for (const handle of handles) {
-      const row = current[handle]!;
-      if (sameCrewApproval(row, originalCrew.get(handle))) {
-        if (dryRun) inspectCrewArmability(row);
-        else children.set(handle, await reconcileCrewLifetime(ctx, owner, handle));
-        continue;
-      }
-      // A child added or replaced while the operator chose/confirmed the
-      // family may follow only if its own existing helper already proves the
-      // approved parent process generation. Never mint that authority here.
-      const binding = crewLifetimeBinding(field(row, "pane_id"));
-      if (!binding || !crewLifetimeMatchesRows(binding, owner, parent!, handle, row)
-        || !bindingMatchesApprovedParent(binding, lifetime) || !validateCrewLifetimeBinding(binding)) {
-        fail("crew_lifetime_unprovable", `late crew '${handle}' has no valid binding to the approved parent; family rows were retained`);
-      }
-      children.set(handle, binding);
-    }
+  for (const handle of handles) {
+    const row = current[handle]!;
+    const approved = originalCrew.get(handle);
+    // A new linked child follows the selected family. A replaced row or a
+    // session-only guess does not inherit the operator's earlier selection.
+    const newLinkedChild = !approved && field(row, "crew_owner") === owner
+      && field(row, "crew_owner_instance") === field(parent, "instance") && !!field(parent, "instance");
+    if (!sameCrewApproval(row, approved) && !newLinkedChild) fail("target_changed", `crew '${handle}' appeared or changed after selection`);
+    crewRows.set(handle, row);
+    if (!dryRun) fenceCrewLifetime(ctx, handle, row);
+    const proof = captureCrewProcess(ctx.team, handle, row);
+    if (proof) children.set(handle, proof);
   }
-  return { owner, parent: parent!, lifetime, children };
+  return { owner, parent: parent!, lifetime, children, crewRows };
 }
 
 function validateFamily(family: Family, current: ReadonlyMap<string, Row>, hard: boolean): string[] {
@@ -203,15 +173,14 @@ function validateFamily(family: Family, current: ReadonlyMap<string, Row>, hard:
   if (family.lifetime && (!parentLifetimeMatchesRow(family.lifetime, family.owner, parent!)
     || (!hard && !validateParentHarnessLifetime(family.lifetime)))) fail("target_changed", `parent '${family.owner}' process generation changed`);
   const children = familyChildren(all, family.owner);
+  if (children.length !== family.crewRows.size) fail("target_changed", "crew family changed before retirement");
   for (const handle of children) {
-    const row = all[handle]!;
-    const binding = family.children.get(handle) ?? crewLifetimeBinding(field(row, "pane_id"));
-    if (!binding || !crewLifetimeMatchesRows(binding, family.owner, parent!, handle, row)
-      || (family.lifetime && !bindingMatchesApprovedParent(binding, family.lifetime))
-      || !validateCrewLifetimeBinding(binding)) {
-      fail("crew_lifetime_unprovable", `crew '${handle}' has no valid process-lifetime binding; family rows were retained`);
+    const row = all[handle]!, proof = family.children.get(handle);
+    if (!sameCrewApproval(row, family.crewRows.get(handle))) fail("target_changed", `crew '${handle}' changed before retirement`);
+    if (proof ? !crewProcessMatchesRow(proof, handle, row) || !validateCrewProcess(proof)
+      : captureCrewProcess("", handle, row) !== null) {
+      fail("crew_lifetime_unprovable", `crew '${handle}' process changed; family rows were retained`);
     }
-    family.children.set(handle, binding);
   }
   // A replacement or late unrelated parent sharing the session blocks the
   // family. familyChildren has already checked unique owner authority.
@@ -236,7 +205,7 @@ function hardPreflight(ctx: ResolvedContext, family: Family, current: Record<str
     if (family.lifetime) {
       if (!validateParentHarnessLifetime(family.lifetime))
         fail("target_changed", `parent '${family.owner}' live harness generation is not the approved one`);
-    } else if (familyChildren(current, family.owner).length || !exitedParentHarness(family.parent)) {
+    } else if (!exitedParentHarness(family.parent)) {
       fail("target_changed", `parent '${family.owner}' live harness generation is not the approved one`);
     }
   }
@@ -246,8 +215,8 @@ function hardPreflight(ctx: ResolvedContext, family: Family, current: Record<str
 type ParentPane = ReturnType<typeof liveSeat>;
 interface HardResult { ok: boolean; surviving: Set<string>; errorClass?: string; detail?: string; selfRequested: boolean }
 
-function crewSurvives(binding: CrewLifetimeBinding): boolean {
-  try { return validateCrewLifetimeBinding(binding); }
+function crewSurvives(binding: CrewProcess): boolean {
+  try { return validateCrewProcess(binding); }
   catch { return false; }
 }
 
@@ -296,10 +265,10 @@ function stopPublishedFamily(family: Family, parentPane: ParentPane, self: boole
   const surviving = new Set<string>();
   const bindings = [...family.children.values()];
   for (const [index, binding] of bindings.entries()) {
-    let stopped: ReturnType<typeof stopBoundCrewPane>;
+    let stopped: ReturnType<typeof stopCrewProcess>;
     try {
       stopped = process.env.TAP_TEST_TEAM_OUT_CREW_STOP_FAIL === binding.crew
-        ? { outcome: "failed", detail: "injected crew stop failure" } : stopBoundCrewPane(binding);
+        ? { outcome: "failed", detail: "injected crew stop failure" } : stopCrewProcess(binding);
     } catch (error) { stopped = { outcome: "failed", detail: String(error) }; }
     if (stopped.outcome !== "stopped") {
       for (const pending of bindings.slice(index)) if (crewSurvives(pending)) surviving.add(pending.crew);
@@ -307,7 +276,6 @@ function stopPublishedFamily(family: Family, parentPane: ParentPane, self: boole
       return { ok: false, surviving, errorClass: "stop_partial",
         detail: `crew '${binding.crew}' ${stopped.outcome}: ${stopped.detail}`, selfRequested: false };
     }
-    try { stopCrewLifetimeHelper(binding); } catch { /* verified stopped child is still retired */ }
   }
   if (!parentPane) return { ok: true, surviving, selfRequested: false };
   // Fault seam for the narrow race: a replacement foreground harness retains
@@ -354,7 +322,7 @@ function stopPublishedFamily(family: Family, parentPane: ParentPane, self: boole
   return { ok: true, surviving, selfRequested: self };
 }
 
-function stopPublishedOrphan(binding: CrewLifetimeBinding, self: boolean, onSelfStop: () => void): HardResult {
+function stopPublishedOrphan(binding: CrewProcess, self: boolean, onSelfStop: () => void): HardResult {
   const surviving = new Set<string>();
   if (self) {
     try { onSelfStop(); }
@@ -364,17 +332,16 @@ function stopPublishedOrphan(binding: CrewLifetimeBinding, self: boolean, onSelf
         detail: `own stop receipt could not be published: ${error}`, selfRequested: false };
     }
   }
-  let stopped: ReturnType<typeof stopBoundCrewPane>;
+  let stopped: ReturnType<typeof stopCrewProcess>;
   try {
     stopped = process.env.TAP_TEST_TEAM_OUT_CREW_STOP_FAIL === binding.crew
-      ? { outcome: "failed", detail: "injected crew stop failure" } : stopBoundCrewPane(binding);
+      ? { outcome: "failed", detail: "injected crew stop failure" } : stopCrewProcess(binding);
   } catch (error) { stopped = { outcome: "failed", detail: String(error) }; }
   if (stopped.outcome !== "stopped") {
     if (crewSurvives(binding)) surviving.add(binding.crew);
     return { ok: false, surviving, errorClass: "stop_partial",
       detail: `orphan crew '${binding.crew}' ${stopped.outcome}: ${stopped.detail}`, selfRequested: self };
   }
-  try { stopCrewLifetimeHelper(binding); } catch { /* verified stopped child is still retired */ }
   return { ok: true, surviving, selfRequested: self };
 }
 
@@ -433,7 +400,7 @@ async function run(argv: string[]): Promise<number> {
     catch { approvedLifetimes.set(owner, null); }
   }
   const orphan = !opts.selection.mode && !opts.pending ? orphanChildren(current, new Set(handles)) : [];
-  const boundOrphans = new Map<string, CrewLifetimeBinding>();
+  const boundOrphans = new Map<string, CrewProcess>();
   for (const handle of orphan) {
     const binding = boundOrphan(team.context, current, handle);
     if (binding) boundOrphans.set(handle, binding);
@@ -454,7 +421,7 @@ async function run(argv: string[]): Promise<number> {
     process.stdout.write(opts.hard
       ? "  Processes: stop each selected parent session and its bound crew panes; preserve team enrollment and history.\n"
       : "  Processes: leave selected parents and crew running; preserve team enrollment and history.\n");
-    if (preview.bound_orphans.length) process.stdout.write(`  Bound orphan crew: ${preview.bound_orphans.join(", ")} (${opts.hard ? "stop and retire" : "retire; supervision remains"})\n`);
+    if (preview.bound_orphans.length) process.stdout.write(`  Bound orphan crew: ${preview.bound_orphans.join(", ")} (${opts.hard ? "stop and retire" : "retire; processes remain"})\n`);
     if (preview.orphan_retained.length) process.stdout.write(`  Retained orphan crew without a proven binding: ${preview.orphan_retained.join(", ")}\n`);
   }
   if (opts.dryRun) {
@@ -479,7 +446,7 @@ async function run(argv: string[]): Promise<number> {
         if (opts.hard) scratchOnlyGuard(process.env, "team out --hard would stop a crew pane on", ctx.bus.home, "tap team out");
         const now = rows(ctx);
         if (!now[handle] || !orphanBindingMatchesRow(binding, handle, now[handle]!)
-          || !validateCrewLifetimeBinding(binding))
+          || !validateCrewProcess(binding))
           fail("crew_lifetime_unprovable", `bound orphan '${handle}' changed before dry-run validation`);
       } catch (error) {
         refusals.push({ owner: handle, error_class: error instanceof TapError ? error.errorClass : "team_out_partial",
@@ -528,9 +495,10 @@ async function run(argv: string[]): Promise<number> {
       const binding = boundOrphans.get(handle)!;
       if (!row || !orphanBindingMatchesRow(binding, handle, row)
         || Object.keys(now).some(parent => !crew(now[parent]) && !poll(now[parent])
-          && field(now[parent], "session") === binding.crewSession))
+          && sameCrewSession(now[parent]!, row)))
         fail("target_changed", `bound orphan '${handle}' changed ownership after preview`);
-      if (!validateCrewLifetimeBinding(binding)) fail("crew_lifetime_unprovable", `bound orphan '${handle}' lost its process-lifetime helper`);
+      if (!validateCrewProcess(binding)) fail("crew_lifetime_unprovable", `orphan crew '${handle}' process changed`);
+      fenceCrewLifetime(ctx, handle, row);
       const self = handle === selfOrphan;
       if (opts.hard) scratchOnlyGuard(process.env, "team out --hard would stop a crew pane on", ctx.bus.home, "tap team out");
       let effect: HardResult = { ok: true, surviving: new Set(), selfRequested: false };
@@ -538,8 +506,8 @@ async function run(argv: string[]): Promise<number> {
         const currentRow = latest.get(handle);
         if (!currentRow || !orphanBindingMatchesRow(binding, handle, currentRow)
           || [...latest.values()].some(other => !crew(other) && !poll(other)
-            && field(other, "session") === binding.crewSession)
-          || !validateCrewLifetimeBinding(binding))
+            && sameCrewSession(other, currentRow))
+          || !validateCrewProcess(binding))
           fail("target_changed", `bound orphan '${handle}' changed before retirement`);
         return [handle];
       }, { disposition, outcome: opts.hard ? "stop_requested" : "retired",

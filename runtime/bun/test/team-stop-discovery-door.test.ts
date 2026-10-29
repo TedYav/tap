@@ -56,7 +56,6 @@ function fixture(crew: boolean, shellParent = false) {
 }
 
 const entry = `import {runTeamStopDoor} from ${JSON.stringify(join(import.meta.dir, "../src/verbs/team.ts"))};
-import {reconcileCrewLifetime} from ${JSON.stringify(join(import.meta.dir, "../src/crew-lifetime.ts"))};
 import {resolveContext} from ${JSON.stringify(join(import.meta.dir, "../src/context.ts"))};
 import {readFileSync,writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -82,10 +81,7 @@ const consent=async()=>{
   const path=process.env.TEST_REGISTRY,doc=JSON.parse(readFileSync(path,'utf8'));
   doc.seats.late={...doc.seats.child,instance:'late-one',pane:'demo/parent:2.0',pane_id:pane};
   writeFileSync(path,JSON.stringify(doc));
-  if(process.env.TEST_LATE==='armed'){
-   await reconcileCrewLifetime(resolveContext(process.cwd(),process.env,{explicitTeam:'demo',readOnly:true}),'parent','late');
-   console.log('LATE:armed');
-  }else console.log('LATE:unarmed');
+  console.log('LATE:unarmed');
  }
  return process.env.TEST_CONSENT==='yes';
 };
@@ -173,28 +169,19 @@ test("named shutdown --except --yes spares the unrelated parent without consent"
   } finally { f.close(); }
 }, 90_000);
 
-test("a child added during consent needs an existing binding to the selected parent lifetime", () => {
+test("a child added during consent is retained until the next explicit family selection", () => {
   const unarmed = fixture(true);
   try {
     const before = unarmed.rows().parent?.status;
     const refused = run(unarmed, "down", ["--only"], "parent", "yes", false, false, "unarmed");
     expect(refused.code, refused.output).toBe(1);
     expect(refused.output).toContain("LATE:unarmed");
-    expect(refused.output).toContain("ERR:crew_lifetime_unprovable");
+    expect(refused.output).toContain("ERR:target_changed");
     expect(unarmed.tmux("has-session", "-t", "=demo/parent").status).toBe(0);
     expect(unarmed.rows().parent?.status).toBe(before);
     expect(unarmed.rows().late?.status).toBe("active");
   } finally { unarmed.close(); }
-  const armed = fixture(true);
-  try {
-    const result = run(armed, "down", ["--only"], "parent", "yes", false, false, "armed");
-    expect(result.code, result.output).toBe(0);
-    expect(result.output).toContain("LATE:armed");
-    expect(armed.tmux("has-session", "-t", "=demo/parent").status).not.toBe(0);
-    expect(armed.rows().child).toBeUndefined();
-    expect(armed.rows().late).toBeUndefined();
-    expect(armed.rows().other?.status).toBe("active");
-  } finally { armed.close(); }
+
 }, 90_000);
 
 test("a selected crew handle replaced during consent cannot inherit the stop", () => {

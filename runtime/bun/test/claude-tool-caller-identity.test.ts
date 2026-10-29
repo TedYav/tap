@@ -191,11 +191,11 @@ function tap(
   return { stdout, stderr, combined: stdout + stderr, status: r.status };
 }
 
-function sessionStartContext(root: string, env: Env): string {
+function sessionStartContext(root: string, env: Env, sessionId = "bg-session"): string {
   const r = spawnSync(process.execPath, [SESSION_START, "context", root], {
     encoding: "utf8",
     env,
-    input: '{"hook_event_name":"SessionStart","source":"startup"}',
+    input: JSON.stringify({ hook_event_name: "SessionStart", source: "startup", session_id: sessionId }),
   });
   return (r.stdout ?? "") + (r.stderr ?? "");
 }
@@ -430,6 +430,21 @@ test("SessionStart distinguishes caller-unobservable from unregistered", () => {
   expect(unseen).toContain("caller pane is not observable");
 });
 
+test("SessionStart cannot inherit a job owner's id when its payload omits identity", () => {
+  writeOne();
+  writeJob("T/fable");
+  const before = readFileSync(REG, "utf8");
+  expect(sessionStartContext(FIXTURE, baseEnv(), "")).toBe("");
+  expect(readFileSync(REG, "utf8")).toBe(before);
+});
+
+test("SessionStart accepts the payload's exact Claude session without job ancestry", () => {
+  writeOne();
+  const hook = sessionStartContext(FIXTURE, baseEnv({ CLAUDE_JOB_DIR: "" }), "interactive-session");
+  expect(hook).toContain("TAP: registered as fable on team T.");
+  expect(readRegistry().seats.fable!.harness_session_id).toBe("interactive-session");
+});
+
 test("tap in and tap self share the verified caller resolver", () => {
   // Source wiring pins: the native doors resolve the caller pane in-process
   // (context.ts observeCallerPaneChain), never through a Bash function, and
@@ -439,7 +454,7 @@ test("tap in and tap self share the verified caller resolver", () => {
   // The SessionStart entry anchors the harness-session row lookup to the root
   // it already resolved, never the hook process's cwd (a cwd inside another
   // enrolled repo would reselect that repo's registry; review P1).
-  expect(readFileSync(join(SRC, "session-start.ts"), "utf8")).toContain("TAP_HARNESS_SESSION_ID: sessionId }, root, false, launch?.seen);");
+  expect(readFileSync(join(SRC, "session-start.ts"), "utf8")).toContain("TAP_HARNESS_SESSION_ID: sessionId }, root, true, launch?.seen);");
   expect(readFileSync(join(SRC, "context.ts"), "utf8")).toContain(
     'observeHarnessSessionPane(typeof anchor === "string" ? resolveContext(anchor, env) : anchor, env)',
   );

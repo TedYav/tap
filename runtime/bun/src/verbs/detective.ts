@@ -4,18 +4,16 @@ import { callingPane, resolveContext, resolveSelf, TapError, type ResolvedContex
 import { parseTarget, selectTarget } from "../selector";
 import { loadRegistry, seatMap } from "../registry";
 import { phaseRows } from "../submit-phase";
-import { mintId } from "../ids";
 import { atomicWrite } from "../fsatomic";
-import { observePaneResult, tmuxReadOnly } from "../tmux";
-import { resolveCatalog } from "../launcher/catalog";
+import { tmuxReadOnly } from "../tmux";
 import { recoveryPolicy } from "../recovery-policy";
 import { harnessQueued } from "../harness-queue";
 import { pendingSentinel } from "../deliver";
 import { visibleSentinel, classifySubmitFrame } from "../submit-frame";
 import { baselinePayload, composerOnlyProof, inspectFlow, saveBaseline, snapshotProof, type FlowProof, type PayloadBaseline } from "../recovery/proof";
 import { alreadyProcessed, allPendingQueued, pendingEvidence, relevantDoctor } from "../recovery/evidence";
-import { cleanupIO, cleanupRecoveryCrew, prepareWorkerWorkspace, tapCommand, type OwnedCrew } from "../recovery/crew";
-import { waitWorkerReply } from "../recovery/waiter";
+import { tapCommand } from "../recovery/crew";
+import { withRecoveryWorker } from "../recovery/worker";
 import { canAct, createRun, readRun, releaseRun, runDirectory, updateRun, type RecoveryRun, type RecoveryTarget } from "../recovery/state";
 import { escalateRecovery, REAL_RECOVERY_IO, recordObservation, recoveryEffect } from "../recovery/effect";
 
@@ -62,15 +60,6 @@ function boundTarget(ctx: ResolvedContext, raw: string): RecoveryTarget {
   return { processPid: paneProcess.code === 0 ? paneProcess.stdout.trim() : "", team: selected.team, handle: selected.handle, registry: selected.registryLocation, pane: row.pane,
     paneId: row.pane_id, instance: String(row.instance ?? ""), session: String(row.session ?? ""), harness: String(row.harness ?? "") };
 }
-function ownedCrew(ctx: ResolvedContext, handle: string, session: string): OwnedCrew {
-  const row = seatMap(loadRegistry(ctx.registryPath))[handle];
-  if (!row || row.crew !== true || row.session !== session || typeof row.pane_id !== "string") throw new Error("crew did not publish its expected bound identity");
-  const obs = observePaneResult(row.pane_id);
-  const window = tmuxReadOnly(["display-message", "-p", "-t", row.pane_id, "#{window_id}"]);
-  if (obs.status !== "ok" || obs.observation.session !== session || !/^@\d+$/.test(window.stdout.trim())) throw new Error("created crew window identity cannot be verified");
-  return { handle, paneId: row.pane_id, windowId: window.stdout.trim(), session,
-    serverEpoch: obs.observation.serverEpoch, instance: String(row.instance ?? ""), assignments: [] };
-}
 function workerCharter(run: RecoveryRun): string {
   const team = run.caller!.team, directory = runDirectory(run.id);
   return `You are a temporary TAP recovery worker, not a code lane. Target ${run.target.team}/${run.target.handle}, recovery ${run.id}.
@@ -86,15 +75,6 @@ For report-only, inspect and propose: no keys and no hold. Cautious permits clea
 After each action inspect worker-current.ansi and the recorded outcome. Full history frames are retained for post-mortems; do not load the target's scrollback as your conversation. A failed after capture or possible effect is NOT permission to replay. A natural-language success report is not proof. Never create or edit receipts, phase logs, run metadata or effect evidence; the tools own those. When the composer is restored, submit only the actual staged sentinel if present; otherwise leave untouched pending delivery to the ordinary courier. Reply to the infrastructure assignment with concise observations and STOP. Do not create other obligations, edit source, run tests or seek reviews.
 `;
 }
-async function assignWorker(ctx: ResolvedContext, run: RecoveryRun, crew: OwnedCrew, text: string): Promise<string> {
-  const id = mintId(run.caller!.actor), path = join(runDirectory(run.id), `${id}.charter.md`);
-  writeFileSync(path, text, { mode: 0o600 });
-  crew.assignments.push(id);
-  updateRun(run.id, r => { r.worker = crew; });
-  const result = await tapCommand(ctx, ["assign", crew.handle, "--id", id, "--from", run.caller!.actor, "-f", path], { timeoutMs: Math.max(1, run.deadline - Date.now()) });
-  if (result.code !== 0 && result.code !== 5) throw new Error(`worker assignment failed: ${result.stderr || result.stdout}`);
-  return id;
-}
 function phaseBaseline(run: RecoveryRun): PayloadBaseline[] {
   return JSON.parse(readFileSync(join(runDirectory(run.id), "baseline.json"), "utf8"));
 }
@@ -105,6 +85,7 @@ function workerFrame(run: RecoveryRun): string | null {
 }
 async function action(ctx: ResolvedContext, options: Options): Promise<number> {
   const run = readRun(options.run!), self = actor(ctx);
+  if (run.purpose === "operator") throw new Error("operator runs accept only tap operate actions");
   const selfRow = seatMap(loadRegistry(ctx.registryPath))[self.handle];
   const owned = (self.paneId === run.ownerPane && run.caller?.actor === self.handle && run.caller.team === ctx.team) ||
     (run.worker?.handle === self.handle && run.worker.paneId === self.paneId && String(selfRow?.instance ?? "") === run.worker.instance);
@@ -185,7 +166,7 @@ export async function cmdDetective(argv: string[]): Promise<number> {
   const policy = recoveryPolicy("aggressive", options.override), target = boundTarget(ctx, options.target!);
   const self = policy.mode === "report-only" ? null : actor(ctx);
   let run = createRun(target, policy.mode, [], self?.paneId || "", process.pid);
-  let crew: OwnedCrew | undefined, cleaned = false, gaps: string[] = [];
+  let cleaned = false, gaps: string[] = [];
   let proof: FlowProof = { kind: "unresolved", summary: "recovery did not complete" };
   process.stderr.write(`tap detective: recovery=${run.id} aggressiveness=${policy.mode} source=${policy.source}; tap debug recovery ${run.id}\n`);
   try {
@@ -209,39 +190,19 @@ export async function cmdDetective(argv: string[]): Promise<number> {
       ["idle", "working", "mid-turn"].includes(classifySubmitFrame(frame, target.harness, "\0").mode)) {
       proof = { kind: "observed", summary: "ordinary composer available; no pending submission found, no repair performed" };
     } else {
-      // Raw sink: catalog notices already carry `tap config:`/`tap session:`.
-      // Prefixing again produced `tap detective: tap config: ...` -- the same
-      // double-prefix fixed in request.ts, at the caller that fix did not sweep.
-      resolveCatalog(options.preset, undefined, process.env, message => process.stderr.write(`${message}\n`));
-      const parent = observePaneResult(self!.paneId);
-      if (parent.status !== "ok") throw new Error("operator session is no longer observable");
-      const name = `detective-${run.id.slice(-8)}`;
-      if (seatMap(loadRegistry(ctx.registryPath))[name]) throw new Error("worker name already exists; refusing adoption");
-      const workerCwd = prepareWorkerWorkspace(ctx, run);
-      atomicWrite(join(runDirectory(run.id), "worker-launch.json"), JSON.stringify({ requested: name, cwd: workerCwd, parent: parent.observation, state: "starting" }));
-      const launch = await tapCommand(ctx, ["crew", "add", options.preset, name, "--cwd", workerCwd],
-        { timeoutMs: Math.max(1, run.deadline - Date.now()) });
-      atomicWrite(join(runDirectory(run.id), "worker-launch.json"), JSON.stringify({ requested: name, cwd: workerCwd, parent: parent.observation, result: launch }));
-      try { crew = ownedCrew(ctx, name, parent.observation.session); run = updateRun(run.id, r => { r.worker = crew; }); }
-      catch (error) { throw new Error(`worker ${name} launch ownership unavailable; cleanup unverified: ${launch.stderr || error}`); }
-      if (launch.code !== 0) throw new Error(`crew launch failed: ${launch.stderr}`);
-      process.stderr.write(`tap detective: worker ${crew.handle} started; fixed deadline ${new Date(run.deadline).toISOString()}\n`);
-      const identity = await assignWorker(ctx, run, crew, `Identity check only. Run tap whoami, then reply to this ask with exactly that handle, no Markdown. Do no recovery actions yet.`);
-      const answer = await waitWorkerReply(ctx, run.id, identity, crew.handle, self!.handle, run.deadline);
-      if (answer !== crew.handle) throw new Error("worker identity reply did not match its assigned handle");
-      const job = await assignWorker(ctx, readRun(run.id), crew, workerCharter(readRun(run.id)));
-      await waitWorkerReply(ctx, run.id, job, crew.handle, self!.handle, run.deadline);
-      const finalFrame = recordObservation(readRun(run.id), REAL_RECOVERY_IO, process.env, "final");
-      const finalPending = pendingEvidence(ctx, target, finalFrame);
-      const uiOnly = composerOnlyProof(readRun(run.id), finalFrame, !finalPending.payloads.length && !finalPending.gaps.length, REAL_RECOVERY_IO.authorize(target) === null);
-      gaps = await cleanupRecoveryCrew(crew, cleanupIO(run, crew, ctx, self!.handle)); cleaned = true;
-      proof = uiOnly ?? await waitFlow(readRun(run.id), phaseBaseline(run));
+      const worker = await withRecoveryWorker(ctx, run, options.preset, workerCharter(run), latest => {
+        const finalFrame = recordObservation(latest, REAL_RECOVERY_IO, process.env, "final");
+        const finalPending = pendingEvidence(ctx, target, finalFrame);
+        return composerOnlyProof(latest, finalFrame, !finalPending.payloads.length && !finalPending.gaps.length, REAL_RECOVERY_IO.authorize(target) === null);
+      });
+      gaps = worker.gaps; cleaned = true;
+      if (worker.error) throw new Error(worker.error);
+      proof = worker.value ?? await waitFlow(readRun(run.id), phaseBaseline(run));
     }
   } catch (error) {
     proof = { kind: "unresolved", summary: readRun(run.id).summary || String(error) };
   } finally {
-    if (crew && !cleaned) gaps = await cleanupRecoveryCrew(crew, cleanupIO(run, crew, ctx, self!.handle));
-    else if (!crew) { try { releaseRun(run.id); } catch (error) { gaps.push(`hold release: ${error}`); } }
+    if (!cleaned) { try { releaseRun(run.id); } catch (error) { gaps.push(`hold release: ${error}`); } }
   }
   run = readRun(run.id);
   const failed = policy.mode !== "report-only" && (proof.kind === "unresolved" || gaps.length > 0);

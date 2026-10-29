@@ -333,7 +333,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
 
   test("wrapped draft carries both rows and excludes the footer", () => {
     expect(classifyPane(corpus("claude/wrapped-draft.txt"), "claude", false))
-      .toEqual({ kind: "draft", text: "first line of claude draft\nsecond line of claude draft" });
+      .toMatchObject({ kind: "draft", text: "first line of claude draft\nsecond line of claude draft" });
   });
 
   test("no-prompt surrogate (dialog) is no-band, not ready", () => {

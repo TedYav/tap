@@ -29,6 +29,8 @@ export type PaneBand =
   | { state: "busy"; text: string; queued?: boolean;
       /** Claude only: the visible composer rows as typed and the box width, for draft capture and restore proofs. */
       rows?: string[]; columns?: number;
+      /** A full Claude viewport may hide earlier rows; exact control words need the whole composer. */
+      mayBeTruncated?: true;
       /** Claude only: the box sits at its height cap with every visible row blank; the draft lies above the viewport. */
       scrolled?: true }
   | { state: "unobservable"; reason: string; cause?: "pane_dead" | "overprint" | "shell-mode" | "feedback-draft" }
@@ -41,7 +43,7 @@ export type PaneKind = "ready" | "draft" | "no-band" | "copy-mode" | "gone" | "r
 export type ClassifiedPane =
   | { kind: "queued"; text: string }
   | { kind: "ready" }
-  | { kind: "draft"; text: string; rows?: string[]; columns?: number; scrolled?: true }
+  | { kind: "draft"; text: string; rows?: string[]; columns?: number; scrolled?: true; mayBeTruncated?: true }
   | { kind: "no-band"; reason: string; cause?: "pane_dead" | "overprint" | "shell-mode" | "feedback-draft" }
   | { kind: "copy-mode" }
   | { kind: "gone" }
@@ -348,7 +350,8 @@ export function toPaneBand(classified: ClassifiedPane): PaneBand {
   switch (classified.kind) {
     case "ready": return { state: "ready" };
     case "draft": return classified.rows
-      ? { state: "busy", text: classified.text, rows: classified.rows, columns: classified.columns, ...(classified.scrolled ? { scrolled: true as const } : {}) }
+      ? { state: "busy", text: classified.text, rows: classified.rows, columns: classified.columns,
+        ...(classified.scrolled ? { scrolled: true as const } : {}), ...(classified.mayBeTruncated ? { mayBeTruncated: true as const } : {}) }
       : { state: "busy", text: classified.text };
     case "queued": return { state: "busy", text: classified.text, queued: true };
     case "gone": return { state: "gone" };
@@ -406,7 +409,9 @@ function classifyFamily(capture: string, harness: string, copyMode: boolean, pan
     if (!box) return { kind: "no-band", reason: "no recognized Claude input box" };
     if (box.typed && !claudeDimChrome(capture, box.typed)) {
       const drawn = claudeDraftRows(capture);
-      return drawn ? { kind: "draft", text: box.typed, ...drawn } : { kind: "draft", text: box.typed };
+      return drawn ? { kind: "draft", text: box.typed, ...drawn,
+        ...(drawn.rows.length >= (paneHeight ? claudeComposerCap(paneHeight) : 3) ? { mayBeTruncated: true as const } : {}) }
+        : { kind: "draft", text: box.typed, mayBeTruncated: true };
     }
     if (claudeScrolledBlank(capture, paneHeight)) {
       // The rows are what is visible, nothing synthesized; delivery never clears this band.

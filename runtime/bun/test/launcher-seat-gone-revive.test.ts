@@ -1,3 +1,4 @@
+import { legacyCrewHelper } from "./support/legacy-crew-lifetime";
 // tap-9rrat: a seat whose harness exited while crew windows hold its tmux session.
 // The chooser used to call that session "live" and offer [r]; resume then refused
 // "not live". Now the session classifies seat-gone and [r] revives the seat into
@@ -11,7 +12,7 @@ import { describeReviveTier } from "../src/launcher/collision";
 import { cmdSessionLaunch } from "../src/launcher/new";
 import { exactRevivalIdentity } from "../src/launcher/transaction";
 import { createOpenCodeStore, addSession } from "./support/opencode-store";
-import { crewLifetimeBinding, processGeneration, reclaimRevivedCrew, reconcileCrewLifetime, survivingCrews, validateCrewLifetimeBinding } from "../src/crew-lifetime";
+import { crewLifetimeBinding, crewLifetimeHealth, processGeneration, fenceSurvivingCrew, survivingCrews } from "../src/crew-lifetime";
 
 const original = { ...process.env };
 const originalCwd = process.cwd();
@@ -85,7 +86,7 @@ async function seatGoneWithCrews(f: ReturnType<typeof fixture>, arm: false | "lo
   writeFileSync(f.registry, JSON.stringify(doc));
   let old = null;
   if (arm) {
-    old = await reconcileCrewLifetime({ team: "fixture", registryPath: f.registry } as never, "reviewer", "kimi-review");
+    old = await legacyCrewHelper({ team: "fixture", registryPath: f.registry }, "reviewer", "kimi-review");
     if (arm === "lost") {
       process.kill(Number(old.helper.pid), "SIGTERM");
       // Async waits let this process reap its exited helper child.
@@ -181,41 +182,17 @@ test("a failed revival removes only its own window; the crews and their session 
   for (const crew of crews) expect(after.some(line => line.startsWith(`${crew} `))).toBe(true);
 }, 90_000);
 
-test("[r] moves a surviving crew's lifetime to the revived seat, which then ends it on a normal exit", async () => {
+test("[r] keeps surviving crews independent after the revived parent exits", async () => {
   const f = fixture();
-  const { crews, old } = await seatGoneWithCrews(f, "lost");
-  const crewPane = crews[0]!;
-  // Ordinary rearm cannot recover it: the parent it names is gone.
-  await expect(reconcileCrewLifetime({ team: "fixture", registryPath: f.registry } as never, "reviewer", "kimi-review"))
-    .rejects.toThrow("family pane or server generation changed");
-  const result = f.tap(["session", "resume", "reviewer"]);
+  const { crews } = await seatGoneWithCrews(f, "lost");
+  const result = await resumeAsync(f);
   expect(result.status, result.stdout + result.stderr).toBe(0);
-  expect(result.stdout).toContain("crew kimi-review reclaimed by reviewer");
-  const row = f.doc().seats.reviewer;
-  const moved = crewLifetimeBinding(crewPane)!;
-  expect(moved.token).not.toBe(old!.token);
-  expect(moved.ownerPane).toBe(row.pane_id);
-  expect(moved.parent.pid).not.toBe(old!.parent.pid);
-  expect(moved.child).toEqual(old!.child);
-  expect(validateCrewLifetimeBinding(moved)).toBe(true);
-  // A sweep of the family now finds the reclaimed binding current, not a foreign generation.
-  expect((await reconcileCrewLifetime({ team: "fixture", registryPath: f.registry } as never, "reviewer", "kimi-review")).token).toBe(moved.token);
-  // The revived seat's normal exit ends every crew it reclaimed (claude-review too), so the
-  // session can empty in the same instant; the server outlives it (exit-empty off), where
-  // tmux answers a session-scoped read with "no current target" (seen on tmux 3.5a CI).
-  expect(result.stdout).toContain("crew claude-review reclaimed by reviewer");
-  process.kill(Number(moved.parent.pid), "SIGTERM");
-  const serverPanes = () => {
-    const listed = spawnSync(realTmux, ["-L", process.env.TAP_TMUX_SOCKET!, "list-panes", "-a", "-F", "#{pane_id}"], { env: process.env, encoding: "utf8" });
-    if (listed.status === 0) return listed.stdout.split("\n");
-    // Only a server with no sessions left may read as no panes; any other failure fails the test.
-    expect(f.T("list-sessions", "-F", "#{session_name}"), listed.stderr).toBe("");
-    return [];
-  };
-  let alive = true;
-  for (let i = 0; i < 150 && alive; i++) { await Bun.sleep(50); alive = serverPanes().some(pane => crews.includes(pane)); }
-  expect(alive).toBe(false);
-  expect(f.T("list-sessions", "-F", "#{session_name}")).toBe("");
+  expect(result.stdout).toContain("crew kimi-review keeps its independent lifetime");
+  expect(result.stdout).toContain("crew claude-review keeps its independent lifetime");
+  for (const pane of crews) expect(crewLifetimeHealth(pane)).toBe("independent");
+  f.T("kill-pane", "-t", f.doc().seats.reviewer.pane_id);
+  await Bun.sleep(3000);
+  for (const pane of crews) expect(panes(f).some(line => line.startsWith(`${pane} `))).toBe(true);
 }, 90_000);
 
 /** The public resume, spawned without blocking this process, which must keep reaping helper children. */
@@ -232,42 +209,28 @@ test("a still-running old supervisor is fenced before the crew moves, and never 
   expect(processGeneration(old!.helper)).toBe("same");
   const result = await resumeAsync(f);
   expect(result.status, result.stdout + result.stderr).toBe(0);
-  expect(result.stdout).toContain("crew kimi-review reclaimed by reviewer");
+  expect(result.stdout).toContain("crew kimi-review keeps its independent lifetime");
   for (let i = 0; i < 40 && processGeneration(old!.helper) === "same"; i++) await Bun.sleep(50);
   expect(processGeneration(old!.helper)).toBe("gone");
   // Past the old helper's poll cadence the crew is still running under the revived seat.
   await Bun.sleep(3000);
   expect(panes(f).some(line => line.startsWith(`${crewPane} `))).toBe(true);
-  const moved = crewLifetimeBinding(crewPane)!;
-  expect(moved.token).not.toBe(old!.token);
-  expect(validateCrewLifetimeBinding(moved)).toBe(true);
+  expect(crewLifetimeBinding(crewPane)).toBeNull();
+  expect(crewLifetimeHealth(crewPane)).toBe("independent");
 }, 90_000);
 
-test("reclaim refuses a different seat instance, a changed crew, and an unreadable registry", async () => {
+test("owner revival transition refuses a reused instance, changed crew process, or unreadable registry", async () => {
   const f = fixture();
-  const { crews } = await seatGoneWithCrews(f, "lost");
+  const { crews } = await seatGoneWithCrews(f);
   const ctx = { team: "fixture", registryPath: f.registry };
   const [snapshot] = survivingCrews(ctx, "reviewer").filter(crew => crew.crew === "kimi-review");
-  expect(snapshot?.crewPane).toBe(crews[0]);
-  const result = await resumeAsync(f);
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  const before = crewLifetimeBinding(crews[0]!)!;
-  // A replacement under the same name is another instance: never the crew's parent.
-  await expect(reclaimRevivedCrew(ctx, "reviewer", { ...snapshot!, ownerInstance: "reviewer|ffffffffffffffff" })).rejects.toThrow("not the retained instance");
-  // A crew changed since the snapshot (or a snapshot of another binding) is not reclaimed.
-  await expect(reclaimRevivedCrew(ctx, "reviewer", { ...snapshot!, crewInstance: "kimi-review|ffffffffffffffff" })).rejects.toThrow("changed during the revival");
-  await expect(reclaimRevivedCrew(ctx, "reviewer", { ...snapshot!, child: { ...snapshot!.child, start: "0" } })).rejects.toThrow("process changed during the revival");
-  await expect(reclaimRevivedCrew(ctx, "reviewer", snapshot!)).rejects.toThrow("supervision changed during the revival");
-  // An unbound crew whose pane got a new process after the snapshot is not inherited.
-  const [unbound] = survivingCrews(ctx, "reviewer").filter(crew => crew.crew === "claude-review");
-  f.T("respawn-pane", "-k", "-t", crews[1]!, `${f.root}/real/claude 600`);
-  await expect(reclaimRevivedCrew(ctx, "reviewer", { ...unbound!, binding: null })).rejects.toThrow("process changed during the revival");
-  // An unreadable registry authorizes nothing.
-  const broken = join(f.root, "broken.json");
-  writeFileSync(broken, "{not json");
-  expect(() => survivingCrews({ team: "fixture", registryPath: broken }, "reviewer")).toThrow("unreadable");
-  await expect(reclaimRevivedCrew({ team: "fixture", registryPath: broken }, "reviewer", snapshot!)).rejects.toThrow("unreadable");
-  expect(crewLifetimeBinding(crews[0]!)!.token).toBe(before.token);
+  expect(snapshot?.proof.crewPane).toBe(crews[0]);
+  await expect(fenceSurvivingCrew(ctx, "reviewer", { ...snapshot!, ownerInstance: "reused-owner" })).rejects.toThrow("changed during owner revival");
+  await expect(fenceSurvivingCrew(ctx, "reviewer", { ...snapshot!, proof: { ...snapshot!.proof, crewInstance: "replaced-crew" } })).rejects.toThrow("changed during owner revival");
+  f.T("respawn-pane", "-k", "-t", crews[0]!, `${f.root}/real/opencode 600`);
+  await expect(fenceSurvivingCrew(ctx, "reviewer", snapshot!)).rejects.toThrow("changed during owner revival");
+  const broken = join(f.root, "broken.json"); writeFileSync(broken, "{not json");
+  expect(() => survivingCrews({ ...ctx, registryPath: broken }, "reviewer")).toThrow("unreadable");
 }, 90_000);
 
 test("the exact revival gate pins each harness's contract", () => {

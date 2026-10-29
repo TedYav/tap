@@ -27,7 +27,7 @@ import { pathIsUnder, realOrSelf, recordKeySelection, rootForCwd } from "./recor
 import { timestamp } from "./repair";
 import { freshLaunchSessionId } from "./adapters";
 import { idlessFreshWarning, recordHasResumeArtifact, pyRepr } from "./resume-identity";
-import { fenceSurvivingCrew, reclaimRevivedCrew, survivingCrews, type SurvivingCrew } from "../crew-lifetime";
+import { fenceSurvivingCrew, survivingCrews, type SurvivingCrew } from "../crew-lifetime";
 import { teamRegistryRefusal } from "../register-authority";
 import { LauncherError } from "./types";
 import { cloneRecord, compact, entryGuard, err, out, Refusal, refuseIfResetFenced, refuseRetiredFlags, registryAuthority,
@@ -505,6 +505,7 @@ async function runAdoptedResume(harness: string, base: string, cwd: string, opti
   err(`tap session: resuming ${name}; expected seat ${launchHandle(record)}`);
   const outcome = await deps.run("adopted", record, { native_query: null });
   if (options.dryRun || outcome.code !== 0) return outcome.code;
+  for (const line of record.ensure_receipts ?? []) receipt(line);
   return deps.attach("resume", record);
 }
 
@@ -610,22 +611,16 @@ export async function resumeOne(options: Options, cwd: string, deps: ResumeDeps)
       family = path ? { team: base, registryPath: path } : null;
       try { crews = family ? survivingCrews(family, launchHandle(launched)) : []; }
       catch (error) { warn(`could not read ${launchHandle(launched)}'s crews before reviving (${(error as Error).message})`, "they keep running; inspect with tap crew list"); }
-      // An old supervisor still running would reap its crew while the revived harness starts.
-      for (const crew of crews) {
-        if (crew.binding && !await fenceSurvivingCrew(launchHandle(launched), crew)) {
-          warn(`crew ${crew.crew}'s old supervisor was not fenced before the revival`, `if it stops the crew, relaunch it with tap crew add`);
-        }
-      }
+      // Fence any pre-upgrade helper before reviving the retained owner.
+      for (const crew of crews) await fenceSurvivingCrew(family!, launchHandle(launched), crew);
     }
   }
   const outcome = await deps.run("resume", launched);
   if (options.dryRun || outcome.code !== 0) return outcome.code;
+  for (const line of launched.ensure_receipts ?? []) receipt(line);
   if (launched.revive_vessel === "window") {
     receipt(`revived ${launched.name} in a new window beside its surviving windows (${reviveContext(launched.harness, launched.harness_session_id)}; expected seat ${launchHandle(launched)})`);
-    for (const crew of crews) {
-      try { await reclaimRevivedCrew(family!, launchHandle(launched), crew); receipt(`crew ${crew.crew} reclaimed by ${launchHandle(launched)}`); }
-      catch (error) { warn(`crew ${crew.crew} kept running but was not reclaimed (${(error as Error).message})`, `inspect with tap crew list; stop it with tap crew shutdown ${crew.crew}`); }
-    }
+    for (const crew of crews) receipt(`crew ${crew.crew} keeps its independent lifetime`);
   }
   if (outcome.adopted_shell) {
     receipt(`resumed ${launched.name} (adopted shell session, ${reviveContext(launched.harness, launched.harness_session_id)}; expected seat ${launchHandle(launched)})`);

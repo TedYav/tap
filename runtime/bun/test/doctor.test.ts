@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { removeScratchTree } from "./support/scratch";
+import { physicalSocketPath } from "../src/tmux";
 
 const root = resolve(import.meta.dir, "../../..");
 const shippedEntry = join(root, "bin/tap");
@@ -196,6 +197,316 @@ function runDoctor(
   });
   return { rc: run.status ?? -1, out: run.stdout ?? "", err: run.stderr ?? "" };
 }
+
+const SEAT_TMUX = `#!/bin/sh
+case "$1" in
+  list-sessions) printf 'demo/scout\\t900:100\\t0\\n' ;;
+  list-panes) printf 'demo/scout\\tdemo/scout:0.0\\t%%11\\tcodex\\t111\\t900:100\\t0\\n' ;;
+  capture-pane)
+    [ "$DOCTOR_CAPTURE_FAIL" = 1 ] && exit 1
+    [ -n "$DOCTOR_CHANGED_REGISTRY" ] && cp "$DOCTOR_CHANGED_REGISTRY" "$DOCTOR_REGISTRY"
+    [ -n "$DOCTOR_CAPTURED" ] && touch "$DOCTOR_CAPTURED"
+    [ -n "$DOCTOR_GROW_TRANSCRIPT" ] && printf '{"type":"event_msg","payload":{"type":"task_started"}}\\n' >> "$DOCTOR_GROW_TRANSCRIPT"
+    cat "$DOCTOR_FRAME" ;;
+  display-message)
+    case "$*" in
+      *pane_title*) printf '%s\\n' "\${DOCTOR_TITLE:-tap}" ;;
+      *socket_path*) printf '/tmp/doctor-fixture.sock\\n' ;;
+      *) if [ -n "$DOCTOR_CAPTURED" ] && [ -f "$DOCTOR_CAPTURED" ]; then printf '901:200\\n'; else printf '900:100\\n'; fi ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+`;
+
+function seatFixture(overrides: Record<string, unknown> = {}, tmuxSh = SEAT_TMUX) {
+  const fx = fixture({ tmuxSh, registry: {
+    schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" }, seats: {
+      scout: { harness: "codex", status: "active", delivery: "pane", session: "demo/scout", pane: "demo/scout:0.0",
+        pane_id: "%11", server_epoch: "srv:900:100", boot_id: "boot:2", instance: "seat-instance", ...overrides },
+    },
+  } });
+  const frame = join(fx.dir, "frame");
+  writeFileSync(frame, "› \x1b[2mAsk Codex to do anything\x1b[0m\n");
+  return { ...fx, frame, env: { DOCTOR_FRAME: frame } };
+}
+
+describe("seat doctor", () => {
+  test("an unreadable operator hold cannot block doctor on a FIFO", () => {
+    const fx = seatFixture();
+    const env = doctorEnv(fx, fx.env);
+    const key = createHash("sha256").update(`${physicalSocketPath(env)}\0%11`).digest("hex");
+    const dir = join(fx.index, "input-protection"); mkdirSync(dir);
+    expect(spawnSync("mkfifo", [join(dir, `${key}.json`)]).status).toBe(0);
+    const result = spawnSync(shippedEntry, ["doctor", "scout", "--json"], {
+      cwd: fx.worktree, env, encoding: "utf8", timeout: 2500,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).not_checked).toContain("operator hold: input protection unreadable");
+  });
+  test("doctor reports an operator STOP with expiry without changing its record", () => {
+    const fx = seatFixture();
+    const env = doctorEnv(fx, fx.env);
+    const key = createHash("sha256").update(`${physicalSocketPath(env)}\0%11`).digest("hex");
+    const dir = join(fx.index, "input-protection"); mkdirSync(dir);
+    writeFileSync(join(dir, `${key}.json`), JSON.stringify({ pane: "%11", epoch: "srv:900:100",
+      graceUntil: 0, snoozeUntil: 0, consumed: true, bareSince: null, senders: ["alice"], stopUntil: Date.now() + 600000 }));
+    const before = stateDigest(fx);
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc, run.err).toBe(0);
+    expect(JSON.parse(run.out).evidence).toContainEqual({ source: "delivery", fact: "operator_hold",
+      value: expect.stringContaining("held by operator STOP until") });
+    expect(stateDigest(fx)).toBe(before);
+  });
+  test("a named idle seat has a supported diagnosis and the observation writes nothing", () => {
+    const fx = seatFixture();
+    const before = stateDigest(fx);
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(0);
+    expect(run.err).toBe("");
+    const report = JSON.parse(run.out);
+    expect(report).toMatchObject({ ok: true, scope: "seat", handle: "scout", verdict: "healthy" });
+    expect(report.evidence).toContainEqual({ source: "pane", fact: "agent_state", value: "idle" });
+    expect(report.evidence).toContainEqual({ source: "pane", fact: "rule", value: "prompt_idle" });
+    expect(stateDigest(fx)).toBe(before);
+  });
+
+  test("working remains protected even when no file progress can be checked", () => {
+    const fx = seatFixture();
+    const run = runDoctor(fx, ["scout", "--json"], { ...fx.env, DOCTOR_TITLE: "⠹ tap" });
+    expect(run.rc).toBe(0);
+    const report = JSON.parse(run.out);
+    expect(report.verdict).toBe("busy-unproven");
+    expect(report.not_checked).toContain("wedge discriminator: no proven interval signature");
+  });
+
+  test("the shared update-menu rule yields attention and a cause-specific remedy", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available.txt")));
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(2);
+    const report = JSON.parse(run.out);
+    expect(report.verdict).toBe("parked-on-dialog");
+    expect(report.evidence).toContainEqual({ source: "pane", fact: "rule", value: "codex-update-available" });
+    expect(report.action).toContain("Skip");
+    expect(run.err).toBe("");
+  });
+
+  test("a stopped provider error names the reason without claiming a network failure", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/errors/codex-capacity.ansi")));
+    const run = runDoctor(fx, ["--json", "scout"], fx.env);
+    expect(run.rc).toBe(2);
+    expect(JSON.parse(run.out)).toMatchObject({ verdict: "severed", evidence: expect.arrayContaining([
+      { source: "pane", fact: "rule", value: "model_capacity" },
+    ]) });
+  });
+
+  test("capture failure is not checked, never healthy or gone", () => {
+    const fx = seatFixture();
+    const before = stateDigest(fx);
+    const run = runDoctor(fx, ["scout", "--json"], { ...fx.env, DOCTOR_CAPTURE_FAIL: "1" });
+    expect(run.rc).toBe(1);
+    expect(JSON.parse(run.out)).toMatchObject({ ok: false, verdict: null });
+    expect(JSON.parse(run.out).not_checked.join(" ")).toContain("capture_failed");
+    expect(stateDigest(fx)).toBe(before);
+  });
+
+  test("a successfully captured unrecognized screen is unknown with evidence", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, "unrecognized foreground application\n");
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(2);
+    expect(JSON.parse(run.out).verdict).toBe("unknown");
+  });
+
+  test("a registered seat on a positively absent session is gone", () => {
+    const fx = seatFixture({}, SEAT_TMUX.replaceAll("demo/scout", "other/seat").replaceAll("%%11", "%%22"));
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(2);
+    expect(JSON.parse(run.out).verdict).toBe("gone");
+  });
+
+  test("poll targets and unreadable lifecycle evidence cannot get a health verdict", () => {
+    for (const fx of [seatFixture({ delivery: "poll" }), seatFixture({}, DEAD_TMUX)]) {
+      const run = runDoctor(fx, ["scout", "--json"], fx.env);
+      expect(run.rc).toBe(1);
+      expect(JSON.parse(run.out).verdict).toBeNull();
+    }
+  });
+
+  test("mutation flags and surplus operands refuse before touching the bus", () => {
+    const fx = seatFixture();
+    const before = stateDigest(fx);
+    for (const args of [["scout", "--fix"], ["--prune-input-backups", "scout"], ["scout", "--prune-watch-logs"], ["scout", "extra"]]) {
+      const run = runDoctor(fx, [...args, "--json"], fx.env);
+      expect(run.rc).toBe(1);
+      expect(JSON.parse(run.out)).toMatchObject({ ok: false, error_class: "usage_error" });
+    }
+    expect(stateDigest(fx)).toBe(before);
+    expect(runDoctor(fx, ["--json", "--", "scout"], fx.env).rc).toBe(0);
+  });
+
+  test("team and doctor expose the same update-menu state, and attention has no error envelope", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/update-available-narrow.txt")));
+    const team = spawnSync(shippedEntry, ["team", "--json"], { cwd: fx.worktree, env: doctorEnv(fx, fx.env), encoding: "utf8" });
+    expect(team.status, team.stderr).toBe(0);
+    expect(JSON.parse(team.stdout).agents.find((row: { handle: string }) => row.handle === "scout"))
+      .toMatchObject({ agent_state: "blocked", agent_state_reason: "codex-update-available" });
+    const json = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(JSON.parse(json.out).error_class).toBeUndefined();
+    const human = runDoctor(fx, ["scout"], fx.env);
+    expect(human.rc).toBe(json.rc);
+    expect(human.out).toContain("scout: parked-on-dialog");
+    expect(human.out).toContain("codex-update-available");
+    expect(human.err).toBe("");
+  });
+
+  test("an old bound transcript raises attention without a wedge or interruption license", () => {
+    const fx = seatFixture();
+    const transcript = join(fx.dir, "rollout.jsonl");
+    writeFileSync(transcript, [
+      { type: "session_meta", payload: { id: "current-session" } },
+      { type: "event_msg", payload: { type: "task_started" } },
+    ].map(row => JSON.stringify(row)).join("\n") + "\n");
+    const registry = join(fx.worktree, ".tap/team-registry.json");
+    const doc = JSON.parse(readFileSync(registry, "utf8"));
+    Object.assign(doc.seats.scout, { harness_session_id: "current-session", transcript_path: transcript });
+    writeFileSync(registry, JSON.stringify(doc));
+    const now = Date.now() / 1000;
+    utimesSync(transcript, now - 700, now - 700);
+    const env = { ...fx.env, DOCTOR_TITLE: "⠹ tap", TAP_STUCK_READINESS_SECONDS: "600" };
+    const old = runDoctor(fx, ["scout", "--json"], env);
+    expect(old.rc).toBe(2);
+    expect(JSON.parse(old.out)).toMatchObject({ verdict: "busy-unproven", evidence: expect.arrayContaining([
+      { source: "readiness", fact: "borrowed_attention_bound_seconds", value: 600 },
+    ]) });
+    expect(JSON.parse(old.out).action).toContain("does not authorize interruption");
+    doc.seats.scout.harness_session_id = "different-session";
+    writeFileSync(registry, JSON.stringify(doc));
+    const mismatch = runDoctor(fx, ["scout", "--json"], env);
+    expect(mismatch.rc).toBe(0);
+    expect(JSON.parse(mismatch.out).not_checked.join(" ")).toContain("session-bound");
+    doc.seats.scout.harness_session_id = "current-session";
+    writeFileSync(registry, JSON.stringify(doc));
+    utimesSync(transcript, now + 3600, now + 3600);
+    const future = runDoctor(fx, ["scout", "--json"], env);
+    expect(future.rc).toBe(0);
+    expect(JSON.parse(future.out).not_checked.join(" ")).toContain("session-bound");
+  });
+
+  test("live background terminals remain thinking rather than apparently idle", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, "Worked for 2m 47s • 12:30 PM\n1 background terminal running · /ps to view · /stop to close\n› \x1b[2mAsk Codex to do anything\x1b[0m\n");
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(0);
+    expect(JSON.parse(run.out).verdict).toBe("thinking");
+  });
+
+  test("later current-instance processing wins over an unverified delivery, with stale and forced controls", () => {
+    const fx = seatFixture();
+    const id = "message-1";
+    const at = new Date(Date.now() - 20000).toISOString(), readAt = new Date(Date.now() - 10000).toISOString();
+    writeFileSync(join(fx.bus, "payloads", `${id}.md`), `---\nid: ${id}\nto: scout\nto_team: u1\nrecipient_instance: seat-instance\n---\nbody\n`);
+    writeFileSync(join(fx.bus, "receipts", `${id}.unconfirmed`), JSON.stringify({ id, status: "unconfirmed", effect: "possible", at }));
+    const done = join(fx.bus, "receipts", `${id}.done`);
+    const proof = { id, by: "scout", instance: "seat-instance", at: readAt, status: "done", via: "reply" };
+    writeFileSync(done, JSON.stringify(proof));
+    const before = stateDigest(fx);
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(0);
+    expect(JSON.parse(run.out).verdict).toBe("unverified-but-processing");
+    expect(stateDigest(fx)).toBe(before);
+    for (const change of [{ forced: "true" }, { reason: "instance_retired" }, { instance: "retired-instance" },
+      { by: "another-seat" }, { at: new Date(Date.now() + 3600000).toISOString() }, { at: new Date(Date.now() - 40000).toISOString() }]) {
+      writeFileSync(done, JSON.stringify({ ...proof, ...change }));
+      expect(JSON.parse(runDoctor(fx, ["scout", "--json"], fx.env).out).verdict).toBe("healthy");
+    }
+    writeFileSync(join(fx.bus, "receipts", `${id}.read`), JSON.stringify({ id, by: "scout", identity: "pane", pane: "%99", at: readAt }));
+    expect(JSON.parse(runDoctor(fx, ["scout", "--json"], fx.env).out).verdict).toBe("healthy");
+    writeFileSync(join(fx.bus, "receipts", `${id}.read`), JSON.stringify({ id, by: "scout", identity: "pane", pane: "%11", at: readAt }));
+    expect(JSON.parse(runDoctor(fx, ["scout", "--json"], fx.env).out).verdict).toBe("unverified-but-processing");
+  });
+
+  test("a pane id contested by another session is not a gone verdict", () => {
+    const fx = seatFixture({}, SEAT_TMUX.replaceAll("demo/scout", "other/seat"));
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(1);
+    expect(JSON.parse(run.out).verdict).toBeNull();
+  });
+
+  test("registry replacement and a server generation change invalidate the captured diagnosis", () => {
+    const fx = seatFixture();
+    const registry = join(fx.worktree, ".tap/team-registry.json");
+    const replacement = join(fx.dir, "replacement.json");
+    const doc = JSON.parse(readFileSync(registry, "utf8"));
+    doc.seats.scout.instance = "replacement-instance";
+    writeFileSync(replacement, JSON.stringify(doc));
+    const moved = runDoctor(fx, ["scout", "--json"], { ...fx.env, DOCTOR_CHANGED_REGISTRY: replacement, DOCTOR_REGISTRY: registry });
+    expect(moved.rc).toBe(1);
+    expect(JSON.parse(moved.out).verdict).toBeNull();
+    const generation = runDoctor(fx, ["scout", "--json"], { ...fx.env, DOCTOR_CAPTURED: join(fx.dir, "captured"), TAP_SERVER_EPOCH: undefined });
+    expect(generation.rc).toBe(1);
+    expect(JSON.parse(generation.out).verdict).toBeNull();
+  });
+
+  test("a stored gone label is not evidence that the pane is absent", () => {
+    const fx = seatFixture({ status: "gone" });
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(1);
+    expect(JSON.parse(run.out).verdict).toBeNull();
+  });
+
+  test("a new session-bound harness write during capture is affirmative progress", () => {
+    const fx = seatFixture();
+    const transcript = join(fx.dir, "progress.jsonl");
+    writeFileSync(transcript, '{"type":"session_meta","payload":{"id":"current"}}\n{"type":"event_msg","payload":{"type":"task_started"}}\n');
+    utimesSync(transcript, 1000, 1000);
+    const registry = join(fx.worktree, ".tap/team-registry.json");
+    const doc = JSON.parse(readFileSync(registry, "utf8"));
+    Object.assign(doc.seats.scout, { transcript_path: transcript, harness_session_id: "current" });
+    writeFileSync(registry, JSON.stringify(doc));
+    const run = runDoctor(fx, ["scout", "--json"], { ...fx.env, DOCTOR_TITLE: "⠹ tap", DOCTOR_GROW_TRANSCRIPT: transcript });
+    expect(run.rc).toBe(0);
+    expect(JSON.parse(run.out)).toMatchObject({ verdict: "thinking", evidence: expect.arrayContaining([
+      { source: "harness", fact: "progress_during_observation", value: true },
+    ]) });
+  });
+
+  test("OpenCode shell mode names its own recovery rather than a permission decision", () => {
+    const fx = seatFixture({ harness: "opencode" }, SEAT_TMUX.replace("codex", "opencode"));
+    writeFileSync(fx.frame, readFileSync(join(import.meta.dir, "fixtures/opencode-capture/shell-mode-staged-160.ansi")));
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(2);
+    expect(JSON.parse(run.out).action).toContain("leave OpenCode shell mode");
+  });
+
+  test("an empty operand cannot fall through to bus repair", () => {
+    const fx = seatFixture();
+    const before = stateDigest(fx);
+    for (const args of [["", "--fix"], ["--", ""], ["", "scout"]]) {
+      const run = runDoctor(fx, ["--json", ...args], fx.env);
+      expect(run.rc).toBe(1);
+      expect(JSON.parse(run.out)).toMatchObject({ error_class: "usage_error" });
+    }
+    expect(stateDigest(fx)).toBe(before);
+  });
+
+  test("a handle named help is data, while --help retains the canonical page", () => {
+    const fx = seatFixture();
+    const path = join(fx.worktree, ".tap/team-registry.json");
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.seats.help = doc.seats.scout;
+    delete doc.seats.scout;
+    writeFileSync(path, JSON.stringify(doc));
+    const target = runDoctor(fx, ["help"], fx.env);
+    expect(target.rc, JSON.stringify(target)).toBe(0);
+    expect(target.out).toContain("help: healthy");
+    const help = runDoctor(fx, ["--help"], fx.env);
+    expect(help.rc).toBe(0);
+    expect(help.out).toContain("tap doctor <handle>");
+  });
+});
 
 test("doctor diagnoses missing or disabled agy identity wiring and recognizes the installed hook", () => {
   const fx = fixture({ registry: { schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" }, seats: {
@@ -1390,7 +1701,7 @@ esac
     expect(json.report.ok).toBe(false);
   });
 
-  test("usage errors: unknown option and positional refuse with exit 1", () => {
+  test("usage errors: unknown option and unregistered target refuse with exit 1", () => {
     const fx = fixture();
     const bad = runDoctor(fx, ["--bogus"]);
     expect(bad.rc).toBe(1);
@@ -1398,7 +1709,7 @@ esac
     expect(bad.err).toContain("tap help doctor");
     const extra = runDoctor(fx, ["extra"]);
     expect(extra.rc).toBe(1);
-    expect(extra.err).toContain("unexpected arg");
+    expect(extra.err).toContain("no registered seat");
     const conflict = runDoctor(fx, ["--fix", "--prune-input-backups"]);
     expect(conflict.rc).toBe(1);
     expect(conflict.err).toContain("separately");
@@ -2265,3 +2576,88 @@ describe("doctor tmux client hazards, shipped-entry integration (tap-7r3fn.17.1)
     expect(unverified.some((f) => f.detail.tool === "ps" && String(f.detail.reason).includes("failed"))).toBe(true);
   });
 });
+
+describe("seat doctor recovery snapshot", () => {
+  test("the internal snapshot binds the same observed registry, server, process and native conversation", () => {
+    const fx = seatFixture({ harness_session_id: "native-1" });
+    const entry = join(fx.dir, "snapshot.ts");
+    writeFileSync(entry, `import { checkSeat } from ${JSON.stringify(join(root, "runtime/bun/src/verbs/doctor-seat.ts"))};\nconsole.log(JSON.stringify(checkSeat("scout", ${JSON.stringify(join(root, "skills/tap/scripts"))})));\n`);
+    const result = spawnSync(process.execPath, [entry], { cwd: fx.worktree, env: doctorEnv(fx, fx.env), encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+    const inspected = JSON.parse(result.stdout);
+    expect(inspected.snapshot?.binding).toMatchObject({ team: "u1", handle: "scout", registry: join(fx.real, ".tap/team-registry.json"),
+      pane: "demo/scout:0.0", paneId: "%11", serverSocket: "/tmp/doctor-fixture.sock", serverEpoch: "srv:900:100",
+      processPid: "111", instance: "seat-instance", nativeSessionId: "native-1" });
+    expect(inspected.report.snapshot).toBeUndefined();
+  });
+  test("identity drift during capture returns no recovery snapshot", () => {
+    const fx = seatFixture({ harness_session_id: "native-1" });
+    const entry = join(fx.dir, "snapshot.ts");
+    writeFileSync(entry, `import { checkSeat } from ${JSON.stringify(join(root, "runtime/bun/src/verbs/doctor-seat.ts"))};\nconsole.log(JSON.stringify(checkSeat("scout", ${JSON.stringify(join(root, "skills/tap/scripts"))})));\n`);
+    const result = spawnSync(process.execPath, [entry], { cwd: fx.worktree, env: doctorEnv(fx, { ...fx.env, DOCTOR_CAPTURED: join(fx.dir, "captured"), TAP_SERVER_EPOCH: undefined }), encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ report: { verdict: null } });
+    expect(JSON.parse(result.stdout).snapshot).toBeUndefined();
+  });
+});
+
+describe("seat doctor to unwedge readonly guard", () => {
+  test("the real snapshot and capacity transcript bind the guard; native replacement then refuses", () => {
+    const tmuxSh = SEAT_TMUX.replace('      *pane_title*)', `      *pane_in_mode*) printf '0\\t40\\ttap\\n' ;;
+      *pane_dead*) printf '%%11\\tdemo/scout\\t111\\t0\\t900:100\\n' ;;
+      *pane_pid*) printf '111\\n' ;;
+      *pane_title*)`);
+    const fx = seatFixture({ harness_session_id: "native-1" }, tmuxSh);
+    writeFileSync(fx.frame, readFileSync(join(root, "runtime/bun/test/fixtures/agent-state/errors/codex-capacity.ansi")));
+    const transcript = join(fx.dir, "transcript.jsonl"), registry = join(fx.real, ".tap/team-registry.json");
+    writeFileSync(transcript, [
+      { type: "session_meta", payload: { id: "native-1" } },
+      { timestamp: new Date(Date.now() - 1000).toISOString(), type: "event_msg", payload: { type: "task_complete", error: { codex_error_info: "server_overloaded" }, last_agent_message: null } },
+    ].map(x => JSON.stringify(x)).join("\n") + "\n");
+    const doc = JSON.parse(readFileSync(registry, "utf8")); doc.seats.scout.transcript_path = transcript; writeFileSync(registry, JSON.stringify(doc));
+    const entry = join(fx.dir, "guard.ts");
+    writeFileSync(entry, `import {readFileSync,writeFileSync} from "node:fs";
+import {checkSeat} from ${JSON.stringify(join(root, "runtime/bun/src/verbs/doctor-seat.ts"))};
+import {observeUnwedge,unwedgeBoundaryRefusal} from ${JSON.stringify(join(root, "runtime/bun/src/recovery/unwedge-observe.ts"))};
+const check=checkSeat("scout",${JSON.stringify(join(root, "skills/tap/scripts"))});
+if (!check.snapshot) throw new Error(JSON.stringify(check));
+const before=observeUnwedge(check.snapshot);
+const doc=JSON.parse(readFileSync(${JSON.stringify(registry)},"utf8"));
+const original={...doc.seats.scout}; doc.seats.scout.status="pending"; doc.seats.scout.launch_id="our-reservation"; delete doc.seats.scout.pane; delete doc.seats.scout.pane_id;
+writeFileSync(${JSON.stringify(registry)},JSON.stringify(doc));
+const reserved=observeUnwedge(check.snapshot,undefined,{reservation:{original,token:"our-reservation"}});
+const wrongToken=observeUnwedge(check.snapshot,undefined,{reservation:{original,token:"another-reservation"}});
+doc.seats.scout={...original}; doc.seats.scout.harness_session_id="replacement"; writeFileSync(${JSON.stringify(registry)},JSON.stringify(doc));
+const after=observeUnwedge(check.snapshot);
+console.log(JSON.stringify({before:unwedgeBoundaryRefusal(before,"model_capacity"),after:unwedgeBoundaryRefusal(after,"model_capacity"),observation:before.observation,reserved:unwedgeBoundaryRefusal(reserved,"model_capacity"),wrongToken:unwedgeBoundaryRefusal(wrongToken,"model_capacity")}));`);
+    const result = spawnSync(process.execPath, [entry], { cwd: fx.worktree, env: doctorEnv(fx, fx.env), encoding: "utf8", timeout: 30000 });
+    expect(result.status, result.stderr).toBe(0);
+    const checked = JSON.parse(result.stdout);
+    expect(checked.before).toBe(""); expect(checked.observation).toMatchObject({ verdict: "severed", cause: "model_capacity", turnEnded: true });
+    expect(checked.after).toContain("binding changed");
+    expect(checked.reserved).toBe(""); expect(checked.wrongToken).toContain("reservation changed");
+  }, 30000);
+});
+
+test("unwedge public default JSON diagnoses and audits without a pane effect", () => {
+  const tmuxSh = SEAT_TMUX.replace('      *pane_title*)', `      *pane_in_mode*) printf '0\\t40\\ttap\\n' ;;
+      *pane_dead*) printf '%%11\\tdemo/scout\\t111\\t0\\t900:100\\n' ;;
+      *pane_pid*) printf '111\\n' ;;
+      *pane_title*)`).replace('  *) exit 1 ;;', '  send-keys|kill-session|new-session|respawn-pane) printf effect >> "$DOCTOR_EFFECTS"; exit 1 ;;\n  *) exit 1 ;;');
+  const fx = seatFixture({ harness_session_id: "native-1" }, tmuxSh);
+  writeFileSync(fx.frame, readFileSync(join(root, "runtime/bun/test/fixtures/agent-state/errors/codex-capacity.ansi")));
+  const transcript = join(fx.dir, "transcript.jsonl"), registry = join(fx.real, ".tap/team-registry.json"), effects = join(fx.dir, "effects");
+  writeFileSync(transcript, [
+    { type: "session_meta", payload: { id: "native-1" } },
+    { timestamp: new Date(Date.now() - 1000).toISOString(), type: "event_msg", payload: { type: "task_complete", error: { codex_error_info: "server_overloaded" }, last_agent_message: null } },
+  ].map(x => JSON.stringify(x)).join("\n") + "\n");
+  const doc = JSON.parse(readFileSync(registry, "utf8")); doc.seats.scout.transcript_path = transcript; writeFileSync(registry, JSON.stringify(doc));
+  const result = spawnSync(shippedEntry, ["unwedge", "scout", "--json"], { cwd: fx.worktree, env: doctorEnv(fx, { ...fx.env, DOCTOR_EFFECTS: effects }), encoding: "utf8", timeout: 30000 });
+  expect(result.status, result.stderr).toBe(2);
+  const value = JSON.parse(result.stdout);
+  expect(value).toMatchObject({ requested_rung: "report", outcome: "completed", effect: "none", audit_written: true, event_written: true, diagnosis: { verdict: "severed" } });
+  expect(value.next_action).toBe("tap unwedge scout --rung message");
+  expect(value.recovery_id).toMatch(/^recovery-/); expect(existsSync(effects)).toBe(false);
+  const run = JSON.parse(readFileSync(join(fx.index, "debug/recovery", value.recovery_id, "run.json"), "utf8"));
+  expect(run.hold).toBe(false); expect(run.effects).toBe(0);
+}, 30000);

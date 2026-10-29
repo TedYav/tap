@@ -201,6 +201,17 @@ const RULES: Record<Harness, Rule[]> = {
   ],
   codex: [
     {
+      id: "codex-update-available",
+      state: "blocked",
+      priority: 950,
+      region: tail(TRUST_TAIL),
+      // A narrow picker can show only one choice. The heading, selected
+      // update choice and closing key hint establish this startup menu.
+      regex: [wrapped("Update available"), closingHint("enter continue · esc skip")],
+      lineRegex: [/^\s*›\s*[123]\.\s+(?:Update now\b.*|Skip(?: until next version)?)\s*$/],
+      not: [{ lineRegex: [/^\s*›(?!\s*[123]\.\s)/] }],
+    },
+    {
       id: "usage_limit",
       state: "error",
       priority: 700,
