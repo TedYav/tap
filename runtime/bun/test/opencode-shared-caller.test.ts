@@ -49,3 +49,8 @@ for (const door of ["down", "out-kill", "out-hard", "team-down", "team-shutdown"
     expect(r.stdout).toContain('"error_class":"opencode_shared_self_stop"');
   });
 }
+
+
+test("shared child reporting never substitutes a foreign cwd team for its root seat", () => {
+  expect(run("child-reporting").result).toEqual({reporting:null,fresh:"t",explicit:"other"});
+});

@@ -149,3 +149,17 @@ test("transition fences a frozen legacy helper before it can kill its crew and p
     fenceCrewLifetime(ctx, "child"); // repeated touch is idempotent
   } finally { if (old) stopCrewLifetimeHelper(old); f.close(); }
 }, 30000);
+
+test("roster lifetime reads the listing snapshot; absent fields retain the targeted fallback", () => {
+  const f = socketFixture();
+  try {
+    const {crewPane} = family(f);
+    const fields = f.tmux("list-panes", "-a", "-F", "#{pane_id}\t#{@tap_crew_lifetime}\t#{@tap_crew_lifetime_token}").stdout.split("\n").find(line => line.startsWith(crewPane + "\t"))!.split("\t");
+    const snapshot = {crewLifetime:fields[1]!, crewLifetimeToken:fields[2]!};
+    expect(snapshot).toEqual({crewLifetime:"",crewLifetimeToken:""});
+    expect(f.tmux("set-option", "-p", "-t", crewPane, "@tap_crew_lifetime", "malformed").status).toBe(0);
+    expect(crewLifetimeHealth(crewPane, snapshot)).toBe("independent");
+    expect(crewLifetimeHealth(crewPane)).toBe("unknown");
+    expect(crewLifetimeHealth(crewPane, {})).toBe("unknown");
+  } finally { f.close(); }
+});

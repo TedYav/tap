@@ -1,34 +1,44 @@
 // Opt-in cross-team journal. This process owns its tmux log until closure is observed.
-import { appendFileSync, closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, constants, existsSync, fchmodSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir, loadavg } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { atomicWrite } from "./fsatomic";
-import { copyRedactedFile, JOURNAL_SECRET, json, readJson, recorderState, redactJournalText, safeFields, timestamp } from "./debug-capture";
+import { atomicWrite, stagingPath } from "./fsatomic";
+import { alive, copyRedactedFile, JOURNAL_SECRET, json, readJson, RECORDER_STALE_SECONDS, recorderState, redactJournalText, safeFields, timestamp } from "./debug-capture";
 export { debugAttention } from "./debug-capture";
 import { redact } from "./verbose";
 import { KERNEL_LOCK, kernelLockArgs } from "./panelock";
 import { pythonInt } from "./pyint";
 import { errorJson } from "./native-error";
 import { bunBinary } from "./courier-argv";
+import { debugConfig, type CaptureFidelity, type CaptureSource } from "./config-file";
+import { AlwaysOnUnconfirmed, clearAlwaysOn, writeDebugConfig } from "./debug-config";
+import { migrateTmux, setTmuxEnabled, tmuxSourceStatus, type TmuxControlIO } from "./debug-tmux";
+import { LauncherError } from "./config-error";
 import { deliveryStats, renderStats } from "./debug-stats";
+import { ARM_CHILD, armsTapEvents, pruneArmClaims } from "./debug-arm";
+import { listed, streamUpdates, StreamSet, type Listing, type Position, type TraceWindow } from "./debug-streams";
+export { listed, streamUpdates, type Listing } from "./debug-streams";
 
-export type Run = { id: string; directory: string; socket: string; redaction?: "credentials-v1"; config: { max_mb: number; retain_mb?: number } };
+export type Run = { id: string; directory: string; socket: string; redaction?: "credentials-v1"; config: { max_mb: number; retain_mb?: number; fidelity?: CaptureFidelity; capture?: CaptureSource[]; always_on?: boolean; archive_mb?: number } };
 export type Identity = { pid: number; start: string; socket: string };
 export type Log = { identity: Identity; owned: boolean; path?: string; artifact?: string; published?: boolean; offset?: number; opened?: boolean; stop_signalled?: boolean };
 type Trace = { id: string; directory: string; seconds: number; active: boolean; uncapped: boolean; files: string[];
   started_at?: string; ended_at?: string; deadline_epoch?: number; stopping?: string; error?: string; setup_error?: string; reason?: string };
 export type Result = { code: number; stdout: string; stderr: string };
 type Files = { cwd: string; paths: string[] } | null;
-type Position = { dev: number; ino: number; offset: number };
 const clock = () => Number(process.hrtime.bigint()) / 1e9;
 const home = (env = process.env) => join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
 const errorText = (error: unknown) => redactJournalText(error instanceof Error ? error.message : String(error));
 // Typed control metadata keeps exact IDs and paths; free-form errors are sanitized at their source.
 const writeJson = (path: string, value: unknown) => atomicWrite(path, json(value));
 const sameIdentity = (a: Identity | null, b: Identity) => !!a && a.pid === b.pid && a.start === b.start && a.socket === b.socket;
+const sourceStatus = (state: string, lastSample: string | null, env = process.env) => ({
+  "tap-events": { state, last_sample_at: lastSample, alive: state === "recording", incident_count: null },
+  tmux: tmuxSourceStatus(env),
+});
 
 export async function command(argv: string[], timeout = 3000, env = process.env): Promise<Result> {
   const child = Bun.spawn(argv, { env, detached: true, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
@@ -195,55 +205,6 @@ export function teamBuses(env = process.env): Record<string, string> {
 function names(path: string): string[] {
   try { return readdirSync(path); } catch (error) { if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code!)) return []; throw error; }
 }
-export type Listing = { mtime: number; ino: number; paths: string[] };
-/** Bus directories hold tens of thousands of entries; relist one only when its own mtime or inode moves (a created or removed entry). */
-export function listed(directory: string, suffix: string, listings: Map<string, Listing>): string[] {
-  const stat = statSync(directory, { throwIfNoEntry: false });
-  if (!stat?.isDirectory()) return [];
-  const cached = listings.get(directory);
-  if (cached && cached.mtime === stat.mtimeMs && cached.ino === stat.ino) return cached.paths;
-  const paths = names(directory).filter(p => p.endsWith(suffix)).map(p => join(directory, p));
-  listings.set(directory, { mtime: stat.mtimeMs, ino: stat.ino, paths });
-  return paths;
-}
-function teamStreams(buses: Record<string, string>, listings: Map<string, Listing>): Record<string, string> {
-  const streams: Record<string, string> = {};
-  for (const [bus, team] of Object.entries(buses)) {
-    // streamUpdates skips a path that is absent or not a regular file.
-    for (const path of [join(bus, "registry-events.log"), join(bus, "tap-deliver.log"), ...listed(join(bus, "payloads"), ".attempts", listings)]) streams[path] = team;
-  }
-  return streams;
-}
-
-export function streamUpdates(path: string, positions: Map<string, Position>, baseline: boolean): { lines: string[]; gap: boolean } {
-  // Tens of thousands of settled .attempts files sit in a long-lived bus; one
-  // stat answers "unchanged" without the open/fstat/close of a read.
-  const quick = statSync(path, { throwIfNoEntry: false }), known = positions.get(path);
-  if (!quick?.isFile()) return { lines: [], gap: false };
-  if (known && known.dev === quick.dev && known.ino === quick.ino && known.offset === quick.size) return { lines: [], gap: false };
-  const fd = openSync(path, "r");
-  try {
-    const stat = fstatSync(fd), old = positions.get(path);
-    const gap = !!old && (old.dev !== stat.dev || old.ino !== stat.ino || stat.size < old.offset);
-    let offset = old && !gap ? old.offset : baseline ? stat.size : 0;
-    const chunks: Buffer[] = []; let count = offset;
-    while (count < stat.size) {
-      const buffer = Buffer.alloc(Math.min(65536, stat.size - count));
-      const n = readSync(fd, buffer, 0, buffer.length, count);
-      if (!n) break;
-      chunks.push(buffer.subarray(0, n)); count += n;
-    }
-    const bytes = Buffer.concat(chunks), lines: string[] = []; let start = 0;
-    for (let end = bytes.indexOf(10); end !== -1; end = bytes.indexOf(10, start)) {
-      lines.push(bytes.subarray(start, end).toString("utf8").replace(/[\r\n]+$/, ""));
-      start = end + 1;
-    }
-    offset += start;
-    positions.set(path, { dev: stat.dev, ino: stat.ino, offset });
-    return { lines, gap };
-  } finally { closeSync(fd); }
-}
-
 export async function collectArtifacts(run: Run, buses: Record<string, string>, seen: Set<string>, env = process.env, append = appendEvent, listings = new Map<string, Listing>()): Promise<void> {
   try {
     const result = await command([bunBinary(), join(import.meta.dir, "recovery/artifacts.ts"), "_collect", run.directory], 10000, env);
@@ -286,31 +247,156 @@ function newestContentMtime(path: string): number {
     : stat.mtimeMs;
 }
 
-/** Close journal segments and retire the oldest segments or copied artifacts within the budget. */
-export function rotateJournal(run: Run, io = effects): { bytes: number; dropped: string[] } {
+// Archived history lives in <debug home>/archive/<capture-id>/, beside the captures rather than in
+// them: retention removes a capture's directory, and archive_mb, not max_mb, bounds the archive.
+// Every archived file is zstd; a bundle directory keeps its tree with each file compressed.
+const archiveHome = (root: string) => join(root, "archive");
+const FRAME = 8 * 1048576;
+/** Thrown by a compression tick when the capture is stopping; the source stays in place. */
+class ArchiveStopped extends Error {}
+/** Give a finished staging file its final name without ever replacing one: link(2) refuses an existing
+ * name, so a taken `<name>.zst` becomes `<name>.1.zst`, `<name>.2.zst` and so on. */
+function publish(staging: string, destination: string): string {
+  for (let n = 0; ; n++) {
+    const target = n ? destination.replace(/\.zst$/, `.${n}.zst`) : destination;
+    try { linkSync(staging, target); unlinkSync(staging); return target; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  }
+}
+/** The directory fsync, replaceable so a test can record which directories are synced. */
+export const archiveSync = {
+  directory(directory: string): void {
+    const fd = openSync(directory, "r");
+    try { fsyncSync(fd); } finally { closeSync(fd); }
+  },
+};
+/** Make a new file's pathname durable: fsync its directory and, when `created` (mkdir's first new
+ * directory) is set, every directory from there up to the one holding `created`, so each entry mkdir
+ * added is on disk too. */
+function syncNewEntries(directory: string, created: string | undefined): void {
+  archiveSync.directory(directory);
+  if (created) for (let dir = directory; dir !== dirname(created); dir = dirname(dir)) archiveSync.directory(dirname(dir));
+}
+/** Compress one file into `destination` and return the name written. Each 8 MiB read becomes its own
+ * zstd frame, written to a staging file as soon as it is made, so memory stays at one chunk plus one
+ * frame; `zstd -dc` reads concatenated frames as one stream. The staging file is fsynced, linked under
+ * a name that replaces nothing, and every new pathname entry is fsynced before the caller removes the
+ * source. `tick` runs after every frame; it may throw to abandon the file. */
+function compressFile(source: string, destination: string, tick?: () => void): string {
+  const directory = dirname(destination);
+  const created = mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const input = openSync(source, "r"), staging = stagingPath(directory);
+  try {
+    const output = openSync(staging, "wx", 0o600), chunk = Buffer.alloc(FRAME);
+    try {
+      for (let n = -1, frames = 0; n !== 0; frames++) {
+        n = readSync(input, chunk, 0, FRAME, null);
+        if (n || !frames) writeFileSync(output, Bun.zstdCompressSync(chunk.subarray(0, n), { level: 3 }));
+        tick?.();
+      }
+      fsyncSync(output);
+    } finally { closeSync(output); }
+    const written = publish(staging, destination);
+    syncNewEntries(directory, created);
+    return written;
+  } catch (error) { rmSync(staging, { force: true }); throw error; }
+  finally { closeSync(input); }
+}
+/** Archive a file as `<destination>.zst`, or a directory as the same tree of `.zst` files.
+ * compressFile creates each directory, so the one that creates it also makes it durable. */
+function archiveTree(source: string, destination: string, tick?: () => void): void {
+  const stat = lstatSync(source);
+  if (stat.isFile()) { compressFile(source, destination + ".zst", tick); return; }
+  if (!stat.isDirectory()) return; // collector copies are files and directories; a link is not followed
+  for (const name of names(source)) archiveTree(join(source, name), join(destination, name), tick);
+}
+/** Keep the archive within archive_mb by removing whole capture archives, oldest first.
+ * The newest capture archive and `keep` always stay. */
+function pruneArchive(root: string, archiveMb: number, keep?: string): { id: string; bytes: number }[] {
+  const archive = archiveHome(root), budget = archiveMb * 1048576, removed: { id: string; bytes: number }[] = [];
+  if (!lstatSync(archive, { throwIfNoEntry: false })?.isDirectory()) return removed;
+  const ids = names(archive).filter(id => CAPTURE.test(id) && lstatSync(join(archive, id)).isDirectory()).sort();
+  let total = treeBytes(archive);
+  for (const id of ids.slice(0, -1)) {
+    if (total <= budget) break;
+    if (id === keep) continue;
+    const bytes = treeBytes(join(archive, id));
+    rmSync(join(archive, id), { recursive: true });
+    total -= bytes; removed.push({ id, bytes });
+  }
+  return removed;
+}
+
+const ARCHIVED_SEGMENT = /^events\.(\d{6})\.jsonl(?:\.\d+)?\.zst$/;
+const highest = (directory: string, pattern: RegExp) => Math.max(0, ...names(directory).map(name => Number(pattern.exec(name)?.[1] ?? 0)));
+const HEARTBEAT_SECONDS = 2;
+
+/** Archive diagnostics must never cost the cleanup they report: on a full disk the journal, and even stderr, may be unwritable. */
+function warn(text: string): void {
+  try { console.error(text); } catch { /* nowhere left to say it; the cleanup already happened */ }
+}
+/** Journal a rotation diagnostic, falling back to stderr (recorder.log in the recorder) when the journal write fails. */
+function journalSafely(run: Run, io: CollectorEffects, event: string, fields: Record<string, unknown>): void {
+  try { io.appendEvent(run, event, fields); }
+  catch (error) { warn(`tap debug: could not journal ${event} (${errorText(error)}): ${JSON.stringify(fields)}`); }
+}
+
+/** Close journal segments; past the budget, move the oldest segments and copied artifacts into the archive. */
+export function rotateJournal(run: Run, io = effects): { bytes: number; archived: string[]; dropped: string[] } {
   const directory = run.directory, budget = run.config.max_mb * 1048576, live = join(directory, "events.jsonl");
+  // The capture directory sits in the debug home, as .raw does (see startLog).
+  const root = dirname(directory), archive = join(archiveHome(root), run.id);
   if (fileBytes(live) >= budget / 8) {
-    const last = segments(directory).at(-1), next = last ? Number(SEGMENT.exec(last)![1]) + 1 : 1;
+    // Numbering continues past archived segments, so a new segment never reuses an archived name.
+    const next = Math.max(highest(directory, SEGMENT), highest(archive, ARCHIVED_SEGMENT)) + 1;
     // Writers append by path, so the next line opens a fresh events.jsonl.
     io.rename(live, join(directory, `events.${String(next).padStart(6, "0")}.jsonl`));
   }
   let bytes = journalBytes(directory);
-  const dropped: string[] = [];
-  if (bytes < budget) return { bytes, dropped };
+  const archived: string[] = [], dropped: string[] = [];
+  if (bytes < budget) return { bytes, archived, dropped };
+  // Compression runs inside the recorder: between frames, keep its heartbeat fresh and yield to a stop.
+  const statusPath = join(directory, "status.json");
+  let beat = clock(), stopped = false;
+  const tick = () => {
+    if (clock() - beat >= HEARTBEAT_SECONDS) {
+      writeJson(statusPath, { ...readJson(statusPath), heartbeat: Date.now() / 1000 });
+      beat = clock();
+    }
+    const enabled = readJson(join(root, "enabled.json"));
+    if (existsSync(join(directory, "stop")) || (enabled && enabled.id !== run.id)) throw new ArchiveStopped("capture is stopping");
+  };
   const candidates = [...segments(directory), ...names(join(directory, "artifacts")).map(name => join("artifacts", name))]
     .map(name => ({ name, stat: statSync(join(directory, name)), modified: newestContentMtime(join(directory, name)) }))
     .sort((a, b) => a.modified - b.modified || a.name.localeCompare(b.name));
   for (const { name, stat } of candidates) {
     if (bytes < budget) break;
-    const path = join(directory, name);
-    bytes -= stat.isDirectory() ? treeBytes(path) : stat.size;
+    const path = join(directory, name), size = stat.isDirectory() ? treeBytes(path) : stat.size;
+    let failure: string | undefined;
+    try { archiveTree(path, join(archive, name), tick); archived.push(name); }
+    catch (error) {
+      if (error instanceof ArchiveStopped) { stopped = true; break; } // the source stays; retention archives it later
+      // A failed archive must not stop the recorder: drop the copy to stay in budget, and journal the loss.
+      failure = errorText(error);
+      dropped.push(name);
+    }
+    bytes -= size;
     // These are collector-owned copies; source receipts and recovery records remain intact.
     if (stat.isDirectory()) rmSync(path, { recursive: true });
     else unlinkSync(path);
-    dropped.push(name);
+    // Journal only after the source is gone: on a full disk this write can fail too, and must not keep the bytes.
+    if (failure !== undefined) journalSafely(run, io, "capture.archive_failed", { source: name, archive, reason: failure });
   }
-  if (dropped.length) io.appendEvent(run, "capture.rotated", { dropped, bytes, budget });
-  return { bytes, dropped };
+  if (archived.length || dropped.length) journalSafely(run, io, "capture.rotated", { archived, dropped, archive, bytes, budget });
+  // Any attempt may have written bytes, even one that failed or stopped partway, so the cap always runs.
+  if (archived.length || dropped.length || stopped) {
+    const archiveMb = run.config.archive_mb ?? DEFAULT_ARCHIVE_MB;
+    try {
+      const removed = pruneArchive(root, archiveMb, run.id);
+      if (removed.length) journalSafely(run, io, "capture.archive_pruned", { removed, archive_mb: archiveMb });
+    } catch (error) { journalSafely(run, io, "capture.archive_failed", { source: "archive_mb", archive: archiveHome(root), reason: errorText(error) }); }
+  }
+  return { bytes, archived, dropped };
 }
 
 export async function collect(run: Run, io = effects, env = process.env): Promise<void> {
@@ -319,8 +405,13 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
   let stopped: Record<string, unknown> | undefined;
   let identity: Identity | null = null, native: Log | null = null, trace: Trace | null = null;
   let handled: string | undefined, nextSample = 0, nextStatus = 0, deadline = 0, nextStop = 0;
+  let samplingTrace: TraceWindow | undefined;
   let buses: Record<string, string> = {};
-  const listings = new Map<string, Listing>();
+  const listings = new Map<string, Listing>(), streams = new StreamSet(positions);
+  const captureFidelity = run.config.fidelity ?? "best-effort";
+  const captureEvents = run.config.capture?.includes("tap-events") ?? true;
+  let lastSample: string | null = null;
+  let previousStreamFidelity: CaptureFidelity = captureFidelity;
   const stop = () => { stopping = true; };
   process.on("SIGTERM", stop); process.on("SIGINT", stop);
   function publishNative(reason: string): void {
@@ -352,17 +443,22 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
     return true;
   }
   try {
-    io.appendEvent(run, "capture.started", { socket: run.socket, mode: "basic" });
-    // The first pass baselines every team stream; readiness follows it.
-    writeJson(join(directory, "status.json"), { recording: false, starting: true, pid: process.pid, heartbeat: Date.now() / 1000, mode: "basic" });
+    io.appendEvent(run, "capture.started", { socket: run.socket, mode: "basic", fidelity: captureFidelity });
+    // The first pass baselines the selected team streams; readiness follows it.
+    writeJson(join(directory, "status.json"), { recording: false, starting: true, pid: process.pid, heartbeat: Date.now() / 1000, mode: "basic", fidelity: captureFidelity,
+      sources: sourceStatus(captureEvents ? "starting" : "off", lastSample, env) });
     while (true) {
       const now = clock();
       stopping ||= existsSync(join(directory, "stop")) || readJson(join(home(env), "enabled.json"))?.id !== run.id;
       if (stopping) { if (now >= nextStop && await finishTrace("capture_stopped")) break; }
-      else if (trace?.active && now >= deadline && now >= nextStop) { await finishTrace(trace.stopping || "duration_elapsed"); nextSample = 0; }
+      else if (trace?.active && now >= deadline && now >= nextStop) {
+        await finishTrace(trace.stopping || "duration_elapsed"); nextSample = 0;
+        if (!captureEvents && !trace.active) stopping = true;
+      }
       const request = stopping ? null : readJson(join(directory, "trace-request.json"));
       if (request && request.id !== handled) {
         handled = request.id;
+        samplingTrace = { id: request.id, since: Date.now() - 5000 };
         trace = { ...request, active: false, uncapped: true, files: [] } as Trace;
         try {
           identity = await io.server(run.socket);
@@ -383,6 +479,7 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
         }
         writeJson(join(trace.directory, "status.json"), trace);
         nextSample = nextStatus = 0;
+        if (!captureEvents && !trace.active) stopping = true;
       }
       const tracing = !!trace?.active;
       if (now >= nextSample) {
@@ -403,12 +500,16 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
             io.appendEvent(run, "trace.telemetry", { server: identity, process: result.stdout.trim(), load: loadavg(), monotonic: clock(), trace_id: trace!.id });
           }
         }
-        buses = io.teamBuses(env);
-        for (const [path, team] of Object.entries(teamStreams(buses, listings))) {
+        buses = captureEvents ? io.teamBuses(env) : {};
+        const streamFidelity = tracing ? "precise" : captureFidelity;
+        for (const [path, team] of streams.select(buses, listings, streamFidelity, statSync, tracing ? samplingTrace : undefined)) {
           let update: ReturnType<typeof streamUpdates>;
-          try { update = streamUpdates(path, positions, !initialized); }
+          try {
+            const baseline = !initialized || (streamFidelity !== previousStreamFidelity && streamFidelity === "precise" && !positions.has(path));
+            update = streamUpdates(path, positions, baseline, streamFidelity);
+          }
           catch (error) { io.appendEvent(run, "capture.gap", { team, source: path, reason: errorText(error) }); continue; }
-          if (update.gap) io.appendEvent(run, "capture.gap", { team, source: path, reason: "source_rotated_or_truncated" });
+          if (update.gap) io.appendEvent(run, "capture.gap", { team, source: path, reason: update.reason ?? "source_rotated_or_truncated" });
           for (const line of update.lines) {
             if (path.endsWith(".attempts")) {
               let record: any;
@@ -421,16 +522,22 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
             }
           }
         }
+        previousStreamFidelity = streamFidelity;
+        if (captureEvents) lastSample = timestamp();
         initialized = artifactsDue = true; nextSample = clock() + (tracing ? .5 : 5);
       }
       if (clock() >= nextStatus) {
         // A trace window is uncapped; the budget applies between traces.
         const size = tracing ? journalBytes(directory) : rotateJournal(run, io).bytes;
-        writeJson(join(directory, "status.json"), { recording: true, pid: process.pid, heartbeat: Date.now() / 1000, mode: tracing ? "trace" : "basic", trace,
+        writeJson(join(directory, "status.json"), { recording: true, pid: process.pid, heartbeat: Date.now() / 1000, mode: tracing ? "trace" : "basic", fidelity: captureFidelity, trace,
+          sources: sourceStatus(captureEvents ? "recording" : "off", lastSample, env),
           tmux_logging: !!(tracing && identity && native), server: identity, teams: [...new Set(Object.values(buses))].sort(), bytes: size, gaps: "see capture.gap events" });
         nextStatus = clock() + (tracing ? .5 : 5);
       }
-      if (artifactsDue) { artifactsDue = false; await io.collectArtifacts(run, buses, seen, env, io.appendEvent, listings); }
+      if (artifactsDue) {
+        artifactsDue = false;
+        if (captureEvents) await io.collectArtifacts(run, buses, seen, env, io.appendEvent, listings);
+      }
       await sleep(100);
     }
   } catch (error) {
@@ -445,7 +552,8 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
         await sleep(1000);
       }
       io.appendEvent(run, "capture.stopped");
-      writeJson(join(directory, "status.json"), { ...readJson(join(directory, "status.json")), recording: false, starting: false, mode: "off", trace, tmux_logging: false, heartbeat: Date.now() / 1000, stopped });
+      writeJson(join(directory, "status.json"), { ...readJson(join(directory, "status.json")), recording: false, starting: false, mode: "off", fidelity: captureFidelity,
+        sources: sourceStatus("off", lastSample, env), trace, tmux_logging: false, heartbeat: Date.now() / 1000, stopped });
       if (readJson(join(home(env), "enabled.json"))?.id === run.id) {
         try { unlinkSync(join(home(env), "enabled.json")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       }
@@ -453,9 +561,54 @@ export async function collect(run: Run, io = effects, env = process.env): Promis
   }
 }
 
-export async function status(env = process.env): Promise<any> {
+/**
+ * Under the control lock: a capture whose recorder heartbeat is
+ * RECORDER_STALE_SECONDS old is retired. Before the recorder's first status
+ * write, enabled.json's mtime is the heartbeat. Its status is marked stopped
+ * and enabled.json released (on then writes a new one); its journal, artifacts
+ * and raw files stay. Nothing is signalled: a stale heartbeat can mean slow,
+ * not dead (a load of 100+), and a recorder that is still alive sees
+ * enabled.json no longer naming its capture on its next cycle and stops
+ * itself. Its shutdown removes enabled.json only while it still names that
+ * capture, so it never removes a replacement. Returns the stop reason.
+ */
+function retireStaleCapture(run: any, env: NodeJS.ProcessEnv, by: "on" | "off"): string | null {
+  if (typeof run?.directory !== "string" || typeof run.id !== "string") return null;
+  const enabled = join(home(env), "enabled.json"), path = join(run.directory, "status.json"), state = readJson(path);
+  let heartbeat = state?.heartbeat;
+  if (typeof heartbeat !== "number") { try { heartbeat = statSync(enabled).mtimeMs / 1000; } catch { return null; } }
+  if (Date.now() / 1000 - heartbeat < RECORDER_STALE_SECONDS) return null;
+  const gone = Number.isSafeInteger(state?.pid) && state.pid > 0 && !alive(state.pid);
+  const stopped = { reason: gone ? "recorder_gone" : by === "on" ? "replaced" : "unresponsive", at: timestamp(), pid: state?.pid ?? null };
+  if (existsSync(run.directory)) {
+    // mode keeps the collector's own basic|trace|off spelling.
+    writeJson(path, { ...(state ?? {}), recording: false, starting: false, mode: "off", tmux_logging: false, stopped });
+    appendEvent(run, "capture.stopped", { stopped });
+  }
+  try { unlinkSync(enabled); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  return stopped.reason;
+}
+
+/** Why a capture is unresponsive, for arm.log and status: its pid, whether it lives, and its heartbeat age. */
+function recorderDetail(state: any): string {
+  const age = typeof state?.heartbeat === "number" ? `heartbeat ${Math.round(Date.now() / 1000 - state.heartbeat)}s old` : "no heartbeat";
+  if (!Number.isSafeInteger(state?.pid)) return `no recorder pid, ${age}`;
+  return `recorder pid ${state.pid} ${alive(state.pid) ? "alive" : "gone"}, ${age}`;
+}
+
+/** always_on as the arm path reads it: a refused [debug] block reads as off. */
+function alwaysOnState(env: NodeJS.ProcessEnv): { always_on: boolean; always_on_error?: string } {
+  try { return { always_on: debugConfig(env).always_on }; }
+  catch (error) { return { always_on: false, always_on_error: errorText(error) }; }
+}
+
+export async function status(env = process.env, readSettings = true): Promise<any> {
   const run = readJson(join(home(env), "enabled.json")) || readJson(join(home(env), "last.json"));
-  if (!run) return { recording: false, state: "off", mode: "off", directory: null, tmux_logging: false };
+  if (!run) {
+    const config = readSettings ? debugConfig(env) : null;
+    return { recording: false, state: "off", mode: "off", directory: null, tmux_logging: false,
+      fidelity: config?.fidelity ?? null, config, sources: sourceStatus("off", null, env) };
+  }
   const state = readJson(join(run.directory, "status.json")) ?? {};
   Object.assign(state, { directory: run.directory, capture_id: run.id, socket: run.socket, config: run.config });
   state.redaction = run.redaction === "credentials-v1" ? run.redaction : null;
@@ -463,11 +616,16 @@ export async function status(env = process.env): Promise<any> {
   state.state = recorderState(state, enabled);
   state.recording = state.state === "recording" || state.state === "stopping";
   state.mode = state.recording ? state.mode || "basic" : "off";
+  state.fidelity = state.fidelity ?? run.config?.fidelity ?? "precise";
+  state.sources ??= sourceStatus(state.recording ? "recording" : "off", null, env);
+  state.sources.tmux = tmuxSourceStatus(env);
+  if (!state.recording) Object.assign(state.sources["tap-events"], { state: "off", alive: false });
   if (state.recording && run.config?.lifetime_hours !== undefined) state.restart_required = true;
   state.tmux_logging = false;
   if (state.recording && state.server) {
     try { state.tmux_logging = sameIdentity(await server(run.socket), state.server) && !!(await logPath(state.server)).path; } catch { /* unavailable is not confirmed logging */ }
   }
+  try { state.archive_bytes = treeBytes(archiveHome(home(env))); } catch { state.archive_bytes = null; } // an archive changing mid-walk is unmeasured
   return Object.assign(state, readJson(join(run.directory, "error.json")) ?? {});
 }
 
@@ -524,23 +682,49 @@ function recoveryText(root: string): { text: string } | { unreadable: string } {
   return { text: texts.join("\n") };
 }
 
-/** Keep the newest captures within retain_mb; the newest, the enabled one and any a recovery post-mortem names are always kept. */
-export async function pruneCaptures(env = process.env, inspect = processFiles): Promise<{ id: string; bytes: number }[]> {
-  const root = home(env), budget = (readJson(join(root, "config.json"))?.retain_mb ?? DEFAULT_RETAIN_MB) * 1048576;
+/** Archive what remains of a capture before retention removes it: the journal and small metadata first,
+ * then its redacted artifact copies and published traces in the same layout rotation uses. Private raw
+ * files under .raw/ are never archived, and a capture without the sanitizer keeps its copies out. */
+function archiveCapture(directory: string, archive: string): void {
+  for (const name of [...segments(directory), "events.jsonl", "session.json", "status.json", "recovery-artifacts.json"])
+    if (lstatSync(join(directory, name), { throwIfNoEntry: false })?.isFile()) compressFile(join(directory, name), join(archive, name + ".zst"));
+  if (readJson(join(directory, "session.json"))?.redaction !== "credentials-v1") return;
+  for (const name of names(directory).filter(name => name === "artifacts" || /^trace-[0-9a-f]{12}$/.test(name)))
+    if (lstatSync(join(directory, name)).isDirectory()) archiveTree(join(directory, name), join(archive, name));
+}
+export type Pruned = { id: string; bytes: number; archive?: string; archive_error?: string };
+/** Keep the newest captures within retain_mb; the newest, the enabled one and any a recovery post-mortem names are always kept.
+ * A pruned capture moves into the archive first; archive_mb then bounds the archive. */
+export async function pruneCaptures(env = process.env, inspect = processFiles): Promise<Pruned[]> {
+  const root = home(env), budget = debugConfig(env).retain_mb * 1048576;
   const enabled = readJson(join(root, "enabled.json"))?.id, recovery = recoveryText(root);
   if ("unreadable" in recovery) { console.error(`tap debug: retention skipped; ${recovery.unreadable} is unreadable`); return []; }
   const referenced = recovery.text;
   const captures = names(root).filter(id => CAPTURE.test(id) && readJson(join(root, id, "session.json"))?.id === id).sort().reverse();
-  const pruned: { id: string; bytes: number }[] = [];
-  let kept = 0, retained = 0, full = false;
+  const pruned: Pruned[] = [];
+  let kept = 0, retained = 0, full = false, attempted = false;
   for (const id of captures) {
     if (id === enabled || referenced.includes(id)) continue;
     if (!await inactiveRaw(root, id, inspect)) continue;
     const directory = join(root, id), raw = join(root, ".raw", id), bytes = treeBytes(directory) + treeBytes(raw);
     if (!full && (kept === 0 || retained + bytes <= budget)) { kept++; retained += bytes; continue; }
     full = true;
-    try { rmSync(raw, { recursive: true, force: true }); rmSync(directory, { recursive: true }); pruned.push({ id, bytes }); }
-    catch (error) { console.error(`tap debug: kept ${id}: ${errorText(error)}`); }
+    const archive = join(archiveHome(root), id);
+    let outcome: Pruned = { id, bytes, archive };
+    attempted = true;
+    try { archiveCapture(directory, archive); }
+    catch (error) { outcome = { id, bytes, archive_error: errorText(error) }; }
+    try { rmSync(raw, { recursive: true, force: true }); rmSync(directory, { recursive: true }); pruned.push(outcome); }
+    catch (error) { warn(`tap debug: kept ${id}: ${errorText(error)}`); continue; }
+    // As in rotation, a failed archive still prunes to stay within budget, and says so only after the prune.
+    if (outcome.archive_error) warn(`tap debug: could not archive ${id} (${outcome.archive_error}); pruned it to stay within retain_mb`);
+  }
+  // A failed or partial archive may still have written bytes, so the cap runs after every attempt.
+  if (attempted) {
+    try {
+      const archiveMb = debugConfig(env).archive_mb, removed = pruneArchive(root, archiveMb, enabled);
+      if (removed.length) warn(`tap debug: the archive passed its ${archiveMb} MiB cap; removed ${removed.length} oldest capture archive(s), ${(removed.reduce((sum, r) => sum + r.bytes, 0) / 1048576).toFixed(1)} MiB`);
+    } catch (error) { warn(`tap debug: archive cap not applied: ${errorText(error)}`); }
   }
   for (const id of names(join(root, ".raw")).filter(id => CAPTURE.test(id))) {
     if (id === enabled || referenced.includes(id) || lstatSync(join(root, id), { throwIfNoEntry: false })) continue;
@@ -582,10 +766,16 @@ export async function withControl<T>(directory: string, body: (signal: AbortSign
   }
 }
 
-const DEFAULT_MAX_MB = 1024, DEFAULT_RETAIN_MB = 2048;
+const DEFAULT_RETAIN_MB = 2048, DEFAULT_ARCHIVE_MB = 10240;
+const STOPPED: Record<string, string> = {
+  recorder_gone: "its recorder was gone (an unclean exit or a reboot)",
+  replaced: "its recorder stopped writing status; tap debug on started a new capture",
+  unresponsive: "its recorder stopped writing status; tap debug off released it",
+};
 const HELP = `usage: tap debug [-h] [--json] [--socket SOCKET] [--max-mb MAX_MB]
-                 [--retain-mb RETAIN_MB] [--days N]
-                 [{status,on,off,config,trace,stats}] [seconds]
+                 [--retain-mb RETAIN_MB] [--archive-mb ARCHIVE_MB] [--days N]
+                 [--always-on | --no-always-on]
+                 [{status,on,off,config,trace,stats,tmux-migrate}] [seconds]
 
 Opt-in, cross-team flight journal. Records until tap debug off.
 The collector lives outside tmux.
@@ -599,13 +789,15 @@ the published trace is then redacted and its raw file removed.
 subcommands, and the options each one accepts:
   status           show whether recording is on (the default)    [--json]
   on               start recording a tmux server                 [--socket SOCKET] [--json]
-  off              stop recording                                [--json]
-  config           show the stored capture settings, or set them [--max-mb N] [--retain-mb N] [--json]
+  off              stop recording; also turns always_on off       [--json]
+  config           show or set capture settings [--capture tmux,tap-events] [--fidelity best-effort|precise] [--max-mb N] [--retain-mb N]
+                   [--archive-mb N] [--always-on | --no-always-on] [--json]
   trace <seconds>  record one uncapped trace window; starts the recorder if it is not running   [--socket SOCKET] [--json]
   stats            count nightly deliveries, same-id retries and extra rings across team buses; read-only   [--days N] [--json]
+  tmux-migrate     adopt or install local.tmux-flight with backup and rollback   [--json]
 
 positional arguments:
-  {status,on,off,config,trace,stats}
+  {status,on,off,config,trace,stats,tmux-migrate}
   seconds               duration of an uncapped trace window; trace only,
                         a finite number above zero
 
@@ -615,25 +807,57 @@ options:
   --socket SOCKET       tmux socket path; defaults to the current server.
                         on and trace only; recording another socket needs
                         tap debug off first
+  --fidelity FIDELITY           best-effort (default): active streams and a two-tick drain;
+                        precise: all sidecars, including late writes and rewrite
+                        replay. config only; applies to the next capture.
+                        Timed traces sample active, draining and recent sidecars
+  --capture SOURCES     tmux,tap-events (default), either source, or none.
+                        Removing tmux stops its owned automatic sampler now.
+                        Run tmux-migrate once to bring a legacy sampler under TAP.
   --max-mb MAX_MB       capture storage budget; oldest journal segments and
-                        artifact copies rotate out (1..10240 MiB, default 1024).
-                        config only; applies to the next capture
+                        artifact copies rotate out, compressed into the archive
+                        (1..10240 MiB, default 1024). config only; applies to
+                        the next capture
   --retain-mb RETAIN_MB
                         on keeps the newest earlier captures within this total
-                        and prunes older ones (1..1048576 MiB, default 2048).
+                        and prunes older ones, archiving them first
+                        (1..1048576 MiB, default 2048).
                         Set it with config only; on uses the stored value
+  --archive-mb ARCHIVE_MB
+                        cap on the zstd archive of rotated and pruned history in
+                        debug/archive/; past it the oldest capture archives are
+                        removed, never the newest (1..1048576 MiB, default
+                        10240). config only; applies to the next capture
   --days N              nights to report by .placed UTC date (1..365, default
                         7). stats only
+  --always-on, --no-always-on
+                        set debug.always_on in config.toml (default off).
+                        config only; read by the next tap command
   --lifetime-hours       retired; recording now continues until tap debug off
 
 examples:
   tap debug on
   tap debug on --socket /private/tmp/tmux-501/work
   tap debug trace 120 --json
+  tap debug config --fidelity precise
   tap debug config --max-mb 2048 --retain-mb 4096
+  tap debug config --archive-mb 20480
+  tap debug config --always-on
   tap debug status
   tap debug stats --days 3
   tap debug off
+
+Settings live in config.toml [debug]: always_on (default false), capture,
+fidelity, max_mb, retain_mb and archive_mb. Trace is manual, never a setting.
+
+Always on (config.toml [debug] always_on = true, off by default) is for someone
+debugging TAP: the first tap command that finds no live recorder starts
+tap debug on in the background, at most once a minute, logging to
+debug/arm.log. A recorder whose status is ${RECORDER_STALE_SECONDS}s old counts as gone: tap debug on
+replaces its capture and keeps its evidence. Help, the state-free verbs
+(ask, admin, completion, doctor, health, models, provenance, show, who,
+version, tap session listing) and tap debug never arm; tap debug off turns
+always_on off.
 
 Recovery post-mortems: tap debug recovery [recovery-id|payload-id] [--json]
 (available even with recording off).
@@ -643,33 +867,45 @@ exit: 0 done, 2 usage error, 1 any other failure.
 class UsageError extends Error {}
 class RetiredLifetimeError extends UsageError {}
 export function parse(argv: string[]) {
-  const values: string[] = []; let jsonOutput = false, socket: string | undefined, max: number | undefined, retain: number | undefined, days: number | undefined;
+  const values: string[] = []; let jsonOutput = false, socket: string | undefined, max: number | undefined, retain: number | undefined, archive: number | undefined, days: number | undefined, fidelity: CaptureFidelity | undefined, capture: CaptureSource[] | undefined;
+  let alwaysOn: boolean | undefined;
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i]!;
     if (arg === "--") { values.push(...argv.slice(i + 1)); break; }
     if (arg.startsWith("--")) {
       const key = arg.split("=", 1)[0]!;
-      const matches = ["--help", "--json", "--socket", "--max-mb", "--retain-mb", "--days", "--lifetime-hours"].filter(option => option.startsWith(key));
+      const matches = ["--help", "--json", "--socket", "--max-mb", "--retain-mb", "--archive-mb", "--days", "--fidelity", "--capture", "--lifetime-hours", "--always-on", "--no-always-on"].filter(option => option.startsWith(key));
       if (matches.length === 1) arg = matches[0]! + arg.slice(key.length); // argparse's unambiguous long options
     }
     if (arg === "-h" || arg === "--help") return null;
     if (arg === "--json") { jsonOutput = true; continue; }
-    if (/^--(?:socket|max-mb|retain-mb|days|lifetime-hours)(?:=|$)/.test(arg)) {
+    if (arg === "--always-on" || arg === "--no-always-on") {
+      if (alwaysOn !== undefined && alwaysOn !== (arg === "--always-on")) throw new UsageError("--always-on and --no-always-on contradict each other");
+      alwaysOn = arg === "--always-on"; continue;
+    }
+    if (/^--(?:socket|max-mb|retain-mb|archive-mb|days|fidelity|capture|lifetime-hours)(?:=|$)/.test(arg)) {
       const equals = arg.indexOf("="), key = equals < 0 ? arg : arg.slice(0, equals);
       if (key === "--lifetime-hours") throw new RetiredLifetimeError("--lifetime-hours is retired; recording continues until tap debug off");
       const value = equals < 0 ? argv[++i] : arg.slice(equals + 1);
       if (value === undefined || (equals < 0 && value.startsWith("-") && !/^-\d*(?:\.\d+)?$/.test(value))) throw new UsageError(`${key}: expected one argument`);
       if (key === "--socket") socket = value;
-      else {
+      else if (key === "--fidelity") {
+        if (value !== "best-effort" && value !== "precise") throw new UsageError("--fidelity must be best-effort or precise; use tap debug trace for a timed trace");
+        fidelity = value;
+      } else if (key === "--capture") {
+        const sources = value === "none" ? [] : value.split(",");
+        if (sources.some(source => source !== "tmux" && source !== "tap-events")) throw new UsageError("--capture must be tmux,tap-events, either source, or none");
+        capture = [...new Set(sources)] as CaptureSource[];
+      } else {
         const n = pythonInt(value, true);
         if (n === null) throw new UsageError(`${key}: invalid int value: '${value}'`);
-        if (key === "--max-mb") max = Number(n); else if (key === "--days") days = Number(n); else retain = Number(n);
+        if (key === "--max-mb") max = Number(n); else if (key === "--days") days = Number(n); else if (key === "--archive-mb") archive = Number(n); else retain = Number(n);
       }
     } else if (arg.startsWith("-") && !/^-\d*(?:\.\d+)?$/.test(arg)) throw new UsageError(`unrecognized arguments: ${arg}`);
     else values.push(arg);
   }
   const action = values[0] ?? "status";
-  if (!["status", "on", "off", "config", "trace", "stats"].includes(action)) throw new UsageError(`invalid choice: '${action}' (choose from 'status', 'on', 'off', 'config', 'trace', 'stats')`);
+  if (!["status", "on", "off", "config", "trace", "stats", "tmux-migrate"].includes(action)) throw new UsageError(`invalid choice: '${action}' (choose from 'status', 'on', 'off', 'config', 'trace', 'stats', 'tmux-migrate')`);
   if (values.length > 2) throw new UsageError(`unrecognized arguments: ${values.slice(2).join(" ")}`);
   let seconds: number | undefined;
   if (values[1] !== undefined) {
@@ -681,14 +917,15 @@ export function parse(argv: string[]) {
   else if (seconds !== undefined) throw new UsageError("seconds belong to tap debug trace");
   if (max !== undefined && !(max >= 1 && max <= 10240)) throw new UsageError("--max-mb must be between 1 and 10240");
   if (retain !== undefined && !(retain >= 1 && retain <= 1048576)) throw new UsageError("--retain-mb must be between 1 and 1048576");
-  if ((max !== undefined || retain !== undefined) && action !== "config") throw new UsageError("settings belong to tap debug config");
+  if (archive !== undefined && !(archive >= 1 && archive <= 1048576)) throw new UsageError("--archive-mb must be between 1 and 1048576");
+  if ((max !== undefined || retain !== undefined || archive !== undefined || fidelity !== undefined || capture !== undefined || alwaysOn !== undefined) && action !== "config") throw new UsageError("settings belong to tap debug config");
   if (socket && action !== "on" && action !== "trace") throw new UsageError("--socket belongs to tap debug on or trace");
   if (days !== undefined && !(days >= 1 && days <= 365)) throw new UsageError("--days must be between 1 and 365");
   if (days !== undefined && action !== "stats") throw new UsageError("--days belongs to tap debug stats");
-  return { action, seconds, socket, max, retain, days, jsonOutput };
+  return { action, seconds, socket, max, retain, archive, days, fidelity, capture, alwaysOn, jsonOutput };
 }
 
-export async function main(argv: string[], env = process.env): Promise<number> {
+export async function main(argv: string[], env = process.env, tmuxIO?: TmuxControlIO): Promise<number> {
   if (argv.length === 2 && argv[0] === "_collect") { await collect(readJson(argv[1]!), effects, env); return 0; }
   let args;
   try { args = parse(argv); }
@@ -701,37 +938,72 @@ export async function main(argv: string[], env = process.env): Promise<number> {
     return 1;
   }
   if (!args) { process.stdout.write(HELP); return 0; }
-  const saved = readJson(join(home(env), "config.json"));
-  const config = { max_mb: saved?.max_mb ?? DEFAULT_MAX_MB, retain_mb: saved?.retain_mb ?? DEFAULT_RETAIN_MB };
   let result: any;
   if (args.action === "status") result = await status(env);
   // Read-only over every enrolled bus: no debug home, control lock or recorder.
   else if (args.action === "stats") result = deliveryStats(teamBuses(env), { days: args.days ?? 7, env });
-  else if (args.action === "config" && args.max === undefined && args.retain === undefined) result = config;
+  else if (args.action === "config" && args.max === undefined && args.retain === undefined && args.archive === undefined && args.fidelity === undefined && args.capture === undefined && args.alwaysOn === undefined) result = debugConfig(env);
   else {
     mkdirSync(home(env), { recursive: true, mode: 0o700 });
     result = await withControl(home(env), async signal => {
       const wait = () => sleep(100, undefined, { signal });
+      if (args.action === "tmux-migrate") return migrateTmux(env, tmuxIO);
       if (args.action === "config") {
-        config.max_mb = args.max ?? config.max_mb; config.retain_mb = args.retain ?? config.retain_mb;
-        writeJson(join(home(env), "config.json"), config); return { ...config, applies: "next capture" };
+        const config = writeDebugConfig({ ...(args.fidelity === undefined ? {} : { fidelity: args.fidelity }),
+          ...(args.capture === undefined ? {} : { capture: args.capture }), ...(args.max === undefined ? {} : { max_mb: args.max }),
+          ...(args.retain === undefined ? {} : { retain_mb: args.retain }), ...(args.archive === undefined ? {} : { archive_mb: args.archive }),
+          ...(args.alwaysOn === undefined ? {} : { always_on: args.alwaysOn }) }, env);
+        if (args.capture !== undefined && !config.capture.includes("tmux")) await setTmuxEnabled(false, env, tmuxIO);
+        // always_on is read by the next public command; the other settings wait for the next capture.
+        const capture = args.fidelity !== undefined || args.capture !== undefined || args.max !== undefined || args.retain !== undefined || args.archive !== undefined;
+        return { ...config, applies: args.alwaysOn === undefined ? "next capture" : capture ? "next capture; always_on on the next tap command" : "next tap command" };
       }
       if (args.action === "off") {
+        // Off means off: always_on is cleared under this lock, so an arm child queued behind off finds it off.
+        // off validates no next-capture setting: when the [debug] block is refused, clearAlwaysOn
+        // edits always_on alone, so fixing the refused key later cannot re-arm.
+        let cleared = false, clearing: unknown;
+        const current = alwaysOnState(env);
+        try {
+          if (current.always_on) {
+            try { writeDebugConfig({ always_on: false }, env); cleared = true; }
+            catch { cleared = clearAlwaysOn(env); }
+          } else if (current.always_on_error) cleared = clearAlwaysOn(env);
+        } catch (error) { clearing = error; }
         const run = readJson(join(home(env), "enabled.json"));
-        if (run) {
+        let stopping: unknown;
+        try { if (run && !retireStaleCapture(run, env, "off")) {
           closeSync(openSync(join(run.directory, "stop"), "a", 0o600));
           const until = clock() + 10;
           while (existsSync(join(home(env), "enabled.json"))) { if (clock() >= until) throw new Error("recorder did not stop; inspect tap debug status"); await wait(); }
-        }
-        return status(env);
+        } } catch (error) { stopping = error; }
+        try { await setTmuxEnabled(false, env, tmuxIO); } catch (error) { stopping = stopping ? new Error(`${errorText(stopping)}; ${errorText(error)}`) : error; }
+        if (stopping) throw stopping;
+        if (clearing) throw new Error(clearing instanceof AlwaysOnUnconfirmed ? `recording stopped; ${errorText(clearing)}`
+          : `recording stopped, but debug.always_on is still set: ${errorText(clearing)}; next: set always_on = false under [debug] in config.toml`);
+        return { ...(await status(env, false)), ...(cleared ? { always_on_cleared: true } : {}) };
       }
-      const old = readJson(join(home(env), "enabled.json"));
+      if (env[ARM_CHILD] === "1") {
+        pruneArmClaims(home(env));
+        // Read again under the lock: off clears always_on while holding it.
+        if (!armsTapEvents(debugConfig(env))) return { ...(await status(env)), arm_skipped: "always_on is off or capture excludes tap-events" };
+      }
+      const config = writeDebugConfig({}, env);
+      // An always_on arm child manages tap-events only. Ordinary CLI activity
+      // never invokes launchctl or changes the independent tmux scheduler.
+      if (args.action === "on" && env[ARM_CHILD] !== "1")
+        await setTmuxEnabled(config.capture.includes("tmux"), env, tmuxIO, args.socket ? physicalPath(args.socket) : undefined);
+      if (args.action === "on" && !config.capture.includes("tap-events")) return status(env);
+      let old = readJson(join(home(env), "enabled.json"));
+      const replaced = old ? retireStaleCapture(old, env, "on") : null;
+      const retired = replaced ? { capture_id: old.id, reason: replaced } : null;
+      if (retired) old = null;
       let state: any;
       if (old) {
         state = await status(env);
         if (args.socket && physicalPath(args.socket) !== old.socket) throw new Error("another socket is being recorded; use tap debug off first");
         if (state.state === "starting") throw new Error("the recorder is still starting; check tap debug status");
-        if (!state.recording) throw new Error("an existing recorder is unresponsive; inspect tap debug status");
+        if (!state.recording) throw new Error(`an existing recorder is unresponsive (${recorderDetail(state)}); inspect tap debug status`);
       } else {
         const socket = physicalPath(args.socket || env.TAP_TMUX_SOCKET_PATH || env.TMUX?.split(",")[0] || join(env.TMUX_TMPDIR || "/tmp", `tmux-${process.getuid!()}`, env.TAP_TMUX_SOCKET || "default"));
         if (!await server(socket)) throw new Error("no tmux server on " + socket);
@@ -760,6 +1032,7 @@ export async function main(argv: string[], env = process.env): Promise<number> {
         state = await status(env);
         if (!state.recording) throw new Error(state.error || "recorder stopped right after it became ready; inspect tap debug status");
         state.pruned = pruned;
+        if (retired) state.retired = retired;
       }
       if (args.action === "trace") {
         signal.throwIfAborted();
@@ -781,11 +1054,18 @@ export async function main(argv: string[], env = process.env): Promise<number> {
       return state;
     });
   }
+  if (args.action !== "stats" && args.action !== "config") Object.assign(result, alwaysOnState(env));
   if (args.jsonOutput) console.log(json(result));
   else if (args.action === "stats") process.stdout.write(renderStats(result));
   else if (args.action === "config") console.log("tap debug config: " + json(result));
+  else if (args.action === "tmux-migrate") console.log(`tap debug tmux-migrate: ${result.enabled ? "enabled" : "off"}; ${result.plist}${result.backup ? `; backup ${result.backup}` : ""}`);
   else {
-    console.log(`tap debug: ${result.state} (${result.mode})\n  Recovery post-mortems: tap debug recovery [recovery-id|payload-id]`);
+    console.log(`tap debug: ${result.state} (${result.mode}; fidelity ${result.fidelity})\n  Recovery post-mortems: tap debug recovery [recovery-id|payload-id]`);
+    for (const [name, source] of Object.entries(result.sources) as [string, any][]) {
+      console.log(`  ${name}: ${source.state}; last sample ${source.last_sample_at ?? "none"}; alive ${source.alive ?? "unknown"}; incidents ${source.incident_count ?? "unknown"}`);
+      if (source.incident_over_budget_bytes > 0) console.log(`    Protected newest incidents exceed the retention budget by ${(source.incident_over_budget_bytes / 1048576).toFixed(1)} MiB`);
+      if (source.error) console.log(`    ${source.error}`);
+    }
     if (result.directory) {
       const tmux = result.tmux_logging ? "confirmed" : result.trace?.active ? "unavailable" : "trace windows only (tap debug trace <seconds>)";
       console.log(`  Journal: ${result.directory}\n  tmux logging: ${tmux}`);
@@ -799,15 +1079,25 @@ export async function main(argv: string[], env = process.env): Promise<number> {
           : "  Legacy trace files may contain credentials; review before sharing");
         if (result.trace.stopping) console.log("  Trace stopping: " + (result.trace.error || "awaiting log closure"));
       }
-      console.log(`  TAP event streams: ${(result.teams ?? []).length} teams\n  Basic journal: ${((result.bytes ?? 0) / 1048576).toFixed(1)} MiB / ${result.config.max_mb} MiB (oldest journal segments and artifact copies rotate out)`);
+      console.log(`  TAP event streams: ${(result.teams ?? []).length} teams\n  Journal: ${((result.bytes ?? 0) / 1048576).toFixed(1)} MiB / ${result.config.max_mb} MiB (oldest journal segments and artifact copies rotate into the archive)`);
+      if (typeof result.archive_bytes === "number") console.log(`  Archive: ${(result.archive_bytes / 1048576).toFixed(1)} MiB / ${result.config.archive_mb ?? DEFAULT_ARCHIVE_MB} MiB of zstd history; oldest capture archives go first`);
       if (result.recording) console.log(result.restart_required
         ? "  Legacy recorder may still expire; restart with tap debug off, then tap debug on"
         : "  Recording until tap debug off");
       if (result.state === "starting") console.log("  Starting: the recorder is baselining team streams");
-      if (result.stopped) console.log(`  Stopped: ${result.stopped.reason === "storage_limit" ? "reached the storage budget with nothing left to rotate out" : result.stopped.reason === "lifetime_limit" ? `reached its ${result.stopped.hours}-hour lifetime cap` : result.stopped.error ?? result.stopped.reason} at ${result.stopped.at}; tap debug on starts a new capture`);
-      if (result.pruned?.length) console.log(`  Pruned: ${result.pruned.length} older capture(s), ${(result.pruned.reduce((sum: number, p: { bytes: number }) => sum + p.bytes, 0) / 1048576).toFixed(1)} MiB; retaining ${result.config.retain_mb ?? DEFAULT_RETAIN_MB} MiB`);
+      if (result.stopped) console.log(`  Stopped: ${result.stopped.reason === "storage_limit" ? "reached the storage budget with nothing left to rotate out" : result.stopped.reason === "lifetime_limit" ? `reached its ${result.stopped.hours}-hour lifetime cap` : STOPPED[result.stopped.reason] ?? result.stopped.error ?? result.stopped.reason} at ${result.stopped.at}; tap debug on starts a new capture`);
+      if (result.state === "unresponsive") console.log(`  Unresponsive: ${recorderDetail(result)}; tap debug on replaces it once the heartbeat is ${RECORDER_STALE_SECONDS}s old`);
+      if (result.retired) console.log(`  Replaced: capture ${result.retired.capture_id} (${result.retired.reason}); its journal and artifacts are kept`);
+      if (result.pruned?.length) {
+        const unarchived = result.pruned.filter((p: Pruned) => p.archive_error).length;
+        console.log(`  Pruned: ${result.pruned.length} older capture(s), ${(result.pruned.reduce((sum: number, p: Pruned) => sum + p.bytes, 0) / 1048576).toFixed(1)} MiB; ${unarchived ? `${unarchived} could not be archived` : "archived first"}; retaining ${result.config.retain_mb ?? DEFAULT_RETAIN_MB} MiB`);
+      }
       if (result.error) console.log("  Error: " + result.error);
     }
+    if (result.always_on_cleared) console.log("  Always on: cleared (debug.always_on = false); tap debug config --always-on turns it back on");
+    else if (result.always_on_error) console.log("  Always on: off; the [debug] config is refused: " + result.always_on_error);
+    else if (result.always_on) console.log(`  Always on: ${armsTapEvents(debugConfig(env)) ? `a tap command starts a recorder when none is live; arm log ${join(home(env), "arm.log")}` : "set, but capture excludes tap-events, so nothing arms"}`);
+    if (result.arm_skipped) console.log("  Arm skipped: " + result.arm_skipped);
   }
   return 0;
 }
@@ -815,5 +1105,11 @@ export async function main(argv: string[], env = process.env): Promise<number> {
 if (import.meta.main) {
   process.umask(0o077);
   try { process.exitCode = await main(process.argv.slice(2)); }
-  catch (error) { console.error("tap debug: " + errorText(error)); process.exitCode = error instanceof UsageError ? 2 : 1; }
+  catch (error) {
+    if (error instanceof LauncherError &&
+        (process.env.TAP_JSON === "1" || process.argv.slice(2).some(arg => ["--j", "--js", "--jso", "--json"].includes(arg))))
+      process.stdout.write(errorJson(error.errorClass ?? "debug_failed", error.action ?? "tap debug config", error.detail ?? error.message));
+    else console.error("tap debug: " + errorText(error));
+    process.exitCode = error instanceof UsageError ? 2 : 1;
+  }
 }

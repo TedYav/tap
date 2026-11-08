@@ -27,7 +27,7 @@ process.chdir(team);
 const native = { ...await import("../../src/opencode-service") };
 mock.module("../../src/opencode-service", () => ({ ...native,
   nativeOpenCodeCaller: () => mode === "normal" ? { kind: "none" } : mode === "projection-refused" ? { kind: "refused", reason: "shell_unobservable" } : {
-    kind: "verified", sessionId: mode === "child-context" ? "ses_child" : "ses_alpha", rootSessionId: "ses_alpha",
+    kind: "verified", sessionId: mode.startsWith("child-") ? "ses_child" : "ses_alpha", rootSessionId: "ses_alpha",
     shellPid: 20, shellStart: 2000, directory: team, service,
   },
   readOpenCodeAncestry: () => new Map([
@@ -72,6 +72,12 @@ try {
     const { cmdRegister } = await import("../../src/verbs/register");
     const code = cmdRegister([]);
     console.log(JSON.stringify({ code, unchanged: before === readFileSync(registry, "utf8") }));
+  } else if (mode === "child-reporting") {
+    process.chdir(foreign); delete process.env.TAP_HOME; delete process.env.TMUX; delete process.env.TMUX_PANE;
+    const reporting = context.reportingContext(process.cwd(), process.env);
+    const fresh = context.resolveContext();
+    const explicit = context.reportingContext(process.cwd(), process.env, "other");
+    console.log(JSON.stringify({reporting:reporting?.team ?? null,fresh:fresh.team,explicit:explicit?.team}));
   } else if (mode === "child-context") {
     process.chdir(foreign); process.env.TAP_HOME = join(foreign, ".tap/bus");
     process.env.TAP_TMUX_SOCKET_PATH = join(root, "wrong-socket"); process.env.TMUX_PANE = "%99";
@@ -91,7 +97,7 @@ try {
     if (mode === "self-down") {
       const { cmdSeatUpDown } = await import("../../src/seat-updown"); code = await cmdSeatUpDown("down", ["alpha", "--json"], scripts);
     } else if (mode === "self-out-kill" || mode === "self-out-hard") {
-      const { cmdOut } = await import("../../src/verbs/out"); code = cmdOut(["alpha", mode.endsWith("kill") ? "--kill" : "--hard", "--json"], scripts);
+      const { cmdOut } = await import("../../src/verbs/out"); code = await cmdOut(["alpha", mode.endsWith("kill") ? "--kill" : "--hard", "--json"], scripts);
     } else {
       const { cmdTeam } = await import("../../src/verbs/team");
       const verb = mode.slice(10);

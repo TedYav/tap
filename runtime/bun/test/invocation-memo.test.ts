@@ -3,9 +3,11 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { removeScratchTree } from "./support/scratch";
-import { withInvocationMemo } from "../src/invocation-memo";
+import { withInvocationMemo, withReportingMemo } from "../src/invocation-memo";
 import { probeGitRoot } from "../src/git-root";
 import { readProcessTableMemoized } from "../src/observe";
+import { processRow } from "../src/process-ancestry";
+import { gitCommonDir } from "../src/context";
 
 /**
  * F1 (launchfast item 2 review): the ps-table and git-root memos are scoped
@@ -72,4 +74,32 @@ test("outside a memo scope every probe spawns fresh; inside, one; after exit, fr
     process.env.PATH = saved;
     removeScratchTree(farm.scratch);
   }
+});
+
+test("reporting observations refresh after a thrown scope and do not change registration probes", () => {
+  const farm = countingShimFarm();
+  const env = { ...original, PATH: `${farm.bin}:${original.PATH}` };
+  writeFileSync(join(farm.bin, "ps"), `#!/bin/sh
+printf x >> '${join(farm.scratch, "ps.count")}'
+case "$*" in
+  *pid=,ppid=,tty=*) printf '42 41 tty1\\n41 1 tty1\\n' ;;
+  *) printf '41 tty1\\n' ;;
+esac
+`, { mode: 0o755 });
+  try {
+    expect(() => withReportingMemo(() => {
+      expect(processRow(42, env)).toEqual({ ppid: "41", tty: "tty1" });
+      expect(processRow(41, env)).toEqual({ ppid: "1", tty: "tty1" });
+      expect(processRow(99, env)).toBeNull();
+      gitCommonDir(farm.scratch, env);
+      gitCommonDir(farm.scratch, env);
+      expect(farm.counts()).toEqual({ ps: 1, git: 1 });
+      throw new Error("scope ended");
+    })).toThrow("scope ended");
+    withReportingMemo(() => { processRow(42, env); gitCommonDir(farm.scratch, env); });
+    expect(farm.counts()).toEqual({ ps: 2, git: 2 });
+    // Register's existing invocation scope must not enable reporting identity reuse.
+    withInvocationMemo(() => { processRow(42, env); processRow(42, env); gitCommonDir(farm.scratch, env); gitCommonDir(farm.scratch, env); });
+    expect(farm.counts()).toEqual({ ps: 4, git: 4 });
+  } finally { removeScratchTree(farm.scratch); }
 });

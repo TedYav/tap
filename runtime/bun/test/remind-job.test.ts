@@ -1,4 +1,5 @@
-import { test, expect, afterEach } from "bun:test";
+import { test, expect, afterEach, spyOn } from "bun:test";
+import * as fs from "node:fs";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -63,6 +64,25 @@ test("only actual done receipts acknowledge circle backs; third outstanding esca
   expect(commandWake(f.job, f.root, 110)).toMatchObject({ terminal: false });
   expect(f.job.pending).toEqual([]);
   expect(commandWake(f.job, f.root, 300).text).toContain("UNOBSERVABLE");
+});
+test("circle backs inspect only pending done paths, with no receipt listing", () => {
+  const f = fixture("true"); f.job.phase = "running";
+  const listing = spyOn(fs, "readdirSync");
+  const stat = spyOn(fs, "statSync");
+  const receiptStat = spyOn(fs, "lstatSync");
+  try {
+    expect(commandWake(f.job, f.root, 110).terminal).toBe(false);
+    expect(listing).not.toHaveBeenCalled();
+    expect(stat).not.toHaveBeenCalled();
+    expect(receiptStat).not.toHaveBeenCalled();
+    f.job.pending = ["one", "two"];
+    writeFileSync(join(f.root, "receipts/two.done"), "");
+    commandWake(f.job, f.root, 110);
+    expect(f.job.pending).toEqual([]);
+    expect(listing).not.toHaveBeenCalled();
+    expect(stat.mock.calls.map(call => call[0])).toEqual([join(f.root, "receipts")]);
+    expect(receiptStat.mock.calls.map(call => call[0])).toEqual([join(f.root, "receipts/one.done"), join(f.root, "receipts/two.done")]);
+  } finally { listing.mockRestore(); stat.mockRestore(); receiptStat.mockRestore(); }
 });
 test("real queue fire hands terminal output off once, not on each tick", () => {
   const f = fixture("true");

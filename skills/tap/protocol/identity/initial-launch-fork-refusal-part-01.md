@@ -74,8 +74,8 @@ There are no capture levels.
 
 `on` reports ready once the recorder publishes post-baseline status. It fails
 only if the recorder exits or records an error first.
-Recording continues until `tap debug off`. At budget, rotate oldest segments and artifact copies; keep receipts and recovery records.
-`retain_mb`: newest-first, always newest. Never pruned: enabled capture, `debug/recovery/` id, non-capture (no `session.json`), recovery post-mortem. Between passes, budget may overshoot a pass; recording continues if artifacts alone exceed it.
+Recording continues until `tap debug off`. At budget, rotate oldest segments and artifact copies into the archive; keep receipts and recovery records.
+`retain_mb`: newest-first, always newest; archived first. Never pruned: enabled capture, `debug/recovery/` id, non-capture (no `session.json`), recovery post-mortem. Between passes, budget may overshoot a pass; recording continues if artifacts alone exceed it.
 Ignore saved `lifetime_hours`; `--lifetime-hours` is a non-mutating tombstone.
 
 While enabled, Bash spool redelivery and digest submissions retain the existing

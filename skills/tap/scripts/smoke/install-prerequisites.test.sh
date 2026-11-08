@@ -27,6 +27,9 @@ with tempfile.TemporaryDirectory() as tmp:
     (missing / 'dirname').symlink_to(shutil.which('dirname'))
     result = install(dict(env, PATH=str(missing)))
     assert result.returncode == 127 and 'git was not found on PATH' in result.stderr, result
+    assert 'lsof was not found on PATH' in result.stderr, result
+    assert 'sudo apt install git bash jq tmux tar lsof' in result.stderr, result
+    assert 'curl -fsSL https://bun.sh/install | bash' in result.stderr, result
     assert 'Python 3.11' not in result.stderr and not bindir.exists(), 'python is not a requirement, and missing deps wrote installation targets'
     # A broken python3 does not block installation: the pin is best-effort.
     (missing / 'python3').write_text('#!/bin/sh\nexit 7\n')
@@ -81,5 +84,5 @@ with tempfile.TemporaryDirectory() as tmp:
     assert check.returncode == 0 and check.stdout.splitlines()[0] == str(bindir / 'tap'), check
     result = install(dict(env, PATH=str(bindir) + os.pathsep + env['PATH']))
     assert result.returncode == 0 and 'install: done' in result.stdout, result
-print('install-prerequisites: missing Python/Bun refuse before writes; shared adapter fails loud; quoted PATH remedy enables installed tap')
+print('install-prerequisites: missing lsof/Bun refuse before writes; Linux hint names apt and bun.sh; python3 is not required; shared adapter fails loud; quoted PATH remedy enables installed tap')
 PY

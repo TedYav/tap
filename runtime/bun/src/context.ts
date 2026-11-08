@@ -13,16 +13,17 @@ import { Bus } from "./bus";
 import { teamRootFromBus, type BusRule } from "./bushome";
 import {
   enrolledSeatForObservedPane,
+  PaneLookupError,
   resolveHandleByPane,
   resolvePaneByHarnessSession,
   resolvePaneByRegisteredHandle,
 } from "./registry";
 import {
   parseTarget,
-  NO_MACHINE_INDEX, selectCaller, SelectorError, teamNameFromActingFile, type Selection,
+  NO_MACHINE_INDEX, selectCaller, reportingEnrollment, SelectorError, teamNameFromActingFile, type Selection,
 } from "./selector";
 import { enrolledNameForRootFromDoc, flipMarkerState, loadGlobalRegistry } from "./index-home";
-import { physicalSocketPath, serverEpochFromRaw, seedServerIdentity, socketFingerprint, tmux, tmuxReadOnly } from "./tmux";
+import { NO_SERVER_ON, physicalSocketPath, serverEpochFromRaw, seedServerIdentity, socketFingerprint, tmux, tmuxReadOnly } from "./tmux";
 import { isFile } from "./watch-lease";
 import { pidHasAncestor, processRow } from "./process-ancestry";
 import { DEFAULT_AGENT_FAMILIES, classifyHolderCommand, readProcessTableMemoized } from "./observe";
@@ -30,6 +31,29 @@ import { isOldStoreRefusal } from "./register-authority";
 import { nativeOpenCodeCaller, readOpenCodeAncestry } from "./opencode-service";
 import { openCodeServerAncestor } from "./opencode-shared";
 import { verifySharedSeat } from "./opencode-shared-seat";
+import { reportingMemo, reportingMemoActive } from "./invocation-memo";
+
+// Output flags do not alter discovery; selector/socket/environment changes do.
+function reportingEnvKey(env: NodeJS.ProcessEnv): string {
+  return JSON.stringify(Object.entries(env).filter(([key]) => !["TAP_JSON", "TAP_ONBOARDING_CHECKED"].includes(key)).sort(([a], [b]) => a.localeCompare(b)));
+}
+const retainedContext = reportingMemo<ResolvedContext>();
+const retainedCaller = reportingMemo<CallingPaneObservation>();
+const retainedCommonDir = reportingMemo<string | null>();
+const retainedUniqueClaim = reportingMemo<void>();
+
+function contextMemoKey(cwd: string, env: NodeJS.ProcessEnv,
+  opts?: { explicitTeam?: string; pinnedRoot?: string; paneFallback?: boolean; readOnly?: boolean }): string {
+  return JSON.stringify([cwd, reportingEnvKey(env), opts?.explicitTeam, opts?.pinnedRoot, opts?.paneFallback !== false, opts?.readOnly === true]);
+}
+
+/** Seed only the reporting scope; the context was resolved live for this call. */
+export function seedReportingObservation(ctx: ResolvedContext, caller: CallingPaneObservation,
+  env: NodeJS.ProcessEnv = process.env): void {
+  if (!reportingMemoActive()) throw new Error("reporting observation needs a synchronous reporting scope");
+  retainedContext(contextMemoKey(process.cwd(), env), () => ctx);
+  retainedCaller(JSON.stringify([reportingEnvKey(env), false, false]), () => caller);
+}
 
 export class TapError extends Error {
   constructor(
@@ -136,6 +160,13 @@ export function resolveContext(
   env: NodeJS.ProcessEnv = process.env,
   opts?: { explicitTeam?: string; pinnedRoot?: string; paneFallback?: boolean; readOnly?: boolean },
 ): ResolvedContext {
+  if (!reportingMemoActive()) return discoverContext(cwd, env, opts);
+  const key = contextMemoKey(cwd, env, opts);
+  return retainedContext(key, () => discoverContext(cwd, env, opts));
+}
+
+function discoverContext(cwd: string, env: NodeJS.ProcessEnv,
+  opts?: { explicitTeam?: string; pinnedRoot?: string; paneFallback?: boolean; readOnly?: boolean }): ResolvedContext {
   if (opts?.explicitTeam === undefined && opts?.pinnedRoot === undefined && opts?.paneFallback !== false) {
     const shared = observeSharedCaller(env, opts?.readOnly);
     if (shared?.kind === "verified" && shared.child) {
@@ -189,6 +220,27 @@ export function resolveContext(
     if (anchored && !sameSelection(anchored, caller)) caller = anchored;
   }
   return buildContext(caller, env);
+}
+
+/** A cache-hit candidate for a reporting command; no live caller or Git probes. */
+export function reportingContext(cwd: string, env: NodeJS.ProcessEnv, explicitTeam?: string): ResolvedContext | null {
+  try {
+    if (explicitTeam) return resolveContext(cwd, env, {explicitTeam, paneFallback:false});
+    // Native shared-service children can belong to a root seat outside cwd.
+    // Keep their existing resolver; do not probe service identity for a cache hit.
+    if (env.OPENCODE_SESSION_ID !== undefined) return null;
+    if (env.TAP_HOME || env.GIT_DIR || env.GIT_WORK_TREE) return null;
+    const hit = reportingEnrollment(cwd, env.TAP_INDEX_HOME);
+    if (!hit) return null;
+    // A pane registered elsewhere keeps the normal pane-precedence resolver.
+    // This is a display hint, never an effect's identity proof.
+    if (env.TMUX) {
+      const seats = JSON.parse(readFileSync(hit.registryLocation, "utf8"))?.seats;
+      if (!env.TMUX_PANE || !seats || !Object.values(seats).some(row => row && typeof row === "object"
+        && (row as Record<string, unknown>).pane_id === env.TMUX_PANE)) return null;
+    }
+    return resolveContext(cwd, env, {pinnedRoot:hit.rootReal, paneFallback:false});
+  } catch { return null; }
 }
 
 function sameSelection(a: Selection, b: Selection): boolean {
@@ -259,7 +311,7 @@ function attemptPaneAnchor(cwd: string, env: NodeJS.ProcessEnv, readOnly: boolea
   // claiming the same pane is an ordinary failed anchor, so the saved
   // original refusal reaches each verb's own handler, which recomputes the
   // typed contest verdict with the verb's own exit code.
-  requireMachineUniqueClaim(seen, indexHome);
+  if (!reportingMemoActive()) requireMachineUniqueClaim(seen, indexHome);
   // Same-repository check: a foreign-repo cwd never selects the pane team.
   const callerDir = gitCommonDir(cwd, env);
   const teamDir = gitCommonDir(scoped.root, env);
@@ -273,9 +325,10 @@ function attemptPaneAnchor(cwd: string, env: NodeJS.ProcessEnv, readOnly: boolea
     || !final.registryLocation || realpathSync(final.root) !== realpathSync(scoped.root)) {
     throw new Error("the enrolled row drifted before the context was returned");
   }
-  // Global uniqueness is rechecked after the probes too (tap-sbvgt): another
+  // Global uniqueness is checked after the probes (tap-sbvgt): another
   // team can enroll a current claim on this pane while git runs, and the
-  // scoped read above only sees the hinted team.
+  // scoped read above only sees the hinted team. Reports use this one check;
+  // effect-bearing callers retain both live checks.
   requireMachineUniqueClaim(seen, indexHome);
   const caller = selectCaller({ cwd, env, pinnedRoot: scoped.root });
   if (caller.authority !== "enrolled"
@@ -300,13 +353,20 @@ function requireMachineUniqueClaim(
   seen: { paneId: string; session: string; serverEpoch: string },
   indexHome: string | undefined,
 ): void {
-  const unscoped = enrolledSeatForObservedPane(seen.paneId, seen.session, seen.serverEpoch, indexHome);
-  if (unscoped.kind === "contested" || unscoped.kind === "unverified") {
-    throw new Error(`pane ${seen.paneId} cannot be resolved to one seat; ${unscoped.kind === "contested" ? unscoped.evidence : (unscoped as { evidence?: string }).evidence}`);
-  }
+  return retainedUniqueClaim(JSON.stringify([seen.paneId, seen.session, seen.serverEpoch, indexHome]), () => {
+    const unscoped = enrolledSeatForObservedPane(seen.paneId, seen.session, seen.serverEpoch, indexHome);
+    if (unscoped.kind === "contested" || unscoped.kind === "unverified") {
+      throw new Error(`pane ${seen.paneId} cannot be resolved to one seat; ${unscoped.kind === "contested" ? unscoped.evidence : (unscoped as { evidence?: string }).evidence}`);
+    }
+  });
 }
 
 export function gitCommonDir(dir: string, env: NodeJS.ProcessEnv): string | null {
+  if (!reportingMemoActive()) return probeGitCommonDir(dir, env);
+  return retainedCommonDir(JSON.stringify([realOrSelf(dir), reportingEnvKey(env)]), () => probeGitCommonDir(dir, env));
+}
+
+function probeGitCommonDir(dir: string, env: NodeJS.ProcessEnv): string | null {
   // Repository discovery must not inherit the caller's Git routing vars:
   // GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR & co. can make an unrelated
   // repository report the SAME common directory and fake a same-repo match.
@@ -421,6 +481,11 @@ export type CallingPaneObservation =
 /** Native shell evidence may name a seat; it never makes the service's tty
  * the caller's terminal. Physical operations keep observeCallingPane. */
 export function observeCallerIdentity(env: NodeJS.ProcessEnv = process.env, readOnly = false, extended = false): CallingPaneObservation {
+  if (!reportingMemoActive()) return discoverCallerIdentity(env, readOnly, extended);
+  return retainedCaller(JSON.stringify([reportingEnvKey(env), readOnly, extended]), () => discoverCallerIdentity(env, readOnly, extended));
+}
+
+function discoverCallerIdentity(env: NodeJS.ProcessEnv, readOnly: boolean, extended: boolean): CallingPaneObservation {
   const shared = observeSharedCaller(env, readOnly);
   if (!shared) return observeCallingPane(env, readOnly, extended);
   if (shared.kind === "refused") return { state: "unobservable", refusal: sharedCallerRefusal(shared.reason), shared: true };
@@ -472,7 +537,8 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
   if (boundary.kind === "server" && !boundary.private)
     return { state: "unobservable", refusal: "OpenCode service tools have no physical calling pane", shared: true };
   const probe = readOnly ? tmuxReadOnly : tmux;
-  const inventoryFormat = "#{pane_id}\t#{pane_tty}";
+  const reporting = reportingMemoActive() && !extended;
+  const inventoryFormat = reporting ? "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}" : "#{pane_id}\t#{pane_tty}";
   let pid = process.pid;
 
   for (let steps = 0; steps < 64; steps++) {
@@ -497,6 +563,7 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
       }
 
       let found = "";
+      let reportingRecord = "";
       for (const line of inventory.stdout.split("\n")) {
         const [candidate, candidateTty] = line.split("\t", 2);
         // A non-empty record whose FIRST field is empty is malformed: Bash's
@@ -517,6 +584,7 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
           return { state: "unobservable", refusal: `controlling tty '${paneTty}' maps to multiple panes` };
         }
         found = candidate ?? "";
+        reportingRecord = line;
       }
       // The first observed controlling TTY belongs either to this tmux server
       // or to somewhere else. Never climb past it on ancestry alone and borrow
@@ -562,7 +630,11 @@ export function observeCallingPane(env: NodeJS.ProcessEnv = process.env, readOnl
         ? "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{socket_path}\t#{pane_current_path}"
         : "#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}";
       const socketBefore = extended ? socketFingerprint(physicalSocketPath(env)) : "";
-      const observed = probe(["display-message", "-p", "-t", found, identityFormat], env);
+      // A report can use the inventory's identity record. Effect-bearing
+      // callers still reassert the binding with a fresh targeted query.
+      const observed = reporting && reportingRecord
+        ? { code: 0, stdout: reportingRecord, rateLimited: false }
+        : probe(["display-message", "-p", "-t", found, identityFormat], env);
       if (observed.rateLimited) {
         return { state: "unobservable", refusal: "tmux is rate limiting; the pane identity record is unavailable", paneId: found, unverifiable: true };
       }
@@ -876,6 +948,8 @@ export interface Self {
   team: string;
   pane: string;
   paneId: string;
+  crew?: boolean;
+  instance?: string;
 }
 
 export type IdentityPaneObservation =
@@ -897,10 +971,15 @@ export function observeIdentityPane(target: string, env: NodeJS.ProcessEnv, expe
     : "#{pane_id}\t#{session_name}\t#{pid}:#{start_time}";
   const result = (readOnly ? tmuxReadOnly : tmux)(["display-message", "-p", "-t", target, format], env);
   if (result.rateLimited) return { status: "unverifiable", paneId: target };
+  if (result.code !== 0) {
+    const reason = result.stderr.trim();
+    const absent = NO_SERVER_ON.test(reason) || /^can't find (?:pane|window|session): .+$/.test(reason);
+    return { status: absent ? "gone" : "unverifiable", paneId: target };
+  }
   const raw = result.stdout.split("\n", 1)[0] ?? "";
   const fields = raw.split("\t");
   const paneId = fields[0] ?? "";
-  if (!paneId) return { status: "gone", paneId: target };
+  if (!paneId) return { status: "unverifiable", paneId: target };
   if (!/^%[0-9]+$/.test(paneId) || fields.length !== (expectedSocket ? 4 : 3)) {
     return { status: "unverifiable", paneId };
   }
@@ -1147,8 +1226,8 @@ export function refuseUnanchoredPane(
   }
   if (resolution.kind === "resolved") {
     // The incumbent `tap outstanding` pane arm offers `--team` as an
-    // alternative because that verb accepts it; whoami and peek do not, and
-    // for them the cwd remedy stays alone.
+    // alternative because that caller requests it. Other callers keep the
+    // existing cwd remedy alone.
     const action = withTeamAlternative ? `cd ${resolution.root}  OR  pass --team ${resolution.team}` : `cd ${resolution.root}`;
     throw new TapError(unanchoredCode, "unanchored_bus", action,
       `unanchored cwd (${displayCwd(cwd)}) has no TAP bus; pane ${displayPane} is registered as '${resolution.handle}' on team '${resolution.team}' at '${resolution.root}'`);
@@ -1220,15 +1299,13 @@ export function resolveSelf(
   paneTarget: string | IdentityPaneObservation,
   refusalCode: number,
   env: NodeJS.ProcessEnv = process.env,
+  strictPane = false,
 ): Self {
   const obs = observeSelfPane(paneTarget, env, refusalCode);
   const target = typeof paneTarget === "string" ? paneTarget : paneTarget.paneId;
   // THE REMEDY MUST BE A COMMAND THIS BINARY ACCEPTS.
   //
-  // The generic refusal offers `--team <team>`, which `whoami` and `done` do
-  // not take — so an operator following it lands in a SECOND error, from the
-  // remedy the first error gave them. The partner reviewer caught it against the
-  // incumbent, which answers this case by naming the enrolled root the pane is
+  // Some callers do not accept `--team`. Name the enrolled root the pane is
   // actually registered on: `cd <root>` works for every verb.
   //
   // Only reachable once the pane is observable, which is why it lives here
@@ -1239,9 +1316,16 @@ export function resolveSelf(
       { session: obs.session, serverEpoch: obs.serverEpoch }, env, target);
   }
   requireActingRegistry(ctx, refusalCode);
-  const found = resolveHandleByPane(
-    ctx.registryPath, obs.paneId, target, obs.serverEpoch, obs.selectedHandle, obs.selectedInstance,
-  );
+  let found;
+  try {
+    found = resolveHandleByPane(
+      ctx.registryPath, obs.paneId, target, obs.serverEpoch, obs.selectedHandle, obs.selectedInstance,
+      strictPane ? obs.session : undefined,
+    );
+  } catch (error) {
+    if (!(error instanceof PaneLookupError)) throw error;
+    throw new TapError(refusalCode, error.kind, ESCALATE_COMMAND, error.message);
+  }
   if (!found) {
     throw new TapError(refusalCode, "unregistered", "tap register", `pane ${target} is not registered`);
   }

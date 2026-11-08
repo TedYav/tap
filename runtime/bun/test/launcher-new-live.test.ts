@@ -184,6 +184,9 @@ test("explicit linked workdir keeps the root team through launch, registration a
   expect(doc.team.name).toBe("fixture");
   expect(doc.seats.reviewer).toMatchObject({ status: "active", launch_workdir: lane, registered_from_worktree: f.root });
   expect(readFileSync(join(f.root, "cwd"), "utf8").trim()).toBe(lane);
+  // tap-p9v8: tmux started the pane in $HOME, yet a window opened by hand in the seat session defaults to the workdir.
+  expect(spawnSync(realTmux, ["-L", f.env.TAP_TMUX_SOCKET!, "display-message", "-p", "-t", "=fixture/reviewer:", "#{session_path}"],
+    { env: f.env, encoding: "utf8" }).stdout.trim()).toBe(lane);
   expect(existsSync(join(lane, ".tap"))).toBe(false);
   const relaunched = spawnSync("bun", [join(repo, "runtime/bun/main.ts"), "session", "relaunch", "reviewer", "--json"],
     { cwd: f.root, env: f.env, encoding: "utf8", timeout: 60_000 });

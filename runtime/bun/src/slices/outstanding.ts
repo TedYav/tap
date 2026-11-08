@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { Context } from "../context";
 import { Bus } from "../bus";
 import { envelopeField, validateEnvelope } from "../envelope";
-import { ageNowEpoch, idAgeSeconds } from "../ids";
+import { ageNowEpoch, idAgeSeconds, parseIdStampEpoch } from "../ids";
 import { forwardingGrant, ambiguousForwarding } from "../forwarding";
 import { loadRegistry, seatMap, type RegistryDoc } from "../registry";
 import { quarantinePayload } from "../quarantine";
@@ -104,11 +104,19 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
   // receipts or forced reads; the original obligation stays open.
   const canonicalIds = ctx.bus.canonicalIds();
   let readAnswers: Map<string, Array<{ id: string; raw: string }>> | undefined;
+  // An answer note is minted after its ask, so a settled payload whose MINTED
+  // stamp (`<handle>-<UTC stamp>-<suffix>`, parseIdStampEpoch) precedes the
+  // oldest open ask cannot answer any of them and is never read. Ids without a
+  // minted stamp never narrow the scan: such an ask lifts the floor (null), and
+  // such a candidate is always read.
+  let answerFloor: number | null = null;
   const answersFor = (parent: string) => {
     if (readAnswers) return readAnswers.get(parent) ?? [];
     readAnswers = new Map();
     for (const id of canonicalIds) {
       if (!receipts.has(`${id}.done`) || receipts.has(`${id}.cancelled`)) continue;
+      const minted = parseIdStampEpoch(id);
+      if (answerFloor !== null && minted !== null && minted < answerFloor) continue;
       const raw = text(ctx.bus.payloadPath(id));
       const field = (key: string) => envelopeField(raw, key) ?? "";
       const parent = field("in_reply_to"), done = json(ctx.bus.donePath(id));
@@ -120,7 +128,9 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
     }
     return readAnswers.get(parent) ?? [];
   };
-  const rows: { item: Record<string, any>; human: string; spool: boolean; held: boolean }[] = [];
+  type Row = { item: Record<string, any>; human: string; spool: boolean; held: boolean };
+  const rows: Row[] = [];
+  const openAsks: { id: string; row: Row; answered: () => string[] }[] = [];
   const openIds: string[] = [], nudgeTarget = new Map<string, string>(), ages: number[] = [], targets = new Set<string>();
   let quarantined = 0, degraded = 0;
   const ladder = (id: string) => `Delivery not confirmed. Inspect with tap show ${id}; if it is still unread, tap resend ${id} rings it again under the same id.`;
@@ -196,8 +206,12 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
       item.queue_explanation = injection ?? queueExplanation(ctx.bus.home, id);
       suffix += `  ${item.queue_explanation}`;
     }
-    if (!parked && obligation === "ask") {
-      const answers = answersFor(id).filter(answer => {
+    // Answer notes are matched after every row is known (see answerFloor).
+    if (!parked && obligation === "ask") item.answered_by = undefined;
+    if (age !== null) item.age_seconds = age;
+    const row = { item, human: `${id}  ${display}  ${obligation}  ${age ?? "?"}s${adopted ? ` [outbound from ${adopted}, delegated visibility only]` : ""}${note}${suffix}`, spool: parked, held };
+    rows.push(row);
+    if (!parked && obligation === "ask") openAsks.push({ id, row, answered: () => answersFor(id).filter(answer => {
         const other = (key: string) => envelopeField(answer.raw, key) ?? "";
         const direct = other("to") === field("from")
           && (!field("sender_instance") || other("recipient_instance") === field("sender_instance"));
@@ -208,18 +222,21 @@ export function outstanding(ctx: Pick<Context, "bus" | "team" | "registryPath">,
           && (other("from_team") || ctx.team) === (team || ctx.team)
           && (other("to_team") || ctx.team) === (field("from_team") || ctx.team)
           && (!field("recipient_instance") || other("sender_instance") === field("recipient_instance"));
-      }).map(answer => answer.id).sort();
-      if (answers.length) {
-        item.answered_by = answers;
-        suffix = suffix.replace(", unanswered", "") + `  answered by ${answers.join(", ")} (unsettled)`;
-      }
-    }
-    if (age !== null) item.age_seconds = age;
-    rows.push({ item, human: `${id}  ${display}  ${obligation}  ${age ?? "?"}s${adopted ? ` [outbound from ${adopted}, delegated visibility only]` : ""}${note}${suffix}`, spool: parked, held });
+      }).map(answer => answer.id).sort() });
   };
   for (const id of canonicalIds) add(id, ctx.bus.payloadPath(id), false);
   for (const entry of spoolEntries(ctx.bus.home)) {
     if (!file(ctx.bus.payloadPath(entry.id))) add(entry.id, entry.path, true);
+  }
+  const askStamps = openAsks.map(ask => parseIdStampEpoch(ask.id));
+  answerFloor = askStamps.every(stamp => stamp !== null) ? Math.min(...(askStamps as number[])) : null;
+  for (const ask of openAsks) {
+    const answers = ask.answered();
+    if (answers.length) {
+      ask.row.item.answered_by = answers;
+      // The answer suffix closes the human row, as when it was built inline.
+      ask.row.human = ask.row.human.replace(", unanswered", "") + `  answered by ${answers.join(", ")} (unsettled)`;
+    } else delete ask.row.item.answered_by;
   }
   if (quarantined) (machine ? writeErr : writeOut)(`tap outstanding: quarantined ${quarantined} malformed outbound payload(s) to ${ctx.bus.payloadsDir}/.quarantine (bytes preserved; inspect with tap show <id>)\n`);
   if (degraded) writeErr(`tap outstanding: WARNING: ${degraded} malformed payload(s) could not be fully quarantined (moved without a generation mark, or not moved at all) — inspect ${ctx.bus.payloadsDir}/.quarantine and run tap doctor\n`);

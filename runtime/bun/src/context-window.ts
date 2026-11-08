@@ -15,14 +15,31 @@ export function parseWindowEnvironment(text: string | null): WindowEnv {
   return new Set(values).size === 1 ? {state:"set",value:values[0]!} : {state:"unknown"};
 }
 
+/** A line must start with one requested PID, once. Continuations or duplicate
+ * boundaries cannot attribute an environment, so the whole chunk stays unknown. */
+function batchEnvironments(pids: string[], run: Run): Map<string, WindowEnv> {
+  const result = new Map<string, WindowEnv>();
+  // 64 environments of roughly 5–10 KiB fit runPs's 1 MiB bound. A larger
+  // environment or failed read still fails to unknown, never partial output.
+  for (let offset = 0; offset < pids.length; offset += 64) {
+    const chunk = pids.slice(offset, offset + 64), requested = new Set(chunk);
+    const text = run(["-E", "-ww", "-o", "pid=,command=", "-p", chunk.join(",")]);
+    if (text === null) continue;
+    const rows = new Map<string, WindowEnv>();
+    let ambiguous = false;
+    for (const line of text.replace(/\n$/, "").split("\n")) {
+      const match = /^\s*(\d+)[ \t]+([^\r\n]+)$/.exec(line);
+      if (!match || !requested.has(match[1]!) || rows.has(match[1]!)) { ambiguous = true; break; }
+      rows.set(match[1]!, parseWindowEnvironment(match[2]!));
+    }
+    if (!ambiguous) for (const [pid, value] of rows) result.set(pid, value);
+  }
+  return result;
+}
+
 /** One process inventory, no command lines or unrelated environment values leave this reader. */
 export function claudeWindows(panePids: string[], run: Run = runPs,
-  environment: (pid: string) => string | null = pid => {
-    if (process.platform === "linux") {
-      try { return readFileSync(`/proc/${pid}/environ`,"utf8"); } catch { return null; }
-    }
-    return run(["-E","-ww","-o","command=","-p",pid]);
-  }): Map<string,WindowEnv> {
+  environment?: (pid: string) => string | null, platform = process.platform): Map<string,WindowEnv> {
   const result = new Map<string,WindowEnv>();
   if (!panePids.length) return result;
   const table = run(["-axo","pid=,ppid=,comm="]);
@@ -30,14 +47,25 @@ export function claudeWindows(panePids: string[], run: Run = runPs,
     const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
     return m ? [{pid:m[1]!,parent:m[2]!,command:basename(m[3]!)}] : [];
   });
-  for (const root of panePids) {
+  const candidatesByRoot = new Map<string, string[]>();
+  for (const root of new Set(panePids)) {
     const tree = new Set([root]);
     for (let changed = true; changed;) {
       changed = false;
       for (const row of rows) if (tree.has(row.parent) && !tree.has(row.pid)) {tree.add(row.pid);changed=true;}
     }
     const candidates = rows.filter(row => tree.has(row.pid) && /^(claude|node)$/.test(row.command));
-    const values = candidates.map(row => parseWindowEnvironment(environment(row.pid)));
+    candidatesByRoot.set(root, candidates.map(row => row.pid));
+  }
+  const pids = [...new Set([...candidatesByRoot.values()].flat())];
+  const readEnvironment = environment ?? (platform === "linux" ? (pid: string) => {
+    try { return readFileSync(`/proc/${pid}/environ`, "utf8"); } catch { return null; }
+  } : undefined);
+  const windows = readEnvironment
+    ? new Map(pids.map(pid => [pid, parseWindowEnvironment(readEnvironment(pid))]))
+    : batchEnvironments(pids, run);
+  for (const [root, candidates] of candidatesByRoot) {
+    const values = candidates.map(pid => windows.get(pid) ?? {state:"unknown"} as WindowEnv);
     const first = values[0];
     result.set(root, first && values.every(v => JSON.stringify(v) === JSON.stringify(first)) ? first : {state:"unknown"});
   }

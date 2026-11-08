@@ -1,5 +1,4 @@
 import { OPENCODE_SHELL_MODE_REASON } from "./opencode-composer";
-import { archiveRows } from "./bus-archive-index";
 import { parseStuckSentinel } from "./stuck-sentinel";
 import { corroborateExistingSentinel } from "./existing-sentinel";
 import { recordHarnessQueued } from "./harness-queue";
@@ -85,11 +84,12 @@ export function canonicalPlace(bus: Bus, src: string, routing: Routing): void {
 export function canonicalPlaceLocked(bus: Bus, src: string | Buffer, routing: Routing): void {
   const dest = bus.payloadPath(routing.id);
   if (existsSync(dest)) throw new Error(`canonical_place: refusing duplicate id '${routing.id}' (payload already exists)`);
-  const archived = archiveRows(bus.home, true); // Publication must not reuse an id hidden by corrupt index data.
   // Placement owns an occupied-slot (`-e`) guard, broader than Bus.isDone's
   // settlement predicate (`-f`). A directory is not settlement, but it still
-  // cannot license reuse of the same receipt address.
-  if (existsSync(bus.donePath(routing.id)) || existsSync(bus.cancelPath(routing.id)) || archived.has(routing.id)) {
+  // cannot license reuse of the same receipt address. The archive index is not
+  // consulted: minted ids carry a stamp and random suffix, deterministic notice
+  // ids check archived history themselves, and reuse is otherwise deliberate.
+  if (existsSync(bus.donePath(routing.id)) || existsSync(bus.cancelPath(routing.id))) {
     throw new Error(`canonical_place: refusing duplicate id '${routing.id}' (receipt already settled)`);
   }
 

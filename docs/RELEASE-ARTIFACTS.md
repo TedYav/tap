@@ -2,7 +2,7 @@
 
 The release builder produces a platform archive, its SHA-256 file, and a standalone
 bootstrap script from one Git commit. The installed TAP includes its Bun runtime;
-users still need Git, Bash 5+, tmux, jq, tar, gzip, and a SHA-256 tool. URL installs
+users still need Git, Bash 5+, tmux, jq, tar, gzip, lsof, and a SHA-256 tool. URL installs
 also need curl.
 
 **Publication is pending.** The commands below prepare and test local artifacts.

@@ -2,8 +2,9 @@
 
 TAP allows agents to communicate! If this doesn't work with your [threat model](SECURITY.md), don't use it!
 
-**Pre-release beta.** TAP is not yet a public, open-source release. Expect bugs. Send bug reports and
-feature requests to ted@tedyav.com. Run `tap --version` when reporting a problem; see
+**Beta: expect bugs.** Send bug reports and feature requests to
+[GitHub Issues](https://github.com/TedYav/tap/issues), or email ted@tedyav.com if you cannot use Issues.
+Run `tap --version` when reporting a problem; see
 [CHANGELOG.md](CHANGELOG.md) for release notes. Versions read `0.<protocol>.<release>`: installs
 that share the middle number speak the same wire protocol and can work on one team, and the last
 number counts releases within it.
@@ -20,6 +21,11 @@ need much to coordinate and get work done: a way to reach one another, a clear
 task, and a few shared rules. TAP supplies the messages and wakes; the agents
 bring the judgment.
 
+TAP is developed and tested on macOS; CI runs on macOS. Linux support is best
+effort. An Ubuntu 24.04 container smoke reached Claude Code and Codex sign-in,
+but an authenticated exchange on Linux has not been tested. The optional tmux
+keybinding and defaults installers require tmux 3.2 or newer.
+
 ## Get your first reply
 
 Install TAP once, initialize your project, launch Claude and Codex, and ask
@@ -31,8 +37,7 @@ source: readable, changeable, and yours to fork. See [Make it yours](#make-it-yo
 1. **Install once.** Copy the "Have your agent install it" prompt from the
    [landing page](https://tedyav.github.io/tap/#agent-install) into any agent you run; it
    follows the guide at [tedyav.github.io/tap/setup.md](https://tedyav.github.io/tap/setup.md).
-   It is a pre-release preview. If cloning fails with a permission error, ask the maintainer
-   for access. To install by hand, follow [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+   To install by hand, follow [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
 
 2. **Initialize your project.** In a Git repository it creates `.tap/` and ignores it;
    elsewhere it asks first:
@@ -80,7 +85,8 @@ can do with two agents and when a larger team helps. The
 ## Visit the agents
 
 Each agent runs in a named seat. You can leave one running and visit another.
-From inside Claude, press **Ctrl-b**, then **d** to return to your terminal.
+From inside Claude, press **Ctrl-b** (your prefix, if you remapped it), then
+**d** to return to your terminal.
 
 | What you want | Command or keys |
 |---|---|

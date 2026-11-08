@@ -392,7 +392,8 @@ function conversationArtifactMissing(record: SessionRecord, env: NodeJS.ProcessE
     if (!record.harness_session_id) return true;
     const projects = join(claudeHome(env), "projects");
     let names: string[];
-    try { names = readdirSync(projects); } catch { return false; }
+    try { names = readdirSync(projects); }
+    catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
     return !names.some(name => { try { return statSync(join(projects, name, `${record.harness_session_id}.jsonl`)).isFile(); } catch { return false; } });
   }
   if (record.harness === "codex") return !codexRolloutForCwd(launchWorkdir(record), env);

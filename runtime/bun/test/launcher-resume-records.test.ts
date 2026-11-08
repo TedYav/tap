@@ -9,10 +9,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Notices } from "../src/launcher/catalog-notices";
-import { allocatedIndex, holdsFreshStartWarning, parseSessionName, registerResumedSession, registryEntry, seatIsReclaimableCorpse, unexpiredSeats, type ResumeDeps } from "../src/launcher/resume";
+import { allocatedIndex, holdsFreshStartWarning, parseSessionName, registerResumedSession, registryEntry, retainedResumeRecord, seatIsReclaimableCorpse, unexpiredSeats, type ResumeDeps } from "../src/launcher/resume";
 import { registryState, SCRIPTS, withRecordDefaults } from "../src/launcher/resume-prelude";
 import { PANE_FACTS_FORMAT } from "../src/launcher/readiness";
-import { reviveTier } from "../src/launcher/resume-identity";
+import { recordHasResumeArtifact, resolvedResumeIdentity, reviveTier } from "../src/launcher/resume-identity";
 import { launchTransaction, type LaunchRecord } from "../src/launcher/transaction";
 import { fixture, options, paneLine, recorder, restoreEnvironment, resume, type Event } from "./support/resume-harness";
 import type { ChoiceOption } from "../src/launcher/prompt";
@@ -178,6 +178,46 @@ test("a named resume recovers an operationally suspended seat; user_removed stay
       restoreCursor?.();
     }
   }
+});
+
+test("retainedResumeRecord answers only for a row a named resume alone may relaunch", () => {
+  const row = { status: "suspended", delivery: "pane", session: "repo/coach", harness: "claude", harness_session_id: "stored-conversation",
+    history: ["older-conversation"], tag: "coach" };
+  const record = (entry?: Record<string, unknown>) => retainedResumeRecord("coach", entry, "repo", "/work/repo");
+  for (const status_reason of ["pane_gone", "session_replaced", "repair_failed", "restart_failed"]) {
+    expect(record({ ...row, status_reason })).toMatchObject({ name: "repo/coach", harness: "claude", cwd: "/work/repo", base: "repo", tag: "coach",
+      harness_session_id: "stored-conversation", history: ["older-conversation"], replacement_record: null, kill_backup_required: false });
+  }
+  // A bulk-relaunchable row belongs to state.sessions; every other row is not a resume's to recover.
+  for (const refused of [{ ...row, status_reason: "session_stopped" }, { ...row, status: "active" }, { ...row, status_reason: "user_removed" },
+    { ...row, status_reason: "pane_gone", crew: true }, { ...row, status_reason: "pane_gone", delivery: "poll" },
+    { ...row, status_reason: "pane_gone", session: "" }, { ...row, status_reason: "pane_gone", harness: "not-a-harness" }]) {
+    expect(record(refused)).toBeNull();
+  }
+  expect(record(undefined)).toBeNull();
+});
+
+test("a Claude chat's artifact check agrees with the resume target when its store is absent or holds the chat", () => {
+  const home = mkdtempSync(join(tmpdir(), "tap-claude-store-"));
+  const env = { TAP_CLAUDE_HOME: home };
+  const record = withRecordDefaults({ name: "repo/coach", harness: "claude", cwd: "/work/repo", base: "repo", harness_session_id: "stored-conversation" } as LaunchRecord);
+  try {
+    expect([recordHasResumeArtifact(record, env), resolvedResumeIdentity(record, env)]).toEqual([false, null]);
+    mkdirSync(join(home, "projects/repo"), { recursive: true });
+    expect([recordHasResumeArtifact(record, env), resolvedResumeIdentity(record, env)]).toEqual([false, null]);
+    writeFileSync(join(home, "projects/repo/stored-conversation.jsonl"), "{}\n");
+    expect([recordHasResumeArtifact(record, env), resolvedResumeIdentity(record, env)]).toEqual([true, "stored-conversation"]);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test("a Claude store that cannot be read fails closed as present", () => {
+  const home = mkdtempSync(join(tmpdir(), "tap-claude-store-"));
+  const record = withRecordDefaults({ name: "repo/coach", harness: "claude", cwd: "/work/repo", base: "repo", harness_session_id: "stored-conversation" } as LaunchRecord);
+  try {
+    // A file where the directory belongs: readdir fails, and not with ENOENT, on any host and as any user.
+    writeFileSync(join(home, "projects"), "");
+    expect(recordHasResumeArtifact(record, { TAP_CLAUDE_HOME: home })).toBe(true);
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
 test("the shared transaction refuses a stale cursor chat for every resume-family kind, doors aside", async () => {

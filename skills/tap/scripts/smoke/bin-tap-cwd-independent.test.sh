@@ -42,7 +42,11 @@ pane_id_for() {
 tty_for() {
   case "$1" in "%901"|"self:0.0") printf '/dev/faketty' ;; *) return 1 ;; esac
 }
-[ "$cmd" = "list-panes" ] && { printf '%%901\t%s\n' "$(tty_for %901)"; exit 0; }
+# Reporting reads the four-field identity record from the inventory itself.
+[ "$cmd" = "list-panes" ] && { case "$*" in
+  *pane_tty*session_name*) printf '%%901\t%s\tsess\t4242:100\n' "$(tty_for %901)" ;;
+  *) printf '%%901\t%s\n' "$(tty_for %901)" ;;
+esac; exit 0; }
 [ "$cmd" = "display-message" ] || exit 0
 while [ "$#" -gt 0 ]; do case "$1" in -p) shift ;; -t) target="${2:-}"; shift 2 ;; *) fmt="$1"; shift ;; esac; done
 case "$fmt" in
@@ -58,12 +62,13 @@ TMUX
 chmod +x "$FAKE_BIN/tmux"
 cat > "$FAKE_BIN/ps" <<'PS'
 #!/usr/bin/env bash
+case "$*" in *pid=,ppid=,tty=*) printf '%s ' "$PPID" ;; esac
 printf '1 faketty\n'
 PS
 chmod +x "$FAKE_BIN/ps"
 BUS="$WORK/bus"; mkdir -p "$BUS/payloads" "$BUS/receipts"
 cat > "$BUS/registry.json" <<'JSON'
-{ "schema": "0.20", "team": { "name": "t" }, "seats": { "me": { "pane": "self:0.0", "pane_id": "%901", "server_epoch": "srv:4242:100", "status": "active" } } }
+{ "schema": "0.20", "team": { "name": "t" }, "seats": { "me": { "pane": "self:0.0", "pane_id": "%901", "session": "sess", "server_epoch": "srv:4242:100", "status": "active" } } }
 JSON
 tap_smoke_enroll_current "$WORK" "$BUS" t
 got="$( cd "$WORK" && PATH="$FAKE_BIN:$PATH" TMUX=/fake TAP_HOME="$BUS" "$LINK/tap" whoami )"

@@ -17,7 +17,7 @@
 // A CLI that printed one JSON Selection is planned for those callers; it is
 // not in this tree.
 
-import { accessSync, constants, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { memoizedToplevel } from "./git-root";
@@ -742,4 +742,17 @@ export function nearestEnrollment(
     if (at.status === "ok") return at;
   }
   return undefined;
+}
+
+/** Advisory display lookup only: local enrollment before any Git fallback.
+ * A nested checkout marker bounds the walk. Missing or ambiguous state leaves
+ * the ordinary resolver in charge; this never authorizes registration or keys. */
+export function reportingEnrollment(start: string, indexHome?: string): Extract<ReturnType<typeof enrollmentAt>, { status: "ok" }> | undefined {
+  const snap = loadGlobalRegistry(indexHome);
+  if (snap.marker !== "live" || !snap.doc) return;
+  for (const dir of ancestors(canonicalDir(start, "cwd"))) {
+    const at = enrollmentAtFromDoc(snap.doc, dir);
+    if (at.status === "ok") return at;
+    if (at.status !== "missing" || existsSync(join(dir, ".git"))) return;
+  }
 }

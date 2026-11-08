@@ -7,7 +7,7 @@ import { census, classify, cmdSessionRelaunch, parseOptions, relaunch, readRelau
 import { prepareRelaunch, relaunchOne } from "../src/launcher/relaunch-durable";
 import { loadGlobalRegistry } from "../src/index-home";
 import { lookupHelp } from "../src/help";
-import { renderNudgeWire } from "../src/nudge-wire";
+import { nudgeDoorbellText, renderNudgeWire } from "../src/nudge-wire";
 import { removeScratchTree } from "./support/scratch";
 
 const root = resolve(import.meta.dir, "../../..");
@@ -641,8 +641,8 @@ test("relaunch nudge uses an attached optional message and preserves positional 
   }
   for (const text of ["x".repeat(201), "line1\nline2", "[[nested]]", "check @peer", "use /compact", "\u0000"])
     expect(() => parseOptions(["alice", `--nudge=${text}`])).toThrow();
-  expect(parseOptions(["alice", `--nudge=${"é".repeat(100)}`]).nudge).toBe("é".repeat(100));
-  expect(() => parseOptions(["alice", `--nudge=${"é".repeat(101)}`])).toThrow("bytes");
+  expect(parseOptions(["alice", `--nudge=${"é".repeat(52)}`]).nudge).toBe("é".repeat(52));
+  expect(() => parseOptions(["alice", `--nudge=${"é".repeat(53)}`])).toThrow("bytes");
 });
 
 
@@ -672,7 +672,7 @@ test("relaunch nudge snapshots the full selection before replacement and nudges 
     const receipt = JSON.parse(f.output.join(""));
     expect(events.filter(event => event === "snapshot")).toHaveLength(1);
     expect(events.indexOf("prepare")).toBe(1);
-    expect(prompts).toEqual([state === "idle" ? undefined : renderNudgeWire(text), state === "idle" ? undefined : renderNudgeWire(text)]);
+    expect(prompts).toEqual([state === "idle" ? undefined : renderNudgeWire(nudgeDoorbellText(text)), state === "idle" ? undefined : renderNudgeWire(nudgeDoorbellText(text))]);
     for (const result of receipt.results) {
       expect(result.pre_relaunch).toEqual({ agent_state: state, agent_state_reason: `fixture_${state}` });
       expect(result.nudge).toEqual(result.handle === "crew"
@@ -708,7 +708,7 @@ test("OpenCode nudge uses the existing bus instruction path with plain continuat
   expect(await relaunch(parseOptions(["--harness", "opencode", "--team", "*", "--nudge=finish the current task", "--json"]), deps)).toBe(0);
   expect(prompts).toHaveLength(2);
   for (const prompt of prompts) {
-    expect(prompt).toContain("Continue your current work"); expect(prompt).toContain("tap poll");
+    expect(prompt).toContain("resume unless"); expect(prompt).toContain("tap poll");
     expect(prompt).toContain("finish the current task"); expect(prompt).not.toContain("[[");
   }
   for (const row of JSON.parse(f.output.join("")).results) expect(row.nudge).toMatchObject({planned:true,transport:"bus_note"});
@@ -787,3 +787,194 @@ test("relaunch nudge uses roster frames once and attributes same-named seats to 
     }
   }
 }, 30_000);
+
+test("auto-nudge accepts attached context without swallowing seats and rejects competing prompts", () => {
+  expect(parseOptions(["--auto-nudge", "alice"])).toMatchObject({seat:"alice",autoNudge:""});
+  expect(parseOptions(["--harness=codex", "--auto-nudge=keep working"])).toMatchObject({autoNudge:"keep working"});
+  for (const other of [["--nudge"], ["--nudge=old"], ["-m", "old"], ["--message=old"]]) {
+    for (const args of [["alice", "--auto-nudge", ...other], ["alice", ...other, "--auto-nudge"]])
+      expect(() => parseOptions(args)).toThrow("cannot be combined");
+  }
+  expect(() => parseOptions(["--harness=codex", "--auto-nudge", "keep working"])).toThrow("--auto-nudge=<text>");
+  for (const text of ["", "x".repeat(201), "line1\nline2", "[[nested]]", "check @peer", "use /compact", "\u0000"])
+    expect(() => parseOptions(["alice", `--auto-nudge=${text}`])).toThrow();
+  expect(parseOptions(["alice", `--auto-nudge=${"é".repeat(52)}`]).autoNudge).toBe("é".repeat(52));
+  expect(() => parseOptions(["alice", `--auto-nudge=${"é".repeat(53)}`])).toThrow("bytes");
+});
+
+test("auto-nudge snapshots before replacement and only working durable seats get one prompt", async () => {
+  const f = fixture();
+  for (const state of ["working", "waiting", "blocked", "error", "booting", "overprint", "unknown", "idle"] as const) {
+    f.output.length = 0;
+    const events: string[] = [], prompts: (string | undefined)[] = [];
+    const deps = { ...f.deps,
+      states: (rows: ClassifiedMember[]) => {
+        events.push("snapshot"); expect(rows).toHaveLength(3);
+        return new Map(rows.map(row => [row.member, {agent_state:state,agent_state_reason:`fixture_${state}`} ]));
+      },
+      prepare: (members: Member[]) => { events.push("prepare"); return f.deps.prepare(members); },
+      run: async (member: Member, options: Options) => {
+        expect(events.slice(0, 2)).toEqual(["snapshot", "prepare"]);
+        events.push("run"); prompts.push(options.message); return f.deps.run(member, options);
+      },
+      crew: async (member: Member, pane: string, options: Options) => {
+        expect(events.slice(0, 2)).toEqual(["snapshot", "prepare"]);
+        expect(options.message).toBeUndefined(); return f.deps.crew(member, pane, options);
+      },
+    };
+    expect(await relaunch(parseOptions(["--harness=codex", "--team=*", "--auto-nudge=continue work", "--json"]), deps)).toBe(0);
+    expect(events.filter(event => event === "snapshot")).toHaveLength(1);
+    expect(prompts).toEqual(state === "working"
+      ? [renderNudgeWire(nudgeDoorbellText('continue work')), renderNudgeWire(nudgeDoorbellText('continue work'))]
+      : [undefined, undefined]);
+    for (const result of JSON.parse(f.output.join("")).results) {
+      expect(result.pre_relaunch).toEqual({agent_state:state,agent_state_reason:`fixture_${state}`});
+      expect(result.nudge).toEqual(result.handle === "crew" ? {planned:false,reason:"crew_fresh",transport:null}
+        : state === "working" ? {planned:true,reason:"working",transport:"argv"}
+        : {planned:false,reason:state === "idle" ? "idle" : "not_working",transport:null});
+    }
+  }
+});
+
+test("auto-nudge missing snapshot aborts before preparation or replacement", async () => {
+  const f = fixture(); let prepared = false;
+  const deps = {...f.deps, states: () => new Map(), prepare: (members: Member[]) => { prepared = true; return f.deps.prepare(members); }};
+  await expect(relaunch(parseOptions(["--harness=codex", "--auto-nudge"]), deps)).rejects.toThrow("snapshot incomplete");
+  expect(prepared).toBe(false); expect(f.acted).toHaveLength(0); expect(f.crewActed).toHaveLength(0);
+});
+
+test("auto-nudge dry-run reports the working plan and failed replacement does not retry", async () => {
+  const f = fixture(); const prompts: (string | undefined)[] = [];
+  const deps = {...f.deps,
+    states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, {agent_state:"working" as const,agent_state_reason:"fixture_working"}])),
+    run: async (member: Member, options: Options) => { prompts.push(options.message); return f.deps.run(member, options); },
+  };
+  expect(await relaunch(parseOptions(["tap/alice", "--auto-nudge", "--dry-run", "--json"]), deps)).toBe(0);
+  expect(JSON.parse(f.output.join("")).results[0]).toMatchObject({status:"would-resume",nudge:{planned:true,reason:"working",transport:"argv"}});
+  f.output.length = 0; prompts.length = 0; f.failure("tap");
+  expect(await relaunch(parseOptions(["tap/alice", "--auto-nudge", "--json"]), deps)).toBe(1);
+  expect(prompts).toEqual([renderNudgeWire(nudgeDoorbellText())]);
+  expect(JSON.parse(f.output.join("")).results[0]).toMatchObject({status:"failed",code:7,nudge:{planned:true,reason:"working"}});
+  f.output.length = 0; prompts.length = 0;
+  const refused = {...deps, prepare: (members: Member[]) => members.map(member => ({...member,prepare_error:"unavailable"}))};
+  expect(await relaunch(parseOptions(["tap/alice", "--auto-nudge", "--json"]), refused)).toBe(1);
+  expect(prompts).toEqual([]);
+  expect(JSON.parse(f.output.join("")).results[0]).toMatchObject({status:"failed",reason:"unavailable"});
+});
+
+test("auto-nudge resumes confirmed quota errors but leaves unrelated errors and blocked seats alone", async () => {
+  const f = fixture();
+  for (const [state, reason, planned] of [
+    ["error", "usage_limit", true], ["error", "rate_limit", true],
+    ["error", "model_capacity", false], ["error", "api_error", false],
+    ["error", "no_matching_rule", false], ["blocked", "usage_limit_modal", false],
+    ["unknown", "usage_limit", false], ["idle", "usage_limit", false],
+  ] as const) {
+    f.output.length = 0;
+    const prompts: (string | undefined)[] = [];
+    const deps = {...f.deps,
+      states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, {agent_state:state,agent_state_reason:reason}])),
+      run: async (member: Member, options: Options) => { prompts.push(options.message); return f.deps.run(member, options); },
+    };
+    expect(await relaunch(parseOptions(["tap/alice", "--auto-nudge", "--json"]), deps)).toBe(0);
+    expect(prompts).toEqual([planned ? renderNudgeWire(nudgeDoorbellText()) : undefined]);
+    expect(JSON.parse(f.output.join("")).results[0].nudge).toEqual(planned
+      ? {planned:true,reason:"quota_error",transport:"argv"}
+      : {planned:false,reason:state === "idle" ? "idle" : "not_working",transport:null});
+  }
+});
+
+test("--context and --ponytail parse in both spellings; the last repeat wins like their single-value siblings", () => {
+  expect(parseOptions(["tap/alice", "--context", "850k", "--ponytail", "lite"]).sugar).toEqual({ context: 850000, ponytail: "lite" });
+  expect(parseOptions(["--harness=codex", "--context=1M", "--ponytail=off"]).sugar).toEqual({ context: 1000000, ponytail: "off" });
+  expect(parseOptions(["tap/alice", "--context", "1k", "--context", "2k", "--ponytail", "off", "--ponytail", "full"]).sugar).toEqual({ context: 2000, ponytail: "full" });
+  expect(parseOptions(["tap/alice"]).sugar).toBeUndefined();
+  expect(() => parseOptions(["tap/alice", "--context"])).toThrow("--context needs a value");
+  expect(() => parseOptions(["tap/alice", "--ponytail"])).toThrow("--ponytail needs a value");
+  // A following option is not a size: it refuses instead of dropping the dry run and going live.
+  expect(() => parseOptions(["tap/alice", "--context", "--dry-run"])).toThrow("got '--dry-run'");
+  expect(() => parseOptions(["tap/alice", "--ponytail", "--dry-run"])).toThrow("got '--dry-run'");
+});
+
+test("conflicts refuse at parse time for every harness, before the census", () => {
+  for (const argv of [["--context", "1k", "--env", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=2"], ["--context", "1k", "--unset-env", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"],
+    ["--context", "1k", "--", "-c", "model_context_window=2"], ["--context", "1k", "--", "--config=model_auto_compact_token_limit=2"],
+    ["--context", "1k", "--", "-cmodel_context_window=2"], ["--context", "1k", "--", "--config", "model_context_window=2"],
+    ["--ponytail", "off", "--env", "PONYTAIL_DEFAULT_MODE=full"], ["--ponytail", "off", "--unset-env", "PONYTAIL_DEFAULT_MODE"]]) {
+    expect(() => parseOptions(["tap/alice", ...argv])).toThrow("launch_arg_invalid: both --");
+  }
+});
+
+test("an unsupported single seat refuses with nothing replaced and nothing printed", async () => {
+  for (const flags of [["--context", "850k"], ["--ponytail", "off"]]) {
+    const f = fixture({ includeOpencode: true });
+    await expect(relaunch(parseOptions(["tap/opencode", ...flags]), f.deps)).rejects.toMatchObject({ errorClass: `launch_${flags[0]!.slice(2)}_unsupported` });
+    expect(f.acted).toEqual([]); expect(f.crewActed).toEqual([]); expect(f.output).toEqual([]);
+  }
+});
+
+test("an unsupported batch refuses before any seat, even with an empty roster for that harness", async () => {
+  for (const harness of ["opencode", "cursor"]) {
+    const f = fixture({ includeOpencode: true });
+    await expect(relaunch(parseOptions(["--harness", harness, "--team", "*", "--context", "850k"]), f.deps)).rejects.toMatchObject({
+      errorClass: "launch_context_unsupported", detail: `harness '${harness}' does not support --context (supported by: claude, codex)` });
+    expect(f.acted).toEqual([]); expect(f.crewActed).toEqual([]); expect(f.output).toEqual([]);
+  }
+});
+
+test("the batch form hands every member, crew included, the same expanded overrides", async () => {
+  const f = fixture(), durable: Options[] = [], crew: Options[] = [];
+  const deps = { ...f.deps,
+    run: async (member: Member, options: Options) => { durable.push(options); return f.deps.run(member, options); },
+    crew: async (member: Member, callerPane: string, options: Options) => { crew.push(options); return f.deps.crew(member, callerPane, options); } };
+  expect(await relaunch(parseOptions(["--harness", "codex", "--team", "*", "--context", "850k", "--ponytail", "lite", "--env", "KEEP=1", "--", "--verbose"]), deps as unknown as typeof f.deps)).toBe(0);
+  const expected = { env: ["KEEP=1", "PONYTAIL_DEFAULT_MODE=lite"], argv: ["--verbose"],
+    config: { keys: ["model_context_window", "model_auto_compact_token_limit"], argv: ["-c", "model_context_window=850000", "-c", "model_auto_compact_token_limit=807500"] } };
+  expect(durable.map(options => options.overrides)).toEqual([expected, expected]);
+  expect(crew.map(options => options.overrides)).toEqual([expected]);
+});
+
+test("a text dry run names the expansion once; a real run and --json stay as they were", async () => {
+  const dry = fixture();
+  expect(await relaunch(parseOptions(["--harness", "codex", "--context", "850k", "--ponytail", "off", "--dry-run"]), dry.deps)).toBe(0);
+  expect(dry.output.slice(0, 2)).toEqual(["Would relaunch 2 active codex seats on team tap\n",
+    "  would apply PONYTAIL_DEFAULT_MODE=off -c model_context_window=850000 -c model_auto_compact_token_limit=807500\n"]);
+  const live = fixture();
+  expect(await relaunch(parseOptions(["tap/alice", "--context", "850k"]), live.deps)).toBe(0);
+  expect(live.output.join("")).not.toContain("would apply");
+  const json = fixture();
+  expect(await relaunch(parseOptions(["tap/alice", "--context", "850k", "--dry-run", "--json"]), json.deps)).toBe(0);
+  expect(json.output).toHaveLength(1); expect(() => JSON.parse(json.output[0]!)).not.toThrow();
+});
+
+test("a flag-free relaunch expands nothing", async () => {
+  const f = fixture(), seen: Options[] = [];
+  const deps = { ...f.deps, run: async (member: Member, options: Options) => { seen.push(options); return f.deps.run(member, options); } };
+  expect(await relaunch(parseOptions(["tap/alice"]), deps as unknown as typeof f.deps)).toBe(0);
+  expect(seen[0]!.overrides).toBeUndefined();
+});
+
+test("command refusals keep their class in --json and read plainly in text", async () => {
+  fixture();
+  const lines: string[] = [], log = console.log, error = console.error;
+  console.log = (line: string) => { lines.push(line); }; console.error = (line: string) => { lines.push(line); };
+  try {
+    expect(await cmdSessionRelaunch(["tap/alice", "--context", "abc", "--json"])).toBe(2);
+    delete process.env.TAP_JSON;
+    expect(await cmdSessionRelaunch(["tap/alice", "--ponytail", "off", "--env", "PONYTAIL_DEFAULT_MODE=full"])).toBe(2);
+    expect(await cmdSessionRelaunch(["tap/alice", "--env", "A=1", "--unset-env", "A", "--json"])).toBe(2);
+    delete process.env.TAP_JSON;
+  } finally { console.log = log; console.error = error; }
+  expect(JSON.parse(lines[0]!)).toMatchObject({ ok: false, code: 2, error_class: "launch_arg_invalid", detail: "--context needs a positive size such as 850k, 1M or 250000; got 'abc'" });
+  expect(lines[1]).toBe("tap session relaunch: both --ponytail and an explicit setting name PONYTAIL_DEFAULT_MODE; next: drop --ponytail or the explicit PONYTAIL_DEFAULT_MODE");
+  expect(JSON.parse(lines[2]!)).toMatchObject({ ok: false, code: 2, error_class: "launch_arg_invalid", detail: "both --env and --unset-env name A" });
+});
+
+test("help documents both flags with an example each and the ponytail limit", () => {
+  const page = lookupHelp(["session", "relaunch"]).stdout;
+  expect(page).toContain("--context <size>");
+  expect(page).toContain("--ponytail <off|lite|full|ultra>");
+  expect(page).toContain("This flag has no effect if ponytail is not installed.");
+  expect(page).toContain("tap session relaunch fable --context 850k");
+  expect(page).toContain("tap session relaunch --harness codex --ponytail lite --dry-run");
+});

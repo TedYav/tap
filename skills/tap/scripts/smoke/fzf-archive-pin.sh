@@ -9,21 +9,27 @@
 # The asset key and cache path come from fzf-tool.ts run under the same bun the
 # installer uses, never from another runtime's idea of the platform: a mixed-arch
 # host (x86 python under Rosetta, arm64 bun) would otherwise pick the wrong archive.
+# The account's passwd home. Not $HOME, which the suite sandboxes, and not Bun's
+# os.userInfo().homedir, which returns $HOME (unlike Node's), so a sandboxed run
+# never found the real cache through it.
+tap_fzf_account_home() {
+  python3 -I -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)' 2>/dev/null
+}
 tap_pin_fzf_archive() {
   [ -n "${TAP_FZF_TEST_ARCHIVE:-}" ] && return 0
-  local root cached
+  local root home cached
   root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)" || return 0
   command -v bun >/dev/null 2>&1 || return 0
-  # The suite sandboxes HOME, so read the account's real home (passwd) via os.userInfo.
+  home="$(tap_fzf_account_home)" || return 0
+  [ -n "$home" ] || return 0
   # Any failure (unsupported platform, missing cache, mismatched sha256) prints nothing.
   cached="$(bun -e '
-    const { userInfo } = await import("node:os");
     const { fileMatches, fzfTool } = await import(process.argv[1] + "/runtime/bun/src/fzf-tool.ts");
     try {
-      const tool = fzfTool({ TAP_INDEX_HOME: userInfo().homedir + "/.tap" });
+      const tool = fzfTool({ TAP_INDEX_HOME: process.argv[2] + "/.tap" });
       if (fileMatches(tool.cache, tool.sha256)) console.log(tool.cache);
     } catch {}
-  ' "$root" 2>/dev/null)" || return 0
+  ' "$root" "$home" 2>/dev/null)" || return 0
   [ -n "$cached" ] && export TAP_FZF_TEST_ARCHIVE="$cached"
   return 0
 }

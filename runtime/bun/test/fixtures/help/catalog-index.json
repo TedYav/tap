@@ -840,6 +840,16 @@
   },
   {
     "topic": [
+      "role"
+    ],
+    "key": "role",
+    "exit": 0,
+    "page": "role",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
       "roster"
     ],
     "key": "roster",
@@ -1151,6 +1161,17 @@
   {
     "topic": [
       "team",
+      "history"
+    ],
+    "key": "team history",
+    "exit": 0,
+    "page": "team history",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "team",
       "list"
     ],
     "key": "team list",
@@ -1265,6 +1286,17 @@
     "key": "teams refresh",
     "exit": 0,
     "page": "teams refresh",
+    "dedicated": true,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "teams",
+      "roster"
+    ],
+    "key": "teams roster",
+    "exit": 0,
+    "page": "teams roster",
     "dedicated": true,
     "tombstone": false
   },

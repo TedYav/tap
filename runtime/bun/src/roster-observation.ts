@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { validToken } from "./ids";
 import type { TokenSample } from "./context-tokens";
 import { contextUsedPercent } from "./context-census";
 import { detectAgentState, type AgentStateResult } from "./agent-state";
@@ -30,6 +31,8 @@ export interface ObservedRow {
   crew: boolean;
   crewLifetime?: "independent" | "legacy_supervised" | "unknown";
   preset: string;
+  /** The seat's assigned team role (`tap role`), or "" when it holds none. A label, not a permission. */
+  role?: string;
   /** Vendor lineage: the recorded preset's `metadata.model_family`, else the seat harness's single vendor; null when unknown. */
   family?: string | null;
   /** Where `family` came from: the recorded preset's explicit key, or only the seat harness's vendor. */
@@ -106,6 +109,7 @@ export function observedRows(
       unattended: row.unattended === true,
       crew: row.crew === true,
       preset,
+      role: validToken(str(row.role)) ? str(row.role) : "",
       ...familyOf(str(fact.family), harness),
       model: record(row.launch_tuning) ? str(row.launch_tuning.model) || null : str(row.model) || null,
       effort: record(row.launch_tuning) ? str(row.launch_tuning.effort) || null : null,
@@ -127,6 +131,8 @@ export interface AgentStateOptions {
   team?: string;
   /** The compute queue's jobs; read at most once, only when some seat is idle. */
   computeJobs?: () => ComputeJob[];
+  /** Titles from the same pane listing; absent fields retain the targeted fallback. */
+  paneTitles?: Map<string, string>;
   now?: number;
 }
 
@@ -144,8 +150,15 @@ export function readComputeJobs(): ComputeJob[] {
 
 export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions = {}): ObservedRow[] {
   const now = options.now ?? Number(process.env.TAP_WATCH_NOW || Math.trunc(Date.now() / 1000));
+  const readEpoch = () => {
+    const generation = tmuxReadOnly(["display-message", "-p", "#{pid}:#{start_time}"]);
+    return generation.code === 0 ? serverEpochFromRaw(generation.stdout.trim()) : "";
+  };
+  const captures = rows.some(row => row.delivery === "pane" && row.status === "active" && row.observedPaneId);
+  const before = captures ? readEpoch() : "";
   const native = rows.map((row) => {
     let percent: number | null = null, sampledAt: string | null = null, screen = "";
+    let captured = false;
     let result: AgentStateResult = { agentState: "unknown", reason: "no_pane" };
     if (row.delivery === "pane" && row.pane) {
       result = detectAgentState(row.harness, "");
@@ -157,15 +170,14 @@ export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions 
         } else if (!row.observedPaneId) {
           result = { agentState: "unknown", reason: "capture_failed" };
         } else {
+          captured = true;
           const codex = /^codex(?:-|$)/.test(row.harness);
           const capture = tmuxReadOnly(["capture-pane", ...(codex ? ["-e"] : []), "-p", "-t", row.observedPaneId]);
           if (capture.code === 0) {
-            const title = codex ? tmuxReadOnly(["display-message", "-p", "-t", row.observedPaneId, "#{pane_title}"]) : null;
-            const generation = tmuxReadOnly(["display-message", "-p", "#{pid}:#{start_time}"]);
-            const currentEpoch = generation.code === 0
-              ? serverEpochFromRaw(generation.stdout.trim())
-              : "";
-            result = (!title || title.code === 0) && row.observedServerEpoch && currentEpoch === row.observedServerEpoch
+            const observedTitle = options.paneTitles?.get(row.observedPaneId);
+            const title = !codex ? null : observedTitle !== undefined ? { code: 0, stdout: observedTitle }
+              : tmuxReadOnly(["display-message", "-p", "-t", row.observedPaneId, "#{pane_title}"]);
+            result = (!title || title.code === 0) && row.observedServerEpoch && before === row.observedServerEpoch
               ? detectAgentState(row.harness, capture.stdout, title?.stdout.trimEnd())
               : { agentState: "unknown", reason: "capture_failed" };
             if (result.reason !== "capture_failed") {
@@ -185,8 +197,16 @@ export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions 
         }
       }
     }
-    return { row, result, screen, percent, sampledAt };
+    return { row, result, screen, percent, sampledAt, captured };
   });
+  // The bracket protects this observation from server restart, not pane turnover
+  // within a server epoch. Pane identity remains the lifecycle observer's proof.
+  const after = captures ? readEpoch() : "";
+  if (captures && (!before || before !== after)) for (const item of native) {
+    if (!(before && after && before !== after) && !item.captured) continue;
+    item.result = { agentState: "unknown", reason: "capture_failed" };
+    item.screen = ""; item.percent = null; item.sampledAt = null;
+  }
   // Roster-only enrichment (tap-i5fzq): waiting, the Claude spinner, and time
   // in state. Delivery and readiness keep reading the native classifier.
   let jobs: ComputeJob[] | null = null;

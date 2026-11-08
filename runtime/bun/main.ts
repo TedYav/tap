@@ -4,17 +4,11 @@ import { homedir } from "node:os";
 import { isatty } from "node:tty";
 import { basename, join } from "node:path";
 
-import { cmdBus } from "./src/bus-archive";
-import { cmdSessionComplete } from "./src/launcher/complete";
-import { cmdSessionList } from "./src/launcher/list";
-import { cmdSessionRepair } from "./src/launcher/repair";
-import { cmdAdminFast } from "./src/verbs/admin-fast";
-import { cmdAdmin } from "./src/verbs/admin";
 import { onboarding } from "./src/onboarding";
 import { verbose } from "./src/verbose";
 import { cmdVersion } from "./src/release-version";
 import { tapScriptsDir } from "./src/scripts-dir";
-import { noMachineIndexError, resolveContext, TapError } from "./src/context";
+import { noMachineIndexError, resolveContext, seedReportingObservation, TapError } from "./src/context";
 import { isOldStoreRefusal } from "./src/register-authority";
 import { errorJson, humanAction, humanLine } from "./src/native-error";
 import { envelopeField, validateEnvelope } from "./src/envelope";
@@ -23,149 +17,124 @@ import { resolvePayloadAddress } from "./src/payload-view";
 import { normalizeSendTarget } from "./src/remote-target";
 import { parseSendArgs } from "./src/slices/message-construction";
 import { validId, validToken } from "./src/ids";
-import { cmdRead } from "./src/verbs/read";
-import { cmdShow } from "./src/verbs/show";
-import { cmdOutstanding } from "./src/verbs/outstanding";
-import { cmdRecap } from "./src/verbs/recap";
-import { cmdPoll } from "./src/verbs/poll";
-import { cmdOut } from "./src/verbs/out";
-import { cmdOutRetire } from "./src/out-retire";
-import { cmdRegister } from "./src/verbs/register";
-import { withInvocationMemo } from "./src/invocation-memo";
-import { cmdReply } from "./src/verbs/reply";
-import { cmdResend } from "./src/verbs/resend";
-import { cmdSend } from "./src/verbs/send";
+import { withInvocationMemo, withReportingMemo } from "./src/invocation-memo";
 import { recordRefusalBeforeSend, recordSendRefusal, refusalErrorId } from "./src/send-refusal-log";
-import { cmdSpool } from "./src/verbs/spool";
-import { cmdTeam, AGENT_FAMILIES } from "./src/verbs/team";
-import { teamsView, writeRoutingResult } from "./src/routing";
-import { cmdTeardown } from "./src/verbs/teardown";
-import { cmdHealth } from "./src/verbs/health";
-import { cmdSeatRefresh } from "./src/verbs/seat-refresh";
-import { cmdDetective } from "./src/verbs/detective";
-import { cmdOperate } from "./src/verbs/operate";
-import { cmdDoctor } from "./src/verbs/doctor";
-import { cmdNudge } from "./src/verbs/nudge";
-import { cmdUnwedge } from "./src/verbs/unwedge";
-import { cmdWorktree } from "./src/verbs/worktree";
-import { cmdSetupMachine, cmdUninstall } from "./src/verbs/machine";
-import { cmdSetup } from "./src/verbs/setup";
-import { cmdPresets } from "./src/verbs/presets";
-import { cmdAttach } from "./src/verbs/attach";
-import { cmdDraft } from "./src/verbs/draft";
-import { cmdPeek } from "./src/verbs/peek";
-import { cmdPick } from "./src/verbs/pick";
-import { cmdKeybinding } from "./src/verbs/keybinding";
-import { cmdTmuxDefaults } from "./src/verbs/tmux-defaults";
-import { cmdConfig } from "./src/verbs/config";
-import { cmdCalibrate } from "./src/verbs/calibrate";
-import { cmdWhoami } from "./src/verbs/whoami";
-import { cmdProvenance } from "./src/verbs/provenance";
-import { cmdWatch } from "./src/verbs/watch";
-import { cmdGoalie } from "./src/verbs/goalie";
-import { cmdRemind } from "./src/verbs/remind";
-import { cmdWithdraw } from "./src/verbs/withdraw";
-import { cmdCancel } from "./src/verbs/cancel";
-import { cmdCrew } from "./src/verbs/crew";
-import { cmdIncapable } from "./src/verbs/incapable";
-import { cmdEscalate } from "./src/verbs/escalate";
-import { cmdCompact } from "./src/verbs/compact";
-import { cmdSelf } from "./src/verbs/self";
+import { AGENT_FAMILIES } from "./src/harness-families";
 import { warnOverdueInbound } from "./src/overdue";
-import { cmdCompletion } from "./src/completion";
-
-import { cmdSeatUpDown } from "./src/seat-updown";
-import { cmdDigestWindow } from "./src/verbs/digest-window";
-import { cmdApprovalTimeout } from "./src/verbs/approval-timeout";
+import { armAlwaysOn } from "./src/debug-arm";
 import { initArgv } from "./src/courier-argv";
 
 export type Handler = (argv: string[], env?: NodeJS.ProcessEnv, stdin?: Buffer) => number | Promise<number>;
 type NativeHandler = (argv: string[]) => number | Promise<number>;
 
-const nativeHandlers = {
-  version: cmdVersion,
-  "--version": cmdVersion,
-  compact: argv => cmdCompact(argv, tapScriptsDir()),
-  self: argv => cmdSelf(argv, tapScriptsDir()),
-  command: argv => cmdCompact(argv, tapScriptsDir(), true),
-  bus: cmdBus,
-  session: argv => {
-    // Every session door enters its native owner.
-    if (argv[0] === "complete") return cmdSessionComplete(argv.slice(1));
-    if (argv[0] === "repair") return cmdSessionRepair(argv.slice(1));
-    // Bare `tap session`, `list`, and flag-led forms are the snapshot; a `list`
-    // token was consumed as the subcommand, flag forms arrive as-is.
-    if (argv.length === 0 || argv[0] === "list" || argv[0]!.startsWith("--")) {
-      return cmdSessionList(argv[0] === "list" ? argv.slice(1) : argv);
-    }
-    if (argv[0] === "resume" || argv[0] === "restart") {
-      const door = argv[0];
-      return import("./src/launcher/session-doors").then(({ cmdSessionDoor }) => cmdSessionDoor(door, argv.slice(1), tapScriptsDir()));
-    }
-    if (argv[0] === "fork") return import("./src/launcher/fork").then(({ cmdSessionFork }) => cmdSessionFork(argv.slice(1), tapScriptsDir()));
-    if (argv[0] === "relaunch") return import("./src/launcher/relaunch").then(({ cmdSessionRelaunch }) => cmdSessionRelaunch(argv.slice(1)));
-    if (argv[0] !== "launch") throw new TapError(1, "unknown_subcommand", "tap help session", `unknown session subcommand '${argv[0]}'`);
-    return import("./src/launcher/new").then(({ cmdSessionLaunch }) => cmdSessionLaunch(argv.slice(1), tapScriptsDir()));
+type NativeLoader = () => Promise<NativeHandler>;
+
+// Each verb names its owner module as a loader, so a command evaluates only its
+// own owner beside the shared closure above (tap-perf 2026-11-04: the eager
+// table cost every command ~26 ms and ~12-19 MiB). A loader resolves to the
+// verb's handler BEFORE dispatch, so the handler keeps its synchronous shape:
+// the reporting memo scope (withReportingMemo) must not end before it runs.
+const nativeLoaders = {
+  version: async () => cmdVersion,
+  "--version": async () => cmdVersion,
+  compact: async () => { const { cmdCompact } = await import("./src/verbs/compact"); return argv => cmdCompact(argv, tapScriptsDir()); },
+  self: async () => { const { cmdSelf } = await import("./src/verbs/self"); return argv => cmdSelf(argv, tapScriptsDir()); },
+  command: async () => { const { cmdCompact } = await import("./src/verbs/compact"); return argv => cmdCompact(argv, tapScriptsDir(), true); },
+  bus: async () => (await import("./src/bus-archive")).cmdBus,
+  session: async () => {
+    const [{ cmdSessionComplete }, { cmdSessionRepair }, { cmdSessionList }] = await Promise.all([
+      import("./src/launcher/complete"), import("./src/launcher/repair"), import("./src/launcher/list"),
+    ]);
+    return argv => {
+      // Every session door enters its native owner.
+      if (argv[0] === "complete") return cmdSessionComplete(argv.slice(1));
+      if (argv[0] === "repair") return cmdSessionRepair(argv.slice(1));
+      // Bare `tap session`, `list`, and flag-led forms are the snapshot; a `list`
+      // token was consumed as the subcommand, flag forms arrive as-is.
+      if (argv.length === 0 || argv[0] === "list" || argv[0]!.startsWith("--")) {
+        return cmdSessionList(argv[0] === "list" ? argv.slice(1) : argv);
+      }
+      if (argv[0] === "resume" || argv[0] === "restart") {
+        const door = argv[0];
+        return import("./src/launcher/session-doors").then(({ cmdSessionDoor }) => cmdSessionDoor(door, argv.slice(1), tapScriptsDir()));
+      }
+      if (argv[0] === "fork") return import("./src/launcher/fork").then(({ cmdSessionFork }) => cmdSessionFork(argv.slice(1), tapScriptsDir()));
+      if (argv[0] === "relaunch") return import("./src/launcher/relaunch").then(({ cmdSessionRelaunch }) => cmdSessionRelaunch(argv.slice(1)));
+      if (argv[0] !== "launch") throw new TapError(1, "unknown_subcommand", "tap help session", `unknown session subcommand '${argv[0]}'`);
+      return import("./src/launcher/new").then(({ cmdSessionLaunch }) => cmdSessionLaunch(argv.slice(1), tapScriptsDir()));
+    };
   },
-  admin: argv => {
-    const scripts = tapScriptsDir();
-    // Checkpoint C (admin-r7): every admin form is native; --fast keeps its
-    // own native census.
-    if (argv.includes("--fast")) return cmdAdminFast(argv, scripts);
-    return cmdAdmin(argv, scripts);
+  admin: async () => {
+    const [{ cmdAdminFast }, { cmdAdmin }] = await Promise.all([import("./src/verbs/admin-fast"), import("./src/verbs/admin")]);
+    return argv => {
+      const scripts = tapScriptsDir();
+      // Checkpoint C (admin-r7): every admin form is native; --fast keeps its
+      // own native census.
+      if (argv.includes("--fast")) return cmdAdminFast(argv, scripts);
+      return cmdAdmin(argv, scripts);
+    };
   },
-  detective: async argv => {
-    try { return await cmdDetective(argv); }
-    catch (error) {
-      if (error instanceof TapError) throw error;
-      throw new TapError(1, "recovery_failed", "tap debug recovery", String(error));
-    }
+  detective: async () => {
+    const { cmdDetective } = await import("./src/verbs/detective");
+    return async argv => {
+      try { return await cmdDetective(argv); }
+      catch (error) {
+        if (error instanceof TapError) throw error;
+        throw new TapError(1, "recovery_failed", "tap debug recovery", String(error));
+      }
+    };
   },
-  out: (argv) => cmdOut(argv, tapScriptsDir()),
-  shutdown: (argv) => cmdOutRetire(argv, "shutdown"),
+  out: async () => { const { cmdOut } = await import("./src/verbs/out"); return argv => cmdOut(argv, tapScriptsDir()); },
+  shutdown: async () => { const { cmdOutRetire } = await import("./src/out-retire"); return argv => cmdOutRetire(argv, "shutdown"); },
   // Same cutover shape as health: the Bash body is deleted in this commit.
-  nudge: (argv) => cmdNudge(argv, tapScriptsDir(), AGENT_FAMILIES),
-  operate: argv => {
-    if (argv.includes("--json")) process.env.TAP_JSON = "1";
-    return cmdOperate(argv, tapScriptsDir());
+  nudge: async () => { const { cmdNudge } = await import("./src/verbs/nudge"); return argv => cmdNudge(argv, tapScriptsDir(), AGENT_FAMILIES); },
+  operate: async () => {
+    const { cmdOperate } = await import("./src/verbs/operate");
+    return argv => {
+      if (argv.includes("--json")) process.env.TAP_JSON = "1";
+      return cmdOperate(argv, tapScriptsDir());
+    };
   },
-  unwedge: (argv) => cmdUnwedge(argv, tapScriptsDir(), AGENT_FAMILIES),
+  unwedge: async () => { const { cmdUnwedge } = await import("./src/verbs/unwedge"); return argv => cmdUnwedge(argv, tapScriptsDir(), AGENT_FAMILIES); },
   // Same cutover shape as health: the Bash body (tap-worktree.sh) is deleted in
   // this commit.
-  worktree: cmdWorktree,
-  unregister: (argv) => cmdOut(argv, tapScriptsDir()),
+  worktree: async () => (await import("./src/verbs/worktree")).cmdWorktree,
+  unregister: async () => { const { cmdOut } = await import("./src/verbs/out"); return argv => cmdOut(argv, tapScriptsDir()); },
   // R3 checkpoint C: the register cutover — one native owner for every form
   // (in|register alias, pane, poll, offline, list-history); the Bash body is
   // deleted in the same PR. The invocation-memo scope arms the ps-table and
   // git-root memos for this verb's body only; every other consumer keeps
   // fresh reads.
-  register: (argv) => withInvocationMemo(() => cmdRegister(argv)),
-  in: (argv) => withInvocationMemo(() => cmdRegister(argv)),
-  resend: (argv) => cmdResend(argv, tapScriptsDir()),
-  roster: argv => {
+  register: async () => { const { cmdRegister } = await import("./src/verbs/register"); return argv => withInvocationMemo(() => cmdRegister(argv)); },
+  in: async () => { const { cmdRegister } = await import("./src/verbs/register"); return argv => withInvocationMemo(() => cmdRegister(argv)); },
+  resend: async () => { const { cmdResend } = await import("./src/verbs/resend"); return argv => cmdResend(argv, tapScriptsDir()); },
+  roster: async () => argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
     throw new TapError(1, "renamed_verb", "tap team", "tap roster is now: tap team");
   },
-  reset: argv => {
+  reset: async () => argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
     throw new TapError(1, "renamed_verb", "tap team reset", "tap reset moved to tap team reset (stop and retire seats; keep the team initialized)");
   },
   // Native on every form and born with no Bash twin.
-  withdraw: cmdWithdraw,
-  cancel: (argv) => cmdCancel(argv, tapScriptsDir()),
+  withdraw: async () => (await import("./src/verbs/withdraw")).cmdWithdraw,
+  cancel: async () => { const { cmdCancel } = await import("./src/verbs/cancel"); return argv => cmdCancel(argv, tapScriptsDir()); },
   // R11 U-C: same in-process shape as attach/cancel — the Bash body
   // (tap-crew.sh) is deleted in this commit.
-  crew: (argv) => cmdCrew(argv, tapScriptsDir()),
+  crew: async () => { const { cmdCrew } = await import("./src/verbs/crew"); return argv => cmdCrew(argv, tapScriptsDir()); },
   // Replacement owns its validation and effects; dispatch never rewrites rows.
-  clear: async argv => (await import("./src/launcher/replace")).cmdClearNative(argv),
+  clear: async () => async argv => (await import("./src/launcher/replace")).cmdClearNative(argv),
   // send-reply-r2 checkpoint A (U1): when --reply-to names an existing message
   // id, `tap send <dest> --reply-to <id>` IS `tap reply <id>` — the alias
   // composes here at the router layer (never inside send.ts, which must not
   // import reply.ts) and the parser/resolver are the same ones reply uses.
-  send: (argv) => {
-    const aliasArgv = aliasOrRecordRefusal(argv);
-    if (aliasArgv) return replyAliasOrRecordRefusal(aliasArgv);
-    return cmdSend(argv, tapScriptsDir(), AGENT_FAMILIES);
+  send: async () => {
+    const [{ cmdSend }, { cmdReply }] = await Promise.all([import("./src/verbs/send"), import("./src/verbs/reply")]);
+    return argv => {
+      const aliasArgv = aliasOrRecordRefusal(argv);
+      if (aliasArgv) return replyAliasOrRecordRefusal(cmdReply, aliasArgv);
+      return cmdSend(argv, tapScriptsDir(), AGENT_FAMILIES);
+    };
   },
   // tap-oglkh: a work order is a VERB. `assign` is exactly `tap send
   // --expect-reply --kind order` with the internal flags AFTER the caller's,
@@ -173,108 +142,134 @@ const nativeHandlers = {
   // invariants, not defaults. TAP_ASSIGN_VERB=1 is what the construction
   // module reads to refuse `--fyi`/`--note` with assign's own sentence and to
   // refuse an unattended sender rather than downgrade it (tap.sh:785 shape).
-  assign: (argv) => {
-    process.env.TAP_ASSIGN_VERB = "1";
-    // The invariants go AFTER the caller's argv (tap.sh:673-674) — which also
-    // puts them into any alias composition: `tap assign <dest> --reply-to <id>`
-    // enters the same Bash alias block, so the composed reply carries
-    // kind: order and reply: expected exactly as the plain assign does.
-    const fullArgv = [...argv, "--expect-reply", "--kind", "order"];
-    const aliasArgv = aliasOrRecordRefusal(fullArgv);
-    if (aliasArgv) return replyAliasOrRecordRefusal(aliasArgv);
-    return cmdSend(fullArgv, tapScriptsDir(), AGENT_FAMILIES);
+  assign: async () => {
+    const [{ cmdSend }, { cmdReply }] = await Promise.all([import("./src/verbs/send"), import("./src/verbs/reply")]);
+    return argv => {
+      process.env.TAP_ASSIGN_VERB = "1";
+      // The invariants go AFTER the caller's argv (tap.sh:673-674) — which also
+      // puts them into any alias composition: `tap assign <dest> --reply-to <id>`
+      // enters the same Bash alias block, so the composed reply carries
+      // kind: order and reply: expected exactly as the plain assign does.
+      const fullArgv = [...argv, "--expect-reply", "--kind", "order"];
+      const aliasArgv = aliasOrRecordRefusal(fullArgv);
+      if (aliasArgv) return replyAliasOrRecordRefusal(cmdReply, aliasArgv);
+      return cmdSend(fullArgv, tapScriptsDir(), AGENT_FAMILIES);
+    };
   },
-  reply: (argv) => cmdReply(argv, tapScriptsDir(), AGENT_FAMILIES),
-  poll: cmdPoll,
-  read: cmdRead,
-  show: cmdShow,
-  provenance: argv => cmdProvenance(argv, tapScriptsDir()),
-  who: argv => cmdProvenance(argv, tapScriptsDir()),
-  outstanding: cmdOutstanding,
-  recap: cmdRecap,
-  spool: (argv) => cmdSpool(argv, tapScriptsDir()),
-  team: (argv) => cmdTeam(argv, tapScriptsDir()),
-  models: argv => {
+  reply: async () => { const { cmdReply } = await import("./src/verbs/reply"); return argv => cmdReply(argv, tapScriptsDir(), AGENT_FAMILIES); },
+  poll: async () => (await import("./src/verbs/poll")).cmdPoll,
+  read: async () => (await import("./src/verbs/read")).cmdRead,
+  show: async () => (await import("./src/verbs/show")).cmdShow,
+  provenance: async () => { const { cmdProvenance } = await import("./src/verbs/provenance"); return argv => cmdProvenance(argv, tapScriptsDir()); },
+  who: async () => { const { cmdProvenance } = await import("./src/verbs/provenance"); return argv => cmdProvenance(argv, tapScriptsDir()); },
+  outstanding: async () => (await import("./src/verbs/outstanding")).cmdOutstanding,
+  recap: async () => (await import("./src/verbs/recap")).cmdRecap,
+  spool: async () => { const { cmdSpool } = await import("./src/verbs/spool"); return argv => cmdSpool(argv, tapScriptsDir()); },
+  team: async () => { const { cmdTeam } = await import("./src/verbs/team"); return argv => cmdTeam(argv, tapScriptsDir()); },
+  models: async () => argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
     throw new TapError(1, "models_retired",
       "tap presets   # saved recipes; tap launch <harness> [name] --model <id> [--effort <level>] launches directly (OpenCode 2: model and variant; Cursor: model only); tap team shows who is seated",
       "tap models is deprecated; its personal ledger and the preset catalog contradict each other, and a model reference returns after the models/presets split (tap-qxq5l)", undefined, "none");
   },
-  teams: async (argv): Promise<number> => {
-    if (argv[0] === "refresh") return runNative("admin", nativeHandlers.admin, argv);
-    const name = argv[0], scripts = tapScriptsDir();
-    if (name !== undefined && !name.startsWith("-")) {
-      const selected = resolveTeamMarkerAware(name);
-      if (selected.marker === "absent") throw noMachineIndexError(process.env.TAP_VERB || "tap");
-      if (!selected.root || !["ok", "unreachable", "historical"].includes(selected.status)) {
-        process.stderr.write(`tap teams: no enrolled team '${name}' in the machine index\n`);
-        return 1;
+  teams: async () => {
+    const [{ cmdTeam }, { teamsView, writeRoutingResult }, admin] = await Promise.all([
+      import("./src/verbs/team"), import("./src/routing"), loadNativeHandler("admin")!,
+    ]);
+    return async (argv): Promise<number> => {
+      if (argv[0] === "refresh") return runNative("admin", admin, argv);
+      const name = argv[0], scripts = tapScriptsDir();
+      // Alias of --seats, as `tap team roster` is of bare `tap team`. A subcommand beats a
+      // team literally named roster, the way refresh does; `tap team roster roster` reaches one.
+      if (name === "roster") return writeRoutingResult(await teamsView(["--seats", ...argv.slice(1)], scripts));
+      if (name !== undefined && !name.startsWith("-")) {
+        const selected = resolveTeamMarkerAware(name);
+        if (selected.marker === "absent") throw noMachineIndexError(process.env.TAP_VERB || "tap");
+        if (!selected.root || !["ok", "unreachable", "historical"].includes(selected.status)) {
+          process.stderr.write(`tap teams: no enrolled team '${name}' in the machine index\n`);
+          return 1;
+        }
+        if (!validToken(name)) throw new TapError(1, "usage_error", "tap help", `--team '${name}' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$`, process.env.TAP_VERB || "tap");
+        if (selected.status !== "ok") throw new TapError(1, "registry_unreachable", "tap doctor", `acting registry for team '${name}' is unreachable (flip marker live/invalid?)`, process.env.TAP_VERB || "tap");
+        // The roster's explicit selector defeats ambient bus/registry pins without
+        // mutating the environment inherited by sibling fleet observations.
+        return cmdTeam(["roster", ...argv], scripts);
       }
-      if (!validToken(name)) throw new TapError(1, "usage_error", "tap help", `--team '${name}' fails charset ^[A-Za-z0-9][A-Za-z0-9._-]*$`, process.env.TAP_VERB || "tap");
-      if (selected.status !== "ok") throw new TapError(1, "registry_unreachable", "tap doctor", `acting registry for team '${name}' is unreachable (flip marker live/invalid?)`, process.env.TAP_VERB || "tap");
-      // The roster's explicit selector defeats ambient bus/registry pins without
-      // mutating the environment inherited by sibling fleet observations.
-      return cmdTeam(["roster", ...argv], scripts);
-    }
-    return writeRoutingResult(await teamsView(argv, scripts));
+      return writeRoutingResult(await teamsView(argv, scripts));
+    };
   },
-  teardown: argv => cmdTeardown("teardown", argv),
-  restore: argv => cmdTeardown("restore", argv),
+  teardown: async () => { const { cmdTeardown } = await import("./src/verbs/teardown"); return argv => cmdTeardown("teardown", argv); },
+  restore: async () => { const { cmdRestore } = await import("./src/verbs/history-restore"); return argv => cmdRestore(argv); },
   // Zero-write evidence census (tap-diagnostics-u1): the whole call — dispatcher
   // skip through census render — must never mutate a byte. Its Bash twin was
   // deleted in the same commit.
-  health: (argv) => cmdHealth(argv, tapScriptsDir()),
+  health: async () => { const { cmdHealth } = await import("./src/verbs/health"); return argv => cmdHealth(argv, tapScriptsDir()); },
   // Same cutover shape as health: the Bash body is deleted in this commit.
-  refresh: (argv) => cmdSeatRefresh(argv, tapScriptsDir()),
+  refresh: async () => { const { cmdSeatRefresh } = await import("./src/verbs/seat-refresh"); return argv => cmdSeatRefresh(argv, tapScriptsDir()); },
   // Doctor cutover (tap-hgf07): zero-write diagnostics, so the whole call —
   // dispatcher skip through render — judges the bus as found. Its Bash twin is
   // deleted in this commit.
-  doctor: (argv) => cmdDoctor(argv, tapScriptsDir()),
+  doctor: async () => { const { cmdDoctor } = await import("./src/verbs/doctor"); return argv => cmdDoctor(argv, tapScriptsDir()); },
   // `tap done` is a tombstone: it reads no bus, registry or pane and writes no
   // receipt or audit row, so every argument shape answers the same. Settlement
   // lives in reply (an ask) and read (a note); verbs/done.ts keeps the shared
   // authority and settle primitives reply uses.
-  done: argv => {
+  done: async () => argv => {
     if (argv.includes("--json")) process.env.TAP_JSON = "1";
     throw new TapError(1, "done_retired", "tap reply <id> --by <you> -f <file>   # a note settles on: tap read <id>",
       "tap done is retired and settles nothing", undefined, "none");
   },
-  whoami: cmdWhoami,
-  "digest-window": cmdDigestWindow,
-  "approval-timeout": cmdApprovalTimeout,
+  whoami: async () => (await import("./src/verbs/whoami")).cmdWhoami,
+  // A seat's team role: a label, never a permission (project decision, 2026-11-03).
+  role: async () => (await import("./src/verbs/role")).cmdRole,
+  "digest-window": async () => (await import("./src/verbs/digest-window")).cmdDigestWindow,
+  "approval-timeout": async () => (await import("./src/verbs/approval-timeout")).cmdApprovalTimeout,
   // Every arm is native since W3: `tick` runs the tick body here, `run` re-execs into
   // the loop's own entry (watch-run.ts).
-  watch: (argv) => cmdWatch(argv, tapScriptsDir()),
+  watch: async () => { const { cmdWatch } = await import("./src/verbs/watch"); return argv => cmdWatch(argv, tapScriptsDir()); },
   // R6 U3: the goalie verb is native — on/off/status/verdict/reap here, `tick`
   // through goalie-tick.ts, `run` re-execs into goalie-run.ts. The Bash body
   // (tap-goalie.sh) is deleted in the same commit, so a stale rollback row is
   // ignored via the retired list.
-  goalie: (argv) => cmdGoalie(argv, tapScriptsDir()),
+  goalie: async () => { const { cmdGoalie } = await import("./src/verbs/goalie"); return argv => cmdGoalie(argv, tapScriptsDir()); },
   // Every form is native (the `remind` closure): the verb has no Bash-owned row.
-  remind: (argv) => cmdRemind(argv, tapScriptsDir()),
-  up: (argv) => cmdSeatUpDown("up", argv, tapScriptsDir()),
-  down: (argv) => cmdSeatUpDown("down", argv, tapScriptsDir()),
-  incapable: (argv) => cmdIncapable(argv),
-  escalate: cmdEscalate,
-  presets: cmdPresets,
-  config: cmdConfig,
-  calibrate: cmdCalibrate,
-  draft: cmdDraft,
-  peek: argv => cmdPeek(argv, tapScriptsDir()),
-  pick: argv => cmdPick(argv),
-  keybinding: cmdKeybinding,
-  "tmux-defaults": cmdTmuxDefaults,
+  remind: async () => { const { cmdRemind } = await import("./src/verbs/remind"); return argv => cmdRemind(argv, tapScriptsDir()); },
+  up: async () => { const { cmdSeatUpDown } = await import("./src/seat-updown"); return argv => cmdSeatUpDown("up", argv, tapScriptsDir()); },
+  down: async () => { const { cmdSeatUpDown } = await import("./src/seat-updown"); return argv => cmdSeatUpDown("down", argv, tapScriptsDir()); },
+  incapable: async () => { const { cmdIncapable } = await import("./src/verbs/incapable"); return argv => cmdIncapable(argv); },
+  escalate: async () => (await import("./src/verbs/escalate")).cmdEscalate,
+  presets: async () => (await import("./src/verbs/presets")).cmdPresets,
+  config: async () => (await import("./src/verbs/config")).cmdConfig,
+  calibrate: async () => (await import("./src/verbs/calibrate")).cmdCalibrate,
+  draft: async () => (await import("./src/verbs/draft")).cmdDraft,
+  peek: async () => { const { cmdPeek } = await import("./src/verbs/peek"); return argv => cmdPeek(argv, tapScriptsDir()); },
+  pick: async () => { const { cmdPick } = await import("./src/verbs/pick"); return argv => cmdPick(argv); },
+  keybinding: async () => (await import("./src/verbs/keybinding")).cmdKeybinding,
+  "tmux-defaults": async () => (await import("./src/verbs/tmux-defaults")).cmdTmuxDefaults,
   // R11 U-A: the whole public verb is native — positional, --next and the
   // -i picker arm here; the Bash body (tap-attach.sh) is deleted in this
   // commit, so a stale rollback row is ignored via the retired list.
-  attach: argv => cmdAttach(argv, tapScriptsDir()),
-  completion: cmdCompletion,
-  setup: argv => argv.includes("--machine") ? cmdSetupMachine(argv) : cmdSetup(argv, tapScriptsDir()),
-  uninstall: cmdUninstall,
-} satisfies Record<string, NativeHandler>;
-// Keep synchronous entry types for existing direct callers; detective is asynchronous.
-export const NATIVE_HANDLERS: typeof nativeHandlers & Record<string, NativeHandler> = nativeHandlers;
-const NATIVE_VERBS = new Set(Object.keys(NATIVE_HANDLERS));
+  attach: async () => { const { cmdAttach } = await import("./src/verbs/attach"); return argv => cmdAttach(argv, tapScriptsDir()); },
+  completion: async () => (await import("./src/completion")).cmdCompletion,
+  setup: async () => {
+    const [{ cmdSetupMachine }, { cmdSetup }] = await Promise.all([import("./src/verbs/machine"), import("./src/verbs/setup")]);
+    return argv => argv.includes("--machine") ? cmdSetupMachine(argv) : cmdSetup(argv, tapScriptsDir());
+  },
+  uninstall: async () => (await import("./src/verbs/machine")).cmdUninstall,
+} satisfies Record<string, NativeLoader>;
+export const NATIVE_VERBS: ReadonlySet<string> = new Set(Object.keys(nativeLoaders));
+
+/** The verb's handler, its owner module evaluated on first use; undefined for a non-native verb. */
+export function loadNativeHandler(verb: string): Promise<NativeHandler> | undefined {
+  return NATIVE_VERBS.has(verb) ? (nativeLoaders as Record<string, NativeLoader>)[verb]!() : undefined;
+}
+
+/** Every native handler, for direct callers that dispatch more than one verb (tests and fixtures). */
+export async function loadNativeHandlers(): Promise<Record<string, NativeHandler>> {
+  const verbs = [...NATIVE_VERBS];
+  const handlers = await Promise.all(verbs.map(verb => loadNativeHandler(verb)!));
+  return Object.fromEntries(verbs.map((verb, i) => [verb, handlers[i]!]));
+}
 const HELP = new Set(["help", "-h", "--help"]);
 const RESERVED = new Set(["help", "-h", "--help", "try"]);
 
@@ -307,7 +302,7 @@ function aliasOrRecordRefusal(argv: string[]): string[] | null {
 // The composed reply prepares before it sends. A refusal in that preparation is
 // a refused send cmdSendOutcome never saw; once cmdSendOutcome is entered it
 // counts its own, and a later failure (the inbound's settle) is not a refusal.
-function replyAliasOrRecordRefusal(aliasArgv: string[]): number {
+function replyAliasOrRecordRefusal(cmdReply: typeof import("./src/verbs/reply").cmdReply, aliasArgv: string[]): number {
   try { return cmdReply(aliasArgv, tapScriptsDir(), AGENT_FAMILIES); }
   catch (error) {
     const refusedAs = refusalErrorId(error);
@@ -564,7 +559,7 @@ if (import.meta.main) {
     process.exitCode = stateless;
   } else if (argv[0] === "completion" && !argv.slice(1).some(arg => HELP.has(arg))) {
     process.env.TAP_VERBOSE = "0";
-    process.exitCode = cmdCompletion(argv.slice(1));
+    process.exitCode = (await import("./src/completion")).cmdCompletion(argv.slice(1));
   } else {
   // The machine journal records every public command in-process: bin/tap
   // marks its exec so tap.sh re-entries never journal twice, and this pid is
@@ -582,9 +577,15 @@ if (import.meta.main) {
     if (process.env.TAP_STATELESS !== "1") {
       try { recording = statSync(marker).isFile(); } catch { /* absent or unreadable: not recording */ }
     }
-    if (!launchHelpRequested && verb !== "doctor" && verb !== "completion" && verb !== "version" && verb !== "--version" && recording) {
-      try { (await import("./src/debug-capture")).recordCommand(argv, process.env, process.pid); }
-      catch (error) { console.error("tap debug: journal write failed: " + (error as Error).message); }
+    if (!launchHelpRequested && verb !== "doctor" && verb !== "completion" && verb !== "version" && verb !== "--version" && process.env.TAP_STATELESS !== "1") {
+      // A capture whose recorder stopped writing status.json gets no row; with
+      // [debug] always_on set, the command arms a replacement in the background.
+      let live = false;
+      if (recording) {
+        try { live = (await import("./src/debug-capture")).recordCommand(argv, process.env, process.pid); }
+        catch (error) { live = true; console.error("tap debug: journal write failed: " + (error as Error).message); }
+      }
+      if (!live) armAlwaysOn(argv, process.env);
     }
   }
   while (argv[0] === "-v" || argv[0] === "--verbose") {
@@ -623,15 +624,45 @@ if (import.meta.main) {
       process.exitCode = launchArgs;
     } else {
       const fallback = routerFallback(tapScriptsDir());
-      const onboardingStatus = await onboarding(argv, () => fallback(["init", "--no-trust-folders"]));
+      const verb = argv[0] ?? "";
+      const reporting = ["whoami", "outstanding", "show"].includes(verb)
+        && !reserved(argv) && !(verb === "whoami" && argv.includes("--pane"));
+      const reportCache = reporting ? (await import("./src/reporting-cache")).prepareReportingCache(argv) : null;
+      const handlers: Record<string, NativeHandler> = {};
+      // Resolve the owner before opening a memo scope, including on cache hits.
+      if (reporting) {
+        const handler = await loadNativeHandler(verb);
+        if (handler) handlers[verb] = handler;
+      }
+      const dispatch = (remember = false) => {
+        warnOverdueInbound(argv);
+        const result = route(argv, handlers, fallback, process.env.TAP_BUN_ROUTE_TRACE);
+        if (remember && result === 0) reportCache?.remember();
+        return result;
+      };
+      const caller = reportCache?.read();
+      const cachedReportingStatus = caller ? withReportingMemo(() => {
+        seedReportingObservation(reportCache!.ctx, caller);
+        return dispatch();
+      }) : null;
+      // Only team and crew list read the roster cache; every other verb skips its owner.
+      const cachedRosterStatus = cachedReportingStatus === null && (verb === "team" || verb === "crew")
+        ? await (await import("./src/verbs/team")).tryCachedRoster(argv, tapScriptsDir()) : null;
+      if (cachedRosterStatus !== null) trace(process.env.TAP_BUN_ROUTE_TRACE, "native", argv[0]!);
+      const onboardingStatus = cachedReportingStatus === null && cachedRosterStatus === null ? await onboarding(argv, () => fallback(["init", "--no-trust-folders"])) : null;
       process.env.TAP_ONBOARDING_CHECKED = "1";
-      if (onboardingStatus === null) warnOverdueInbound(argv);
-      const status = onboardingStatus ?? await route(
-        argv,
-        NATIVE_HANDLERS,
-        fallback,
-        process.env.TAP_BUN_ROUTE_TRACE,
-      );
+      let status = await (cachedReportingStatus ?? cachedRosterStatus ?? onboardingStatus);
+      if (status === null) {
+        // Load the verb's owner before dispatch, so its handler runs whole
+        // inside the synchronous reporting scope below.
+        if (!reporting && !reserved(argv)) {
+          const handler = await loadNativeHandler(verb);
+          if (handler) handlers[verb] = handler;
+        }
+        // These handlers and their advisory discovery are synchronous. A scope
+        // ends before any async work; registration and delivery never enter it.
+        status = await (reporting ? withReportingMemo(() => dispatch(true)) : dispatch());
+      }
       verbose("dispatch_exit", { status });
       // Let pending stdout/stderr writes drain; forced exit truncates pipe output.
       process.exitCode = status;

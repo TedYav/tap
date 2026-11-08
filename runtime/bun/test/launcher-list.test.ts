@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { NATIVE_HANDLERS, route } from "../main";
+import { loadNativeHandlers, route } from "../main";
 import { lookupHelp } from "../src/help";
 import {
   buildFixtureTree,
@@ -28,6 +28,8 @@ import {
   type FixtureMap,
 } from "./support/launcher-list/fixtures";
 import { removeScratchTree } from "./support/scratch";
+
+const NATIVE_HANDLERS = await loadNativeHandlers();
 
 const repo = resolve(import.meta.dir, "../../..");
 const module = join(repo, "runtime/bun/src/launcher/list.ts");
@@ -265,11 +267,15 @@ describe("ordering — RULED DEVIATION: UTF-16 code-unit order, not the incumben
   });
 
   test("a usage error under --json is the envelope on stdout with empty stderr and exit 2, as the page says", () => {
-    const usage = "usage: tap session list [--harness HARNESS] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]";
+    const usage = "usage: tap session list [--harness LIST] [--model LIST] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]";
     const cases: Array<[string[], string, string]> = [
       [["--json", "--bogus"], "unknown_option", `unknown option '--bogus'`],
       [["--bogus", "--json"], "unknown_option", `unknown option '--bogus'`],
       [["--json", "--harness", "nonesuch"], "usage_error", `--harness 'nonesuch' is not a supported harness`],
+      [["--json", "--harness", "claude,nonesuch"], "usage_error", `--harness 'nonesuch' is not a supported harness`],
+      [["--json", "--harness", ","], "usage_error", "--harness needs a value"],
+      [["--json", "--model", "--machine"], "usage_error", "--model needs a value"],
+      [["--json", "--state", "idle"], "usage_error", "--state needs an observed state, and session records store none; use tap teams --state <list>"],
       [["--json", "--cwd"], "usage_error", "--cwd needs a value"],
       [["--cwd", "--json"], "usage_error", "--cwd needs a value"],
       // A bare operand is an unexpected argument; only an option-shaped token is an unknown option.
@@ -291,6 +297,9 @@ describe("ordering — RULED DEVIATION: UTF-16 code-unit order, not the incumben
     expect([viaEnv.status, viaEnv.stderr, JSON.parse(viaEnv.stdout).error_class]).toEqual([2, "", "unknown_option"]);
     const plain = runModule(["--bogus"], goldenEnv());
     expect([plain.status, plain.stdout, plain.stderr]).toEqual([2, "", usage + "\n"]);
+    // --state names its cause in text mode too: a usage line alone would hide why the filter was refused.
+    const noState = runModule(["--state", "idle"], goldenEnv());
+    expect([noState.status, noState.stdout, noState.stderr]).toEqual([2, "", "tap session list: --state needs an observed state, and session records store none; use tap teams --state <list>; next: tap help session list\n"]);
     // A state refusal under --json is the envelope as well (the no-index golden case above pins the bytes).
     const state = runModule(["--json", "--cwd", fx.root], fixtureEnv(fx, { TAP_TMUX_SOCKET: tmuxSocket, TAP_INDEX_HOME: join(fx.fg, "index-missing"), TAP_JSON: "1" }));
     expect([state.status, JSON.parse(state.stdout).ok, state.stderr]).toEqual([2, false, ""]);
@@ -342,6 +351,19 @@ describe("ordering — RULED DEVIATION: UTF-16 code-unit order, not the incumben
     const names = filtered.stdout.split("\n").filter(Boolean);
     expect(names).toEqual(expect.arrayContaining(["tmux-only", "\u{10000}-tmux", "\u{E000}-tmux"]));
     expect(lookupHelp(["session", "list"]).stdout).toContain("those tmux names are appended unfiltered: --harness cannot filter them");
+    // A registered session a filter excludes stays excluded while it runs in tmux: only sessions tap did not launch are appended.
+    const running = tmux(["new-session", "-d", "-s", "\u{10000}-seat"]);
+    if (running.status !== 0 && !running.stderr.includes("duplicate session")) throw new Error(`tmux create: ${running.stderr}`);
+    try {
+      for (const filter of [["--harness", "codex"], ["--model", "opus"]]) {
+        const r = runModule(["--names-only", "--include-tmux", ...filter, "--cwd", fx.root], fixtureEnv(fx, { TAP_INDEX_HOME: index, TAP_TMUX_SOCKET: tmuxSocket }));
+        expect(r.status).toBe(0);
+        const shown = r.stdout.split("\n").filter(Boolean);
+        expect([filter.join(" "), shown.includes("\u{10000}-seat"), shown.includes("tmux-only")]).toEqual([filter.join(" "), false, true]);
+      }
+    } finally {
+      tmux(["kill-session", "-t", "=\u{10000}-seat"]);
+    }
   });
 });
 
@@ -653,7 +675,7 @@ describe("list parser — split operands and help (tap-az7l4.1, tap-az7l4.2)", (
       empty, enrolled, root, trace,
     };
   }
-  const USAGE_LINE = "usage: tap session list [--harness HARNESS] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]\n";
+  const USAGE_LINE = "usage: tap session list [--harness LIST] [--model LIST] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]\n";
 
   test("a split --cwd or --harness followed by a recognized option refuses with usage, exit 2", () => {
     const d = door();
@@ -713,7 +735,7 @@ describe("list parser — split operands and help (tap-az7l4.1, tap-az7l4.2)", (
         // The CLI-HELP structure: NAME and USAGE first, each accepted option on its own line, runnable examples.
         expect(r.stdout.startsWith(`NAME\n  tap session list`)).toBe(true);
         expect(r.stdout).toContain(`\nUSAGE\n  ${USAGE_LINE.replace("usage: ", "")}`);
-        for (const option of ["--harness HARNESS", "--cwd CWD", "--all", "--live", "--machine", "--json", "--names-only", "--include-tmux"]) {
+        for (const option of ["--harness LIST", "--model LIST", "--cwd CWD", "--all", "--live", "--machine", "--json", "--names-only", "--include-tmux"]) {
           expect(r.stdout.split("\n").some(line => line.startsWith(`  ${option} `))).toBe(true);
         }
         expect(r.stdout).toContain("\nEXAMPLES\n  tap session list --live\n  tap session list --machine --json\n");

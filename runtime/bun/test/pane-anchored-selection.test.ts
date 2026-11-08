@@ -128,6 +128,7 @@ function fixture(opts: FixtureOpts = {}) {
   const chain = [
     'for last in "$@"; do :; done',
     'case "$*" in',
+    "  *pid=,ppid=,tty=*) printf '%s 123 faketty\\n123 1 faketty\\n' \"$PPID\" ;;",
     "  *pid=,pgid=,tpgid=,comm=,command=*) printf '%s 124 124 bun bun /repo/session-start.ts\\n124 123 123 sh sh -c hook\\n123 123 123 claude claude\\n' \"$PPID\" ;;",
     "  *tty=*) printf '123 faketty\\n' ;;",
     '  *ppid=*) case "$last" in 124) echo 123 ;; 123) echo 1 ;; *) echo 124 ;; esac ;;',
@@ -139,7 +140,7 @@ function fixture(opts: FixtureOpts = {}) {
     "#!/bin/sh",
     `echo "tmux $1" >> '${trace}'`,
     'case "$1" in',
-    "  list-panes) printf '%%7\\t/dev/faketty\\n' ;;",
+    "  list-panes) case \"$*\" in *session_name*) printf '%%7\\t/dev/faketty\\t" + session + "\\t123:456\\n' ;; *) printf '%%7\\t/dev/faketty\\n' ;; esac ;;",
     '  display-message)',
     '    for a in "$@"; do',
     '      case "$a" in',

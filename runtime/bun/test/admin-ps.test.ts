@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { cmdAdminPs, observeActivity, harnessProcess, parseResources, resourceCutoff, parseFootprints, sampleFootprints, formatMemory, type PsDeps } from "../src/verbs/admin-ps";
+import { cmdAdminPs, observeTurn, observeActivity, harnessProcess, parseResources, resourceCutoff, parseFootprints, sampleFootprints, formatMemory, type PsDeps } from "../src/verbs/admin-ps";
 import { removeScratchTree } from "./support/scratch";
 const env = {...process.env};
 const scratch: string[] = [];
@@ -281,4 +281,126 @@ test("human memory uses decimal MB below one GB and two decimal GB at or above",
   expect(formatMemory(976562)).toBe("1000.0MB");
   expect(formatMemory(976563)).toBe("1.00GB");
   expect(formatMemory(1992188)).toBe("2.04GB");
+});
+
+test("seat filters narrow the rows and their diagnostics", () => {
+  const f=fixture();
+  f.add("a",{one:{...f.seat(),launch_tuning:{model:"opus[1m]"}},two:{...f.seat("codex"),model:"gpt-6-astra"}});
+  f.deps.turn=(harness)=>({model:harness==="claude"?"claude-opus-5-5":null,endedAt:null});
+  const handles=(...args:string[])=>{const r=f.run(["--json",...args]);return {code:r.code,seats:JSON.parse(r.stdout).seats.map((s:{handle:string})=>s.handle)};};
+  expect(handles("--harness","CLAUDE").seats).toEqual(["one"]);
+  expect(handles("--model","opus5.5").seats).toEqual(["one"]);
+  expect(handles("--model","astra6").seats).toEqual(["two"]);
+  expect(handles("--harness","claude","--model","astra").seats).toEqual([]);
+  expect(f.run(["--model","nothing"]).stdout).toBe("tap admin ps: no seats match these filters\n");
+});
+test("--state reads ps activity, and active drops a dated long idle", () => {
+  const f=fixture();f.add("a",{old:f.seat(),undated:f.seat("claude","/tmp/ps-second")});
+  process.env.TAP_WATCH_NOW="10000";
+  f.deps.activity=()=>"idle";
+  f.deps.turn=(_harness,sessionId)=>({model:null,endedAt:sessionId?9400:null});
+  const seats=(...args:string[])=>JSON.parse(f.run(["--json",...args]).stdout).seats.map((s:{handle:string})=>s.handle);
+  expect(seats("--state","idle")).toEqual(["old","undated"]);
+  expect(seats("--state","working")).toEqual([]);
+  expect(seats("--state","active")).toEqual(["old","undated"]);
+  const registry=JSON.parse(readFileSync(f.registries[0]!,"utf8"));
+  registry.seats.old.harness_session_id="dated";
+  writeFileSync(f.registries[0]!,JSON.stringify(registry));
+  expect(seats("--state","active")).toEqual(["undated"]);
+  process.env.TAP_WATCH_NOW="9999";
+  expect(seats("--state","active")).toEqual(["old","undated"]);
+});
+test("a filtered-out seat cannot fail the observation; a selected one still does", () => {
+  const f=fixture();f.add("a",{broken:{...f.seat(),status:"pending"},fine:f.seat("codex")});
+  f.deps.activity=()=>"working";
+  const all=f.run(["--json","--harness","claude,codex"]);
+  const doc=JSON.parse(all.stdout);
+  expect(doc.seats.length).toBe(2);
+  const kept=f.run(["--json","--harness","codex"]);
+  const kdoc=JSON.parse(kept.stdout);
+  expect(kdoc.seats.map((s:{handle:string})=>s.handle)).toEqual(["fine"]);
+  expect(kdoc.diagnostics.filter((d:{handle?:string})=>d.handle==="broken")).toEqual([]);
+});
+test("states ps never lists, daemons and bad values refuse in both modes", () => {
+  const f=fixture();f.add("a",{seat:f.seat()});
+  for (const state of ["offline","incapable","unbound","ready","waiting","unsubmitted"]) {
+    expect(()=>f.run(["--state",state])).toThrow(/never shows state/);
+  }
+  expect(()=>f.run(["--harness","daemon"])).toThrow(/omits daemons/);
+  expect(()=>f.run(["--state","sleeping"])).toThrow(/not a supported seat state/);
+  expect(()=>f.run(["--bogus"])).toThrow(/accepted options/);
+});
+test("--harness and --model drop seats before the resource read and the activity capture", () => {
+  const f=fixture();
+  f.add("a",{one:{...f.seat(),launch_tuning:{model:"opus[1m]"}},two:{...f.seat("codex"),model:"gpt-6-astra"}});
+  // Only the claude seat has a harness process in this fixture, so it is the one capture a filter can skip.
+  const captured:string[]=[];f.deps.activity=(harness)=>{captured.push(harness);return "working";};
+  const capturesFor=(...args:string[])=>{captured.length=0;f.run(["--json",...args]);return [...captured];};
+  expect(capturesFor()).toEqual(["claude"]);
+  expect(capturesFor("--harness","codex")).toEqual([]);
+  expect(capturesFor("--harness","claude")).toEqual(["claude"]);
+  expect(capturesFor("--model","astra6")).toEqual([]);
+  expect(capturesFor("--model","opus")).toEqual(["claude"]);
+  const before=f.counts().resourceReads;
+  expect(JSON.parse(f.run(["--json","--harness","opencode"]).stdout).seats).toEqual([]);
+  expect(f.counts().resourceReads).toBe(before);
+});
+test("a filter never hides a validation failure for a seat it selects", () => {
+  const f=fixture();
+  f.add("a",{bad:{...f.seat(),server_socket:"relative/sock"},fine:f.seat(),other:{...f.seat("codex"),server_socket:"relative/sock"}});
+  const run=(...args:string[])=>{const r=f.run(["--json",...args]);return {code:r.code,doc:JSON.parse(r.stdout)};};
+  const claude=run("--harness","claude");
+  expect(claude.code).toBe(1);
+  expect(claude.doc).toMatchObject({ok:false,error_class:"observation_incomplete"});
+  expect(claude.doc.diagnostics).toEqual([{team:"a",handle:"bad",reason:"invalid socket path"}]);
+  expect(claude.doc.seats.map((s:{handle:string})=>s.handle)).toEqual(["fine"]);
+  const codex=run("--harness","codex");
+  expect(codex.code).toBe(1);
+  expect(codex.doc.diagnostics).toEqual([{team:"a",handle:"other",reason:"invalid socket path"}]);
+  expect(run("--model","opus").doc.diagnostics).toEqual([]);
+});
+test("a turn end dated by another session's transcript counts as undated, as the roster rules", () => {
+  const f=fixture();
+  const transcript=join(f.root,"codex.jsonl");
+  writeFileSync(transcript,[{type:"session_meta",payload:{id:"session-b"}},{type:"event_msg",timestamp:"2026-08-27T00:05:00.000Z",payload:{type:"task_complete"}}].map(e=>JSON.stringify(e)).join("\n")+"\n");
+  const ended=Date.parse("2026-08-27T00:05:00.000Z")/1000;
+  expect(observeTurn("codex","session-b",transcript).endedAt).toBe(ended);
+  expect(observeTurn("codex","session-a",transcript).endedAt).toBeNull();
+  f.add("a",{bound:{...f.seat("codex"),harness_session_id:"session-a",transcript_path:transcript}});
+  f.deps.resources=()=>({status:0,stdout:"10 10 10 4.5 4096 02:00 S codex codex\n"});
+  f.deps.activity=()=>"idle";
+  f.deps.turn=observeTurn;
+  process.env.TAP_WATCH_NOW=String(ended+900);
+  expect(JSON.parse(f.run(["--json","--state","active"]).stdout).seats.map((s:{handle:string})=>s.handle)).toEqual(["bound"]);
+});
+test("a seat whose state could not be read keeps its failure under any --state", () => {
+  for (const broken of ["capture", "snapshot"] as const) {
+    const f=fixture();f.add("a",{seat:f.seat()});
+    if (broken === "capture") f.deps.activity=()=>{throw new Error("activity capture unavailable");};
+    else f.deps.resources=()=>({status:1,stdout:""});
+    const reason = broken === "capture" ? "activity capture unavailable" : "process snapshot unavailable";
+    const run=(...args:string[])=>{const r=f.run(["--json",...args]);return {code:r.code,doc:JSON.parse(r.stdout)};};
+    // Unread is not working: the seat is not listed, and its failure fails the run.
+    const working=run("--state","working");
+    expect([broken,working.code,working.doc.ok,working.doc.seats]).toEqual([broken,1,false,[]]);
+    expect(working.doc.diagnostics).toEqual([{team:"a",handle:"seat",reason}]);
+    // States that include an unread seat still list it.
+    for (const state of ["unknown","active"]) {
+      const shown=run("--state",state);
+      expect([broken,state,shown.code,shown.doc.seats.map((s:{handle:string})=>s.handle)]).toEqual([broken,state,1,["seat"]]);
+    }
+    // A known fact still excludes: the registry row's own harness.
+    expect(run("--harness","codex","--state","working")).toMatchObject({code:0,doc:{ok:true,seats:[],diagnostics:[]}});
+  }
+});
+
+test("--no-state retains resource facts without activity or transcript reads", () => {
+  const f = fixture(); f.add("a", {seat: f.seat()});
+  f.deps.activity = () => { throw new Error("activity must not run"); };
+  f.deps.turn = () => { throw new Error("transcript must not run"); };
+  const r = f.run(["--json", "--no-state"]);
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).seats[0]).toMatchObject({pid:20, cpu_percent:12.5, activity:"unknown"});
+  expect(f.counts()).toEqual({resourceReads:1,gathers:1});
+  for (const flag of ["--model", "--state"]) expect(() => f.run(["--no-state", flag, flag === "--model" ? "opus" : "idle"])).toThrow("--no-state");
 });

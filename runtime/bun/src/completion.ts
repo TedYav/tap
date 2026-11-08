@@ -8,7 +8,9 @@ import { codePointCompare } from "./team/selection";
 import { HELP_COMPOSITES, HELP_TOMBSTONES, helpRows } from "./help";
 import { seatIsRelaunchable } from "./launcher/complete";
 import { FORKABLE_HARNESSES } from "./harness-families";
+import { PONYTAIL_MODES } from "./launcher/launch-sugar";
 import { tapRoot } from "./scripts-dir";
+import { SEAT_STATE_VALUES } from "./seat-filter";
 
 type Candidate = { value: string; description: string };
 type TeamRows = { name: string; root: string; registryLocation: string; seats: Record<string, Seat> };
@@ -17,13 +19,19 @@ const TOP = [...new Set(["help", "completion", ...helpRows().filter(parts => par
 const TEAM = [...(HELP_COMPOSITES.team ?? [])].sort(codePointCompare);
 const SESSION = [...(HELP_COMPOSITES.session ?? [])].sort(codePointCompare);
 const KEYBINDING = ["install", "remove", "status"];
+const SEAT_FILTER_FLAGS = ["--harness", "--model", "--state"];
 const FLAGS: Record<string, string[]> = {
   calibrate: ["-f", "--ref", "--effort", "--all", "--json"],
   attach: ["--no-resume", "--next", "--interactive", "-i"],
-  teams: ["--all", "--details", "--json", "--seats", "--wide"],
-  team: ["--json", "--all", "--names", "--active", "--offline", "--context"],
-  "team roster": ["--json", "--all", "--names", "--active", "--offline", "--context"],
-  "team list": ["--json", "--all", "--details", "--seats", "--wide"],
+  teams: ["--all", "--details", "--recent", "-n", "--json", "--seats", "--wide", ...SEAT_FILTER_FLAGS],
+  "teams roster": ["--all", "--json", "--wide", ...SEAT_FILTER_FLAGS],
+  team: ["--json", "--include-crews", "--no-state", "--no-cache", "--all", "--names", "--online", "--offline", "--context", "--recent", "-n", ...SEAT_FILTER_FLAGS],
+  "team roster": ["--json", "--include-crews", "--no-state", "--no-cache", "--all", "--names", "--online", "--offline", "--context", "--recent", "-n", ...SEAT_FILTER_FLAGS],
+  "team list": ["--json", "--all", "--details", "--recent", "-n", "--seats", "--wide", ...SEAT_FILTER_FLAGS],
+  "team calibration": ["--strongest", ...SEAT_FILTER_FLAGS],
+  "crew list": ["--no-state", "--no-cache", ...SEAT_FILTER_FLAGS],
+  "admin ps": ["--json", "--no-state", ...SEAT_FILTER_FLAGS],
+  "session list": ["--cwd", "--all", "--live", "--machine", "--json", "--names-only", "--include-tmux", "--harness", "--model"],
   "team attach": ["--only", "--except", "--dry-run", "--tabs", "--all", "--yes"],
   "team detach": ["--only", "--except", "--handle", "--yes", "--dry-run"],
   "team down": ["--only", "--except", "--dry-run", "--json", "--yes"],
@@ -35,6 +43,7 @@ const FLAGS: Record<string, string[]> = {
   "session resume": ["--all", "--dry-run", "--json"],
   "session restart": ["--force", "--dry-run", "--json"],
   "session fork": ["--dry-run", "--json"],
+  "session relaunch": ["--harness", "--team", "-m", "--message", "--nudge", "--auto-nudge", "--workdir", "--env", "--unset-env", "--context", "--ponytail", "--dry-run", "--json"],
   send: ["--team", "--from", "--reply-to", "--json", "--ask", "--urgent", "-f"],
   assign: ["--team", "--from", "--reply-to", "--json", "-f"],
   reply: ["--team", "--by", "-f"],
@@ -46,7 +55,8 @@ const FLAGS: Record<string, string[]> = {
   outstanding: ["--team", "--json", "--stale"],
   peek: ["--pane", "--json"],
   operate: ["--preset", "--team", "--json", "--approve", "--reply-file", "--run", "--observe", "--key", "--sample", "--reason-file", "--stop"],
-  nudge: ["--to", "--pane", "--message", "--no-interrupt", "--dry-run", "--harness", "--team", "--active-within", "--yes"],
+  role: ["--team", "--unset", "--json", "--dry-run"],
+  nudge: ["--to", "--pane", "--message", "--no-interrupt", "--dry-run", "--harness", "--team", "--active-within", "--recently-working", "--all", "--yes"],
   pick: ["--pane", "--list", "--json"],
   "keybinding install": ["--key", "--tap", "--dry-run", "--json"],
   "keybinding remove": ["--dry-run", "--json"],
@@ -58,7 +68,7 @@ const FLAGS: Record<string, string[]> = {
 const TEAM_VALUE = new Set(["--team"]);
 const LIST_VALUE = new Set(["--only", "--except"]);
 const ACTOR_VALUE = new Set(["--from", "--by", "--handle", "--to", "--reply-to", "--owner"]);
-const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--ref", "--effort", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "--harness", "--active-within", "-m", "--tap", "--key", "--approve", "--reply-file", "--run", "--sample", "--reason-file"]);
+const TAKES_VALUE = new Set([...TEAM_VALUE, ...LIST_VALUE, ...ACTOR_VALUE, "-f", "--ref", "--effort", "--preset", "--model", "--pane", "--message", "--stale", "--aggressiveness", "--harness", "--state", "--active-within", "-m", "-n", "--tap", "--key", "--approve", "--reply-file", "--run", "--sample", "--reason-file"]);
 const TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "peek", "clear", "poll", "outstanding", "send", "assign", "nudge", "operate"]);
 const QUALIFIED_TARGET_VERBS = new Set(["calibrate", "attach", "out", "shutdown", "down", "up", "clear", "send", "assign", "nudge", "operate"]);
 const FILE_SENTINEL = "\x1fFILES";
@@ -127,7 +137,7 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   if (before[0]?.split("/").at(-1) === "tap") before.shift();
   else if (before[0] === "tap") before.shift();
   const verb = before[0] ?? "";
-  const sub = ["team", "session", "crew", "keybinding", "tmux-defaults"].includes(verb) ? before[1] ?? "" : "";
+  const sub = ["team", "session", "crew", "keybinding", "tmux-defaults"].includes(verb) || (verb === "teams" && before[1] === "roster") || (verb === "admin" && before[1] === "ps") ? before[1] ?? "" : "";
   const command = sub ? `${verb} ${sub}` : verb;
   const crewTarget = verb === "crew" && ["resume", "relaunch", "shutdown", "remove"].includes(sub);
   const previous = before.at(-1) ?? "";
@@ -136,11 +146,21 @@ export function completionCandidates(words: string[], cursor: number, env: NodeJ
   if (previous === "--tap" && verb === "keybinding") return [{ value: FILE_SENTINEL, description: "file position" }];
   const result: Candidate[] = [];
   const add = (value: string, description: string) => { if (value.startsWith(prefix)) result.push({ value, description }); };
+  // A flag right after the verb lands in the subcommand slot (`tap team --state`).
+  if (previous === "--state" && (FLAGS[sub.startsWith("-") ? verb : command] ?? []).includes("--state")) {
+    const retained = prefix.slice(0, prefix.lastIndexOf(",") + 1);
+    for (const value of SEAT_STATE_VALUES) add(`${retained}${value}`, "seat state");
+    return result;
+  }
   if (!verb) for (const name of TOP) add(name, "command");
   else if (verb === "team" && !sub && !prefix.startsWith("-")) for (const name of TEAM) add(name, "team command");
+  else if (verb === "teams" && !sub && before.length === 1 && !prefix.startsWith("-")) add("roster", "teams command");
   else if (verb === "session" && !sub && !prefix.startsWith("-")) for (const name of SESSION) add(name, "session command");
   else if (verb === "crew" && !sub && !prefix.startsWith("-")) for (const name of HELP_COMPOSITES.crew ?? []) add(name, "crew command");
   else if ((verb === "keybinding" || verb === "tmux-defaults") && before.length === 1 && !prefix.startsWith("-")) for (const name of KEYBINDING) add(name, `${verb} command`);
+  // Scoped to relaunch: `tap team --context` is a boolean, so --context cannot join the shared TAKES_VALUE.
+  if (command === "session relaunch" && previous === "--context") return [];
+  if (command === "session relaunch" && previous === "--ponytail") { for (const mode of PONYTAIL_MODES) add(mode, "ponytail mode"); return result; }
   const optionalSelector = LIST_VALUE.has(previous) && prefix.startsWith("-");
   const flag = !optionalSelector && (previous === "--team" || previous === "--only" || previous === "--except" || ACTOR_VALUE.has(previous)) ? previous : "";
   if (flag && !(FLAGS[command] ?? []).includes(flag)) return result;

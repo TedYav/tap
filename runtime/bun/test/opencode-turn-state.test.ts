@@ -60,6 +60,15 @@ describe("opencodeTurnState", () => {
     expect(opencodeTurnState("s1", pinned(db))).toBe("unknown");
   });
 
+  test("reads the indexed store without a sqlite3 executable", () => {
+    const db = makeDb("native.db", [assistant("s", 1, 5, "stop")]);
+    const path = process.env.PATH;
+    try {
+      process.env.PATH = root;
+      expect(opencodeTurnState("s", pinned(db))).toBe("idle");
+    } finally { process.env.PATH = path; }
+  });
+
   test("incomplete latest assistant -> in-turn; completed stop -> idle; null finish -> dirty-end; other finishes -> idle", () => {
     const db = makeDb("states.db", [
       assistant("in", 1, null, null), assistant("idle", 2, 5, "stop"),

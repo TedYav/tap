@@ -1,20 +1,33 @@
 import { pyStrip } from "./catalog-metadata";
-/** Codex's repeatable config option is keyed by its assignment, not its flag. */
-export function assignments(argv: readonly string[]): { start: number; end: number; key: string }[] {
-  const found: { start: number; end: number; key: string }[] = [];
+/**
+ * Codex's repeatable config option is keyed by its assignment, not its flag. Clap accepts five spellings:
+ * `-c K=V`, `--config K=V`, `--config=K=V`, `-c=K=V` and the attached short form `-cK=V`.
+ */
+export function assignments(argv: readonly string[]): { start: number; end: number; key: string; value: string }[] {
+  const found: { start: number; end: number; key: string; value: string }[] = [];
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i]!;
     if (token === "--") break;
     const option = token.split("=", 1)[0];
-    if (option !== "--config" && option !== "-c") continue;
-    const value = token.includes("=") ? token.slice(token.indexOf("=") + 1) : argv[i + 1];
+    let value: string | undefined, width = 1;
+    if (option === "--config" || option === "-c") {
+      if (token.includes("=")) value = token.slice(token.indexOf("=") + 1);
+      else { value = argv[i + 1]; width = 2; }
+    } else if (token.startsWith("-c") && !token.startsWith("--")) value = token.slice(2);
+    else continue;
     const at = value?.indexOf("=") ?? -1;
     if (at < 1 || value!.startsWith("-")) continue;
-    const start = i;
-    if (!token.includes("=")) i++;
-    found.push({ start, end: i + 1, key: pyStrip(value!.slice(0, at)) });
+    found.push({ start: i, end: i + width, key: pyStrip(value!.slice(0, at)), value: value!.slice(at + 1) });
+    i += width - 1;
   }
   return found;
+}
+
+/** Drop every assignment of the named keys; every other token keeps its place. */
+export function withoutConfigKeys(argv: readonly string[], keys: readonly string[]): string[] {
+  const drop = new Set<number>();
+  for (const { start, end, key } of assignments(argv)) if (keys.includes(key)) for (let i = start; i < end; i++) drop.add(i);
+  return argv.filter((_, i) => !drop.has(i));
 }
 
 export function configOnly(argv: readonly string[]): string[] {

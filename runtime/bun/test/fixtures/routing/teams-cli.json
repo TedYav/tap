@@ -44,7 +44,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -54,7 +54,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -64,7 +64,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -74,7 +74,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -85,7 +85,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
     }
   },
   {
@@ -95,7 +95,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument --all: ignored explicit argument 'yes'\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument --all: ignored explicit argument 'yes'\n"
     }
   },
   {
@@ -105,7 +105,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument --details: ignored explicit argument ''\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument --details: ignored explicit argument ''\n"
     }
   },
   {
@@ -147,7 +147,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -158,7 +158,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -200,7 +200,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -210,7 +210,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -221,7 +221,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument '--all'\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument -h/--help: ignored explicit argument '--all'\n"
     }
   },
   {
@@ -231,7 +231,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument -h/--help: ignored explicit argument 'bad'\n"
     }
   },
   {
@@ -240,7 +240,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -251,7 +251,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: argument -h/--help: ignored explicit argument '-foo'\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: argument -h/--help: ignored explicit argument '-foo'\n"
     }
   },
   {
@@ -260,7 +260,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -270,7 +270,7 @@
     ],
     "expected": {
       "exit": 0,
-      "stdout": "usage: tap teams [-h] [--all] [--details]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n",
+      "stdout": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n",
       "stderr": ""
     }
   },
@@ -281,7 +281,7 @@
     "expected": {
       "exit": 2,
       "stdout": "",
-      "stderr": "usage: tap teams [-h] [--all] [--details]\ntap teams: error: ambiguous option: --=x could match --help, --all, --details\n"
+      "stderr": "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\ntap teams: error: ambiguous option: --=x could match --help, --all, --details, --recent\n"
     }
   }
 ]

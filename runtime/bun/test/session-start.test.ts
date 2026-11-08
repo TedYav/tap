@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { registryDoc, seatForPane } from "../src/session-start";
+import { registeredContextLine, registryDoc, seatForPane } from "../src/session-start";
 
 const row = (pane_id: unknown) => ({ seats: { ada: { status: "active", pane_id, server_epoch: "srv:1:2" } } });
 
@@ -48,4 +48,13 @@ test("only a string pane_id can match the observed pane", () => {
   for (const malformed of [["%1"], { id: "%1" }, 1, true, ""]) {
     expect(seatForPane(row(malformed), "%1", "srv:1:2", "", "")).toBe("");
   }
+});
+
+
+test("registered context decodes a TAP interruption without overriding a human stop", () => {
+  const line = registeredContextLine("peer","team");
+  expect(line).toContain("agent-interrupt came from TAP, not the user");
+  expect(line).toContain("continue your previous work unless it says otherwise");
+  expect(line).toContain("treat it like a colleague's request");
+  expect(line).not.toContain("added task authority");
 });

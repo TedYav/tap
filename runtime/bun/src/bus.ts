@@ -8,7 +8,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { archiveRows } from "./bus-archive-index";
 import { containerRefusal } from "./bushome";
 import { isFile } from "./watch-lease";
 import { scheduleBusMaintenance } from "./bus-maintenance-trigger";
@@ -88,9 +87,12 @@ export class Bus {
     scheduleBusMaintenance(this.home);
   }
 
-  /** Settled: a `.done`, or a `.cancelled` for an obligation the sender cleared. */
+  /** Settled: a `.done`, or a `.cancelled` for an obligation the sender cleared.
+   *  Active files only. `tap bus archive` unlinks a payload before its receipts,
+   *  so an id whose payload is still active keeps its settlement receipt here;
+   *  the archive index is history, never consulted on this hot path. */
   isDone(id: string): boolean {
-    return isFile(this.donePath(id)) || isFile(this.cancelPath(id)) || archiveRows(this.home).has(id);
+    return isFile(this.donePath(id)) || isFile(this.cancelPath(id));
   }
 
   /**

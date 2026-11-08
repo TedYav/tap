@@ -23,6 +23,7 @@ git -C "$WRONG" init -q
 # Model a pane-backed seat without trusting the runner's real process ancestry.
 cat >"$WORK/bin/ps" <<'SH'
 #!/usr/bin/env bash
+case "$*" in *pid=,ppid=,tty=*) printf '%s ' "$PPID" ;; esac
 printf '1 ttys001\n'
 SH
 cat >"$WORK/bin/tmux" <<'SH'
@@ -35,7 +36,12 @@ cat >"$WORK/bin/tmux" <<'SH'
 # in both engines refuse anything else (tap-316wj). Session- and
 # generation-only callers keep the short two-field record.
 case "${1:-}" in
-  list-panes) printf '%%5\t/dev/ttys001\n' ;;
+  list-panes)
+    # Reporting reads the four-field identity record from the inventory itself.
+    case "$*" in
+      *pane_tty*session_name*) printf '%%5\t/dev/ttys001\tfixture/sol\t4242:100\n' ;;
+      *) printf '%%5\t/dev/ttys001\n' ;;
+    esac ;;
   display-message)
     for a in "$@"; do
       case "$a" in

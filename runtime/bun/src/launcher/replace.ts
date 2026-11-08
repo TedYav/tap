@@ -44,6 +44,7 @@ import { timestamp } from "./repair";
 import { registryEntry } from "./resume";
 import { LaunchInterrupted, mintLaunchSessionId, recordFromRow, type LaunchRecord } from "./transaction";
 import { LauncherError, type Invocation } from "./types";
+import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
 
 type Row = Record<string, unknown>;
 /** seat_corpse.epoch_voided_ids over a plain registry row: a pane id stamped under another server generation is void. */
@@ -553,11 +554,12 @@ export async function replaceHarnessInPane(scope: ClearScope, plan: ClearPlan, o
     // be read now is a post-effect state (exit 7), never a refusal.
     let afterEffect: { errorClass: string; action: string; detail: string; lead?: string } | null = null;
     try {
-      // -k: also the hung-harness path. -c: the old process's cwd would rebind a wandered seat elsewhere.
+      // -k: also the hung-harness path. The new process starts in the workdir by path (tmux-spawn-cwd.ts),
+      // never the old process's cwd, which would rebind a wandered seat elsewhere.
       opts.signal?.throwIfAborted();
       opts.progress?.(`replacing ${record.harness} in pane ${paneId}`);
       respawnAttempted = true;
-      const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", launchWorkdir(record), plan.command], env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], env));
+      const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", stableSpawnCwd(env), inWorkdir(launchWorkdir(record), `exec ${plan.command}`)], env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], env));
       // Recorded before any abort check: a cancellation racing a code-0 respawn must not lose the evidence
       // that the harness already runs in the new directory.
       if (respawn.code === 0) respawned = true;

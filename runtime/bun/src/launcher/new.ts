@@ -23,7 +23,7 @@ import { pathIsUnder, realOrSelf, rootForCwd } from "./records";
 import { timestamp } from "./repair";
 import { resolveLaunchPresetArgs } from "./resolve-target";
 import { allocatedIndex, attachTailInProcess, baseAlias, cmdSessionResume, findRecordByKey, occupiedSessionNames,
-  receipt, registryEntry, unexpiredSeats } from "./resume";
+  receipt, registryEntry, retainedResumeRecord, unexpiredSeats } from "./resume";
 import { claudeChildStoreRoot, claudeSessionTranscriptExists, codexSessionExists, resolvedResumeIdentity, seatReviveTier, seatStoreEnv } from "./resume-identity";
 import { attachableState, classifySession, crewPanesIn, entryObservedDead, verifiedSession } from "./observation";
 import { NOT_A_SEAT, type ForkUnavailable, describeSessionState, printOffRosterTmuxExists, printSessionExists, printStoppedSession, promptNewCollision, promptOffRosterTmuxCollision,
@@ -642,7 +642,9 @@ export async function makeNewRecord(args: Resolved, state: RegistryState, cwd: s
       const requestedName = intended.name!;
       name = requestedName;
       index = 1;
-      existingRecord = findRecordByKey(state.sessions, cwd, tag);
+      // A failed resume's row is off state.sessions, yet [r] still recovers it by handle. The ladder
+      // sees that same record, or it would call the seat recordless and reseat over the stored chat.
+      existingRecord = findRecordByKey(state.sessions, cwd, tag) ?? retainedResumeRecord(tag, state.entries.get(tag), base, root);
       const seated = unexpiredSeats(root, liveSessions).has(tag);
       const live = liveSessions.has(name);
       if (live || seated) {

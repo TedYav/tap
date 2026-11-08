@@ -46,7 +46,18 @@ function fixture(harness: "codex" | "claude" | "cursor") {
   writeFileSync(join(root, ".config/tap/config.toml"), `version = 3\n[harness.${harness}.env]\nACCOUNT_MARKER = "machine-value"\n`);
   writeFileSync(join(root, ".bash_profile"), `export PATH=${quote(env.PATH!)}\n`);
   const tmuxLog = join(root, "tmux.argv");
-  writeFileSync(join(root, "bin/tmux"), `#!/bin/bash\nprintf '%q ' "$@" >> ${quote(tmuxLog)}\nprintf '\\n' >> ${quote(tmuxLog)}\nfor arg in "$@"; do case "$arg" in attach|attach-session|switch-client) echo unexpected-attach >&2; exit 93;; esac; done\nexec ${quote(realTmux)} "$@"\n`);
+  // The only permitted attach is the exact non-TTY default-directory set,
+  // `[-L|-S <socket>]... attach-session -E -t <session> -c <dir>` with no other token. It is
+  // logged with a "default-dir " marker; every other attach or switch-client is refused (93).
+  writeFileSync(join(root, "bin/tmux"), `#!/bin/bash
+a=("$@"); while [ "\${a[0]:-}" = -L ] || [ "\${a[0]:-}" = -S ]; do a=("\${a[@]:2}"); done
+allowed=0; [ \${#a[@]} -eq 6 ] && [ "\${a[0]}" = attach-session ] && [ "\${a[1]}" = -E ] && [ "\${a[2]}" = -t ] && [ "\${a[4]}" = -c ] && allowed=1
+[ "$allowed" = 0 ] || printf 'default-dir ' >> ${quote(tmuxLog)}
+printf '%q ' "$@" >> ${quote(tmuxLog)}
+printf '\\n' >> ${quote(tmuxLog)}
+[ "$allowed" = 1 ] || for arg in "$@"; do case "$arg" in attach|attach-session|switch-client) echo unexpected-attach >&2; exit 93;; esac; done
+exec ${quote(realTmux)} "$@"
+`);
   chmodSync(join(root, "bin/tmux"), 0o755);
   if (process.platform === "linux") copyFileSync("/bin/sleep", join(root, "real", harness));
   else symlinkSync("/bin/sleep", join(root, "real", harness));
@@ -114,7 +125,9 @@ for (const keepServer of [true, false]) test.each(["codex", "claude"] as const)(
   expect(readFileSync(mailPath, "utf8")).toBe(mail);
   expect(readFileSync(sentPath, "utf8")).toBe("placed but unsettled\n");
   expect(existsSync(join(f.bus, "receipts/pending.done"))).toBe(false);
-  expect(readFileSync(f.tmuxLog, "utf8")).not.toMatch(/(?:^|\s)(?:attach|attach-session|switch-client)(?:\s|$)/);
+  // The shim marks only the exact default-directory form; any other attach or switch-client is a bug.
+  const attaches = readFileSync(f.tmuxLog, "utf8").split("\n").filter(line => !line.startsWith("default-dir "));
+  expect(attaches.join("\n")).not.toMatch(/(?:^|\s)(?:attach|attach-session|switch-client)(?:\s|$)/);
   const repeat = f.run("up", "seat", "--json");
   expect(repeat.status).toBe(0);
   expect(JSON.parse(repeat.stdout).outcome).toBe("already_live");
@@ -122,6 +135,22 @@ for (const keepServer of [true, false]) test.each(["codex", "claude"] as const)(
   expect(trace).toContain("native down\n"); expect(trace).toContain("native up\n");
   expect(trace).not.toContain("bash ");
 }, 45_000);
+
+test("the no-attach shim permits only the exact default-directory attach", () => {
+  const f = fixture("codex");
+  const shim = join(f.root, "bin/tmux");
+  const run = (...args: string[]) => spawnSync(shim, args, { env: { ...f.env, TMUX: "", TMUX_PANE: "" }, encoding: "utf8" });
+  const exact = ["-S", f.socketPath, "attach-session", "-E", "-t", "$0", "-c", f.root];
+  // Refused before reaching tmux: an extra token, a chained command, a switch-client, a plain attach.
+  for (const args of [[...exact, "extra"], ["-S", f.socketPath, "switch-client", "-c", "x", "-t", "y", ";", "attach-session", "-E", "-t", "$0", "-c", f.root],
+    ["-S", f.socketPath, "attach-session", "-t", "$0"], ["-S", f.socketPath, "attach-session", "-E", "-t", "$0", "-x", f.root]]) {
+    expect({ args, code: run(...args).status }).toEqual({ args, code: 93 });
+  }
+  expect(readFileSync(f.tmuxLog, "utf8").split("\n").filter(line => line.startsWith("default-dir "))).toEqual([]);
+  // The exact form passes the shim (tmux itself then fails it: no server, no terminal) and is marked.
+  expect(run(...exact).status).not.toBe(93);
+  expect(readFileSync(f.tmuxLog, "utf8").split("\n").filter(line => line.startsWith("default-dir "))).toHaveLength(1);
+});
 
 for (const pin of ["name", "path"] as const) test(`up must preserve a foreign session replacing its placeholder before bind (${pin} socket)`, () => {
   const f = fixture("codex");

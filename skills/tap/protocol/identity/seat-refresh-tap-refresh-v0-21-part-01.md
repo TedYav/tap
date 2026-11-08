@@ -26,18 +26,20 @@ requires a changed native session id and matching transcript on the same pane
 and TAP instance. Claude Code and Codex support this witness; unsupported or
 unbound seats refuse. Codex may use the post-input witness below.
 Reset effects recheck the captured native session as well as the seat binding.
-Idle waiting and post-submit reset observation each have a full bounded timeout.
+Idle waiting and post-submit observation each have a full bounded timeout.
 
-The skill authors a charter (role and exact skill/priming invocation) and handoff
-(Keep scope, constraints, obligations, custody, live scheduler ids, decision reasons,
-source pointers and Next step). Essential unavailable priming fails preparation.
+The skill authors a charter (role, exact skill/priming invocation, modes with levels, experts and preferences, with restoring invocations) and handoff (Keep
+scope, operator words verbatim, constraints, obligations, custody, live scheduler
+ids, decision reasons, source pointers, Next step). Unavailable essential priming or a missing
+first-action path (no fallback) fails preparation.
 Narrowing scope never silently retires an owned obligation: transfer it or keep a
-one-line pointer. History remains retrievable rather than mandatory startup context.
+one-line pointer. History stays retrievable, not mandatory.
 
 Recovery reads the whole brief, including holds and live scheduler ids, before
 loading named role skills as guidance without replaying initialization. It then
-reconciles live state and obligations and follows Next step, which may be “wait
-for orders”. Outstanding obligations stay recorded.
+reconciles live state and obligations and follows Next step: ordered, consistent,
+a wait naming its resume condition.
+Outstanding obligations stay recorded.
 
 Optional `--notify` names an outcome audience, not a supervisor or recovery owner;
 it transfers no obligation. An explicit invalid, self or inactive recipient refuses
@@ -48,7 +50,7 @@ the worker sends a best-effort notice only to explicit notify, naming the receip
 preserved brief and next safe action. The notice's result has its own
 `<receipt>.notify.json`; failure never rewrites or replays the reset outcome.
 Without notify, asynchronous failure exists only in the durable receipt and log.
-Recovery acceptance/queuing is separate from recipient processing. Timeout keeps
+Timeout keeps
 the brief and never repeats a possible reset. Request, receipt and log remain
 beside the durable handoff.
 Codex's rollout can bind lazily on first input. Before reset submission, the
@@ -98,9 +100,8 @@ Its native recovery and outcome-notification sends leave unrelated legacy spool
 records untouched; that backlog cannot force recovery through a shell fallback.
 The ordinary sender/recipient identity and reset-fence checks still apply.
 
-Rebrief preserves the operational TAP instance and obligations; it must not be
-composed with --fresh. It is an explicit continuing-role workflow, not an
-automatic schedule or a proven improvement over native compaction. Peer rebrief
+Rebrief must not be composed with --fresh. It is an explicit
+continuing-role workflow, not an automatic schedule or a proven improvement over native compaction. Peer rebrief
 and authored-handoff refresh flags are not advertised.
 
 **`--fresh` retires the current instance before rebinding**, composing the same tombstone machinery `tap out` uses: the instance row lands under `team-history/`, **payload files never move** (retirement is a pointer, not a sweep — the audit trail is what makes a refresh recoverable), and `tap in <handle> --restore <instance>` remains possible. This is deliberately NOT `tap in --fresh`, which refuses for a live seat and stays an intentional-retirement door (§U3): overloading it would make one flag mean "rejoin a retired seat" in one state and "retire a live seat" in another — inert in the first case, destructive in the second.

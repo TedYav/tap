@@ -1,6 +1,6 @@
 // Finite command custodian. It owns the ChildProcess until exit; persisted PIDs
 // are diagnostics, never authority to signal a possibly reused process.
-import { readdirSync } from "node:fs";
+import { lstatSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { bunBinary } from "./courier-argv";
@@ -71,11 +71,16 @@ export function commandWake(job: CommandJob, bus: string, at: number): { target?
   const lost = ["starting", "running"].includes(job.phase) && at - job.heartbeat_at > OBSERVATION_GRACE;
   const terminal = !["starting", "running"].includes(job.phase) || lost;
   if (lost) job.phase = "UNOBSERVABLE";
-  if (!terminal && !job.escalated) {
-    // Directory enumeration distinguishes missing acknowledgements from an
-    // unavailable instrument. A single acknowledged occurrence resets misses.
-    const receipts = new Set(readdirSync(join(bus, "receipts"), { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => entry.name));
-    if (job.pending.some(id => receipts.has(`${id}.done`))) { job.pending = []; job.undeliverable = 0; }
+  if (!terminal && !job.escalated && job.pending.length) {
+    const receipts = join(bus, "receipts");
+    // A missing receipt is unacknowledged; an unavailable directory is not
+    // evidence for escalation. Preserve that distinction without enumerating it.
+    if (!statSync(receipts).isDirectory()) throw new Error("receipts is not a directory");
+    const acknowledged = job.pending.some(id => {
+      try { return lstatSync(join(receipts, `${id}.done`)).isFile(); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+    });
+    if (acknowledged) { job.pending = []; job.undeliverable = 0; }
   }
   if (job.escalated && !terminal) return { terminal: false, suppress: true, text: "" };
   const escalate = !terminal && job.pending.length + (job.undeliverable ?? 0) >= 3;

@@ -128,7 +128,7 @@ function claudeProjectsDir(env: NodeJS.ProcessEnv): string {
 }
 
 /** The seat's Claude transcript: the registered path, else `<session>.jsonl` in a projects directory. */
-function claudeTranscript(seat: Seat, env: NodeJS.ProcessEnv): string {
+export function claudeTranscript(seat: Seat, env: NodeJS.ProcessEnv): string {
   const registered = typeof seat.transcript_path === "string" ? seat.transcript_path : "";
   if (registered) return isAbsolute(registered) ? registered : "";
   const sid = typeof seat.harness_session_id === "string" ? seat.harness_session_id : "";

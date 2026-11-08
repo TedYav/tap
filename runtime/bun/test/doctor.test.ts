@@ -362,6 +362,21 @@ describe("seat doctor", () => {
     expect(human.err).toBe("");
   });
 
+  test("a signed-out seat is blocked/sign_in in team and doctor, with a sign-in remedy", () => {
+    const fx = seatFixture();
+    writeFileSync(fx.frame, readFileSync(join(import.meta.dir, "fixtures/agent-state/codex/sign-in-real.txt")));
+    const team = spawnSync(shippedEntry, ["team", "--json"], { cwd: fx.worktree, env: doctorEnv(fx, fx.env), encoding: "utf8" });
+    expect(team.status, team.stderr).toBe(0);
+    expect(JSON.parse(team.stdout).agents.find((row: { handle: string }) => row.handle === "scout"))
+      .toMatchObject({ agent_state: "blocked", agent_state_reason: "sign_in" });
+    const run = runDoctor(fx, ["scout", "--json"], fx.env);
+    expect(run.rc).toBe(2);
+    const report = JSON.parse(run.out);
+    expect(report.verdict).toBe("parked-on-dialog");
+    expect(report.evidence).toContainEqual({ source: "pane", fact: "rule", value: "sign_in" });
+    expect(report.action).toBe("attach to scout and sign in to the harness");
+  });
+
   test("an old bound transcript raises attention without a wedge or interruption license", () => {
     const fx = seatFixture();
     const transcript = join(fx.dir, "rollout.jsonl");

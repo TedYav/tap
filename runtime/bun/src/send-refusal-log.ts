@@ -16,25 +16,31 @@
 //
 // Rotation is by size, and it cannot overwrite anything. Past the cap the
 // active log is renamed to a unique generation, `<log>.<UTC stamp>-<pid>-<rand>`,
-// so two racing rotators never replace each other's generation, and a sender
-// that finds the active file already gone just appends to the fresh one. The
-// rotator then keeps the newest GENERATIONS_KEPT generations and deletes the
+// and the rotator keeps the newest GENERATIONS_KEPT generations and deletes the
 // older ones, so the files stay within about (GENERATIONS_KEPT + 1) x the cap.
-// There is no lock, claim or stale state to own. What can still be lost: lines
-// from an unwritable log; a line whose append lands in a generation that a
-// racing prune deletes (a few lines, never a whole generation); and, when a
-// rotation race renames a just-created near-empty file, that spurious
-// generation can age the oldest real one out a rotation early. A full log that
-// cannot be renamed is not appended to, so the bound holds.
+// Rotation runs under `<log>.lock`, an in-process flock(2) the kernel drops
+// when the holder exits, so there is no stale state to own. The lock makes the
+// size re-check and the rename see the same file. Without it, two senders that
+// both saw the full log could both rename: the second renamed the fresh active
+// file the first had just created and written to, and that near-empty
+// generation then counted toward GENERATIONS_KEPT, so a prune could delete it
+// with its lines (tap-atnqw). Appends take no lock. What can still be lost:
+// lines from an unwritable log; a line from a sender that cannot get the
+// rotation lock within ROTATE_LOCK_WAIT_MS while the log is full; and a line
+// appended through a descriptor whose generation has already been pruned.
+// A full log that cannot be rotated is not appended to, so the bound holds.
 import { closeSync, constants, existsSync, fstatSync, openSync, readdirSync, renameSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { TapError } from "./context";
 import { utcStamp } from "./ids";
 import { isOldStoreRefusal } from "./register-authority";
+import { acquirePathLock } from "./panelock";
 
 export const SEND_REFUSAL_LOG_CAP_BYTES = 1024 * 1024;
 export const GENERATIONS_KEPT = 2;
+/** How long a sender waits for another sender's rotation before dropping its line. */
+export const ROTATE_LOCK_WAIT_MS = 5000;
 
 export interface SendRefusalFields { from?: string; to?: string; team?: string }
 export type SendRefusalPhase = "pre" | "withdrawn";
@@ -105,15 +111,19 @@ export function recordSendRefusal(errorId: string, fields: SendRefusalFields, ph
       closeSync(open.fd);
       const stamp = utcStamp().replace(/[-:]/g, "");
       const generation = `${path}.${stamp}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+      const lock = acquirePathLock(`${path}.lock`, ROTATE_LOCK_WAIT_MS, env);
+      // A full file that cannot rotate is not appended to: the bound holds.
+      if (!lock) return;
       try {
-        // Another sender may have rotated between our size read and now.
+        // Another sender may have rotated between our size read and the lock.
         if (statSync(path).size + line.length > SEND_REFUSAL_LOG_CAP_BYTES) {
           renameSync(path, generation);
           pruneGenerations(dir);
         }
       } catch (error) {
-        // A full file that cannot rotate is not appended to: the bound holds.
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") return;
+      } finally {
+        lock.release();
       }
       open = openRegular(path);
       if (!open) return;

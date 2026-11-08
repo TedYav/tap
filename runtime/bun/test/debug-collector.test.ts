@@ -9,7 +9,7 @@ const read = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 function fixture(name: string) {
   const root = mkdtempSync(join(tmpdir(), "tap-debug-")), directory = join(root, "capture"), trace = join(directory, "trace");
   mkdirSync(trace, { recursive: true }); mkdirSync(join(root, "debug"));
-  const env = { ...process.env, TAP_INDEX_HOME: root };
+  const env = { ...process.env, TAP_INDEX_HOME: root, XDG_CONFIG_HOME: join(root, "config") };
   const identity: Identity = { pid: 123, start: "456", socket: join(root, "private.sock") };
   const run: Run = { id: name, directory, socket: identity.socket, config: { max_mb: 1024 } };
   writeFileSync(join(directory, "session.json"), JSON.stringify(run));
@@ -26,6 +26,10 @@ test("debug parser preserves action and option restrictions", () => {
   expect(() => parse(["on", "--socket", "--json"])).toThrow("expected one argument");
   for (const args of [["trace", "nan"], ["trace", "inf"], ["trace", "-1"], ["trace", "0"], ["trace"], ["off", "2"], ["on", "--max-mb", "10"], ["config", "--max-mb", "1.5"], ["config", "--max-mb", "10241"], ["status", "--socket", "x"]])
     expect(() => parse(args)).toThrow();
+  expect(parse(["config", "--archive-mb", "20480"])?.archive).toBe(20480);
+  expect(parse(["config", "--archive=1_048_576"])?.archive).toBe(1048576);
+  for (const value of ["0", "1048577", "1.5", "-1"]) expect(() => parse(["config", "--archive-mb", value])).toThrow("--archive-mb");
+  expect(() => parse(["config", "--archive-mb"])).toThrow("expected one argument");
   expect(parse(["trace", "--help"])).toBeNull();
   expect(() => parse(["config", "--lifetime-hours", "24"])).toThrow("retired");
   for (const args of [["config", "--lifetime-hours", "0"], ["config", "--lifetime-hours", "169"], ["on", "--lifetime-hours", "2"]]) expect(() => parse(args)).toThrow();
@@ -36,10 +40,11 @@ test("debug help states the option scope the parser enforces", async () => {
   process.stdout.write = ((chunk: string | Uint8Array) => { written.push(String(chunk)); return true; }) as typeof process.stdout.write;
   try { expect(await main(["--help"])).toBe(0); } finally { process.stdout.write = write; }
   const help = written.join("");
-  for (const scope of ["on and trace only", "config only", "trace only", "tap debug trace 120 --json", "tap debug config --max-mb"]) expect(help).toContain(scope);
+  for (const scope of ["on and trace only", "config only", "trace only", "tap debug trace 120 --json", "tap debug config --max-mb", "--archive-mb ARCHIVE_MB", "tap debug config --archive-mb"]) expect(help).toContain(scope);
   expect(() => parse(["config", "--socket", "/tmp/s"])).toThrow("--socket belongs to tap debug on or trace");
   expect(() => parse(["status", "--max-mb", "10"])).toThrow("settings belong to tap debug config");
   expect(() => parse(["on", "--retain-mb", "10"])).toThrow("settings belong to tap debug config");
+  expect(() => parse(["status", "--archive-mb", "10"])).toThrow("settings belong to tap debug config");
   expect(() => parse(["on", "5"])).toThrow("seconds belong to tap debug trace");
   expect(parse(["trace", "5", "--socket", "/tmp/s"])?.socket).toBe("/tmp/s");
   expect(parse(["config", "--max-mb", "5", "--retain-mb", "6"])).toMatchObject({ max: 5, retain: 6 });
@@ -122,7 +127,7 @@ test("streams preserve initial EOF, partial bytes, rotation and truncation", () 
 });
 
 test("an absent machine index never reads legacy teams.json and historical teams are excluded", () => {
-  const root = mkdtempSync(join(tmpdir(), "tap-buses-")), env = { ...process.env, TAP_INDEX_HOME: root };
+  const root = mkdtempSync(join(tmpdir(), "tap-buses-")), env = { ...process.env, TAP_INDEX_HOME: root, XDG_CONFIG_HOME: join(root, "config") };
   try {
     writeFileSync(join(root, "teams.json"), JSON.stringify({ teams: { old: { root: "/old" } } }));
     expect(teamBuses(env)).toEqual({});
@@ -419,7 +424,7 @@ test("TERM to either public CLI PID cannot leave a queued config mutation behind
     const hold = new Promise<void>(done => { release = done; }), ready = new Promise<void>(done => { entered = done; });
     const owner = withControl(directory, async () => { entered(); await hold; }); await ready;
     const child = Bun.spawn([entry, "debug", "config", "--max-mb", "3"], { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 5000, killSignal: "SIGKILL",
-      env: { ...process.env, TAP_INDEX_HOME: root, PATH: bin + ":" + process.env.PATH, REAL_BUN: process.execPath, STARTED: started } });
+      env: { ...process.env, TAP_INDEX_HOME: root, XDG_CONFIG_HOME: join(root, "config"), PATH: bin + ":" + process.env.PATH, REAL_BUN: process.execPath, STARTED: started } });
     try {
       const until = performance.now() + 2000;
       while (!existsSync(started) && performance.now() < until) await Bun.sleep(10);
@@ -428,8 +433,62 @@ test("TERM to either public CLI PID cannot leave a queued config mutation behind
       release(); await owner;
       await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
       expect(child.signalCode).not.toBe("SIGKILL");
-      expect(existsSync(join(directory, "config.json"))).toBe(false);
+      expect(existsSync(join(root, "config/tap/config.toml"))).toBe(false);
       await withControl(directory, async () => {});
     } finally { child.kill(); await child.exited; release(); await owner; rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+for (const invalid of ['[debug\n', '[debug]\nfidelity = "invalid"\n']) test(`off can stop an existing collector despite invalid next-capture settings: ${JSON.stringify(invalid)}`, async () => {
+  const f = fixture("stop-invalid-config"); rmSync(join(f.directory, "trace-request.json"));
+  writeFileSync(join(f.root, "debug/last.json"), JSON.stringify(f.run));
+  mkdirSync(join(f.root, "config/tap"), { recursive: true });
+  let ready!: () => void;
+  const started = new Promise<void>(done => { ready = done; });
+  const collecting = collect(f.run, { ...effects, server: async () => null, teamBuses: () => ({}), collectArtifacts: async () => { ready(); } }, f.env);
+  const log = console.log; console.log = () => {};
+  try {
+    await started;
+    writeFileSync(join(f.root, "config/tap/config.toml"), invalid);
+    // TOML that does not parse still stops the collector, but off then exits 1:
+    // it cannot confirm debug.always_on is off (skills/tap/protocol/transport/debug-journal.md, the always_on paragraph).
+    const off = async () => invalid === "[debug\n"
+      ? await expect(main(["off", "--json"], f.env)).rejects.toThrow("config.toml does not parse, so always_on could not be confirmed off")
+      : expect(await main(["off", "--json"], f.env)).toBe(0);
+    await off();
+    await collecting;
+    expect(read(join(f.directory, "status.json")).recording).toBe(false);
+    expect(existsSync(join(f.root, "debug/enabled.json"))).toBe(false);
+    rmSync(join(f.root, "debug/last.json"));
+    await off();
+  } finally { console.log = log; f.stop(); await collecting; rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("a temporary tmux-only collector stops when trace setup fails before log ownership", async () => {
+  const f = fixture("failed-temporary-trace"); f.run.config.capture = ["tmux"];
+  let forced = false;
+  const fallback = setTimeout(() => { forced = true; f.stop(); }, 1500);
+  try {
+    await collect(f.run, { ...effects, server: async () => f.identity,
+      startLog: async () => { throw new Error("logging already enabled independently"); },
+      teamBuses: () => ({}), collectArtifacts: async () => {},
+    }, f.env);
+    expect(forced).toBe(false);
+    expect(read(join(f.directory, "status.json"))).toMatchObject({ recording: false, trace: { active: false, setup_error: "logging already enabled independently" } });
+    expect(existsSync(join(f.root, "debug/enabled.json"))).toBe(false);
+  } finally { clearTimeout(fallback); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("a tmux-only trace skips TAP recovery artifact collection", async () => {
+  const f = fixture("tmux-only-artifacts"); f.run.config.capture = ["tmux"];
+  let artifactCollections = 0;
+  try {
+    await collect(f.run, { ...effects, server: async () => f.identity,
+      startLog: async () => ({ identity: f.identity, owned: true }), stopLog: async () => {},
+      teamBuses: () => { throw new Error("tap-events bus enumeration must stay disabled"); },
+      collectArtifacts: async () => { artifactCollections++; },
+    }, f.env);
+    expect(artifactCollections).toBe(0);
+    expect(read(join(f.directory, "status.json")).sources["tap-events"].state).toBe("off");
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
 });

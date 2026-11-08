@@ -44,6 +44,7 @@ import { repoRoot, teamSession } from "./watch-registry";
 import { atLeast, BUN_FLOOR } from "./watch-run";
 import { lockRoot } from "./panelock";
 import { artifactBun, runtimeModule } from "./scripts-dir";
+import { inWorkdir, stableSpawnCwd } from "./tmux-spawn-cwd";
 
 export const WATCHER_COMMAND = "watch-run.ts run";
 
@@ -263,8 +264,8 @@ export function ensureSidecar(a: SidecarArgs): number {
     // The window runs the loop under THE executable the floor check above described --
     // this process's Bun by absolute path, never a bare `bun` for the window's PATH to
     // resolve to some other install.
-    const spawned = tmux(["new-window", "-d", "-P", "-F", "#{pane_pid}", "-t", sess, "-n", "watch", "-c", worktree,
-      sidecarCommand(a.bus, a.runtimeExecutable, env)], env);
+    const spawned = tmux(["new-window", "-d", "-P", "-F", "#{pane_pid}", "-t", sess, "-n", "watch", "-c", stableSpawnCwd(env),
+      inWorkdir(worktree, sidecarCommand(a.bus, a.runtimeExecutable, env))], env);
     if (spawned.code !== 0) {
       process.stderr.write(`tap watch: sidecar spawn failed in session '${sess}'\n`);
       return 1;

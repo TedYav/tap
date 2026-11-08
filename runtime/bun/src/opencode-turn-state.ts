@@ -1,6 +1,6 @@
 // M6 U1: the opencode turn-state read's one native owner; lib.sh adapts to this.
 import { statSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { Database } from "bun:sqlite";
 import { opencodeStorePath } from "./opencode-store";
 
 // This assistant-step observation predates native idle markers; interrupted-turn
@@ -8,8 +8,8 @@ import { opencodeStorePath } from "./opencode-store";
 export type TurnState = "in-turn" | "idle" | "dirty-end" | "unknown" | "error";
 
 /**
- * The sqlite3 CLI takes no bind parameters; the session id enters the SQL only as a
- * hex blob literal, so no byte of it can break out of the CAST. The seek rides
+ * The session id enters the SQL only as a hex blob literal, so no byte of it can
+ * break out of the CAST. The seek rides
  * `session_message_session_type_seq_idx (session_id, type, seq)`: `json_extract`
  * in WHERE/ORDER BY would decode every row of a ~100 GB store (tap-2zzft). The role
  * filter runs on rows the index walk visits, newest first, so it stops at the first assistant.
@@ -32,15 +32,17 @@ export function opencodeTurnState(sessionId: string, env: NodeJS.ProcessEnv = pr
   } catch {
     return "error";
   }
-  const r = spawnSync("sqlite3", ["-readonly", db, turnStateSql(sessionId)], { encoding: "utf8" });
-  if (r.error || r.status !== 0) return "error";
-  const row = r.stdout.replace(/\n+$/, "");
-  if (!row) return "unknown";
-  const [finish, completed] = row.split("|");
-  if (completed === "") return "in-turn";
-  if (finish === "stop") return "idle";
-  if (finish === "") return "dirty-end";
-  return "idle";
+  let store: Database | undefined;
+  try {
+    store = new Database(db, { readonly: true, strict: true });
+    const row = store.query(turnStateSql(sessionId)).values()[0];
+    if (!row) return "unknown";
+    const [finish, completed] = row;
+    if (completed === null || completed === "") return "in-turn";
+    if (finish === null || finish === "") return "dirty-end";
+    return "idle";
+  } catch { return "error"; }
+  finally { store?.close(); }
 }
 
 export function main(argv: string[], env: NodeJS.ProcessEnv = process.env): number {

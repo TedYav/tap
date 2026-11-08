@@ -1000,10 +1000,12 @@ test("same-pane residue does not turn an idempotent rebind into a new identity",
   const f = fixture();
   try {
     const row = { status: "active", delivery: "pane", pane: f.addr, pane_id: "%2", session: "repo/seat", server_epoch: f.epoch };
-    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: { scout: { ...row, instance: "scout|kept" }, residue: row } });
+    f.writeRegistry({ team: { name: "repo", worktree_root: f.repo }, seats: { scout: { ...row, instance: "scout|kept", role: "leader" }, residue: row } });
     const d = f.door(["scout", "--pane", f.addr]);
     expect(d.code, d.out + d.err).toBe(0);
     expect(f.seats().scout?.instance).toBe("scout|kept");
+    // A `tap role` label rides the row through a rebind.
+    expect(f.seats().scout?.role).toBe("leader");
     expect(f.seats().residue).toBeUndefined();
     for (const status of ["suspended", null, ""]) {
       const stopped = { ...row, status, instance: "scout|stopped" };
@@ -1107,6 +1109,9 @@ test("briefing and recap skip 5000 settled bodies and sidecars and bound history
     put("cancelled", "peer", "scout", now - 20000);
     writeFileSync(join(f.bus, "receipts/cancelled.cancelled"), "");
     put("archived", "scout", "peer", now - 20000);
+    // An indexed id with an active payload is an interrupted archive cut, which
+    // unlinks the payload before its receipts: its `.done` is still active.
+    writeFileSync(join(f.bus, "receipts/archived.done"), "");
     mkdirSync(join(f.bus, "archive"));
     writeFileSync(join(f.bus, "archive/index.ndjson"), JSON.stringify({ id: "archived", month: "2026-09",
       settled_at: "2026-09-20T00:00:00Z", payload_sha256: "a".repeat(64), receipts: ["archived.done"] }) + "\n");

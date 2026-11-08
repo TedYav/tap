@@ -87,12 +87,15 @@ Hermes has no interrupt key either: by default the bare doorbell's submission is
 ```
 
 It names no payload, sender or recipient, owes no reply and grants no task: it asks the seat to
-continue what it was doing and check `tap poll`. There is nothing to `tap read`. `tap nudge` is
-its only producer. The message value is a JSON string literal, so quotes and backslashes
-round-trip. `--message` refuses, naming `tap send`: a newline or other control character,
+continue what it was doing and check `tap poll`. There is nothing to `tap read`. CLI nudges, relaunch continuation and unwedge continuation produce it. The message value is a JSON string literal, so quotes and backslashes
+round-trip. Producers include a recovery notice by default: resume prior work and check `tap poll`;
+if TAP interrupted the seat, that was not a user stop. A user's or message's explicit stop
+remains binding. `--message` appends custom context after this fixed notice, with 105 UTF-8
+bytes available; the composed decoded message remains bounded to 200 bytes. The renderer
+and parser remain literal and preserve legacy bare wires. `--message` refuses, naming `tap send`: a newline or other control character,
 `[[` or `]]`, a word starting with `@` or `/` (the composer's picker eats the Enter; the
 inline-body rule `sentinelBodyInlineable`), or more than 200 UTF-8 bytes of the decoded text. It
-never strips or rewrites the text. The payload parser refuses an id-less nudge (`a nudge doorbell
+never strips or rewrites custom text. The payload parser refuses an id-less nudge (`a nudge doorbell
 names no payload id`), so no reader treats it as a payload.
 
 ## Target, `--pane` and the actor
@@ -180,5 +183,5 @@ after its repaint.
 
 ## Fan-out
 
-`tap nudge --harness <family>` runs this ladder on every live seat of one family. Selection,
-skips, `--active-within`, confirmation and exits live on [the fan-out page](./nudge-fanout.md).
+`tap nudge --harness <family>` runs this ladder on error/blocked seats of one family by default. Selection,
+skips, `--recently-working`, `--all`, compatibility `--active-within`, confirmation and exits live on [the fan-out page](./nudge-fanout.md).

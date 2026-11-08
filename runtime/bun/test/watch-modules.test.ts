@@ -735,3 +735,21 @@ test("an arm outliving a dead private server rides the fresh server: the sidecar
     catch (error) { console.error(`watch-live: scratch reap failed: ${String(error)}`); }
   }
 }, 30_000);
+
+test("a quiet receipt notice reports its failure only through the result, never a tap watch stderr line", () => {
+  const root = scratch();
+  const bus = busWith(root, {});
+  const scripts = fakeScripts(root, 0);
+  writeFileSync(join(scripts, "watch-templates", "role-removed.md"), "{{REASON}} {{EVIDENCE}}\n");
+  standInCourier(scripts, "#!/bin/bash\necho '{\"ok\":false,\"error_class\":\"target_unavailable\"}'; exit 3\n");
+  const written: string[] = [];
+  const write = process.stderr.write;
+  process.stderr.write = ((chunk: string) => { written.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  try {
+    expect(sendNoticeReceipt({ bus, scripts, to: "t/gone", template: "role-removed.md", reason: "r", evidence: "e", quiet: true }))
+      .toEqual({ rc: 3, disposition: "failed" });
+    expect(written.join("")).toBe("");
+    sendNoticeReceipt({ bus, scripts, to: "t/gone", template: "role-removed.md", reason: "r", evidence: "e" });
+    expect(written.join("")).toContain("tap watch: notice send to 't/gone' failed (rc=3)");
+  } finally { process.stderr.write = write; }
+});

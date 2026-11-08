@@ -55,7 +55,11 @@ const read = (args: string[]): string => {
   const result = tmuxReadOnly(args);
   return result.code === 0 ? result.stdout.replace(/\n+$/, "") : "";
 };
-const paneOption = (pane: string, name: string): string => read(["show-options", "-p", "-v", "-t", pane, name]);
+export interface CrewLifetimeOptions { crewLifetime?: string; crewLifetimeToken?: string }
+const paneOption = (pane: string, name: string, observed?: CrewLifetimeOptions): string => {
+  const value = name === OPTION ? observed?.crewLifetime : observed?.crewLifetimeToken;
+  return value ?? read(["show-options", "-p", "-v", "-t", pane, name]);
+};
 
 /** Read only identity fields without rounding unrelated registry extensions. */
 function registryRows(path: string): Record<string, Row> {
@@ -107,9 +111,9 @@ function identity(pid: string, boot: string): ProcessIdentity | null {
   return /^[1-9]\d*$/.test(pid) && start && boot ? { pid, start, boot } : null;
 }
 
-function readBinding(pane: string, retired = false): CrewLifetimeBinding | null {
+function readBinding(pane: string, retired = false, observed?: CrewLifetimeOptions): CrewLifetimeBinding | null {
   try {
-    const value = JSON.parse(paneOption(pane, OPTION)) as CrewLifetimeBinding;
+    const value = JSON.parse(paneOption(pane, OPTION, observed)) as CrewLifetimeBinding;
     if (!value || typeof value !== "object" || value.version !== 1) return null;
     const fields: (keyof CrewLifetimeBinding)[] = ["token", "team", "owner", "ownerInstance", "ownerPane",
       "ownerSession", "crew", "crewInstance", "crewPane", "crewSession", "serverSocket", "serverEpoch",
@@ -117,7 +121,7 @@ function readBinding(pane: string, retired = false): CrewLifetimeBinding | null 
     if (fields.some(key => typeof value[key] !== "string" || value[key] === "")
       || !/^[0-9a-f-]{36}$/.test(value.token) || value.crewPane !== pane
       || !/^%\d+$/.test(value.ownerPane) || !/^%\d+$/.test(value.crewPane)
-      || (![value.token, ...(retired ? [`retired:${value.token}`] : [])].includes(paneOption(pane, TOKEN_OPTION)))) return null;
+      || (![value.token, ...(retired ? [`retired:${value.token}`] : [])].includes(paneOption(pane, TOKEN_OPTION, observed)))) return null;
     const processFields = [value.parent, value.child, value.helper];
     if (processFields.some(item => !item || typeof item !== "object" || !/^[1-9]\d*$/.test(item.pid)
       || typeof item.start !== "string" || !item.start || typeof item.boot !== "string" || !item.boot)) return null;
@@ -293,12 +297,12 @@ export function fenceCrewLifetime(ctx: FamilyContext, crew: string, expected?: R
   if (!fenceHelper(old.helper)) refuse(`crew '${crew}' legacy token is fenced but its helper stop is unverified; inspect before retrying`);
 }
 
-export function crewLifetimeHealth(pane: string): "independent" | "legacy_supervised" | "unknown" {
-  const raw = paneOption(pane, OPTION);
+export function crewLifetimeHealth(pane: string, observed?: CrewLifetimeOptions): "independent" | "legacy_supervised" | "unknown" {
+  const raw = paneOption(pane, OPTION, observed);
   if (!raw) return "independent";
-  const old = readBinding(pane, true);
+  const old = readBinding(pane, true, observed);
   if (!old) return "unknown";
-  if (paneOption(pane, TOKEN_OPTION) === `retired:${old.token}`) return "independent";
+  if (paneOption(pane, TOKEN_OPTION, observed) === `retired:${old.token}`) return "independent";
   return processGeneration(old.helper) === "gone" ? "independent" : "legacy_supervised";
 }
 

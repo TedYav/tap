@@ -27,7 +27,7 @@ function publicationBarrier(stage: string): void {
 // Forwarding keeps its owner here; every other form (plain, dash, kill) is
 // the ordinary retirement owner. One dispatch choice at the entry, no
 // transaction policy copied into this file.
-export function cmdOut(argv: string[], scriptsDir: string): number {
+export function cmdOut(argv: string[], scriptsDir: string): number | Promise<number> {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--forward-to") return cmdOutForwarding(argv, scriptsDir);
   }

@@ -12,9 +12,11 @@ import { recordFromRow } from "../src/launcher/transaction";
 import { fencePath } from "../src/clear-fence";
 import { teamContext } from "../src/crew-lifecycle";
 import { TapError } from "../src/context";
-import type { Member } from "../src/launcher/relaunch";
+import { relaunch, parseOptions, classify, crewMember, type Member, type ClassifiedMember } from "../src/launcher/relaunch";
+import { loadGlobalRegistry } from "../src/index-home";
 import { createOpenCodeStore, addSession } from "./support/opencode-store";
 import { removeScratchTree } from "./support/scratch";
+import { inWorkdir } from "../src/tmux-spawn-cwd";
 
 const saved = { ...process.env }, roots: string[] = [];
 afterEach(() => {
@@ -668,7 +670,9 @@ test("relaunch --workdir respawns the harness there and records it on the row", 
   const result = await relaunchOne(f.prepared(), { json: false, dryRun: false, workdir: dir }, caller);
   expect(result.code).toBe(0);
   const respawn = f.effects().split("\n").filter(Boolean).map(l => JSON.parse(l) as string[]).find(args => args[0] === "respawn-pane")!;
-  expect(respawn[respawn.indexOf("-c") + 1]).toBe(dir);
+  // tap-p9v8: tmux starts the pane in a directory that outlives every worktree; the command enters the workdir.
+  expect(respawn[respawn.indexOf("-c") + 1]).not.toBe(dir);
+  expect(respawn.at(-1)!.startsWith(inWorkdir(dir, "exec "))).toBe(true);
   expect(f.current().seats.alice.launch_workdir).toBe(dir);
   expect(f.current().seats.alice.expected_clear_nonce).toBeUndefined();
 });
@@ -696,7 +700,9 @@ test("relaunch without --workdir keeps the recorded launch_workdir for the respa
   const result = await relaunchOne(f.prepared(), { json: false, dryRun: false }, caller);
   expect(result.code).toBe(0);
   const respawn = f.effects().split("\n").filter(Boolean).map(l => JSON.parse(l) as string[]).find(args => args[0] === "respawn-pane")!;
-  expect(respawn[respawn.indexOf("-c") + 1]).toBe(dir);
+  // tap-p9v8: tmux starts the pane in a directory that outlives every worktree; the command enters the workdir.
+  expect(respawn[respawn.indexOf("-c") + 1]).not.toBe(dir);
+  expect(respawn.at(-1)!.startsWith(inWorkdir(dir, "exec "))).toBe(true);
   expect(f.current().seats.alice.launch_workdir).toBe(dir);
 });
 
@@ -1035,4 +1041,159 @@ test("OpenCode relaunch refuses a different native directory before replacing th
   const alias=join(f.root,"alias");symlinkSync(f.root,alias);
   const unchanged=await relaunchOne(f.prepared(),{json:false,dryRun:true,workdir:alias},caller);
   expect(unchanged.code).toBe(0);expect(f.effects()).toBe("");
+});
+
+
+test("auto-nudge composes exactly one native Codex resume prompt only for working seats", async () => {
+  const f = fixture("codex");
+  writeFileSync(f.state, JSON.stringify({replaced:false,publicCensus:true}));
+  process.env.TAP_CODEX_HOME = codexStore(f, {id:"conversation",cwd:f.root});
+  for (const state of ["working", "idle", "unknown"] as const) {
+    const output: string[] = [];
+    const deps = {
+      context: () => ({team:"Demo",caller_pane:"",caller}), classify, prepare:prepareRelaunch, run:relaunchOne,
+      states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, {agent_state:state,agent_state_reason:`fixture_${state}`} ])),
+      crew:crewMember, load:loadGlobalRegistry, write:(text:string) => {output.push(text);}, color:false,
+    };
+    expect(await relaunch(parseOptions(["Demo/alice", "--auto-nudge=continue after switch", "--dry-run", "--json"]), deps)).toBe(0);
+    const receipt = JSON.parse(output.join(""));
+    expect(receipt.results).toHaveLength(1);
+    const command = receipt.results[0].stdout;
+    expect(command).toContain("resume"); expect(command).toContain("conversation");
+    expect(command.match(/\[\[TAP v0\.23 nudge message="[^"\n]*continue after switch"\]\]/g) ?? []).toHaveLength(state === "working" ? 1 : 0);
+    expect(f.effects()).toBe("");
+  }
+});
+
+// A preset-launched seat: launch bakes the preset's env and passthrough into the row, and machine policy adds its own.
+function presetSeat(harness: "codex" | "claude") {
+  const f = fixture(harness);
+  mkdirSync(join(f.root, "xdg/tap"), { recursive: true });
+  writeFileSync(join(f.root, "xdg/tap/config.toml"), `version = 3\n[harness.${harness}]\nenv.PONYTAIL_DEFAULT_MODE = "off"\nenv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "111111"\n`, { mode: 0o600 });
+  process.env.XDG_CONFIG_HOME = join(f.root, "xdg");
+  if (harness === "claude") {
+    mkdirSync(join(f.root, "claude/projects/demo"), { recursive: true });
+    writeFileSync(join(f.root, "claude/projects/demo/conversation.jsonl"), "{}");
+    process.env.TAP_CLAUDE_HOME = join(f.root, "claude");
+  }
+  const seat = { passthrough_from_config: true, preset: { name: "astra-fast", source_path: join(f.root, "xdg/tap/config.toml"), config_digest: "fixture" },
+    passthrough: harness === "codex" ? ["-c", "model_context_window=500000", "-c", "model_auto_compact_token_limit=400000"] : [],
+    harness_env: harness === "claude" ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "500000", CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "90", PONYTAIL_DEFAULT_MODE: "off" } : { PONYTAIL_DEFAULT_MODE: "off" } };
+  Object.assign(f.row, seat); f.update(seat);
+  return f;
+}
+const sugarDeps = (member: Member, writes: string[]) => ({ context: () => ({ team: "Demo", caller_pane: "", caller }), prepare: prepareRelaunch, run: relaunchOne, crew: crewMember,
+  classify: (members: Member[]) => members.map(m => ({ member: m, status: "active", reason: "", pane: "%7", observation: {} })) as unknown as ClassifiedMember[],
+  states: () => new Map(), load: loadGlobalRegistry, write: (text: string) => { writes.push(text); }, color: false });
+/** The command a dry run would respawn, through the same census, expansion and composition a live run uses. */
+async function dryCommand(f: ReturnType<typeof fixture>, flags: string[] = []): Promise<string> {
+  const writes: string[] = [];
+  // TAP's own options go first: flags may end in a `--` tail that would swallow them.
+  expect(await relaunch(parseOptions(["Demo/alice", "--dry-run", "--json", ...flags]), sugarDeps(f.member, writes))).toBe(0);
+  return JSON.parse(writes.join("")).results[0].stdout;
+}
+/** One real replacement through the stub; the stub's pid resets afterwards so a second one can verify a new process too. */
+const live = async (f: ReturnType<typeof fixture>, flags: string[]) => {
+  const writes: string[] = [];
+  const code = await relaunch(parseOptions(["Demo/alice", "--json", ...flags]), sugarDeps(f.member, writes));
+  expect(code, writes.join("")).toBe(0);
+  writeFileSync(f.state, JSON.stringify({ replaced: false }));
+};
+// Each real replacement waits on the stub's readiness; the default 30 s budget is too tight on a loaded runner.
+const SLOW = 120_000;
+
+test("a codex dry run shows the expansion after the resume target and changes nothing", async () => {
+  const f = fixture("codex"), before = readFileSync(f.scope.registryPath, "utf8");
+  const command = await dryCommand(f, ["--context", "850k", "--ponytail", "lite"]);
+  expect(command).toMatch(/resume .*conversation.* -c model_context_window=850000 -c model_auto_compact_token_limit=807500/);
+  expect(command).toContain("PONYTAIL_DEFAULT_MODE=lite");
+  expect(readFileSync(f.scope.registryPath, "utf8")).toBe(before); expect(f.effects()).toBe("");
+});
+
+test("a claude dry run shows the expansion in the child env", async () => {
+  const f = presetSeat("claude");
+  const command = await dryCommand(f, ["--context", "1.5M", "--ponytail", "full"]);
+  expect(command).toContain("CLAUDE_CODE_AUTO_COMPACT_WINDOW=1500000");
+  expect(command).toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=95");
+  expect(command).toContain("PONYTAIL_DEFAULT_MODE=full");
+  expect(command).not.toContain("model_context_window");
+});
+
+test("a second --context replaces the first on the row instead of stacking", async () => {
+  const f = fixture("codex");
+  f.update({ harness_tail: ["--verbose"] });
+  await live(f, ["--context", "850k"]);
+  expect(f.current().seats.alice.harness_tail).toEqual(["--verbose", "-c", "model_context_window=850000", "-c", "model_auto_compact_token_limit=807500"]);
+  await live(f, ["--context", "1M"]);
+  expect(f.current().seats.alice.harness_tail).toEqual(["--verbose", "-c", "model_context_window=1000000", "-c", "model_auto_compact_token_limit=950000"]);
+  const command = await dryCommand(f);
+  expect(command.match(/model_context_window=/g)).toHaveLength(1);
+}, SLOW);
+
+test("a typed native -- keeps the generated options ahead of it on the respawn command and the row", async () => {
+  const f = fixture("codex");
+  const command = await dryCommand(f, ["--context", "850k", "--", "--", "continue"]);
+  expect(command).toMatch(/resume .*conversation.* -c model_context_window=850000 -c model_auto_compact_token_limit=807500 -- continue/);
+  await live(f, ["--context", "850k", "--", "--", "continue"]);
+  expect(f.current().seats.alice.harness_tail).toEqual(["-c", "model_context_window=850000", "-c", "model_auto_compact_token_limit=807500", "--", "continue"]);
+}, SLOW);
+
+test("a stored native -- keeps a later --context ahead of it, replacing the earlier pair", async () => {
+  const f = fixture("codex");
+  f.update({ harness_tail: ["-cmodel_context_window=1", "--", "continue"] });
+  const command = await dryCommand(f, ["--context", "1M"]);
+  expect(command).toMatch(/resume .*conversation.* -c model_context_window=1000000 -c model_auto_compact_token_limit=950000 -- continue/);
+  expect(command).not.toContain("model_context_window=1 ");
+  await live(f, ["--context", "1M"]);
+  expect(f.current().seats.alice.harness_tail).toEqual(["-c", "model_context_window=1000000", "-c", "model_auto_compact_token_limit=950000", "--", "continue"]);
+}, SLOW);
+
+test("on a preset codex seat the flag lands after passthrough and still does on a later flag-free relaunch", async () => {
+  const f = presetSeat("codex");
+  const last = (command: string, key: string) => command.slice(command.lastIndexOf(`${key}=`)).split(/[\s']/)[0];
+  const typed = await dryCommand(f, ["--context", "850k", "--ponytail", "lite"]);
+  expect(last(typed, "model_context_window")).toBe("model_context_window=850000");
+  expect(last(typed, "model_auto_compact_token_limit")).toBe("model_auto_compact_token_limit=807500");
+  expect(typed.indexOf("model_context_window=500000")).toBeLessThan(typed.indexOf("model_context_window=850000"));
+  await live(f, ["--context", "850k", "--ponytail", "lite"]);
+  const row = f.current().seats.alice;
+  expect(row.harness_env).toEqual({ PONYTAIL_DEFAULT_MODE: "lite" });
+  expect(row.passthrough).toEqual(["-c", "model_context_window=500000", "-c", "model_auto_compact_token_limit=400000"]);
+  const later = await dryCommand(f);
+  expect(last(later, "model_context_window")).toBe("model_context_window=850000");
+  expect(last(later, "model_auto_compact_token_limit")).toBe("model_auto_compact_token_limit=807500");
+  expect(later).toContain("PONYTAIL_DEFAULT_MODE=lite");
+  expect(later).not.toContain("PONYTAIL_DEFAULT_MODE=off");
+}, SLOW);
+
+test("on a preset claude seat the flag beats preset and machine policy, then and on a later flag-free relaunch", async () => {
+  const f = presetSeat("claude");
+  await live(f, ["--context", "850k", "--ponytail", "lite"]);
+  expect(f.current().seats.alice.harness_env).toEqual({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: "850000", CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "95", PONYTAIL_DEFAULT_MODE: "lite" });
+  const later = await dryCommand(f);
+  for (const expected of ["CLAUDE_CODE_AUTO_COMPACT_WINDOW=850000", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=95", "PONYTAIL_DEFAULT_MODE=lite"]) expect(later).toContain(expected);
+  for (const beaten of ["CLAUDE_CODE_AUTO_COMPACT_WINDOW=500000", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=111111", "PONYTAIL_DEFAULT_MODE=off", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=90"]) expect(later).not.toContain(beaten);
+}, SLOW);
+
+test("the router walks a dry run in text and --json, and an unsupported seat leaves the row alone", () => {
+  const f = fixture("codex");
+  writeFileSync(f.state, JSON.stringify({ replaced: false, publicCensus: true }));
+  writeFileSync(join(f.root, "bin/ps"), "#!/bin/sh\nprintf '1 fixture-caller\\n'\n", { mode: 0o755 });
+  const before = readFileSync(f.scope.registryPath, "utf8");
+  const env = { ...process.env, TAP_BOOT_ID: "bootuuid:00000000-0000-0000-0000-000000000001", TAP_BOOT_ID_LEGACY: "boot:1", TAP_JSON: "0" };
+  const run = (...args: string[]) => spawnSync(resolve(import.meta.dir, "../../../bin/tap"), ["session", "relaunch", ...args], { cwd: f.root, env, encoding: "utf8", timeout: 20000 });
+  const text = run("--harness", "codex", "--team", "Demo", "--context", "850k", "--dry-run");
+  expect(text.status, text.stdout + text.stderr).toBe(0);
+  // Codex may add its receipt-folder warning line between the preview and the result dot.
+  const lines = text.stdout.trimEnd().split("\n");
+  expect(lines.slice(0, 2)).toEqual(["Would relaunch 1 active codex seats on team Demo", "  would apply -c model_context_window=850000 -c model_auto_compact_token_limit=807500"]);
+  expect(lines.at(-1)).toBe("● Demo/alice");
+  const json = run("--harness", "codex", "--team", "Demo", "--context", "850k", "--dry-run", "--json");
+  expect(json.status, json.stdout + json.stderr).toBe(0);
+  expect(JSON.parse(json.stdout).results[0]).toMatchObject({ handle: "alice", status: "would-resume" });
+  expect(JSON.parse(json.stdout).results[0].stdout).toContain("-c model_auto_compact_token_limit=807500");
+  const refused = run("--harness", "cursor", "--team", "Demo", "--ponytail", "off", "--json");
+  expect(refused.status).toBe(2);
+  expect(JSON.parse(refused.stdout)).toMatchObject({ ok: false, error_class: "launch_ponytail_unsupported", detail: "harness 'cursor' does not support --ponytail (supported by: claude, codex)" });
+  expect(readFileSync(f.scope.registryPath, "utf8")).toBe(before); expect(f.effects()).toBe("");
 });

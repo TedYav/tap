@@ -50,9 +50,11 @@ cd "$WORK/local"
 
 # 1. Bare `tap team` and `tap team roster` match and render local team
 # Consume the once-per-install project advisory before comparing roster aliases.
+# --no-cache: the roster cache key includes the socket spelling, which changes once
+# tmux creates its directory, so one alias could print "cached observation" and the other not.
 "$TAP" team >/dev/null 2>&1 || fail "initial roster read failed"
-bare="$("$TAP" team 2>&1)" || fail "bare 'tap team' failed: $bare"
-roster="$("$TAP" team roster 2>&1)" || fail "'tap team roster' failed: $roster"
+bare="$("$TAP" team --no-cache 2>&1)" || fail "bare 'tap team' failed: $bare"
+roster="$("$TAP" team roster --no-cache 2>&1)" || fail "'tap team roster' failed: $roster"
 [ "$bare" = "$roster" ] || fail "'tap team roster' must byte-match bare 'tap team'"
 grep -q "local-lead" <<<"$bare" || fail "'local-lead' missing from bare output"
 ! grep -q "foreign-lead" <<<"$bare" || fail "'foreign-lead' leaked into local roster"

@@ -52,6 +52,10 @@ switch (cmd) {
   }
   case "list-panes": {
     if (process.env.TMUX_MOCK_DEFAULT_UNAVAILABLE === "1" && !selectedSocket) process.exit(1);
+    if (argv.includes("#{pane_id}\t#{pane_tty}\t#{session_name}\t#{pid}:#{start_time}")) {
+      console.log(process.env.TMUX_MOCK_CHANGED === "1" ? "%8\t/dev/ttys003\tT/changed\t900:200" : "%9\t/dev/ttys004\tT/fable\t900:200");
+      break;
+    }
     if (!argv.join(" ").includes("pane_tty")) console.log("T/fable\tT/fable:0.0\t%9\tclaude\t4242\t900:200\t0");
     else if (process.env.TMUX_MOCK_CHANGED === "1") console.log("%8\t/dev/ttys003");
     else console.log("%9\t/dev/ttys004");

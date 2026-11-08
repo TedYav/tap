@@ -83,7 +83,7 @@ const ID_STAMP_RE = /-(\d{8})T(\d{6})Z-[^-]*$/;
  * for an id that carries no valid stamp at all. Returns null on any out-of-range
  * component.
  */
-function parseIdStampEpoch(id: string): number | null {
+export function parseIdStampEpoch(id: string): number | null {
   const m = ID_STAMP_RE.exec(id);
   if (!m) return null;
   const date = m[1]!;

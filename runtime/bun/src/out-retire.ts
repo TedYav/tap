@@ -29,6 +29,8 @@ import { physicalSocketPath, serverEpochFromRaw, tmux, tmuxReadOnly, bootId, leg
 import { reservationExpired } from "./reservation";
 import { deadLetterScope, deadLetterTargets, disposeDeadLetters } from "./dead-letters";
 import { assertSharedStopCleared, quiesceSharedSession, refuseSharedSelfStop } from "./opencode-shared-stop";
+import type { FzfEffects } from "./fzf";
+import { fuzzyMatch, pickSeat, type SeatChoice } from "./seat-picker";
 
 type Ctx = ReturnType<typeof resolveContext>;
 export type RetirementDisposition = Extract<LifecycleDisposition, { ok: true }>;
@@ -86,41 +88,117 @@ function retireContext(form: PlainForm, env: NodeJS.ProcessEnv): Ctx {
   return resolveContext(process.cwd(), env, { explicitTeam: form.team });
 }
 
-/** Router-door entry: every `out|unregister` form except `--forward-to`. */
-export function cmdOutRetire(argv: string[], requested: "out" | "shutdown" = "out"): number {
+type Requested = "out" | "shutdown";
+type Action = "out" | "out-hard" | "shutdown";
+
+/** Router-door entry: every `out|unregister` form except `--forward-to`.
+ * `picker` injects the chooser's effects (tests); production uses the real fzf. */
+export function cmdOutRetire(argv: string[], requested: Requested = "out", picker?: FzfEffects): number | Promise<number> {
   let form: PlainForm | undefined;
-  try {
-    form = parseOutForm(argv);
-    if (requested === "shutdown" && (!form.name || form.dash)) throw new TapError(1, "usage_error", "tap shutdown <handle|team/handle>", "shutdown needs one named seat");
-    const action = requested === "shutdown" ? "shutdown" : form.kill ? "out-hard" : "out";
-    if (form.dash && form.kill) {
-      throw new TapError(1, "usage_error", "tap help unregister", "'-' is incompatible with --kill (a dead seat has no session to kill)", "tap");
-    }
-    if (form.dash && !dashSelect(form, process.env)) return 0;
-    if (form.dash) publicationBarrier("after-dash-select", process.env);
-    const ctx = retireContext(form, process.env);
-    const { name } = resolveRetireName(ctx, form, process.env);
-    if (form.lastSelection) assertLastSelection(ctx, form, name, process.env, false);
-    const facts = rowFacts(ctx, name);
-    if (requested === "shutdown" && !facts.present) {
-      // Empty narration facts can mean an unreadable or malformed registry.
-      // Preserve its authoritative refusal before calling the seat absent.
-      if (isFile(ctx.registryPath)) retirementDoc(ctx);
-      throw new TapError(1, "not_found", `tap team --team ${ctx.team}`, `unknown seat '${ctx.team}/${name}'; nothing removed`);
-    }
-    const disposition = lifecycleDisposition(facts.crew ? "crew" : "seat", action);
-    if (!disposition.ok) throw new TapError(1, disposition.errorClass, "tap help out", disposition.detail);
-    if (disposition.row.scope === "crew" && disposition.row.crews === "consume-d-contract") return dismissCrew(ctx, name, facts.row!, disposition,
-      { verb: `tap ${action === "out-hard" ? "out --hard" : action}`, deadOnly: form.dash, ...(form.lastSelection ? { retirementForm: form } : {}) });
-    if (tmuxFateStopsNamedSession(disposition.row)) return killEntry(ctx, form, name, facts, disposition);
-    return retireSelected(ctx, form, name, facts.row, disposition);
-  } catch (e) {
+  const failed = (e: unknown): number => {
     if (form?.selfReported) {
       writeSync(2, `tap ${requested}: ${e instanceof Error ? e.message : String(e)}\n`);
       return 1;
     }
     return retirementFailure(e);
+  };
+  try {
+    form = parseOutForm(argv);
+    if (requested === "shutdown" && (!form.name || form.dash)) throw new TapError(1, "usage_error", "tap shutdown <handle|team/handle>", "shutdown needs one named seat");
+    const action: Action = requested === "shutdown" ? "shutdown" : form.kill ? "out-hard" : "out";
+    if (form.dash && form.kill) {
+      throw new TapError(1, "usage_error", "tap help unregister", "'-' is incompatible with --kill (a dead seat has no session to kill)", "tap");
+    }
+    if (form.dash) {
+      const selected = dashSelect(form, process.env);
+      if (selected.kind === "none") return 0;
+      // A tie is chosen with both locks released; the fingerprint captured under
+      // them makes assertLastSelection refuse a row that changed during the pick.
+      if (selected.kind === "ambiguous") {
+        const chosen = form;
+        return pickSeat("out", selected.candidates, { prompt: "Exited seat > ", effects: picker,
+          header: `${selected.candidates.length} seats share the latest exit · Enter retires · Esc cancels` })
+          .then(result => {
+            if (result.kind === "unavailable") throw selected.refusal;
+            if (result.kind === "interrupted") return 130;
+            if (result.kind === "cancelled") { process.stdout.write("tap out: picker closed without selecting a seat; nothing removed\n"); return 0; }
+            chosen.name = result.handle;
+            chosen.lastSelection = { registryPath: selected.registryPath, fingerprint: selected.fingerprints.get(result.handle)! };
+            return retireTarget(chosen, requested, action);
+          }).catch(failed);
+      }
+      return retireTarget(form, requested, action);
+    }
+    const ctx = retireContext(form, process.env);
+    const { name } = resolveRetireName(ctx, form, process.env);
+    const facts = rowFacts(ctx, name);
+    if (!form.dash && form.name !== null && !facts.present) {
+      // A miss on a terminal opens the chooser seeded with the name. Without one
+      // (agents, --json, no fzf) the verb keeps today's exact answer.
+      const offer = missChoices(ctx, name);
+      if (offer.length) {
+        const chosen = form;
+        return pickSeat(requested, offer.map(([handle, label]) => ({ handle, label })), { query: name, effects: picker,
+          header: `No seat '${name}' on ${ctx.team} · Enter selects · Esc cancels` })
+          .then(result => {
+            if (result.kind === "unavailable") return retireTarget(chosen, requested, action, { ctx, name, facts });
+            if (result.kind === "interrupted") return 130;
+            if (result.kind === "cancelled") { process.stdout.write(`tap ${requested}: picker closed without selecting a seat; nothing removed\n`); return 0; }
+            chosen.name = result.handle;
+            return retireTarget(chosen, requested, action, { pinned: offer.find(([handle]) => handle === result.handle)![2] });
+          }).catch(failed);
+      }
+    }
+    return retireTarget(form, requested, action, { ctx, name, facts });
+  } catch (e) {
+    return failed(e);
   }
+}
+
+/** Seats a name with no seats-map key may have meant: rows whose handle fuzzy-matches it, so
+ * a repeated `tap out <gone>` keeps its quiet no-op when nothing resembles it.
+ * An unreadable registry offers nothing and keeps today's refusal. */
+function missChoices(ctx: Ctx, name: string): Array<[string, string, Record<string, unknown>]> {
+  if (!isFile(ctx.registryPath)) return [];
+  let doc: JsonMap;
+  try { doc = retirementDoc(ctx); } catch { return []; }
+  // Any existing key is an exact name, whatever its value (a scalar row is
+  // retired by name), so it never opens the chooser.
+  if (docSeats(doc).has(name)) return [];
+  const seats = writerSeats(doc);
+  const offer: Array<[string, string, Record<string, unknown>]> = [];
+  for (const [handle, row] of seats) {
+    if (!isMap(row) || !fuzzyMatch(name, handle)) continue;
+    const role = str(row.get("role")), status = row.has("status") ? str(row.get("status")) : "active";
+    const crew = row.get("crew") === true || row.get("crew") === 1n;
+    offer.push([handle, `${handle}${role ? ` (${role})` : ""}  ${str(row.get("harness")) || "-"}  ${status || "-"}${crew ? " (crew)" : ""}`,
+      Object.fromEntries(row) as Record<string, unknown>]);
+  }
+  return offer;
+}
+
+/** The retirement after a target is known. `pinned` is the row the picker
+ * showed: an identity change during the pick refuses before any effect. */
+function retireTarget(form: PlainForm, requested: Requested, action: Action,
+  known?: { ctx?: Ctx; name?: string; facts?: RowFacts; pinned?: Record<string, unknown> }): number {
+  if (form.dash) publicationBarrier("after-dash-select", process.env);
+  const ctx = known?.ctx ?? retireContext(form, process.env);
+  const name = known?.name ?? resolveRetireName(ctx, form, process.env).name;
+  if (form.lastSelection) assertLastSelection(ctx, form, name, process.env, false);
+  const facts = known?.facts ?? rowFacts(ctx, name);
+  if (known?.pinned) assertRetirementIdentity(writerSeats(retirementDoc(ctx)).get(name), known.pinned);
+  if (requested === "shutdown" && !facts.present) {
+    // Empty narration facts can mean an unreadable or malformed registry.
+    // Preserve its authoritative refusal before calling the seat absent.
+    if (isFile(ctx.registryPath)) retirementDoc(ctx);
+    throw new TapError(1, "not_found", `tap team --team ${ctx.team}`, `unknown seat '${ctx.team}/${name}'; nothing removed`);
+  }
+  const disposition = lifecycleDisposition(facts.crew ? "crew" : "seat", action);
+  if (!disposition.ok) throw new TapError(1, disposition.errorClass, "tap help out", disposition.detail);
+  if (disposition.row.scope === "crew" && disposition.row.crews === "consume-d-contract") return dismissCrew(ctx, name, facts.row!, disposition,
+    { verb: `tap ${action === "out-hard" ? "out --hard" : action}`, deadOnly: form.dash, ...(form.lastSelection ? { retirementForm: form } : {}) });
+  if (tmuxFateStopsNamedSession(disposition.row)) return killEntry(ctx, form, name, facts, disposition);
+  return retireSelected(ctx, form, name, facts.row, disposition);
 }
 
 function retirementFailure(e: unknown): never {
@@ -216,11 +294,14 @@ function assertLastSelection(ctx: Ctx, form: PlainForm, name: string, env: NodeJ
   }
 }
 
-function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): boolean {
+type DashSelection = { kind: "selected" } | { kind: "none" }
+  | { kind: "ambiguous"; refusal: TapError; registryPath: string; candidates: SeatChoice[]; fingerprints: Map<string, string> };
+
+function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): DashSelection {
   let ctx = retireContext(form, env);
   fenceOrThrow(ctx);
   ctx.bus.ensureDirs();
-  if (!isFile(ctx.registryPath)) return noRegistry(form);
+  if (!isFile(ctx.registryPath)) { noRegistry(form); return { kind: "none" }; }
   const resetLock = acquireResetMutationLock(ctx.bus.home, "tap unregister", undefined, "shared");
   try {
     const lock = acquireRegistryLock(ctx.registryPath, Infinity);
@@ -262,21 +343,34 @@ function dashSelect(form: PlainForm, env: NodeJS.ProcessEnv): boolean {
         publish();
         form.name = candidates[0]![0]!;
         form.lastSelection = { registryPath: ctx.registryPath, fingerprint: pyDumpIndent(seats.get(form.name)!, 0) };
-        return true;
+        return { kind: "selected" };
       }
+      const refusal = new TapError(1, "not_found", "tap unregister <name>",
+        `${candidates.length} dead seats — name one explicitly (candidates: ${candidates.map(([h]) => h).join(" ")})`, "tap");
       const stamped = candidates.filter(([, ea]) => ea);
-      if (stamped.length === candidates.length) {
-        const latest = stamped.reduce((a, b) => (b[1]! > a[1]! ? b : a));
-        if (stamped.filter(([, ea]) => ea === latest[1]).length === 1) {
-          publish();
-          form.name = latest[0]!;
-          form.lastSelection = { registryPath: ctx.registryPath, fingerprint: pyDumpIndent(seats.get(form.name)!, 0) };
-          return true;
-        }
+      // A candidate without a stamp cannot be ordered, so it never joins a
+      // chooser: the refusal stands. (Unreachable today: every gone candidate
+      // is stamped above before it is counted.)
+      if (stamped.length !== candidates.length) { publish(); throw refusal; }
+      const latest = stamped.reduce((a, b) => (b[1]! > a[1]! ? b : a))[1]!;
+      const tied = stamped.filter(([, ea]) => ea === latest);
+      if (tied.length === 1) {
+        publish();
+        form.name = tied[0]![0]!;
+        form.lastSelection = { registryPath: ctx.registryPath, fingerprint: pyDumpIndent(seats.get(form.name)!, 0) };
+        return { kind: "selected" };
       }
       publish();
-      throw new TapError(1, "not_found", "tap unregister <name>",
-        `${candidates.length} dead seats — name one explicitly (candidates: ${candidates.map(([h]) => h).join(" ")})`, "tap");
+      // Only the rows sharing the latest stamp are offered, so whatever is
+      // picked is truly a most recent exit. Never hold either lock while a
+      // human chooses: capture each tied row's published bytes now; the caller
+      // picks after release and assertLastSelection re-verifies them.
+      const fingerprints = new Map(tied.map(([h]) => [h, pyDumpIndent(seats.get(h)!, 0)] as [string, string]));
+      return { kind: "ambiguous", refusal, registryPath: ctx.registryPath, fingerprints,
+        candidates: tied.map(([h]) => {
+          const harness = str((seats.get(h) as JsonMap).get("harness"));
+          return { handle: h, label: `${h}  gone  exited ${latest}${harness ? `  ${harness}` : ""}` };
+        }) };
     } finally { lock.release(); }
   } finally { resetLock.release(); }
 }

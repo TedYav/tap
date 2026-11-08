@@ -101,7 +101,7 @@ describe("mixed-runtime router", () => {
       ["team", "--json"],
       ["team", "roster", "--all"],
       ["team", "--names"],
-      ["team", "--names", "--active"],
+      ["team", "--names", "--online"],
       ["team", "show"],
       ["team", "--future-option"],
       // tap-nyvty: refresh is native now, with its own flags. It is the first

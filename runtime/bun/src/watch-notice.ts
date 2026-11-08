@@ -78,6 +78,8 @@ export interface SendNoticeArgs {
   env?: NodeJS.ProcessEnv;
   /** A `watch-templates/` file for a `notice` body; default `notice.md`. */
   template?: string;
+  /** The caller reports the outcome itself (e.g. `tap role`): no `tap watch:` stderr line. */
+  quiet?: boolean;
 }
 
 /**
@@ -128,7 +130,7 @@ function send(a: SendNoticeArgs, receipt: boolean): { rc: number; disposition: s
   const rc = result.error ? 1 : (result.status ?? 1);
   // Same stderr-leak learning: a failed notice surfaces the error line before falling
   // back to the sticky NOTIFY (so a wrong disarm is never silent AND never blind).
-  if (rc !== 0 && rc !== 5) {
+  if (rc !== 0 && rc !== 5 && !a.quiet) {
     process.stderr.write(`tap watch: notice send to '${a.to}' failed (rc=${rc}): ${stderr.split("\n", 1)[0] ?? ""}\n`);
   }
   // Cleanup is best-effort and must not outrank the verdict: `force` swallows a

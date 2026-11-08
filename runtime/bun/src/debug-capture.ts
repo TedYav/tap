@@ -19,7 +19,23 @@ export function readJson(path: string): any {
   try { return JSON.parse(UTF8.decode(readFileSync(path))); } catch { return null; }
 }
 
-const alive = (pid: unknown) => {
+/**
+ * A recorder rewrites its status.json at least every 5 s (every 0.5 s while
+ * tracing), so a status.json older than this means no recorder is writing.
+ * Commands judge it from the file's mtime alone (one stat, no read), which is
+ * wrong in both directions for a while, by design:
+ * - A recorder that wedges just after a write still reads as live until the
+ *   mtime ages past this threshold: commands keep appending to the wedged
+ *   capture for at most this long, then correct themselves.
+ * - A live recorder stalled longer than this (a long artifact pass, a machine
+ *   waking from sleep) reads as gone: commands skip their journal rows until
+ *   its next status write. With always_on set, an arm child's `tap debug on`
+ *   retires that capture and starts a fresh one; the stalled recorder, never
+ *   signalled, stops itself on its next cycle.
+ */
+export const RECORDER_STALE_SECONDS = 30;
+
+export const alive = (pid: unknown) => {
   if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
   try { process.kill(pid as number, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 };
@@ -109,25 +125,55 @@ export function copyRedactedFile(source: string, target: string, env: NodeJS.Pro
   }
 }
 
-/** The opted-in capture, or null when recording is off or stopping. */
-function activeRun(env: NodeJS.ProcessEnv): { id: string; directory: string } | null {
-  const home = join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
+/** The capture enabled.json names, or null when there is none. */
+function enabledRun(home: string): any {
   const run = readJson(join(home, "enabled.json"));
-  if (!run || (typeof run === "object" && Object.keys(run).length === 0)) return null;
+  return !run || (typeof run === "object" && Object.keys(run).length === 0) ? null : run;
+}
+
+/** Whether a saved capture selection includes the TAP event source; a capture from before selection existed does. */
+const recordsTapEvents = (run: any) =>
+  run.config?.capture === undefined || (Array.isArray(run.config.capture) && run.config.capture.includes("tap-events"));
+
+function checked(run: any): { id: string; directory: string } {
   if (typeof run.directory !== "string" || typeof run.id !== "string") throw new Error("invalid debug capture");
-  if (existsSync(join(run.directory, "stop"))) return null;
   return run;
+}
+
+/** The opted-in TAP event capture, or null when that source is off or stopping. */
+function activeRun(env: NodeJS.ProcessEnv): { id: string; directory: string } | null {
+  const run = enabledRun(join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug"));
+  if (!run || !recordsTapEvents(run)) return null;
+  return existsSync(join(checked(run).directory, "stop")) ? null : run;
+}
+
+/** Whether a recorder is writing this capture, from its status.json mtime (RECORDER_STALE_SECONDS).
+ * Before the recorder's first status write, enabled.json's own mtime stands in. */
+function recorderFresh(directory: string, enabled: string, now = Date.now()): boolean {
+  let written: number;
+  try { written = statSync(join(directory, "status.json")).mtimeMs; }
+  catch {
+    try { written = statSync(enabled).mtimeMs; } catch { return false; }
+  }
+  return now - written < RECORDER_STALE_SECONDS * 1000;
 }
 
 /**
  * One `tap.command` journal row, written in-process by the public entry
  * (main.ts). bin/tap execs into Bun, so the caller pid is the command the
- * user ran.
+ * user ran. Returns false when no recorder is writing the enabled capture
+ * (none enabled, or its status.json is stale), so the caller may arm one; a
+ * dead capture gets no rows. A stopping capture, or one whose saved capture
+ * excludes tap-events, is live: true, no row.
  */
-export function recordCommand(args: string[], env: NodeJS.ProcessEnv, callerPid: number): void {
-  const run = activeRun(env);
-  if (!run) return;
+export function recordCommand(args: string[], env: NodeJS.ProcessEnv, callerPid: number): boolean {
   const home = join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
+  const run = enabledRun(home);
+  if (!run) return false;
+  // A capture without the TAP event source journals no commands, and its recorder is never a dead one to replace.
+  if (!recordsTapEvents(run)) return true;
+  if (!recorderFresh(checked(run).directory, join(home, "enabled.json"))) return false;
+  if (existsSync(join(run.directory, "stop"))) return true;
   let hide = false;
   const command = args.map(arg => {
     const value = hide ? "<redacted>" : redactJournalText(arg, env);
@@ -150,6 +196,7 @@ export function recordCommand(args: string[], env: NodeJS.ProcessEnv, callerPid:
     event: "tap.command", operation_id: randomUUID().replaceAll("-", ""), argv: command,
     caller_pid: callerPid, cwd: process.cwd(), pane: env.TMUX_PANE ?? null, tmux: env.TMUX ?? null, team }, env)) + "\n",
     { mode: 0o600 });
+  return true;
 }
 
 /** Internal leaf: check opt-in before reading stdin, resolving a bus or writing. */
@@ -215,8 +262,9 @@ type Context = { id: string; pane: string; harness: string; sentinel: string; bu
 type Outcome = { status?: string; action?: string; effect?: string; detail?: string };
 
 export function captureCourierFailure<T extends Outcome>(context: Context, run: () => T, attempt = false): T {
-  const enabled = join(process.env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug", "enabled.json");
-  if (!existsSync(enabled)) return run();
+  let recording = false;
+  try { recording = activeRun(process.env) !== null; } catch { /* diagnostics cannot block delivery */ }
+  if (!recording) return run();
   const previous = observation;
   const current: { frame?: string } = {};
   observation = current;

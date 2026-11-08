@@ -110,6 +110,7 @@ runtime/bun/test/reply-foreign-addressing.test.ts	A	the foreign-payload differen
 runtime/bun/test/reply-foreign-route.test.ts	A	the foreign-return-route differential asserts the injected wire bytes on both doors (`[[TAP v0.23 <note|ask> alpha/<out-id>]]` — the reply outbound names the SENDER team as bus locator, no `path=` for an enrolled team) — D4 member 3a-bis-1
 runtime/bun/test/reply-obligations-fences.test.ts	C	reply contract labels and diagnostics mention at-rest reply=expected/settle-only; no sentinel-byte assertion
 runtime/bun/test/retry-drain.test.ts	A	same-ID retry and idle-submit drains assert v0.23 retry wires and one injection
+runtime/bun/test/roster-cache-effects.test.ts	B	complete v0.23 note wire at :59 is delivery INPUT through the effect boundary; asserts that a warm roster cache never replaces the live pane identity check or the two-fresh-sample Enter guard, not wire shape
 runtime/bun/test/self-rebrief.test.ts	A	firstInputMatches (self-rebrief.ts) anchors `^\[\[TAP v0\.23 note <id>\]\]$` as the recovery-accepted/delivery-miss discriminator; "recovery-first proof accepts quoted preview but refuses mixed first input" (:207-213) asserts pass/fail directly on that exact wire shape, so a grammar bump flips accepted to delivery-miss
 runtime/bun/test/send-census-fences-routing.test.ts	C	asserts the reply=settle-only contract diagnostic on stderr, not wire bytes
 runtime/bun/test/send-delivery-interrupt.test.ts	B	current v0.23 staged markers exercise occupied-input preservation; assertions cover delivery effects and status
@@ -136,6 +137,7 @@ runtime/bun/test/unit3-lock.test.ts	B	`[[TAP ...]]` placeholders; asserts lock b
 runtime/bun/test/unit3-sentinel.test.ts	A	asserts renderSentinel output byte-for-byte (:35-36, :41)
 runtime/bun/test/unwedge-observe.test.ts	A	Exact v0.23 staged sentinel and whole-composer equality assertions for unwedge admission
 runtime/bun/test/unwedge-progress.test.ts	B	Canonical note and nudge wires are transcript inputs for own-stimulus versus productive-progress correlation
+runtime/bun/test/unwedge.test.ts	A	Pins the composed v0.23 continuation wire hash to the recorded unwedge stimulus.
 runtime/bun/test/waiter-escalated-grace.test.ts	B	real-waiter escalated-grace rows drive deadline disposition; assertions bind receipts and pane effects, not wire grammar
 skills/tap/scripts/regress/communication-identity-full.test.sh	A	hand-built v=0.6 sentinels with from=/to= fed to nudge's identity path (:226, :356)
 skills/tap/scripts/regress/courier-injects.test.sh	A	BYTE-EXACT sentinel equality (:177-179); also a tap-0z9l path= carrier

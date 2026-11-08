@@ -105,6 +105,9 @@ test("done, cancellation, and archive independently remove both directions from 
     const id = `${direction}-${settlement}`;
     f.payload(id, direction === "out" ? { from: "peggy", to: "peer" } : {});
     if (["done", "cancelled"].includes(settlement)) f.put(`receipts/${id}.${settlement}`, "");
+    // An indexed id with an active payload is an interrupted archive cut, which
+    // unlinks the payload before its receipts: its `.done` is still active.
+    if (settlement === "archive") f.put(`receipts/${id}.done`, "");
   }
   f.put("archive/index.ndjson", ["in-archive", "out-archive"].map(id => JSON.stringify({ id, month: "2026-09", settled_at: "2026-09-20T00:00:00Z", payload_sha256: "a".repeat(64), receipts: [`${id}.done`] })).join("\n") + "\n");
   const out = f.json(["peggy", "--json", "--limit", "10"]);

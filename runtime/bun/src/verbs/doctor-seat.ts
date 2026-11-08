@@ -206,6 +206,7 @@ export function checkSeat(handle: string, scriptsDir: string, context?: Resolved
     if (state === "blocked") {
       const action = sampled.agentStateReason === "codex-update-available" ? `attach to ${handle} and choose Skip`
         : sampled.agentStateReason === "shell_mode" ? `attach to ${handle} and leave OpenCode shell mode`
+        : sampled.agentStateReason === "sign_in" ? `attach to ${handle} and sign in to the harness`
         : `tap attach ${handle}`;
       return finish("parked-on-dialog", 2, action);
     }

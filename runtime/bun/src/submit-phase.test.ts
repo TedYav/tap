@@ -14,7 +14,8 @@ test("interrupt intent survives a crash and never authorizes a zero-Enter re-pro
       pane: "%1", harness: "codex", method: "keys", keys: ["Escape"], cancellation: "unknown", tmux_confirmed: false,
     } });
     expect(interruptNotice(home, "msg")).toContain("input acceptance unconfirmed");
-    expect(interruptNotice(home, "msg")).toContain("persistent goal may be paused");
+    expect(interruptNotice(home, "msg")).toContain("marked urgent, so it may have interrupted you; that was TAP, not the user");
+    expect(interruptNotice(home, "msg")).toContain("continue your previous work unless it says otherwise");
     recordPhase(home, { ...row, phase: "injected-text-confirmed" });
     recordPhase(home, { ...row, phase: "verify-result", result: "unverified" });
     mkdirSync(join(home, "spool"));

@@ -167,6 +167,23 @@ const RULES: Record<Harness, Rule[]> = {
       not: [{ lineRegex: [/^\s*❯(?!\s*(?:No, exit|Yes, I trust this folder)\s*$)/] }],
     },
     {
+      // First-run sign-in: "Select login method:" over numbered
+      // account choices, and before it on a fresh config the text-style
+      // (theme) picker, which only appears while onboarding — and so sign-in —
+      // is unfinished. Neither screen has a composer: a row carrying the
+      // composer glyph outside a numbered choice, or the composer's rule
+      // border, means the text is a transcript quote, not this screen.
+      id: "sign_in",
+      state: "blocked",
+      priority: 950,
+      region: tail(TRUST_TAIL),
+      any: [
+        { lineRegex: [/^\s*Select login method:\s*$/, /^\s*(?:❯\s*)?1\.\s+Claude account with subscription\b/] },
+        { lineRegex: [/^\s*Choose the text style that looks best with your terminal\s*$/, /^\s*To change this later, run \/theme\s*$/] },
+      ],
+      not: [{ lineRegex: [/^\s*❯(?!\s*(?:\d\.\s|✔\s))/] }, { lineRegex: [/^\s*─{10,}\s*$/] }],
+    },
+    {
       id: "permission_prompt",
       state: "blocked",
       priority: 900,
@@ -245,6 +262,18 @@ const RULES: Record<Harness, Rule[]> = {
       lineRegex: [/^\s*(?:›\s*)?1\.\s+Trust and continue\s*$/, /^\s*(?:›\s*)?2\.\s+Quit\s*$/],
       regex: [wrapped("Trust this folder?"), closingHint("enter continue · esc quit")],
       not: [{ lineRegex: [/^\s*›(?!\s*\d\.\s)/] }],
+    },
+    {
+      // First-run sign-in. This menu marks its choice with `>`,
+      // not the composer's `›`; any `›` row means a live composer, so a
+      // transcript quoting the menu is not this screen.
+      id: "sign_in",
+      state: "blocked",
+      priority: 950,
+      region: tail(TRUST_TAIL),
+      regex: [wrapped("Choose how you want to use Codex."), closingHint("Press enter to continue")],
+      lineRegex: [/^\s*(?:>\s*)?1\.\s+Sign in with ChatGPT\s*$/],
+      not: [{ lineRegex: [/^\s*›/] }],
     },
     {
       id: "screen_working",

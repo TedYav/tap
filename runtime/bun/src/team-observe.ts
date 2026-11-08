@@ -1,9 +1,11 @@
-import { observeRows, type ObserveEngine, type ObservePayload } from "./observe";
+import { observeRows, parsePanes, type PaneRecord, type ObserveEngine, type ObservePayload } from "./observe";
 import { clockFields, gather } from "./observe-gather";
 const US = "\x1f";
 function str(value: unknown): string { return typeof value === "string" ? value : ""; }
 
 export interface RegistryRow {
+  /** The seat's `tap role` label, carried to the roster. */
+  role?: unknown;
   model?: unknown;
   launch_tuning?: unknown;
   team: unknown;
@@ -24,6 +26,9 @@ export interface RegistryRow {
   preset: unknown;
   harness_session_id?: unknown;
   transcript_path?: unknown;
+  /** Dated evidence `tap team --recent` reads; present only when the stored row has it. */
+  last_launched?: unknown;
+  exited_at?: unknown;
 }
 
 
@@ -45,7 +50,7 @@ export function observe(
   fast = false,
   diagnostic: (text: string) => void = text => { process.stderr.write(text); },
   engine: ObserveEngine = observeRows,
-): { code: number; rows: Map<string, string[]>; serverEpoch: string; panePids?: Map<string,string> } {
+): { code: number; rows: Map<string, string[]>; serverEpoch: string; panePids?: Map<string,string>; panes?: Map<string, PaneRecord> } {
   const g = gather({ fast, env: process.env });
   const serverEpoch = g.serverEpoch;
 
@@ -103,6 +108,10 @@ export function observe(
     const key = fields.shift() ?? "";
     if (key) out.set(key, fields);
   }
-  const panePids = new Map(g.panes_text.split("\n").map(line => line.split("\t")).filter(f => f.length >= 6).map(f => [f[2]!, f[4]!]));
-  return { code: 0, rows: out, serverEpoch, panePids };
+  const panes = new Map<string, PaneRecord>();
+  for (const records of parsePanes(g.panes_text, g.panes_rc, process.env.TAP_SERVER_EPOCH ?? null).bySession.values()) {
+    for (const pane of records) if ("pane_id" in pane) panes.set(pane.pane_id, pane);
+  }
+  const panePids = new Map([...panes].map(([id, pane]) => [id, pane.pane_pid]));
+  return { code: 0, rows: out, serverEpoch, panePids, panes };
 }

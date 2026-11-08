@@ -213,19 +213,60 @@ export async function paneTailLines(facts: PaneFacts, env: NodeJS.ProcessEnv = p
  * window before readiness returns; the full timeout remains the fallback. */
 export const READY_SETTLE_MS = 600;
 
+/** How often a wait consults `awaitingStart`: a capture a second, not one per poll. */
+const START_PROBE_MS = 1000;
+/** A pane with nothing running yet gets this long before the watch may end the
+ * wait, and text must sit unchanged this long to read as blocked. */
+export const START_STALL_MS = 5000;
+/** The watch's reason for a pane whose text stopped changing. */
+export const START_STALLED = "login shell stalled";
+
+/** Slow or blocked? A login shell that has not started its harness is slow while
+ * its pane stays blank or keeps changing, and blocked once text has sat unchanged
+ * for START_STALL_MS, the shape of a prompt waiting on an answer (tap-i2y7w). A
+ * dead pane holds no further evidence, so it ends the wait at the same mark; not
+ * sooner, because the pane-died rollback owns the first few seconds. So does a
+ * pane that `foreign` names as running some other program: only a shell still on
+ * its way to the harness earns the longer wait. A failed capture is no evidence:
+ * it neither resets the stall nor advances it. */
+export function startStallWatch(harness: string, tail: (facts: PaneFacts) => Promise<string[] | null>,
+  foreign: (facts: PaneFacts) => Promise<string | null> = async () => null) {
+  let shown = "", shownSince = 0;
+  return async (facts: PaneFacts | null, elapsedMs: number): Promise<string | null> => {
+    if (!facts) return null;
+    if (facts.dead) return elapsedMs >= START_STALL_MS ? `${harness} exited during startup` : null;
+    if (elapsedMs >= START_STALL_MS) {
+      const other = await foreign(facts);
+      if (other) return `the pane is running ${other}, not ${harness}`;
+    }
+    const lines = await tail(facts);
+    if (lines === null) return null;
+    const current = lines.join("\n");
+    if (current !== shown) { shown = current; shownSince = elapsedMs; }
+    return current !== "" && elapsedMs >= START_STALL_MS && elapsedMs - shownSince >= START_STALL_MS ? START_STALLED : null;
+  };
+}
+
+/** `timeoutMs` bounds appearance and survival together unless `startCeilingMs`
+ * separates them: that then bounds the wait for a first match, `timeoutMs` runs
+ * from that match, and `awaitingStart` may end the wait early with a reason. */
 export async function awaitStableHarness(
   read: () => Promise<PaneFacts | null>, matches: (facts: PaneFacts) => boolean,
   timeoutMs: number, options: { signal?: AbortSignal; blocker?: (facts: PaneFacts) => Promise<string | null>; confirmations?: number; observeUntilDeadline?: boolean; blockerObservationMs?: number;
     ready?: (facts: PaneFacts) => Promise<boolean>; readySettleMs?: number;
+    startCeilingMs?: number; awaitingStart?: (facts: PaneFacts | null, elapsedMs: number) => Promise<string | null>;
     now?: () => number; sleep?: (ms: number) => Promise<unknown> } = {},
 ): Promise<{ facts: PaneFacts | null; reason: string | null }> {
   const now = options.now ?? (() => performance.now()), sleep = options.sleep ?? Bun.sleep;
-  const deadline = now() + timeoutMs;
+  const entered = now();
+  const startDeadline = entered + (options.startCeilingMs ?? timeoutMs);
+  let deadline = startDeadline;
   const observing = !!(options.blocker || options.observeUntilDeadline);
   let observationDeadline = deadline;
   let previous: string | null = null, confirmed: string | null = null, observations = 0;
   let readyDeadline: number | null = null;
   let finalConfirmation = false;
+  let survivalAnchored = false, nextStartProbe = entered + START_PROBE_MS;
   while (true) {
     options.signal?.throwIfAborted();
     const preceding = previous;
@@ -237,6 +278,10 @@ export async function awaitStableHarness(
     // running on stale evidence (both the settle and the deadline paths).
     const sampledAt = now();
     if (facts && matches(facts)) {
+      if (options.startCeilingMs !== undefined && !survivalAnchored) {
+        survivalAnchored = true;
+        deadline = observationDeadline = sampledAt + timeoutMs;
+      }
       const identity = JSON.stringify([facts.pane_id, facts.server_epoch, facts.pane_pid, facts.command]);
       if (confirmed && identity !== confirmed) return { facts: null, reason: "harness process identity changed during readiness" };
       observations = identity === previous ? observations + 1 : 1;
@@ -260,6 +305,14 @@ export async function awaitStableHarness(
     } else {
       if (confirmed) return { facts: null, reason: "harness exited or became unobservable during readiness" };
       previous = null; observations = 0;
+      // A match lost before confirmation proved nothing: the wait for a first
+      // match resumes on its original deadline, so flapping cannot extend it.
+      if (survivalAnchored) { survivalAnchored = false; deadline = observationDeadline = startDeadline; }
+      if (options.awaitingStart && sampledAt >= nextStartProbe) {
+        nextStartProbe = sampledAt + START_PROBE_MS;
+        const reason = await options.awaitingStart(facts, sampledAt - entered);
+        if (reason) return { facts: null, reason };
+      }
     }
     if (observations >= (options.confirmations ?? 2) && (!observing || sampledAt >= (readyDeadline ?? observationDeadline))) return { facts, reason: null };
     if (now() >= deadline) {

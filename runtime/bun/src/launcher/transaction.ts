@@ -9,14 +9,15 @@ import { defaultPermissions, prepareCodexAutoReceipts } from "./permissions";
 import { paneEnrollmentRefusal } from "../pane-enrollment";
 // One session-creation transaction; callers retain selection, cohorts and attach.
 import { randomBytes, randomUUID } from "node:crypto";
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { cpus, loadavg } from "node:os";
+import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpus, loadavg, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { atomicWrite } from "../fsatomic";
 import { acquirePathLockAsync, acquireRegistryLockAsync, type AsyncRegistryLock } from "../panelock";
 import { assertSelectionCurrent, selectCaller, type Selection } from "../selector";
 import { ensureSeatInstance, supersedeForwardingAliases } from "../registry";
-import { isDict, jsonDumpBytes, metaBytes, parseJsonPreserving, PyFloat, PyInt, pyReadUtf8 } from "../spool-publication";
+import { isDict, jsonDumpBytes, metaBytes, parseJsonPreserving, PyFloat, PyInt, pyFloatString, pyReadUtf8 } from "../spool-publication";
+import { agentFamilies, classifyHarness, DENYLIST, harnessFamily, readProcessTable, SHELLS, type PsTable } from "../observe";
 import { reservationExpired } from "../reservation";
 import { bootId, legacyBootId, physicalSocketPath } from "../tmux";
 import { launcherFenceRefusal, markResetGenerationReused } from "../reset";
@@ -25,7 +26,7 @@ import { Notices } from "./catalog-notices";
 import { HARNESSES, resolveHarnessPolicy } from "./catalog";
 import { applyInvocationEnv, buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
 import { type SessionRecord, type Invocation, type ResumeIdentity, UNBOUND_RESUME_IDENTITY } from "./types";
-import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, type StartupObservation } from "./readiness";
+import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, startStallWatch, START_STALLED, START_STALL_MS, type StartupObservation } from "./readiness";
 import { currentEpoch, hasSession, classifySession, crewPanesIn, entrySession, verifiedSession, entryObservedDead, destructiveTarget, sessionPaneIds } from "./observation";
 import { launchCommand, launchTmux, LaunchCommandError } from "./process";
 import { ensureTmuxServer, tmuxBootstrapFailure } from "./tmux-bootstrap";
@@ -42,6 +43,8 @@ import { idlessFreshWarning, pyRepr, recordHasResumeArtifact, resolvedResumeIden
 import { opencodeStorePath, opencodeStoredSession } from "../opencode-store";
 import { launchPhase, launchTracked } from "./progress";
 import { tapScriptsDir, artifactBun } from "../scripts-dir";
+import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
+import { restoreSessionPath } from "./session-path";
 
 type Row = Record<string, unknown>;
 export type LaunchRecord = SessionRecord & {
@@ -888,7 +891,7 @@ export async function respawnInitialPane(evidence: FailureEvidence, command: str
   const vessel = evidence.vessel!;
   startupTrace("respawn_pane", { session: evidence.record.name, pane: vessel.pane });
   // A failed fork leaves older tmux panes unsafe to respawn again.
-  if (!await ownedEffect(vessel, ["respawn-pane", "-k", "-t", vessel.pane, "-c", launchWorkdir(evidence.record), command], env, signal)) {
+  if (!await ownedEffect(vessel, ["respawn-pane", "-k", "-t", vessel.pane, "-c", stableSpawnCwd(env), inWorkdir(launchWorkdir(evidence.record), `exec ${command}`)], env, signal)) {
     throw new TransactionError("creation identity changed before respawn");
   }
 }
@@ -914,24 +917,114 @@ async function reportRespawnResidue(evidence: FailureEvidence, error: Error, rol
   process.stderr.write(`tap session: load1m=${load} cores=${cpus().length || "unknown"} pty-devices=${ptys} pty-limit=${limit}\n`);
 }
 
-const HARNESS_START_TIMEOUT_MS = 5000;
+/** Once the harness is seen, it must survive this long (or signal ready). */
+const HARNESS_SURVIVAL_MS = 5000;
+/** How long a slow login shell may take to show the harness at all. */
+const HARNESS_START_CEILING_SECONDS = 60;
 const SHELL_COMMANDS = new Set(["zsh", "-zsh", "bash", "-bash", "sh", "dash", "ksh", "ash", "fish"]);
 
+/** The pane's own process (pane_pid) is the login shell until the shell execs:
+ * its rc commands are children, shown by tmux as the pane's command while the
+ * root stays the shell (a slow zsh rc read `sleep`, `python3`, `Python`). */
+const loginShellCommand = (name: string, loginShell: string): boolean =>
+  SHELL_COMMANDS.has(name) || name === basename(loginShell);
+
+/** Whether a pane root is still on the launch chain: `<shell> -lic 'exec "$0" "$@"'
+ * /usr/bin/env ... <harness>` passes through the shell and then `env`. */
+export function launchChainCommand(name: string, loginShell: string): boolean {
+  const bare = name.replace(/^-+/, "");
+  return loginShellCommand(bare, loginShell) || bare === "env";
+}
+
+type ProcessTableRead = (env: NodeJS.ProcessEnv) => { table: PsTable | null; ok: boolean };
+
+/** The pane root's command name, or null when ps cannot see it (no evidence).
+ * Named from argv[0]: macOS ps cuts a comm column that is not last to 16 bytes,
+ * so /opt/homebrew/bin/zsh reads as /opt/homebrew/bi. Comm is only the fallback. */
+export function paneRootCommand(facts: PaneFacts, env: NodeJS.ProcessEnv, read: ProcessTableRead): { name: string; comm: string; table: PsTable } | null {
+  const ps = read(env);
+  const row = ps.ok && ps.table ? ps.table.get(String(facts.pane_pid)) : undefined;
+  if (!row || !ps.table) return null;
+  const argv0 = row[3].trim().split(/\s+/, 1)[0] || row[2];
+  return { name: basename(argv0).replace(/^-+/, ""), comm: basename(row[2]), table: ps.table };
+}
+
+/** A program the pane is positively running instead of starting the harness:
+ * a root that exec'd past the launch chain into something that is not the
+ * harness, or a different agent harness in the foreground. Null while the root
+ * is the shell or `env`, or when ps cannot see it. */
+export function foreignPaneProgram(facts: PaneFacts, harness: string, loginShell: string, env: NodeJS.ProcessEnv,
+  read: ProcessTableRead = readProcessTable): string | null {
+  const families = agentFamilies(env), shown = harnessFamily(facts.command, families);
+  if (classifyHarness(shown, families) === "agent" && shown !== harness) return shown;
+  const root = paneRootCommand(facts, env, read);
+  if (!root) return null;
+  // argv[0] is whatever the exec chose (`exec -a codex /bin/cat`); a denylisted
+  // executable outranks it. A truncated comm (/opt/homebrew/bi) names nothing here.
+  if (DENYLIST.includes(root.comm) && !(SHELLS as readonly string[]).includes(root.comm)) return root.comm;
+  if (launchChainCommand(root.name, loginShell)) return null;
+  // The root may have exec'd the harness itself since the tmux read: that is a start, not a foreign
+  // program. paneHarness's precedence decides, so a denylisted root (cat, less, ssh) whose argv names
+  // the harness stays foreign, while a version-named Claude is still found through its argv.
+  if (paneHarness({ command: root.name, pane_pid: facts.pane_pid }, env, () => ({ table: root.table, ok: true })) === harness) return null;
+  return root.name;
+}
+
+/** The start ceiling, refused here so a bad value costs no session and rollback. */
+export function launchStartCeilingMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.TAP_LAUNCH_START_TIMEOUT_SECONDS;
+  const seconds = raw === undefined ? HARNESS_START_CEILING_SECONDS : pyFloatString(raw);
+  const ms = seconds === null ? NaN : seconds * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) throw new TransactionError(`TAP_LAUNCH_START_TIMEOUT_SECONDS must be positive, got '${raw}'; next: unset it or set a positive number of seconds`);
+  return ms;
+}
+
+function machineLoad(): string {
+  try { return `load ${loadavg()[0]!.toFixed(2)} on ${cpus().length || "unknown"} cores`; }
+  catch { return "load unknown"; }
+}
+
+export interface StartMeasure { elapsedMs: number; ceilingMs: number }
+
+/** What to say about a live pane that never showed its harness. Only a stalled
+ * tail is called a prompt: a blank or moving pane at the ceiling is a slow shell. */
+export function startFailureText(harness: string, pane: { command: string; loginShell: string; shell: boolean; tail: string[] | null }, stalled: boolean,
+  measure: StartMeasure, load: string): { cause: string; hint: string } {
+  const after = `after ${measure.elapsedMs} ms`;
+  const atCeiling = `${after} (ceiling ${measure.ceilingMs / 1000} s; ${load})`;
+  const raise = "raise TAP_LAUNCH_START_TIMEOUT_SECONDS and retry the launch";
+  const shellCheck = `${shlexQuote(pane.loginShell)} -lic exit`;
+  if (!pane.shell) return stalled ? { cause: `the pane is running ${pane.command}, not ${harness}`, hint: "" }
+    : { cause: `the pane is running ${pane.command}, not ${harness}, ${atCeiling}`, hint: `next: ${raise}` };
+  if (stalled) return { cause: `the login shell (${pane.command}) had not started ${harness} ${after}; it may be waiting for input`,
+    hint: `next: answer the login-shell prompt in a terminal with ${shellCheck}, then retry the launch` };
+  if (pane.tail?.length === 0) return { cause: `the login shell (${pane.command}) produced no output and had not started ${harness} ${atCeiling}`, hint: `next: ${raise}` };
+  return { cause: `the login shell (${pane.command}) had not started ${harness} ${atCeiling}`,
+    hint: `next: if the pane shows a prompt, answer it in a terminal with ${shellCheck}; otherwise ${raise}` };
+}
+
 /** Readiness failed: name what the pane was running and what it showed, best-effort, before the caller rolls it back. */
-async function harnessStartFailure(evidence: FailureEvidence, reason: string | null, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<TransactionError> {
+async function harnessStartFailure(evidence: FailureEvidence, reason: string | null, measure: StartMeasure, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<TransactionError> {
   const record = evidence.record;
   let facts: PaneFacts | null = null;
   try { facts = await paneFacts(evidence.vessel!.pane, env, signal, true, 2000); }
   catch (error) { if (signal?.aborted) throw error; }
+  const tail = facts ? await paneTailLines(facts, env, signal) : null;
+  const stalled = reason === START_STALLED;
   let heading: string, hint = "";
-  if (reason) heading = `harness did not start for ${record.name}: ${reason}`;
+  if (reason && !stalled) heading = `harness did not start for ${record.name}: ${reason}`;
   else if (!facts) return new TransactionError(`harness did not start for ${record.name}`);
   else if (facts.dead) heading = `harness did not start for ${record.name}: ${record.harness} exited during startup`;
-  else if (SHELL_COMMANDS.has(facts.command) || facts.command === basename(resolveLoginShell(env))) {
-    heading = `harness did not start for ${record.name}: the login shell (${facts.command}) had not started ${record.harness} after ${HARNESS_START_TIMEOUT_MS} ms; it may be waiting for input`;
-    hint = `next: answer the login-shell prompt in a terminal with ${shlexQuote(resolveLoginShell(env))} -lic exit, then retry the launch`;
-  } else heading = `harness did not start for ${record.name}: the pane is running ${facts.command}, not ${record.harness}`;
-  const tail = facts ? await paneTailLines(facts, env, signal) : null;
+  else {
+    const loginShell = resolveLoginShell(env);
+    // A slow rc shows its own child as the pane command; the root still names the shell.
+    const root = loginShellCommand(facts.command, loginShell) ? null : paneRootCommand(facts, env, readProcessTable);
+    const command = root && loginShellCommand(root.name, loginShell) ? root.name : facts.command;
+    const shell = loginShellCommand(command, loginShell);
+    const text = startFailureText(record.harness, { command, loginShell, shell, tail }, stalled, measure, machineLoad());
+    heading = `harness did not start for ${record.name}: ${text.cause}`;
+    hint = text.hint;
+  }
   if (tail === null) return new TransactionError(hint ? `${heading}\n${hint}` : heading);
   const shown = tail.length ? [`pane ${facts!.pane_id} shows:`, ...tail.map(line => `  ${line}`)] : [`pane ${facts!.pane_id} shows no output`];
   return new TransactionError([heading, ...shown, ...(hint ? [hint] : [])].join("\n"));
@@ -1012,7 +1105,7 @@ function harnessReadySignal(evidence: FailureEvidence, codexObserved: ((facts: P
   return undefined;
 }
 
-async function runCreated(evidence: FailureEvidence, invocation: Invocation, request: TransactionRequest, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+async function runCreated(evidence: FailureEvidence, invocation: Invocation, request: TransactionRequest, startCeilingMs: number, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
   const record = evidence.record;
   const scripts = request.script_dir!;
   launchPhase(`Setting up tmux session ${record.name}`, true);
@@ -1033,8 +1126,8 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     const waitCommand = `tmux wait-for tap-launch-${randomUUID()}`;
     // A revival adds the seat's window to its surviving session; crew windows stay untouched.
     const created = await launchTmux(intoWindow
-      ? ["new-window", "-d", "-t", `${sessionId}:`, "-n", record.harness, "-c", launchWorkdir(record), "-P", "-F", VESSEL_FORMAT, waitCommand]
-      : ["new-session", "-d", "-x", "200", "-y", "60", "-s", record.name, "-c", launchWorkdir(record), "-P", "-F", VESSEL_FORMAT, waitCommand], env, signal);
+      ? ["new-window", "-d", "-t", `${sessionId}:`, "-n", record.harness, "-c", stableSpawnCwd(env), "-P", "-F", VESSEL_FORMAT, waitCommand]
+      : ["new-session", "-d", "-x", "200", "-y", "60", "-s", record.name, "-c", stableSpawnCwd(env), "-P", "-F", VESSEL_FORMAT, waitCommand], env, signal);
     evidence.vessel = parseVessel(created.stdout);
     if (signal?.aborted && !evidence.vessel) throw new TransactionError(`cannot identify created session ${record.name}; interrupted creation outcome is unverified and reservation retained`);
     if (created.code !== 0 && !evidence.vessel && !/duplicate session/.test(created.stderr)) throw new TransactionError(`cannot identify created session ${record.name}; creation outcome is unverified and reservation retained`);
@@ -1042,6 +1135,11 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     if (!evidence.vessel) throw new TransactionError(`cannot identify created session ${record.name}; retained without further effects`);
     signal?.throwIfAborted();
     const vessel = evidence.vessel;
+    // The session was created in $HOME; best effort, make the workdir its default for people opening windows there.
+    if (!intoWindow) {
+      const restored = await restoreSessionPath(vessel.socket, vessel.session, launchWorkdir(record), env, signal);
+      startupTrace("session_path", { session: record.name, restored, launch_id: evidence.token });
+    }
     const helper = join(scripts, "run-shell-logged.sh");
     const log = join(env.TAP_INDEX_HOME || join(env.HOME || "", ".tap"), "session-helper.log");
     const callbackEnv = ["TAP_INDEX_HOME", "TAP_HOME"].filter(key => env[key]).map(key => `${key}=${env[key]}`);
@@ -1117,6 +1215,10 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       },
     }) : null;
     const readySignal = harnessReadySignal(evidence, codexObserved, bindBaseline, env, signal);
+    const loginShell = resolveLoginShell(env);
+    const startWatch = startStallWatch(record.harness, facts => paneTailLines(facts, env, signal),
+      async facts => foreignPaneProgram(facts, record.harness, loginShell, env));
+    let slowStart = false;
     const result = await awaitStableHarness(async () => {
       const observed = await launchTmux(["display-message", "-p", "-t", vessel.pane, VESSEL_FORMAT], env, signal);
       if (!sameVessel(vessel, parseVessel(observed.stdout))) throw new TransactionError("created pane identity changed during readiness");
@@ -1126,8 +1228,15 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       // Claude's readiness signal is its SessionStart bind; the others paint a composer.
       if (running) launchPhase(record.harness === "claude" ? `Waiting for claude to register on team ${evidence.selection.team}` : `Waiting for ${record.harness} to be ready`, true);
       return running;
-    }, HARNESS_START_TIMEOUT_MS,
-    { signal, observeUntilDeadline: true,
+    }, HARNESS_SURVIVAL_MS,
+    { signal, observeUntilDeadline: true, startCeilingMs,
+      awaitingStart: (facts, elapsedMs) => {
+        if (!slowStart && elapsedMs >= START_STALL_MS) {
+          slowStart = true;
+          launchPhase(`Waiting for the login shell to start ${record.harness}`, true);
+        }
+        return startWatch(facts, elapsedMs);
+      },
       // The underlying signal is latched in awaitStableHarness, so this fires
       // exactly once per launch that signals — one trace event, riding the
       // launch operation's existing writer (no extra subprocess).
@@ -1157,7 +1266,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       await bindTransaction(evidence, facts, true, env, signal);
       throw new StartupDialog(`${result.reason}\nSession ${record.name} retained; inspect with tmux attach -t ${record.name}`, { selection: evidence.selection, backup: evidence.backup, session: record.name }, "harness_start_dialog", `tmux attach -t ${record.name}`);
     }
-    if (!result.facts) throw await harnessStartFailure(evidence, result.reason, env, signal);
+    if (!result.facts) throw await harnessStartFailure(evidence, result.reason, { elapsedMs: Math.round(performance.now() - respawnedAtMs), ceilingMs: startCeilingMs }, env, signal);
     signal?.throwIfAborted();
     await configure(priorRemain ? ["set-option", "-p", "-t", vessel.pane, "remain-on-exit", priorRemain]
       : ["set-option", "-p", "-u", "-t", vessel.pane, "remain-on-exit"]);
@@ -1208,6 +1317,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   signal?: AbortSignal, notices = new Notices()): Promise<TransactionResult> {
   const record = request.record;
   if (!["new", "adopted", "resume", "resume-all", "restart", "seat-up"].includes(request.kind)) throw new TransactionError("invalid launch transaction kind");
+  const startCeilingMs = launchStartCeilingMs(env);
   if (request.exact_restart) {
     if (request.kind !== "restart" || !request.exact_restart.id || record.harness_session_id !== request.exact_restart.id) throw new TransactionError("exact restart identity changed");
     await request.exact_restart.verify();
@@ -1310,6 +1420,7 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
   const reset = await acquirePathLockAsync(join(selection.busHome, "reset.fence.json.lock"), Infinity, signal, env, "shared");
   if (!reset) throw new TransactionError("could not obtain reset mutation custody");
   let evidence: FailureEvidence | undefined;
+  let diagnosticDir: string | undefined;
   const stop: StopState = { attempted: false, killed: false, uncertain: false, adoptedShell: false };
   try {
     assertReset(selection, operation, env, true);
@@ -1325,7 +1436,13 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
     signal?.throwIfAborted();
     expectedReceipt();
     const invocation = request.exact_restart?.invocation ?? launchInvocation(action, record, notices, invocationOptions);
-    await runCreated(evidence, invocation, request, env, signal);
+    // Without a caller TTY the pane-died worker otherwise writes only to its helper log.
+    // Keep its owned capture until the synchronous launcher can report the failure.
+    if (!evidence.output_path) {
+      diagnosticDir = mkdtempSync(join(tmpdir(), "tap-launch-error-"));
+      evidence.output_path = join(diagnosticDir, "failure.txt");
+    }
+    await runCreated(evidence, invocation, request, startCeilingMs, env, signal);
     return { code: 0, record, adopted_shell: stop.adoptedShell, backup: evidence.backup };
   } catch (error) {
     try {
@@ -1358,10 +1475,20 @@ export async function launchTransaction(request: TransactionRequest, env: NodeJS
       signal?.throwIfAborted();
       throw error;
     } catch (failure) {
+      if (diagnosticDir && failure instanceof Error) {
+        try {
+          const captured = readFileSync(join(diagnosticDir, "failure.txt"), "utf8").trimEnd();
+          if (captured) failure.message += `\n${captured}`;
+        } catch { /* A missing diagnostic never replaces the original failure. */ }
+      }
       if (request.kind === "restart" && stop.killed && evidence && !(failure instanceof StartupDialog)) throw new RestartResumeFailure(failure, evidence);
       throw failure;
     }
   } finally {
+    if (diagnosticDir) {
+      try { unlinkSync(join(diagnosticDir, "failure.txt")); } catch { /* No callback capture. */ }
+      try { rmdirSync(diagnosticDir); } catch { /* Never remove unknown contents. */ }
+    }
     request.notice_state = notices.capture();
     await reset.release();
   }

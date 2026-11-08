@@ -335,21 +335,21 @@
           "name": "fable",
           "harness": "claude",
           "model": "fable",
-          "description": "fable at medium",
+          "description": "Claude Fable at medium effort",
           "roles": "leader, prototyper"
         },
         {
           "name": "fable-high",
           "harness": "claude",
           "model": "fable",
-          "description": "fable at high",
+          "description": "Claude Fable at high effort",
           "roles": "leader, architect, approver, reviewer"
         },
         {
           "name": "fable-xhigh",
           "harness": "claude",
           "model": "fable",
-          "description": "fable at xhigh",
+          "description": "Claude Fable at xhigh effort",
           "roles": "architect, approver, reviewer, planner"
         },
         {
@@ -370,21 +370,21 @@
           "name": "glm",
           "harness": "opencode",
           "model": "tokenrouter/z-ai/glm-5.2",
-          "description": "tokenrouter/z-ai/glm-5.2 at default effort",
+          "description": "GLM 5.2 at default effort; needs the tokenrouter provider in OpenCode",
           "roles": "reviewer"
         },
         {
           "name": "glm53",
           "harness": "opencode",
           "model": "zai-coding-plan/glm-5.3",
-          "description": "zai-coding-plan/glm-5.3 at default effort",
+          "description": "GLM 5.3 at default effort; needs the zai-coding-plan provider in OpenCode",
           "roles": "reviewer, partner"
         },
         {
           "name": "glm53-flash",
           "harness": "opencode",
           "model": "zai-coding-plan/glm-5.3-flash",
-          "description": "zai-coding-plan/glm-5.3-flash at default effort",
+          "description": "GLM 5.3 Flash at default effort; needs the zai-coding-plan provider in OpenCode",
           "roles": "implementer, conductor"
         },
         {
@@ -405,21 +405,21 @@
           "name": "hermes-agent",
           "harness": "hermes",
           "model": "deepseek/deepseek-v4-pro",
-          "description": "deepseek/deepseek-v4-pro at default effort",
+          "description": "DeepSeek V4 Pro at default effort; needs the nous-portal provider in Hermes",
           "roles": ""
         },
         {
           "name": "hermes-goalie",
           "harness": "hermes",
           "model": "deepseek/deepseek-v4-flash-0731",
-          "description": "deepseek/deepseek-v4-flash-0731 at default effort",
+          "description": "DeepSeek V4 Flash at default effort; needs the nous-portal provider in Hermes",
           "roles": "goalie"
         },
         {
           "name": "kimi",
           "harness": "opencode",
           "model": "synthetic/hf:moonshotai/Kimi-K3",
-          "description": "synthetic/hf:moonshotai/Kimi-K3 at default effort",
+          "description": "Kimi K3 at default effort; needs the synthetic provider in OpenCode",
           "roles": "reviewer, architect"
         },
         {
@@ -447,21 +447,21 @@
           "name": "opus",
           "harness": "claude",
           "model": "opus[1m]",
-          "description": "opus[1m] at medium",
+          "description": "Claude Opus at medium effort (1M context)",
           "roles": "driver, implementer, conductor"
         },
         {
           "name": "opus-high",
           "harness": "claude",
           "model": "opus[1m]",
-          "description": "opus[1m] at high",
+          "description": "Claude Opus at high effort (1M context)",
           "roles": "debugger, reviewer, partner"
         },
         {
           "name": "opus-xhigh",
           "harness": "claude",
           "model": "opus[1m]",
-          "description": "opus[1m] at xhigh",
+          "description": "Claude Opus at xhigh effort (1M context)",
           "roles": "debugger, reviewer, partner"
         },
         {
@@ -496,7 +496,7 @@
           "name": "sonnet",
           "harness": "claude",
           "model": "sonnet",
-          "description": "sonnet at high",
+          "description": "Claude Sonnet at high effort",
           "roles": "implementer, researcher"
         }
       ]

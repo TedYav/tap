@@ -1,14 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { TapError } from "../src/context";
-import { activityVerdict, isFanoutArgv, parseFanoutArgs, recheck, runFanout, seatActivity, type FanoutEffects, type FanoutRow } from "../src/verbs/nudge-fanout";
+import { productionRoster, activityVerdict, isFanoutArgv, parseFanoutArgs, recheck, runFanout, seatActivity, type FanoutEffects, type FanoutRow } from "../src/verbs/nudge-fanout";
 
 function row(handle: string, harness: string, status = "active", delivery = "pane", statusReason = ""): FanoutRow {
-  return { handle, harness, status, delivery, statusReason, instance: `${handle}-i1`, session: "", pane: "", observedPaneId: "", observedServerEpoch: "", attached: "0" } as FanoutRow;
+  return { handle, harness, status, delivery, statusReason, agentState:"error", agentStateReason:"fixture_error", instance: `${handle}-i1`, session: "", pane: "", observedPaneId: "", observedServerEpoch: "", attached: "0" } as FanoutRow;
 }
 
 const ROSTERS: Record<string, FanoutRow[]> = {
@@ -66,7 +66,7 @@ test("--dry-run across all teams lists every matching seat with its verdict and 
   expect(runFanout(args(["--harness", "codex", "--team", "*", "--dry-run"]), self, fx)).toBe(0);
   expect(sent).toEqual([]);
   const text = out.join("");
-  expect(text).toContain("2 codex seat(s) to nudge across all teams (dry run; nothing sent)");
+  expect(text).toContain("2 codex seat(s) to nudge across all teams, stuck only (dry run; nothing sent)");
   expect(text).toContain("a/cx1  target");
   expect(text).toContain("b/cx2  target");
   expect(text).toContain("a/me  skip: self");
@@ -112,7 +112,7 @@ test("a TTY decline sends nothing and exits 0 (CLI-EXIT-0); --yes skips the prom
 test("the dry run names the wire each seat would get, and --no-interrupt", () => {
   const { fx, out } = effects();
   runFanout(args(["--harness", "codex", "--team", "a", "--dry-run", "--message", 'say "hi"', "--no-interrupt"]), self, fx);
-  expect(out.join("")).toContain('each seat: the nudge ladder, then [[TAP v0.23 nudge message="say \\"hi\\""]] (--no-interrupt)');
+  expect(out.join("")).toContain('each seat: the nudge ladder, then [[TAP v0.23 nudge message="If TAP interrupted you, it was not the user; resume unless the user or this message says stop. say \\"hi\\""]] (--no-interrupt)');
 });
 
 test("--active-within takes a duration that names its unit; a bare number refuses with a hint", () => {
@@ -285,4 +285,61 @@ test("the fan-out hands each seat's selected instance to its nudge, and a replac
   expect(() => instanceDrift(registry, "cx1", "")).not.toThrow();
   expect(() => instanceDrift(registry, "cx1", "cx1-i2")).not.toThrow();
   expect(() => instanceDrift(registry, "cx1", "cx1-i1")).toThrow("replaced after selection");
+});
+
+test("default selects stuck seats; recently-working widens by dated work; all is explicit", () => {
+  const states = [
+    {...row("error", "codex"),agentState:"error"}, {...row("blocked", "codex"),agentState:"blocked"},
+    {...row("working", "codex"),agentState:"working"}, {...row("recent", "codex"),agentState:"idle",turnEndedAt:NOW-120},
+    {...row("old", "codex"),agentState:"idle",turnEndedAt:NOW-121}, {...row("future", "codex"),agentState:"idle",turnEndedAt:NOW+1},
+    {...row("unknown", "codex"),agentState:"unknown"},
+  ] as FanoutRow[];
+  for (const [flags, expected] of [
+    [[], ["error","blocked"]], [["--recently-working"],["error","blocked","working","recent"]],
+    [["--all"],["error","blocked","working","recent","old","future","unknown"]],
+  ] as [string[],string[]][]) {
+    const f = effects({roster:()=>({rows:states})});
+    expect(runFanout(args(["--harness","codex","--yes",...flags]),self,f.fx)).toBe(0);
+    expect(f.sent).toEqual(expected.map(h=>`a/${h}`));
+  }
+  for (const flags of [["--all","--recently-working"],["--all","--active-within","30m"],["--recently-working","--active-within","30m"]])
+    expect(()=>args(["--harness","codex",...flags])).toThrow("cannot be combined");
+  expect(()=>args(["--harness","codex","--recently-working=2"])).toThrow("unit");
+});
+
+
+test("production roster classifies a live quota-error pane before default selection", () => {
+  const saved = {...process.env};
+  const root = mkdtempSync(join(tmpdir(), "tap-nudge-state-")); roots.push(root);
+  const bin = join(root,"bin"); mkdirSync(bin);
+  const frame = join(root,"frame");
+  writeFileSync(frame, readFileSync(join(import.meta.dir,"fixtures/agent-state/errors/codex-usage-limit.ansi")));
+  writeFileSync(join(bin,"tmux"), `#!/bin/sh
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+list-sessions) printf 't/peer\\t1:1\\t1\\n' ;;
+list-panes) printf 't/peer\\tt/peer:0.0\\t%%7\\tcodex\\t123\\t1:1\\t0\\n' ;;
+capture-pane) cat '${frame}' ;;
+display-message) case "$*" in *pane_title*) printf 'Codex\\n' ;; *) printf '1:1\\n' ;; esac ;;
+*) exit 1 ;;
+esac
+`, {mode:0o755});
+  const registry = join(root,"registry.json");
+  writeFileSync(registry, JSON.stringify({schema:"0.20",team:{name:"t",root},seats:{peer:{
+    instance:"peer-i1",status:"active",delivery:"pane",harness:"codex",pane_id:"%7",pane:"t/peer:0.0",session:"t/peer",server_epoch:"srv:1:1",
+  }}}));
+  try {
+    Object.assign(process.env,{PATH:`${bin}:${saved.PATH}`,TAP_SERVER_EPOCH:"srv:1:1"});
+    const observed = productionRoster(resolve(import.meta.dir,"../../../skills/tap/scripts"))(registry,"t");
+    expect("rows" in observed).toBe(true);
+    if (!("rows" in observed)) throw Error(observed.error);
+    expect(observed.rows[0]).toMatchObject({agentState:"error",agentStateReason:"usage_limit"});
+    expect(productionRoster(resolve(import.meta.dir,"../../../skills/tap/scripts"))(registry,"t","missing")).toEqual({rows:[]});
+    const f=effects({roster:()=>observed});
+    expect(runFanout(args(["--harness","codex","--yes"]),self,f.fx)).toBe(0);
+    expect(f.sent).toEqual(["a/peer"]);
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+    Object.assign(process.env,saved);
+  }
 });

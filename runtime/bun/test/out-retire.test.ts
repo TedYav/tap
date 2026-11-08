@@ -1218,3 +1218,165 @@ test("last poisoned foreign panes preserve exact registry bytes", () => {
   expect(readFileSync(f.registry, "utf8")).toBe(compact);
   expect(tombs(f)).toEqual([]);
 });
+
+// --- the human chooser: ties under --last and a missed name -------------------
+const PICK_ENTRY = join(import.meta.dir, "support/out-pick-entry.ts");
+const LOCK_PROBE = join(import.meta.dir, "support/out-pick-lock-probe.ts");
+function runPick(f: Fix, args: string[], over: Record<string, string | undefined> = {}): RunOut & { picks: Array<{ args: string[]; rows: string[]; locks: { registry: boolean; reset: boolean } | null }> } {
+  const log = join(f.root, `pick-${Math.random().toString(36).slice(2)}.log`);
+  // The stub stands in for a human at a terminal; pin TERM so the suite runner's
+  // TERM=dumb (which pick() treats as no terminal) cannot decide the case.
+  const env = { ...f.env, TERM: "xterm-256color", OUT_PICK_LOG: log, OUT_PICK_REGISTRY: f.registry, ...over } as NodeJS.ProcessEnv;
+  for (const k of Object.keys(over)) if (over[k] === undefined) delete env[k];
+  const r = Bun.spawnSync([process.execPath, PICK_ENTRY, ...args], { cwd: f.cwd, env, stdout: "pipe", stderr: "pipe" });
+  const picks = existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];
+  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString(), picks };
+}
+function tiedDead(): Fix {
+  const f = fix({ tmux: true });
+  reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", harness: "codex" }),
+    carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "" }) });
+  return f;
+}
+
+test("an ambiguous --last opens the chooser with both locks released and retires the chosen seat", () => {
+  const f = tiedDead();
+  const r = runPick(f, ["out", "--last"], { OUT_PICK: "carol", OUT_PICK_PROBE: LOCK_PROBE });
+  expect(r.code, r.out + r.err).toBe(0);
+  expect(r.picks.length).toBe(1);
+  expect(r.picks[0]!.rows.map(line => line.split("\t")[0])).toEqual(["bob", "carol"]);
+  expect(r.picks[0]!.rows[0]).toMatch(/^bob\tbob {2}gone {2}exited 20\d\d-.*Z {2}codex$/);
+  expect(r.picks[0]!.locks).toEqual({ registry: true, reset: true });
+  expect(seatsOf(f).carol).toBeUndefined();
+  expect(seatsOf(f).bob).toBeDefined();
+  expect(r.out).toContain("'-' removed 'carol' (most recently exited)");
+  expect(events(f).length).toBe(1);
+});
+
+test("the lock probe can refuse: a held registry lock reads as busy", async () => {
+  const f = tiedDead();
+  const { acquireRegistryLock } = await import("../src/panelock");
+  const held = acquireRegistryLock(f.registry, 1000, f.env);
+  expect(held).not.toBeNull();
+  try {
+    const probe = Bun.spawnSync([process.execPath, LOCK_PROBE, f.registry, f.bus], { env: f.env, stdout: "pipe", stderr: "pipe" });
+    expect(JSON.parse(probe.stdout.toString())).toEqual({ registry: false, reset: true });
+  } finally { held!.release(); }
+});
+
+test("cancelling the --last chooser removes nothing beyond the exit stamps the refusal also records", () => {
+  const f = tiedDead();
+  for (const [choice, code] of [[undefined, 0], ["^C", 130]] as const) {
+    const r = runPick(f, ["out", "-"], { OUT_PICK: choice });
+    expect(r.code, r.out + r.err).toBe(code);
+    expect(r.picks.length).toBe(1);
+    if (code === 0) expect(r.out).toContain("picker closed without selecting a seat; nothing removed");
+    expect(Object.keys(seatsOf(f)).sort()).toEqual(["bob", "carol"]);
+    expect(String(seatsOf(f).bob!.exited_at)).toContain("T");
+    expect(events(f).length).toBe(0);
+    expect(tombs(f).length).toBe(0);
+  }
+});
+
+test("a row that changes while the --last chooser is open refuses", () => {
+  const f = tiedDead();
+  const r = runPick(f, ["out", "--last"], { OUT_PICK: "carol", OUT_PICK_MUTATE: "1" });
+  expect(r.code).toBe(1);
+  expect(r.err).toContain("selected exited seat changed; nothing removed");
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["bob", "carol"]);
+  expect(events(f).length).toBe(0);
+});
+
+test("no terminal or no fzf keeps the exact ambiguous --last refusal; --json never picks", () => {
+  const baseline = run(tiedDead(), ["out", "--last"]);
+  expect(baseline.code).toBe(1);
+  expect(baseline.err).toContain("2 dead seats — name one explicitly (candidates: bob carol)");
+  for (const knob of [{ OUT_PICK_TERMINAL: "0" }, { OUT_PICK_NO_FZF: "1" }]) {
+    const f = tiedDead();
+    const r = runPick(f, ["out", "--last"], { OUT_PICK: "carol", ...knob });
+    expect({ code: r.code, out: r.out, err: r.err }).toEqual({ code: baseline.code, out: baseline.out, err: baseline.err });
+    expect(Object.keys(seatsOf(f)).sort()).toEqual(["bob", "carol"]);
+  }
+  const jsonBaseline = run(tiedDead(), ["out", "--last", "--json"]);
+  const f = tiedDead();
+  const json = runPick(f, ["out", "--last", "--json"], { OUT_PICK: "carol" });
+  expect(json.picks.length).toBe(0);
+  expect({ code: json.code, out: json.out, err: json.err }).toEqual({ code: jsonBaseline.code, out: jsonBaseline.out, err: jsonBaseline.err });
+  expect(JSON.parse(json.out)).toMatchObject({ ok: false, error_class: "not_found" });
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["bob", "carol"]);
+});
+
+test("a unique latest --last exit stays automatic and opens no chooser", () => {
+  const f = fix({ tmux: true });
+  reg(f, { bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", exited_at: "2026-10-20T00:00:00Z" }),
+    carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", exited_at: "2026-10-21T00:00:00Z" }) });
+  const r = runPick(f, ["out", "--last"], { OUT_PICK: "bob" });
+  expect(r.code, r.out + r.err).toBe(0);
+  expect(r.picks.length).toBe(0);
+  expect(seatsOf(f).carol).toBeUndefined();
+  expect(seatsOf(f).bob).toBeDefined();
+});
+
+test("tap out <typo> opens the chooser seeded with the name; an exact name never does", () => {
+  const f = fix(); reg(f, { alice: row(), bob: row({ pane: "t/bob", session: "t/bob", pane_id: "%2", instance: "bob|b1" }) });
+  const typo = runPick(f, ["out", "alce"], { OUT_PICK: "alice" });
+  expect(typo.code, typo.out + typo.err).toBe(0);
+  expect(typo.picks.length).toBe(1);
+  expect(typo.picks[0]!.args).toContain("--query=alce");
+  expect(typo.picks[0]!.rows.map(line => line.split("\t")[0])).toEqual(["alice"]);
+  expect(seatsOf(f).alice).toBeUndefined();
+  expect(typo.out).toContain("'alice' removed from the registry");
+  const exact = runPick(f, ["out", "bob"], { OUT_PICK: "alice" });
+  expect(exact.code, exact.out + exact.err).toBe(0);
+  expect(exact.picks.length).toBe(0);
+  expect(seatsOf(f)).toEqual({});
+});
+
+test("tap out <typo> without a terminal, or with nothing resembling it, keeps the quiet no-op", () => {
+  const seed = () => { const f = fix(); reg(f, { alice: row() }); return f; };
+  const baseline = run(seed(), ["out", "alce"]);
+  expect(baseline.code).toBe(0);
+  expect(baseline.out).toContain("'alce' is not registered — nothing to remove");
+  for (const [args, over] of [[["out", "alce"], { OUT_PICK_TERMINAL: "0" }], [["out", "alce", "--json"], {}], [["out", "zzz"], {}]] as const) {
+    const f = seed();
+    const r = runPick(f, [...args], { OUT_PICK: "alice", ...over });
+    expect(r.picks.length).toBe(0);
+    expect(r.code).toBe(0);
+    if (args[1] === "alce" && args.length === 2) expect({ out: r.out, err: r.err }).toEqual({ out: baseline.out, err: baseline.err });
+    expect(seatsOf(f).alice).toBeDefined();
+  }
+});
+
+test("a --last tie offers only the seats sharing the latest exit, and picking one keeps the receipt true", () => {
+  const f = fix({ tmux: true });
+  reg(f, { alice: row({ pane: "t/alice", pane_id: "%7", session: "t/alice", server_epoch: "", exited_at: "2026-11-01T00:00:00Z" }),
+    bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", exited_at: "2026-11-02T00:00:00Z" }),
+    carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", exited_at: "2026-11-02T00:00:00Z" }) });
+  // An older exit is never offered: choosing it would report it as the most recent.
+  const r = runPick(f, ["out", "--last"], { OUT_PICK: "alice" });
+  expect(r.picks.length).toBe(1);
+  expect(r.picks[0]!.rows.map(line => line.split("\t")[0])).toEqual(["bob", "carol"]);
+  expect(r.code).toBe(1);
+  expect(r.err).toContain("picker returned an unoffered or duplicate target");
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["alice", "bob", "carol"]);
+  const ok = runPick(f, ["out", "--last"], { OUT_PICK: "carol" });
+  expect(ok.code, ok.out + ok.err).toBe(0);
+  expect(ok.out).toContain("'-' removed 'carol' (most recently exited)");
+  expect(Object.keys(seatsOf(f)).sort()).toEqual(["alice", "bob"]);
+  // No terminal still names every exited candidate, exactly as before.
+  const f2 = fix({ tmux: true });
+  reg(f2, { alice: row({ pane: "t/alice", pane_id: "%7", session: "t/alice", server_epoch: "", exited_at: "2026-11-01T00:00:00Z" }),
+    bob: row({ pane: "t/bob", pane_id: "%9", session: "t/bob", server_epoch: "", exited_at: "2026-11-02T00:00:00Z" }),
+    carol: row({ pane: "t/carol", pane_id: "%8", session: "t/carol", server_epoch: "", exited_at: "2026-11-02T00:00:00Z" }) });
+  const plainRefusal = runPick(f2, ["out", "--last"], { OUT_PICK_TERMINAL: "0" });
+  expect(plainRefusal.err).toContain("3 dead seats — name one explicitly (candidates: alice bob carol)");
+});
+
+test("an existing scalar row is an exact name: tap out ghost retires it and never opens the chooser", () => {
+  const f = fix(); reg(f, { ghost: "stale-scalar", ghostwriter: row({ pane: "t/ghostwriter", session: "t/ghostwriter", pane_id: "%3", instance: "ghostwriter|g1" }) });
+  const r = runPick(f, ["out", "ghost"], { OUT_PICK: "ghostwriter" });
+  expect(r.code, r.out + r.err).toBe(0);
+  expect(r.picks.length).toBe(0);
+  expect(seatsOf(f).ghost).toBeUndefined();
+  expect(seatsOf(f).ghostwriter).toBeDefined();
+});

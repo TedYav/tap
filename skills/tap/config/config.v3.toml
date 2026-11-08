@@ -75,7 +75,7 @@ dumb = "A model which is generally fast and cheap, and useful for offloading mor
 # Cursor/AGY encode effort in params.model; other harnesses keep their model default.
 
 [presets.opus]
-description = "opus[1m] at medium"
+description = "Claude Opus at medium effort (1M context)"
 harness = "claude"
 params.model = "opus[1m]"
 params.effort = "medium"
@@ -93,7 +93,7 @@ metadata.secondary_roles = ["reviewer", "debugger", "researcher", "partner"]
 metadata.avoid_roles = ["prose_writer"]
 
 [presets.opus-high]
-description = "opus[1m] at high"
+description = "Claude Opus at high effort (1M context)"
 harness = "claude"
 params.model = "opus[1m]"
 params.effort = "high"
@@ -108,7 +108,7 @@ metadata.secondary_roles = ["driver", "implementer", "leader", "researcher", "co
 metadata.avoid_roles = ["prose_writer", "architect", "approver"]
 
 [presets.opus-xhigh]
-description = "opus[1m] at xhigh"
+description = "Claude Opus at xhigh effort (1M context)"
 harness = "claude"
 params.model = "opus[1m]"
 params.effort = "xhigh"
@@ -123,7 +123,7 @@ metadata.secondary_roles = ["driver", "implementer", "leader", "researcher", "co
 metadata.avoid_roles = ["prose_writer", "architect", "approver"]
 
 [presets.fable]
-description = "fable at medium"
+description = "Claude Fable at medium effort"
 harness = "claude"
 params.model = "fable"
 params.effort = "medium"
@@ -141,7 +141,7 @@ metadata.secondary_roles = ["debugger", "reviewer", "architect", "approver", "dr
 metadata.avoid_roles = ["researcher", "prose_writer", "implementer", "conductor", "partner"]
 
 [presets.fable-high]
-description = "fable at high"
+description = "Claude Fable at high effort"
 harness = "claude"
 params.model = "fable"
 params.effort = "high"
@@ -158,7 +158,7 @@ metadata.secondary_roles = ["debugger", "driver", "planner"]
 metadata.avoid_roles = ["researcher", "prose_writer", "implementer", "conductor", "partner"]
 
 [presets.fable-xhigh]
-description = "fable at xhigh"
+description = "Claude Fable at xhigh effort"
 harness = "claude"
 params.model = "fable"
 params.effort = "xhigh"
@@ -175,7 +175,7 @@ metadata.secondary_roles = ["debugger"]
 metadata.avoid_roles = ["researcher", "prose_writer", "driver", "implementer", "leader", "conductor"]
 
 [presets.sonnet]
-description = "sonnet at high"
+description = "Claude Sonnet at high effort"
 harness = "claude"
 params.model = "sonnet"
 params.effort = "high"
@@ -437,7 +437,7 @@ metadata.secondary_roles = ["debugger", "prose_writer", "architect", "driver"]
 metadata.avoid_roles = ["leader", "approver", "researcher"]
 
 [presets.glm]
-description = "tokenrouter/z-ai/glm-5.2 at default effort"
+description = "GLM 5.2 at default effort; needs the tokenrouter provider in OpenCode"
 harness = "opencode"
 params.model = "tokenrouter/z-ai/glm-5.2"
 metadata.model_family = "zhipu"
@@ -453,7 +453,7 @@ metadata.secondary_roles = ["architect"]
 metadata.avoid_roles = ["implementer", "leader", "approver", "researcher", "prose_writer", "driver"]
 
 [presets.glm53]
-description = "zai-coding-plan/glm-5.3 at default effort"
+description = "GLM 5.3 at default effort; needs the zai-coding-plan provider in OpenCode"
 harness = "opencode"
 params.model = "zai-coding-plan/glm-5.3"
 metadata.model_family = "zhipu"
@@ -469,7 +469,7 @@ metadata.secondary_roles = ["architect"]
 metadata.avoid_roles = ["leader", "approver", "researcher", "prose_writer", "driver"]
 
 [presets.glm53-flash]
-description = "zai-coding-plan/glm-5.3-flash at default effort"
+description = "GLM 5.3 Flash at default effort; needs the zai-coding-plan provider in OpenCode"
 harness = "opencode"
 params.model = "zai-coding-plan/glm-5.3-flash"
 metadata.model_family = "zhipu"
@@ -485,7 +485,7 @@ metadata.secondary_roles = ["tasker"]
 metadata.avoid_roles = ["architect", "leader", "approver", "researcher", "prose_writer", "driver"]
 
 [presets.kimi]
-description = "synthetic/hf:moonshotai/Kimi-K3 at default effort"
+description = "Kimi K3 at default effort; needs the synthetic provider in OpenCode"
 harness = "opencode"
 params.model = "synthetic/hf:moonshotai/Kimi-K3"
 metadata.model_family = "moonshot"
@@ -501,7 +501,7 @@ metadata.secondary_roles = []
 metadata.avoid_roles = ["implementer", "leader", "approver", "researcher", "prose_writer", "driver"]
 
 [presets.hermes-agent]
-description = "deepseek/deepseek-v4-pro at default effort"
+description = "DeepSeek V4 Pro at default effort; needs the nous-portal provider in Hermes"
 harness = "hermes"
 params.provider = "nous-portal"
 params.model = "deepseek/deepseek-v4-pro"
@@ -515,7 +515,7 @@ metadata.speed = "medium"
 metadata.summary = "Specialized model and agent, only needed when we need to interface with hermes service on the machine. Do not add to TAP teams unless specifically asked."
 
 [presets.hermes-goalie]
-description = "deepseek/deepseek-v4-flash-0731 at default effort"
+description = "DeepSeek V4 Flash at default effort; needs the nous-portal provider in Hermes"
 harness = "hermes"
 params.provider = "nous-portal"
 params.model = "deepseek/deepseek-v4-flash-0731"

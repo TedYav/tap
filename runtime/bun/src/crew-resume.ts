@@ -21,6 +21,8 @@ import { LauncherError } from "./launcher/types";
 import { bootId, tmuxSessionNamespace } from "./tmux";
 import { scratchOnlyGuard } from "./out-retire";
 import { agentFamilies, observeProcessHarness, readProcessTable } from "./observe";
+import { inWorkdir, stableSpawnCwd } from "./tmux-spawn-cwd";
+import { restoreSessionPath } from "./launcher/session-path";
 
 type Row = Record<string, unknown>;
 const str = (value: unknown): string => typeof value === "string" ? value : "";
@@ -121,12 +123,16 @@ async function createPane(ctx: ResolvedContext, handle: string, row: Row, owner:
   const target = await placement(ctx, row, owner, signal);
   effect();
   const result = await launchTmux(target.create
-    ? ["new-session", "-d", "-s", target.session, "-n", handle, "-c", cwd, "-P", "-F", "#{pane_id}", "sleep 600"]
-    : ["new-window", "-d", "-t", `=${target.session}`, "-n", handle, "-c", cwd, "-P", "-F", "#{pane_id}", "sleep 600"], process.env, signal, true, 5000);
+    ? ["new-session", "-d", "-s", target.session, "-n", handle, "-c", stableSpawnCwd(process.env), "-P", "-F", "#{pane_id}", "sleep 600"]
+    : ["new-window", "-d", "-t", `=${target.session}`, "-n", handle, "-c", stableSpawnCwd(process.env), "-P", "-F", "#{pane_id}", "sleep 600"], process.env, signal, true, 5000);
   if (result.code || !/^%\d+$/.test(result.stdout.trim())) fail("crew_start_unverified", `crew window creation failed or is unverified: ${result.stderr.trim()}; inspect before retrying`);
   if (target.create) {
     const marked = await launchTmux(["set-option", "-t", target.session, "@tap_crew_owner", target.ownerKey!], process.env, signal, true, 3000);
     if (marked.code) fail("crew_start_unverified", `created vessel '${target.session}' but its owner marker could not be set (${marked.stderr.trim() || marked.code}); inspect before retrying`);
+    // Created in $HOME; best effort, make the crew's directory the vessel's default for windows opened by hand.
+    const where = await launchTmux(["display-message", "-p", "-t", result.stdout.trim(), "#{session_id}\t#{socket_path}"], process.env, signal, true, 3000);
+    const [sessionId = "", socket = ""] = where.stdout.trim().split("\t");
+    if (!where.code && sessionId && socket) await restoreSessionPath(socket, sessionId, cwd, process.env, signal);
   }
   return result.stdout.trim();
 }
@@ -196,7 +202,7 @@ async function resumeOne(ctx: ResolvedContext, handle: string, expected: Row, op
       delete current.exited_at;
       saveRegistry(ctx.registryPath, doc);
       attempted = true;
-      const result = await launchTmux(["respawn-pane", "-k", "-t", pane, "-c", recipe.cwd, recipe.command], process.env, signal, true, 5000);
+      const result = await launchTmux(["respawn-pane", "-k", "-t", pane, "-c", stableSpawnCwd(process.env), inWorkdir(recipe.cwd, `exec ${recipe.command}`)], process.env, signal, true, 5000);
       if (result.code) fail("crew_start_unverified", `resume process start is unverified (tmux exit ${result.code}); inspect pane ${pane}; do not retry blindly`);
       launchedProof = captureCrewProcess(ctx.team, handle, current);
       if (!launchedProof) fail("crew_start_unverified", `crew ${handle} stopped during startup`);

@@ -230,6 +230,21 @@ test("a running server is given the file directly; live values show TAP's settin
   expect(run("remove").out).toContain("no source line");   // removing again has nothing left to name
 });
 
+test("the printed source command loads defaults when the config path contains spaces", () => {
+  process.env.XDG_CONFIG_HOME = join(home, "config with spaces");
+  const installed = run("install");
+  expect(installed.code, JSON.stringify(installed)).toBe(0);
+  const command = /or now: (tmux source-file [^\n]+?); for terminal colors/.exec(installed.out)?.[1];
+  expect(command).toBeTruthy();
+  expect(installed.out).toContain("detach and reattach");
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "reload").status).toBe(0);
+  expect(T("set", "-g", "mouse", "off").status).toBe(0);
+  // The printed command targets the current socket, as a human inside tmux would run it.
+  const loaded = spawnSync("sh", ["-c", command!], { encoding: "utf8", env: { ...process.env, TMUX: `${process.env.TMUX_TMPDIR}/tmux-${process.getuid!()}/${socket},0,0` } });
+  expect(loaded.status, loaded.stderr).toBe(0);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("on");
+});
+
 test("status never starts a server and reports its absence", () => {
   const st = JSON.parse(run("status", "--json").out);
   expect(st.live.server).toBe("none");

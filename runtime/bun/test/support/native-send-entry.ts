@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
 
-import { runNative, NATIVE_HANDLERS } from "../../main";
+import { runNative, loadNativeHandler } from "../../main";
 
-process.exitCode = runNative("send", NATIVE_HANDLERS.send!, process.argv.slice(2));
+process.exitCode = await runNative("send", (await loadNativeHandler("send"))!, process.argv.slice(2));

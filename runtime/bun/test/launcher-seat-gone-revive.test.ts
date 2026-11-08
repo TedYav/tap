@@ -182,6 +182,42 @@ test("a failed revival removes only its own window; the crews and their session 
   for (const crew of crews) expect(after.some(line => line.startsWith(`${crew} `))).toBe(true);
 }, 90_000);
 
+test("after a failed revival the next chooser's [r] revives the stored chat, never a fresh reseat", async () => {
+  const f = fixture();
+  const { crews } = await seatGoneWithCrews(f);
+  const { harness_session_id: chat } = f.doc().seats.reviewer;
+  const before = panes(f);
+  writeFileSync(join(f.root, "fail"), "");
+  expect(f.tap(["session", "resume", "reviewer"]).status).not.toBe(0);
+  for (let i = 0; i < 100 && (panes(f).length !== before.length || f.doc().seats.reviewer.status !== "suspended"); i++) Bun.sleepSync(50);
+  expect(f.doc().seats.reviewer).toMatchObject({ status: "suspended", status_reason: "repair_failed", harness_session_id: chat });
+  rmSync(join(f.root, "fail"));
+  rmSync(join(f.root, "argv"));
+  const asked: string[] = [];
+  const written: string[] = [];
+  const [out, err] = [process.stdout.write.bind(process.stdout), process.stderr.write.bind(process.stderr)];
+  process.chdir(f.root);
+  process.stdout.write = ((chunk: string | Uint8Array) => { written.push(String(chunk)); return true; }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => { written.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  let code: number;
+  try {
+    code = await cmdSessionLaunch(["claude", "reviewer"], undefined, {
+      hasTty: () => true,
+      choose: (_verb, question) => { asked.push(question); return "r"; },
+    });
+  } finally { process.stdout.write = out; process.stderr.write = err; }
+  const said = written.join("");
+  expect(code, said).toBe(0);
+  // One menu: the recorded seat needs no second question before [r] can replace it.
+  expect(asked).toHaveLength(1);
+  expect(said).toContain(`revived ${SESSION} in a new window`);
+  expect(said).toContain("resumed fixture/reviewer from suspended/repair_failed");
+  const row = f.doc().seats.reviewer;
+  expect(row).toMatchObject({ status: "active", harness_session_id: chat });
+  expect(readFileSync(join(f.root, "argv"), "utf8").split("\n")).toEqual(expect.arrayContaining(["--resume", chat]));
+  for (const crew of crews) expect(panes(f).some(line => line.startsWith(`${crew} `))).toBe(true);
+}, 90_000);
+
 test("[r] keeps surviving crews independent after the revived parent exits", async () => {
   const f = fixture();
   const { crews } = await seatGoneWithCrews(f, "lost");

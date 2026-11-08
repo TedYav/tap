@@ -28,7 +28,7 @@ import { isMap, loads, pyStr, pyTruthy, type JsonMap, type JsonValue } from "./w
 
 export const SESSIONS_FORMAT = "#{session_name}\t#{pid}:#{start_time}\t#{session_attached}";
 export const PANES_FORMAT =
-  "#{session_name}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}\t#{pane_current_command}\t#{pane_pid}\t#{pid}:#{start_time}\t#{pane_dead}";
+  "#{session_name}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}\t#{pane_current_command}\t#{pane_pid}\t#{pid}:#{start_time}\t#{pane_dead}\t#{@tap_crew_lifetime}\t#{@tap_crew_lifetime_token}\t#{pane_title}";
 
 export type TmuxRun = (args: string[], env: NodeJS.ProcessEnv) => { code: number; stdout: string };
 export type PsRun = (env: NodeJS.ProcessEnv) => { status: number | null; stdout: string | null };
@@ -86,7 +86,7 @@ function sessionNames(text: string): string[] {
 function panesCoverSessions(sessions: string[], text: string): boolean {
   const covered = new Set(
     text.split("\n").filter(Boolean)
-      .map(line => { const f = line.split("\t"); return f.length === 7 && (f[6] === "0" || f[6] === "1") ? f[0]! : ""; })
+      .map(line => { const f = line.split("\t"); return (f.length === 7 || f.length >= 10) && (f[6] === "0" || f[6] === "1") ? f[0]! : ""; })
       .filter(Boolean),
   );
   return sessions.every(name => covered.has(name));

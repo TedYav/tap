@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isFile } from "../watch-lease";
 import { observeCallerIdentity, resolveSelf, TapError } from "../context";
+import { takeSeatFilters } from "../seat-filter";
 import { validToken } from "../ids";
 import { checkCrewRegistry } from "../crew-registry";
 import { resolveSelection } from "../team-selection";
@@ -22,6 +23,7 @@ import { explicitReplyToStamp } from "./send";
 import { assertCrewResumeUnheld } from "../crew-resume-identity";
 import { NATIVE_CONVERSATION_ID } from "../native-conversation";
 import { LauncherError } from "../launcher/types";
+import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
 
 export const CREW_SUBCOMMANDS = ["list", "add", "resume", "shutdown", "relaunch", "rearm", "remove"] as const;
 
@@ -39,6 +41,20 @@ function tmux(args: string[], opts: { stdio?: "ignore" | "inherit" } = {}): numb
 
 function tmuxRead(args: string[]): string {
   return tmuxReadOnly(args).stdout.replace(/\n+$/, "");
+}
+
+/** Registration checks the pane's path, and the crew shell changes into its
+ * directory only after tmux starts it: wait until it is there. False when it
+ * never arrives or the pane is gone. */
+function awaitPaneIn(pane: string, dir: string, timeoutMs = 3000): boolean {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const path = tmuxRead(["display-message", "-p", "-t", pane, "#{pane_current_path}"]);
+    if (!path) return false;
+    try { if (realpathSync(path) === dir) return true; } catch { /* not resolvable yet */ }
+    if (Date.now() >= deadline) return false;
+    Bun.sleepSync(20);
+  }
 }
 
 function outChild(scriptsDir: string, handle: string): void {
@@ -69,10 +85,11 @@ export function cmdCrew(argv: string[], scriptsDir: string): number | Promise<nu
   const sub = argv[0] ?? "";
   const rest = argv.slice(1);
   if (sub === "list") {
-    if (rest.length > 0) throw new TapError(1, "usage_error", "tap help crew", `unexpected arg '${rest[0]}'`);
+    const unfiltered = takeSeatFilters(rest, "tap help crew").rest.filter(arg => !["--no-state", "--no-cache"].includes(arg));
+    if (unfiltered.length > 0) throw new TapError(1, "usage_error", "tap help crew", `unexpected arg '${unfiltered[0]}'`);
     process.env.TAP_TEAM_CREW_ONLY = "1";
     process.env.TAP_TEAM_LIST_VERB = "crew list";
-    return cmdTeam([], scriptsDir);
+    return cmdTeam(rest, scriptsDir);
   }
   if (sub === "add") return cmdCrewAdd(rest, scriptsDir);
   if (sub === "shutdown") return cmdCrewShutdown(rest, scriptsDir);
@@ -238,11 +255,17 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   const driverSession = tmuxRead(["display-message", "-p", "-t", callerPane, "#{session_name}"]);
   if (!driverSession) throw new TapError(1, "not_in_tmux", "run tap crew add from the driver tmux session", "caller tmux session is not observable");
 
-  const paneId = runTmux(["new-window", "-d", "-P", "-F", "#{pane_id}", "-t", driverSession, "-n", handle, "-c", crewCwd]);
+  // The crew's login shell enters crewCwd by path; tmux itself starts it in $HOME (tmux-spawn-cwd.ts).
+  const paneId = runTmux(["new-window", "-d", "-P", "-F", "#{pane_id}", "-t", driverSession, "-n", handle,
+    "-c", stableSpawnCwd(process.env), inWorkdir(crewCwd, 'exec "$SHELL" -l')]);
   process.stderr.write(paneId.stderr);
   if (paneId.code !== 0) throw new TapError(1, "tmux_error", "check the caller session and --cwd", "could not create crew window");
   const newPane = paneId.stdout.replace(/\n+$/, "");
   if (!newPane) throw new TapError(1, "tmux_error", "check the caller session", "tmux created no observable crew pane");
+  if (!awaitPaneIn(newPane, crewCwd)) {
+    tmux(["kill-window", "-t", newPane], { stdio: "ignore" });
+    throw new TapError(1, "tmux_error", "check --cwd and retry tap crew add", `crew shell did not reach '${crewCwd}'`);
+  }
   // tap-fgx9: registry `pane` is an address (session:window.pane), not a bare %id.
   const pane = tmuxRead(["display-message", "-p", "-t", newPane, "#{session_name}:#{window_index}.#{pane_index}"]);
   if (!pane) {

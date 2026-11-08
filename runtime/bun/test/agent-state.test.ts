@@ -26,6 +26,40 @@ describe("agent state detection", () => {
     }
   });
 
+  // Real 200x60 captures (`capture-pane -p -J`, plain and `-e`) of fresh,
+  // signed-out Codex 0.167.0 and Claude Code 2.1.319 seats launched by TAP on
+  // Ubuntu 24.04; the Claude theme picker came from a fresh config directory.
+  // `sign-in-macos-real` is Codex 0.166.0 on macOS in an empty CODEX_HOME,
+  // whose later choices differ (API key, Amazon Bedrock).
+  test("first-run sign-in screens are blocked with reason sign_in", () => {
+    for (const [harness, name] of [["codex", "sign-in-real"], ["codex", "sign-in-macos-real"], ["claude", "sign-in-real"], ["claude", "sign-in-theme-real"]] as const) {
+      for (const ext of ["txt", "ansi"]) {
+        const frame = readFileSync(join(fixtures, harness, `${name}.${ext}`), "utf8");
+        expect(detectAgentState(harness, frame)).toEqual({ agentState: "blocked", reason: "sign_in" });
+        expect(approvalRequest(harness, frame)).toBeNull();
+      }
+    }
+  });
+
+  test("quoted or incomplete sign-in screens do not block a live composer", () => {
+    const codex = fixture("codex", "sign-in-real");
+    for (const frame of [
+      `${codex}\n› \x1b[2mAsk Codex to do anything\x1b[0m`,
+      `› Explain this menu:\n${codex}`,
+      codex.replace("Press enter to continue", ""),
+      codex.replace("Choose how you want to use Codex.", ""),
+      codex.replace("1. Sign in with ChatGPT", "1. Something else"),
+    ]) expect(detectAgentState("codex", frame).reason).not.toBe("sign_in");
+    for (const name of ["sign-in-real", "sign-in-theme-real"]) {
+      const claude = fixture("claude", name);
+      for (const frame of [
+        `${claude}\n${"─".repeat(40)}\n❯ \n${"─".repeat(40)}`,
+        `❯ Explain this screen:\n${claude}`,
+        claude.replace("Select login method:", "").replace("To change this later, run /theme", ""),
+      ]) expect(detectAgentState("claude", frame).reason).not.toBe("sign_in");
+    }
+  });
+
   test("quoted, dismissed and incomplete update menus do not block a Codex composer", () => {
     const menu = fixture("codex", "update-available");
     for (const frame of [

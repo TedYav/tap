@@ -789,6 +789,125 @@ test("scripted: [f] never starts anything when the fork is unavailable, quit, or
   } finally { enroll(); }
 });
 
+// A failed resume's rollback leaves the row suspended with its chat id intact. Only a named resume
+// may relaunch such a row, so it is off state.sessions; the ladder must still see its record.
+const RETRY_REASONS = ["pane_gone", "session_replaced", "repair_failed", "restart_failed"];
+const retained = (reason: string, row: Record<string, unknown>) =>
+  ({ ...row, delivery: "pane", status: "suspended", status_reason: reason, harness_session_id: "retained-id", history: ["older-id"] });
+// A stopped row has no pane to observe; a gone row's recorded pane is observed dead.
+const stoppedRow = { harness: "claude", session: "fixture/scout" };
+const menuGloss = (out: ReturnType<typeof scripted>, key: string) => out.asked[0].options.find((option: string[]) => option[0] === key)?.[2];
+// A Claude store that really holds the retained chat, so the exact tier is earned from its transcript.
+function claudeStoreWithChat(): NodeJS.ProcessEnv {
+  const home = join(root, "claude-store");
+  mkdirSync(join(home, "projects/fixture"), { recursive: true });
+  writeFileSync(join(home, "projects/fixture/retained-id.jsonl"), "{}\n");
+  return { TAP_CLAUDE_HOME: home };
+}
+
+for (const reason of RETRY_REASONS) {
+  test(`scripted: a ${reason} row's chooser offers its stored chat, stopped or gone`, () => {
+    for (const [row, question] of [[stoppedRow, "'fixture/scout' already exists (claude)"],
+      [gone("scout"), "a gone seat row (fixture/scout:0.0)"]] as const) {
+      enroll({ scout: retained(reason, row) });
+      try {
+        const out = scripted(["q"], ["claude", "scout"], claudeStoreWithChat());
+        expect([out.status, out.record]).toEqual([2, null]);
+        expect(out.asked).toHaveLength(1);
+        expect(out.asked[0].question).toContain(question);
+        expect(menuGloss(out, "r")).toBe("Resume the chat by its native ID");
+        expect(forkRow(out)).toEqual(["f", "fork", "Fork a new session with this history"]);
+      } finally { enroll(); }
+    }
+  });
+
+  // The resume arm refuses new tuning before any effect, which [k] never does: the refusal proves the arm.
+  test(`scripted: [r] on a gone ${reason} row stays resume, never a fresh reseat`, () => {
+    enroll({ scout: retained(reason, gone("scout")) });
+    try {
+      const out = scripted(["r"], ["claude", "scout", "--model", "opus"]);
+      expect([out.status, out.record]).toEqual([2, null]);
+      expect(out.stderr).toContain("cannot apply to the collision chooser's resume arm");
+    } finally { enroll(); }
+  });
+
+  test(`scripted: [k] and --fresh on a ${reason} row keep its chat in history and the replaced record`, () => {
+    enroll({ scout: retained(reason, gone("scout")) });
+    try {
+      const store = claudeStoreWithChat();
+      for (const out of [scripted(["k"], ["claude", "scout"], store), scripted([], ["claude", "scout", "--fresh"], store)]) {
+        expect(out.status).toBe(0);
+        expect(out.record.history).toEqual(["older-id", "retained-id"]);
+        expect(out.record).toMatchObject({ name: "fixture/scout", replaces_session: "fixture/scout", replaces_manifest_session: "fixture/scout",
+          replacement_record: { name: "fixture/scout", harness_session_id: "retained-id" } });
+        expect(out.record.harness_session_id).not.toBe("retained-id");
+        expect(out.record.ensure_receipts).toContain("reseated fixture/scout fresh (previous claude conversation retained-id kept in history)");
+      }
+    } finally { enroll(); }
+  });
+}
+
+test("scripted: a retained row's tier still reads its stored chat's truth", () => {
+  enroll({ scout: { ...retained("repair_failed", stoppedRow), transcript_path: join(root, "lost.jsonl") } });
+  try { expect(menuGloss(scripted(["q"], ["claude", "scout"]), "r")).toBe("No usable ID; open the native picker"); }
+  finally { enroll(); }
+  // No projects directory at all: [r] finds no transcript to target, so it opens the picker and must say so.
+  // [k] still keeps the id in history, but does not claim a resumable conversation.
+  enroll({ scout: retained("repair_failed", stoppedRow) });
+  try {
+    const noStore = { TAP_CLAUDE_HOME: join(root, "no-claude-store") };
+    expect(menuGloss(scripted(["q"], ["claude", "scout"], noStore), "r")).toBe("No usable ID; open the native picker");
+    const replaced = scripted(["k"], ["claude", "scout"], noStore);
+    expect(replaced.record.history).toEqual(["older-id", "retained-id"]);
+    expect(replaced.record.ensure_receipts.join("\n")).not.toContain("kept in history");
+  } finally { enroll(); }
+  enroll({ scout: retained("repair_failed", { ...stoppedRow, harness: "cursor" }) });
+  try { expect(menuGloss(scripted(["q"], ["cursor", "scout"]), "r")).toBe("Chat never persisted; resume refuses"); }
+  finally { enroll(); }
+});
+
+test("scripted: a retained row is a seat, so its launch never takes the leftover-record notice", () => {
+  enroll({ scout: retained("repair_failed", stoppedRow) });
+  try { expect(scripted(["q"], ["claude", "scout"]).stderr).not.toContain("ignoring leftover record"); }
+  finally { enroll(); }
+});
+
+test("a retained row held by another harness's shell refuses, as a recorded seat does", () => {
+  enroll({ shelly: seatedLive("shelly", "codex", retained("repair_failed", {})) });
+  try {
+    const out = scripted([], ["claude", "shelly", "--dry-run"]);
+    expect([out.status, out.record]).toEqual([2, null]);
+    expect(out.stderr).toContain("fixture/shelly already exists");
+  } finally { enroll(); }
+});
+
+test("a retained row's record costs the live menu no tmux probe per sibling", () => {
+  enroll({ harn: seatedLive("harn", "claude", retained("repair_failed", {})), sibling: gone("sibling"), other: gone("other") });
+  try {
+    const out = observedMenu(["q"]);
+    expect(out.status).toBe(2);
+    const tmuxEvents = out.menus[0].events.filter((event: string) => event.startsWith("tmux "));
+    expect(tmuxEvents).toHaveLength(1);
+    expect(tmuxEvents[0]).toContain("list-sessions");
+  } finally { enroll(); }
+});
+
+// [r] here can only start fresh, and says so: each row below has nothing a resume could recover.
+for (const [title, row] of [
+  ["a row with no session to record", { ...retained("pane_gone", gone("scout")), session: "" }],
+  ["a user_removed row", retained("user_removed", gone("scout"))],
+] as const) {
+  test(`scripted: ${title} keeps the fresh gloss, and [r] reseats without history`, () => {
+    enroll({ scout: row });
+    try {
+      const out = scripted(["r"], ["claude", "scout"]);
+      expect(out.status).toBe(0);
+      expect(menuGloss(out, "r")).toBe("Nothing to resume; start fresh");
+      expect(out.record).toMatchObject({ name: "fixture/scout", kill_backup_required: true, replacement_record: null, replaces_manifest_session: null, history: [] });
+    } finally { enroll(); }
+  });
+}
+
 test("a stopped row reports absent tmux and directs a fresh launch without losing the row", () => {
   enroll({ scout: gone("scout") });
   // The launch prerequisite check runs before the collision refusal, so claude must resolve on PATH (the CI runner has none).

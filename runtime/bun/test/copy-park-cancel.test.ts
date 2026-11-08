@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { cancelUnattendedCopyMode, observeUnattendedCopyMode, type CopyModeClients } from "../src/recovery/copy-park-cancel";
+import { FirstKeySelection } from "../src/verbs/nudge-ladder";
 import type { EffectIO, PaneSnapshot } from "../src/recovery/effect";
 import { recoveryRoot, runDirectory, type RecoveryTarget } from "../src/recovery/state";
 import type { Run } from "../src/tmux";
@@ -161,4 +162,18 @@ test("a pane replaced around the post-cancel read is unverified, not verified", 
   expect(result.status).toBe("unverified");
   if (result.status === "skipped") throw new Error("unreachable");
   expect(events(result.recovery).map(e => e.outcome)).not.toContain("verified");
+});
+
+
+test("fan-out selection gates a no-sentinel park cancellation and records its first possible key", () => {
+  for (const recovered of [true,false]) {
+    let mode: CopyModeClients = {status:"unattended"};
+    const {io,sent} = fakeIo(()=>{mode={status:"normal"};});
+    const selection = new FirstKeySelection(()=>recovered ? "seat recovered; not nudged" : "");
+    cancelUnattendedCopyMode({mode:"aggressive",registry:target.registry,handle:"peer",pane:target.pane,paneId:"%7",
+      home:"/bus",license:()=>["p1"],observe:()=>mode,target:()=>target,io,selection});
+    expect(sent).toHaveLength(recovered ? 0 : 1);
+    expect(selection.keyed).toBe(!recovered);
+    expect(selection.skipped).toBe(recovered ? "seat recovered; not nudged" : "");
+  }
 });

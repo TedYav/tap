@@ -6,12 +6,12 @@
 // directly.
 import { resolve } from "node:path";
 
-import { NATIVE_HANDLERS, route, routerFallback } from "../../main";
+import { loadNativeHandlers, route, routerFallback } from "../../main";
 
 const scripts = resolve(import.meta.dir, "../../../../skills/tap/scripts");
 process.exitCode = await route(
   process.argv.slice(2),
-  NATIVE_HANDLERS,
+  await loadNativeHandlers(),
   routerFallback(scripts),
   process.env.TAP_BUN_ROUTE_TRACE,
 );

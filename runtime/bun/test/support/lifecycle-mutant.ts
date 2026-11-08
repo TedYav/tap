@@ -15,5 +15,5 @@ if (process.env.LIFECYCLE_MUTANT === "codec-failure") {
     pyDumpIndent() { throw new Error("retirement codec mutant"); },
   }));
 }
-const { route, NATIVE_HANDLERS } = await import("../../main");
-process.exitCode = await route(process.argv.slice(2), NATIVE_HANDLERS, () => { throw new Error("unexpected Bash fallback"); });
+const { route, loadNativeHandlers } = await import("../../main");
+process.exitCode = await route(process.argv.slice(2), await loadNativeHandlers(), () => { throw new Error("unexpected Bash fallback"); });

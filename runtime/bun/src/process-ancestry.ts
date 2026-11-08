@@ -6,9 +6,34 @@
 
 import { spawnSync } from "node:child_process";
 import { libprocRow } from "./proc-row";
+import { reportingMemo, reportingMemoActive } from "./invocation-memo";
+import { REGISTRY_MAX_BUFFER } from "./spawn";
 
 /** A process's parent pid and controlling tty, as `ps` spells them. */
 export interface ProcessRow { ppid: string; tty: string }
+
+const reportingRows = reportingMemo<Map<number, ProcessRow> | null>();
+
+function reportingProcessRow(pid: number, env: NodeJS.ProcessEnv): ProcessRow | null {
+  const rows = reportingRows(env.PATH ?? "", () => {
+    const result = spawnSync("ps", ["-Ao", "pid=,ppid=,tty="], { encoding: "utf8", env, maxBuffer: REGISTRY_MAX_BUFFER });
+    // Preserve the kernel fallback when a sandbox cannot spawn ps.
+    if (result.error) return null;
+    const table = new Map<number, ProcessRow>();
+    if (result.status !== 0) return table;
+    for (const line of result.stdout.split("\n")) {
+      const fields = line.replace(/^[ \t]+|[ \t]+$/g, "").split(/[ \t]+/);
+      if (fields.length === 3 && /^\d+$/.test(fields[0]!) && /^\d+$/.test(fields[1]!))
+        table.set(Number(fields[0]), { ppid: fields[1]!, tty: fields[2]! });
+    }
+    return table;
+  });
+  if (rows) return rows.get(pid) ?? null;
+  const raw = libprocRow(pid);
+  if (!raw) return null;
+  const [ppid = "", tty = ""] = raw.split(/[ \t]+/);
+  return { ppid, tty };
+}
 
 /**
  * The first `ps` record for PID, or null when no record could be read.
@@ -51,6 +76,7 @@ export interface ProcessRow { ppid: string; tty: string }
  * falls back to the OS process table.
  */
 export function processRow(pid: number, env: NodeJS.ProcessEnv = process.env): ProcessRow | null {
+  if (reportingMemoActive()) return reportingProcessRow(pid, env);
   const row = spawnSync("ps", ["-o", "ppid=", "-o", "tty=", "-p", String(pid)], { encoding: "utf8", env });
   const raw = (row.error ? libprocRow(pid) ?? "" : row.stdout ?? "").replace(/\n+$/, "");
   if (!raw) return null;

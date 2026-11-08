@@ -1,3 +1,37 @@
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import { StringDecoder } from "node:string_decoder";
+
+/** Read only the frontmatter, preserving the parser's universal-newline rules. */
+export function readFrontmatterHeader(path: string, stripFenceWhitespace = false): string {
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    if (!fstatSync(fd).isFile()) return "";
+    const chunk = Buffer.alloc(512), decoder = new StringDecoder("utf8");
+    let raw = "", start = 0, scan = 0;
+    for (;;) {
+      const n = readSync(fd, chunk, 0, chunk.length, null);
+      raw += n ? decoder.write(chunk.subarray(0, n)) : decoder.end();
+      const newline = /\r\n|\r|\n/g;
+      newline.lastIndex = scan;
+      let match: RegExpExecArray | null;
+      while ((match = newline.exec(raw))) {
+        // CRLF may cross a chunk boundary.
+        if (n && match[0] === "\r" && newline.lastIndex === raw.length) break;
+        const line = stripFenceWhitespace ? raw.slice(start, match.index).replace(PY_STRIP, "") : raw.slice(start, match.index);
+        if (start === 0 && line !== "---") return "";
+        if (start > 0 && line === "---") return raw.slice(0, newline.lastIndex);
+        start = newline.lastIndex;
+      }
+      if (!n) return raw;
+      scan = raw.endsWith("\r") ? raw.length - 1 : raw.length;
+    }
+  } finally { closeSync(fd); }
+}
+
+export function readFrontmatter(path: string): Record<string, string> {
+  return frontmatterFields(readFrontmatterHeader(path));
+}
+
 /** `tap_frontmatter.frontmatter`: universal newlines, optional closing fence, last duplicate wins, values stripped. */
 export function frontmatterFields(raw: string): Record<string, string> {
   const fields: Record<string, string> = Object.create(null);

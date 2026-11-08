@@ -18,9 +18,10 @@
 // re-resolves them from ambient pins.
 
 import { createHash } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, normalize } from "node:path";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+import type { Seat } from "./registry";
+import { readBoundTranscript } from "./readiness-stall";
 import { detectAgentState } from "./agent-state";
 import { paneHarness } from "./pane-harness";
 import { escapedInputLine, inputRegion, inputStateFromRegion, paneAlertState, promptLineReText, regionIsSentinel, type PaneIo } from "./pane/reader";
@@ -46,7 +47,7 @@ export interface SeatStateDeps {
   /** `tap_pane_harness_command` for a row with no recorded harness. */
   harnessOf(pane: string, paneCmd: string, env: NodeJS.ProcessEnv): string;
   /** A fresh transcript for the sole seat of its harness in this worktree. */
-  transcriptFresh(harness: string, worktree: string, now: number, staleAfter: number, env: NodeJS.ProcessEnv): boolean;
+  transcriptFresh(harness: string, seat: Seat, now: number, staleAfter: number, env: NodeJS.ProcessEnv): boolean;
 }
 
 export interface SeatStateOptions {
@@ -161,97 +162,19 @@ export function activeHarnessCount(registry: string, harness: string, worktree: 
   return count;
 }
 
-/** Non-hidden `*.jsonl` files at any depth below `dir` (Python `glob('**')`). */
-function jsonlBelow(dir: string, out: string[]): void {
-  let names: string[];
-  try { names = readdirSync(dir); } catch { return; }
-  for (const name of names) {
-    if (name.startsWith(".")) continue;
-    const path = join(dir, name);
-    let isDir = false;
-    try { isDir = statSync(path).isDirectory(); } catch { continue; }
-    if (isDir) jsonlBelow(path, out);
-    else if (name.endsWith(".jsonl")) out.push(path);
-  }
-}
-
-/**
- * The normalized `payload.cwd` of a Codex rollout's first record (session_meta), or "" when the head is
- * unreadable, truncated or carries none. Reads only the first line, bounded. This is a deliberate small
- * twin of session-store's head reader: importing session-store here would pull it, and bun:sqlite, into
- * the watch sidecar's and the goalie loop's import closures, which stamp every module they load.
- */
-function rolloutHeadCwd(path: string, cap = 1 << 20): string {
-  let head = "";
+/** A recorded, identity-bound transcript written recently; never search harness history. */
+export function transcriptFresh(harness: string, seat: Seat, now: number, staleAfter: number, env: NodeJS.ProcessEnv): boolean {
+  if (harness !== "claude" && harness !== "codex") return false;
+  const path = typeof seat.transcript_path === "string" ? seat.transcript_path : "";
+  if (!path || !isAbsolute(path)) return false;
   try {
-    const fd = openSync(path, "r");
-    try {
-      const buf = Buffer.alloc(65536);
-      for (;;) {
-        const n = readSync(fd, buf, 0, buf.length, null);
-        if (n <= 0) break;
-        head += buf.toString("utf8", 0, n);
-        if (head.includes("\n") || head.length >= cap) break;
-      }
-    } finally { closeSync(fd); }
-    const line = head.includes("\n") ? head.slice(0, head.indexOf("\n")) : head;
-    const meta: unknown = JSON.parse(line);
-    const payload = meta && typeof meta === "object" ? (meta as Record<string, unknown>).payload : undefined;
-    const cwd = payload && typeof payload === "object" ? (payload as Record<string, unknown>).cwd : undefined;
-    return typeof cwd === "string" ? normalize(cwd).replace(/\/+$/, "") : "";
-  } catch { return ""; }
-}
-
-/**
- * A transcript of this harness that names `worktree` was written within
- * `staleAfter` seconds of `now`. Codex walks the sessions under its home but
- * stats each rollout first: only a recent one has its first line (session_meta)
- * read, and its `payload.cwd` must equal the worktree. A cost proportional to the
- * whole Codex history here once stalled launch (tap-isha0). Claude reads the
- * project directories whose name carries the munged worktree. Other harnesses
- * have no transcript reader and are stale. This is a freshness test only: it never
- * names a session, so identity selection stays in session-store.
- */
-export function transcriptFresh(harness: string, worktree: string, now: number, staleAfter: number, env: NodeJS.ProcessEnv): boolean {
-  const home = env.HOME || homedir();
-  const paths: string[] = [];
-  if (harness === "codex") {
-    jsonlBelow(join(env.TAP_CODEX_HOME || env.CODEX_HOME || join(home, ".codex"), "sessions"), paths);
-  } else if (harness === "claude") {
-    const projects = join(env.TAP_CLAUDE_HOME || env.CLAUDE_HOME || join(home, ".claude"), "projects");
-    const munged = worktree.replace(/^\/+|\/+$/g, "").replaceAll("/", "-");
-    let dirs: string[] = [];
-    try { dirs = readdirSync(projects); } catch { /* no projects */ }
-    for (const d of dirs) {
-      if (d.startsWith(".") || !d.includes(munged)) continue;
-      let files: string[] = [];
-      try { files = readdirSync(join(projects, d)); } catch { continue; }
-      for (const f of files) if (!f.startsWith(".") && f.endsWith(".jsonl")) paths.push(join(projects, d, f));
-    }
-  }
-  const codexTarget = harness === "codex" ? normalize(worktree).replace(/\/+$/, "") : "";
-  for (const path of paths) {
-    if (harness === "codex") {
-      let mtime: number;
-      try { mtime = Math.floor(statSync(path).mtimeMs / 1000); } catch { continue; }
-      if (!(mtime && now - mtime <= staleAfter)) continue;
-      if (codexTarget === "") continue;
-      // The registered root, or a launch directory beneath it (a seat may start at <root>/sub and still register
-      // <root>). Containment is checked at a path-separator boundary, never as a raw prefix, so a sibling
-      // such as <root>-other does not count.
-      const cwd = rolloutHeadCwd(path);
-      if (cwd === codexTarget || cwd.startsWith(`${codexTarget}/`)) return true;
-      continue;
-    }
-    let text: string, mtime: number;
-    try {
-      text = new TextDecoder("utf-8").decode(readFileSync(path));
-      mtime = Math.floor(statSync(path).mtimeMs / 1000);
-    } catch { continue; }
-    if (!text.includes(worktree)) continue;
-    if (mtime && now - mtime <= staleAfter) return true;
-  }
-  return false;
+    const st = statSync(path);
+    const mtime = Math.floor(st.mtimeMs / 1000);
+    if (!st.isFile() || !mtime || now - mtime > staleAfter) return false;
+  } catch { return false; }
+  // The existing reader checks session identity and bounds both head and tail.
+  const transcript = readBoundTranscript(harness, seat, env);
+  return transcript !== null && now - Math.floor(transcript.mtime) <= staleAfter;
 }
 
 const PY_WS_RUN = new RegExp(`[${PYTHON_SPACE}]+`);
@@ -390,7 +313,7 @@ export function seatState(handle: string, opts: SeatStateOptions): SeatState {
   const staleAfter = INT.test(staleRaw) ? Number(staleRaw) : NaN;
   const clockOk = Number.isFinite(now) && Number.isFinite(staleAfter);
   if (clockOk && worktree !== "" && activeHarnessCount(opts.registry, harness, worktree) === 1
-    && deps.transcriptFresh(harness, worktree, now, staleAfter, env)) return "working";
+    && deps.transcriptFresh(harness, Object.fromEntries(ent), now, staleAfter, env)) return "working";
   const activityRaw = cmdSubst(deps.display(pane, "#{window_activity}"));
   const windowActivity = /^[0-9]+$/.test(activityRaw) ? Number(activityRaw) : 0;
   if (clockOk && windowActivity > 0 && now - windowActivity <= staleAfter) return "working";

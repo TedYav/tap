@@ -72,7 +72,9 @@ seat, `/resume` the source conversation, then `/fork` it".
   conversation.
 - The chooser's `[n]` and `[f]` ask for the name. The default is `<seat>-` plus
   a grey suffix: the next free number for `[n]`, `fork` for `[f]`. Enter
-  accepts it, typing replaces the suffix, and Backspace edits into the prefix.
+  accepts it, typing replaces the suffix, and Backspace edits into the prefix;
+  Option-Delete or Ctrl-W deletes a word and Command-Delete or Ctrl-U clears the
+  line.
   An invalid, numeric, reserved, harness-named or taken name re-asks with the
   reason. Esc quits with nothing changed, as does Ctrl-Z: the prompt restores the
   terminal and cancels rather than suspend with echo off; Ctrl-C interrupts. Without colour (NO_COLOR,

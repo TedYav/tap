@@ -47,7 +47,8 @@ import { busActivity, codexLivelock, contextFreeze, contextPressure, opencodeWed
 import { nextUnprobed, probedAppend } from "./watch-evaluate";
 import { buildChain, evaluate, realSeams as realEvaluatorSeams, testInt } from "./watch-evaluator";
 import { armPath, noticeOrNotify, notifyHuman } from "./watch-notice";
-import { repoRoot as registryRepoRoot } from "./watch-registry";
+import { loadRegistry, seatMap, type RegistryDoc } from "./registry";
+import { teamRegistryRefusal } from "./register-authority";
 import { clearPause, fieldValue, isFile, readLoose, set as leaseSet, snapshotLines } from "./watch-lease";
 import { activeSeatRows, activityFloor, blockedKeysJson, courierDisposition, isExempt, parseResetEpoch, probeReceipt, readRegistryText, realWedge, skipSetJson } from "./watch-tick";
 // TODO(C): import the hoisted roster door once the roster door is exported out of the verb layer
@@ -525,8 +526,7 @@ export interface RealTickArgs {
  * document's own order, `str(v or "")` per field -- shaped for the observation door. Null
  * when the acting registry cannot be read (`tap_acting_registry` failed: no roster).
  */
-export function registryRowsInOrder(registry: string): RegistryRow[] | null {
-  const text = readRegistryText(registry);
+export function registryRowsInOrder(registry: string, text = readRegistryText(registry)): RegistryRow[] | null {
   if (text === null) return null;
   return activeSeatRows(text).rows.map((r) => ({
     team: "", handle: r[0] ?? "", status: r[1] ?? "", delivery: r[2] ?? "", pane: r[3] ?? "", pane_id: r[4] ?? "", session: r[5] ?? "",
@@ -545,10 +545,32 @@ export function realTickSeams(a: RealTickArgs): TickSeams {
   const bus = a.bus;
   const arm = armPath(bus);
   const identity = env.TAP_WATCH_IDENTITY || WATCH_IDENTITY_DEFAULT;
-  const now = (): string => env.TAP_WATCH_NOW || String(Math.floor(Date.now() / 1000));
-  // `_watch_repo_root`: the registry's `team.worktree_root`, else the cwd (watch-registry.ts, W1's door)
-  const repoRoot = (): string => registryRepoRoot(a.registry);
-  const detectorSeams = () => realDetectorSeams({ bus, scripts: a.scripts, registry: a.registry, env, now: now(), team: a.team });
+  const tickNow = env.TAP_WATCH_NOW || String(Math.floor(Date.now() / 1000));
+  const now = (): string => tickNow;
+  let registryCache: RegistryDoc | null | undefined;
+  let registryText: string | null = null;
+  const registryOnce = (): RegistryDoc | null => {
+    if (registryCache !== undefined) return registryCache;
+    if (!isFile(a.registry)) return (registryCache = null);
+    try {
+      registryText = readRegistryText(a.registry);
+      if (registryText === null) return (registryCache = null);
+      const doc = loadRegistry(a.registry, registryText);
+      const refusal = teamRegistryRefusal(a.registry, doc);
+      if (refusal) {
+        process.stderr.write(`tap watch: ${refusal.errorClass}: ${refusal.detail}; next: ${refusal.action}\n`);
+        return (registryCache = null);
+      }
+      return (registryCache = doc);
+    } catch { return (registryCache = null); }
+  };
+  const repoRoot = (): string => {
+    const team = registryOnce()?.team;
+    const root = team && typeof team === "object" && !Array.isArray(team) ? (team as Record<string, unknown>).worktree_root : undefined;
+    return typeof root === "string" && root ? root : process.cwd();
+  };
+  let detectorWorld: ReturnType<typeof realDetectorSeams> | undefined;
+  let activityCache: string | undefined;
   let rosterCache: RosterRow[] | null | undefined;
   const rosterOnce = (): RosterRow[] | null => {
     if (rosterCache !== undefined) return rosterCache;
@@ -556,7 +578,10 @@ export function realTickSeams(a: RealTickArgs): TickSeams {
     // document's order), then ONE observation (C's batch door; the incumbent classified
     // per seat under TAP_OBS_SESSION_SCOPE -- the batch gather is ratified in advance by
     // C, observe.ts's header calls it the correction)
-    const rows = registryRowsInOrder(a.registry);
+    const doc = registryOnce();
+    if (doc === null) return (rosterCache = null);
+    // Keep document order even for numeric handles, which JS object keys sort.
+    const rows = registryRowsInOrder(a.registry, registryText);
     if (rows === null) return (rosterCache = null);
     const observed = observe(rows, a.scripts);
     const out: RosterRow[] = [];
@@ -567,6 +592,8 @@ export function realTickSeams(a: RealTickArgs): TickSeams {
       // the record: state, reason, resolved pane, resolved id, live harness, attached
       out.push({ handle, pane: rec[2] ?? "", paneId: rec[3] ?? "", harness: (rec[4] || String(row.harness)) });
     }
+    detectorWorld = realDetectorSeams({ bus, scripts: a.scripts, registry: a.registry, env: tickEnv(env, out, tickNow), now: tickNow, team: a.team,
+      snapshot: { seats: seatMap(doc), roster: out, panes: observed.panes ?? new Map(), at: testInt(tickNow) ?? 0n } });
     return (rosterCache = out);
   };
   return {
@@ -592,7 +619,9 @@ export function realTickSeams(a: RealTickArgs): TickSeams {
     approvalTimeouts: (armedBy, n, roster) =>
       processApprovalTimeouts(roster, armedBy, realApprovalSeams({ bus, scripts: a.scripts, registry: a.registry, env, now: () => Number(n) })),
     detector: (name, args, roster) => {
-      const world = realDetectorSeams({ bus, scripts: a.scripts, registry: a.registry, env: tickEnv(env, roster, now()), now: now(), team: a.team });
+      rosterOnce();
+      if (!detectorWorld) return 0;
+      const world = detectorWorld;
       const at = args[1] ?? "";
       if (testInt(at) === null) {
         // the module's own clock check (`now must be an integer`): the door failed, the tick goes on (D)
@@ -647,7 +676,7 @@ export function realTickSeams(a: RealTickArgs): TickSeams {
       // `git ... 2>/dev/null | tap_sha256`: a failed git still fed the hash "" (the pipeline's status was awk's)
       return sha256Hex(r.status === 0 ? r.stdout : "");
     },
-    busActivity: (n) => busActivity(join(bus, "payloads"), join(bus, "receipts"), testInt(n) ?? 0n, 0n, "", ""),
+    busActivity: (n) => activityCache ??= busActivity(join(bus, "payloads"), join(bus, "receipts"), testInt(n) ?? 0n, 0n, "", ""),
     buildChain: (overrides, terminal, roster) => {
       // the rung walks the tick's roster (W2b's seams read it as the tick's cache): a seat the observer rejected is no rung
       try { return buildChain(overrides, terminal, realEvaluatorSeams({ bus, scripts: a.scripts, registry: a.registry, env: tickEnv(env, roster, now()) })); } catch (error) {

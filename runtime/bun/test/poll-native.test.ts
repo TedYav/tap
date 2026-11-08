@@ -51,8 +51,8 @@ function fixture(enrolled = true) {
 for (const verb of ["poll", "outstanding"]) test(`${verb}: omitted handle resolves the bound pane and refuses unverifiable identity`, () => {
   const f = fixture(), fake = join(f.root, "bin");
   mkdirSync(fake);
-  writeFileSync(join(fake, "ps"), '#!/bin/sh\nprintf "1 ttypoll\\n"\n', { mode: 0o755 });
-  writeFileSync(join(fake, "tmux"), '#!/bin/sh\ncase "$*" in\n*list-panes*) printf "%s\\t%s\\n" "%700" "/dev/ttypoll" ;;\n*display-message*) printf "%s\\n" "$POLL_RECORD" ;;\n*) exit 1 ;;\nesac\n', { mode: 0o755 });
+  writeFileSync(join(fake, "ps"), '#!/bin/sh\ncase "$*" in\n*pid=,ppid=,tty=*) printf "%s 1 ttypoll\\n" "$PPID" ;;\n*) printf "1 ttypoll\\n" ;;\nesac\n', { mode: 0o755 });
+  writeFileSync(join(fake, "tmux"), '#!/bin/sh\ncase "$*" in\n*list-panes*session_name*|*display-message*) printf "%s\\n" "$POLL_RECORD" ;;\n*list-panes*) printf "%s\\t%s\\n" "%700" "/dev/ttypoll" ;;\n*) exit 1 ;;\nesac\n', { mode: 0o755 });
   Object.assign(f.doc.seats.me, { status: "active", pane_id: "%700", pane: "recipient/me:0.0", session: "recipient/me", server_epoch: "srv:123:456" });
   writeFileSync(f.registry, JSON.stringify(f.doc));
   const env = { PATH: `${fake}:${process.env.PATH}`, TAP_SERVER_EPOCH: undefined,
@@ -186,6 +186,49 @@ test("foreign parked custody uses the recipient registry; source receipts and ex
   const replaced = f.run();
   expect(replaced.code, replaced.err).toBe(0);
   expect(JSON.parse(replaced.out).pending).toEqual([]);
+});
+
+// Foreign residency is discovered only for an actor some edge delivers to; the
+// addressee grant still decides each payload, so poll lists exactly what
+// `tap read path=` accepts. Forwarding has no expiry; superseded aliases
+// (address_active false) are the closest state and keep historical custody.
+test("forwarded foreign mail: poll lists exactly what read accepts across edge states", () => {
+  const states = ["present", "superseded", "revoked", "instance-mismatched"] as const;
+  for (const state of states) {
+    const f = fixture();
+    const unrevised = f.seed("fwd-unrevised", { to: "old", recipient_instance: "old|1" }, false, f.foreign);
+    const rewritten = f.seed("fwd-rewritten", { to: "me", recipient_instance: "me|new", to_adopted_from: "old", original_recipient_instance: "old|1" }, false, f.foreign);
+    const edge = f.doc.seat_forwardings[0]! as Record<string, unknown>;
+    if (state === "superseded") edge.address_active = false;
+    if (state === "revoked") { edge.custody_revoked = true; edge.address_active = false; (f.doc.seats as Record<string, unknown>).old = { status: "active", instance: "old|1" }; }
+    if (state === "instance-mismatched") f.doc.seats.me.instance = "me|replacement";
+    writeFileSync(f.registry, JSON.stringify(f.doc));
+    const polled = f.run(); expect(polled.code, `${state}: ${polled.err}`).toBe(0);
+    const listed = JSON.parse(polled.out).pending.map((r: { id: string }) => r.id).sort();
+    const readable = [unrevised, rewritten].filter(path => f.run([`path=${path}`, "--by", "me"], "native", {}, f.cwd, "read").code === 0)
+      .map(path => path.split("/").pop()!.slice(0, -3)).sort();
+    expect(listed, state).toEqual(readable);
+    expect(listed, state).toEqual({ present: ["fwd-rewritten", "fwd-unrevised"], superseded: ["fwd-rewritten", "fwd-unrevised"],
+      revoked: ["fwd-rewritten"], "instance-mismatched": [] }[state]);
+  }
+}, 60000);
+
+test("a teammate's forwarding edge does not make this seat read enrolled sender buses", () => {
+  const f = fixture();
+  f.doc.seat_forwardings = [{ source: "old", source_instance: "old|1", destination: "peer", destination_instance: "peer|1", at: "now", address_active: true }];
+  (f.doc.seats as Record<string, unknown>).peer = { status: "active", instance: "peer|1" };
+  writeFileSync(f.registry, JSON.stringify(f.doc));
+  f.seed("direct-cross-team", {}, false, f.foreign);
+  f.seed("local", {});
+  const polled = f.run(["me"]);
+  expect(polled.code, polled.err).toBe(0);
+  // Same as a team with no forwarding at all: cross-team mail stays on the sender bus.
+  expect(polled.out).toContain("this team only");
+  expect(polled.out).not.toContain("direct-cross-team");
+  expect(polled.out).toContain("local");
+  f.doc.seat_forwardings[0]!.destination = "me"; f.doc.seat_forwardings[0]!.destination_instance = "me|new";
+  writeFileSync(f.registry, JSON.stringify(f.doc));
+  expect(f.run(["me"]).out).toContain("includes explicit delegated custody");
 });
 
 test("malformed isolation preserves bytes and quiet/JSON stderr while valid siblings stay pending", () => {

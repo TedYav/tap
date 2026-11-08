@@ -1,5 +1,6 @@
 import { LaunchInterrupted, withLaunchSignals } from "./transaction";
 import { applyOverrides, type Overrides } from "./overrides";
+import { expandSugar, parseContextSize, parsePonytailMode, refuseSugarConflicts, withSugar, type LaunchSugar } from "./launch-sugar";
 import { TapError } from "../context";
 import { loadGlobalRegistry } from "../index-home";
 import { teamRegistryRefusal } from "../register-authority";
@@ -7,7 +8,7 @@ import { pyReadUtf8 } from "../spool-publication";
 import { observe, type RegistryRow } from "../team-observe";
 import { observedRows, withAgentStates, readComputeJobs, type ObservedRow } from "../roster-observation";
 import type { ComputeJob, RosterAgentState } from "../roster-activity";
-import { nudgeMessageRefusal, renderNudgeWire } from "../nudge-wire";
+import { nudgeDoorbellText, nudgeMessageRefusal, renderNudgeWire } from "../nudge-wire";
 import { tmuxReadOnly } from "../tmux";
 import { relaunchCrew, seats, teamContext } from "../crew-lifecycle";
 import { HARNESSES } from "./catalog";
@@ -20,7 +21,7 @@ import { tapScriptsDir } from "../scripts-dir";
 
 const scripts = tapScriptsDir();
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
-export interface Options { seat?: string; harness?: string; team?: string; message?: string; nudge?: string; workdir?: string; json: boolean; dryRun: boolean; overrides?: Overrides }
+export interface Options { seat?: string; harness?: string; team?: string; message?: string; nudge?: string; autoNudge?: string; workdir?: string; json: boolean; dryRun: boolean; overrides?: Overrides; sugar?: LaunchSugar }
 export interface Exclusion { team: string; handle: string; reason: string }
 export interface Member { team: string; handle: string; root: string; team_doc: Record<string, unknown>; row: Record<string, any>; expect?: Record<string, unknown>; expect_resume?: string | null; prepare_error?: string }
 export function parseOptions(argv: string[]): Options {
@@ -36,12 +37,17 @@ export function parseOptions(argv: string[]): Options {
     if (arg === "--json") { out.json = true; process.env.TAP_JSON = "1"; }
     else if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "--nudge") out.nudge = "";
-    else if (arg.startsWith("--nudge=")) {
-      out.nudge = arg.slice("--nudge=".length);
-      const refusal = nudgeMessageRefusal(out.nudge);
-      if (refusal) throw new Error(`--nudge: ${refusal}`);
+    else if (arg === "--auto-nudge") out.autoNudge = "";
+    else if (arg.startsWith("--nudge=") || arg.startsWith("--auto-nudge=")) {
+      const flag = arg.slice(0, arg.indexOf("="));
+      const message = arg.slice(arg.indexOf("=") + 1);
+      const refusal = nudgeMessageRefusal(message);
+      if (refusal) throw new Error(`${flag}: ${refusal}`);
+      nudgeDoorbellText(message);
+      if (flag === "--auto-nudge") out.autoNudge = message;
+      else out.nudge = message;
     }
-    else if (["--harness", "--team", "-m", "--message", "--workdir", "--env", "--unset-env"].includes(arg.split("=")[0]!)) {
+    else if (["--harness", "--team", "-m", "--message", "--workdir", "--env", "--unset-env", "--context", "--ponytail"].includes(arg.split("=")[0]!)) {
       const key = arg.split("=")[0]!;
       const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : argv[++i];
       if (value === undefined) throw new Error(`${key} needs a value`);
@@ -53,18 +59,23 @@ export function parseOptions(argv: string[]): Options {
       } else if (key === "--harness") out.harness = value;
       else if (key === "--team") out.team = value.trim();
       else if (key === "--workdir") out.workdir = value;
+      else if (key === "--context") (out.sugar ??= {}).context = parseContextSize(value);
+      else if (key === "--ponytail") (out.sugar ??= {}).ponytail = parsePonytailMode(value);
       else out.message = value;
     } else if (!arg.startsWith("-") && !out.seat) out.seat = arg;
-    else throw new Error(`unexpected argument ${arg}${out.nudge !== undefined && !arg.startsWith("-") ? "; use --nudge=<text> for a message" : ""}`);
+    else throw new Error(`unexpected argument ${arg}${(out.nudge !== undefined || out.autoNudge !== undefined) && !arg.startsWith("-") ? `; use ${out.autoNudge !== undefined ? "--auto-nudge" : "--nudge"}=<text> for a message` : ""}`);
   }
+  if (out.autoNudge !== undefined && (out.nudge !== undefined || out.message !== undefined)) throw new Error("--auto-nudge, --nudge and -m/--message cannot be combined");
   if (out.nudge !== undefined && out.message !== undefined) throw new Error("--nudge and -m/--message cannot be combined");
-  if (out.nudge !== undefined && out.seat && out.harness) throw new Error("--nudge takes no separate value; use --nudge=<text> for a message, or omit --harness to select a seat");
+  const nudgeFlag = out.autoNudge !== undefined ? "--auto-nudge" : out.nudge !== undefined ? "--nudge" : undefined;
+  if (nudgeFlag && out.seat && out.harness) throw new Error(`${nudgeFlag} takes no separate value; use ${nudgeFlag}=<text> for a message, or omit --harness to select a seat`);
   if (!!out.seat === !!out.harness) throw new Error("supply a team/handle OR --harness <claude|codex|cursor|opencode>");
   if (out.harness && !["claude", "codex", "cursor", "opencode"].includes(out.harness)) throw new Error("unsupported relaunch harness");
   if (out.workdir !== undefined && !out.seat) throw new Error("--workdir applies to a single-seat relaunch; supply [team/]handle");
   if (out.team === "") throw new Error("empty --team refuses; use a team name or '*' for all teams");
   if (out.seat && (!/^[^/\s]+(?:\/[^/\s]+)?$/.test(out.seat) || out.team !== undefined)) throw new Error("single-seat relaunch requires [team/]handle without --team");
   if (out.overrides) applyOverrides({}, out.overrides);
+  if (out.sugar) refuseSugarConflicts(out.sugar, out.overrides);
   return out;
 }
 
@@ -104,7 +115,7 @@ export function census(options: Options, scope: string, teams: Record<string, un
 
 export interface ClassifiedMember { member: Member; status: string; reason: string; pane: string; observation: ObservedRow }
 export interface PreRelaunchState { agent_state: RosterAgentState; agent_state_reason: string }
-interface NudgeDecision { planned: boolean; reason: "non_idle" | "idle" | "crew_fresh" | "hermes_unsupported"; transport: "argv" | "bus_note" | null }
+interface NudgeDecision { planned: boolean; reason: "non_idle" | "working" | "quota_error" | "not_working" | "idle" | "crew_fresh" | "hermes_unsupported"; transport: "argv" | "bus_note" | null }
 
 /** Exactly the roster observation and socket-namespace policy, without preset/UI work. */
 export function classify(members: Member[], diagnostics: string[]): ClassifiedMember[] {
@@ -138,17 +149,18 @@ export function readRelaunchStates(selected: ClassifiedMember[]): Map<Member, Pr
   return states;
 }
 
-function nudgeDecision(member: Member, state: PreRelaunchState): NudgeDecision {
+function nudgeDecision(member: Member, state: PreRelaunchState, automatic: boolean): NudgeDecision {
   if (isCrewRow(member)) return { planned: false, reason: "crew_fresh", transport: null };
   if (member.row.harness === "hermes") return { planned: false, reason: "hermes_unsupported", transport: null };
   if (state.agent_state === "idle") return { planned: false, reason: "idle", transport: null };
-  return { planned: true, reason: "non_idle", transport: member.row.harness === "opencode" ? "bus_note" : "argv" };
+  const quotaError = state.agent_state === "error" && ["usage_limit", "rate_limit"].includes(state.agent_state_reason);
+  if (automatic && state.agent_state !== "working" && !quotaError) return { planned: false, reason: "not_working", transport: null };
+  return { planned: true, reason: automatic ? (quotaError ? "quota_error" : "working") : "non_idle", transport: member.row.harness === "opencode" ? "bus_note" : "argv" };
 }
 
 function continuation(member: Member, message: string): string {
-  return member.row.harness === "opencode"
-    ? `Continue your current work and check tap poll.${message ? `\n\nContext: ${message}` : ""}`
-    : renderNudgeWire(message);
+  const text = nudgeDoorbellText(message);
+  return member.row.harness === "opencode" ? `${text}\n\nCheck tap poll.` : renderNudgeWire(text);
 }
 
 const short = (text: string, limit = 140) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/[\r\n\x00-\x1f\x7f]+/g, " ").trim().slice(0, limit);
@@ -182,6 +194,11 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
   const global = deps.load();
   if (global.marker !== "live") throw new Error("global registry unreadable; run tap doctor");
   const data = census(options, scope, (global.doc?.teams ?? {}) as Record<string, unknown>);
+  // Expanded here, against the resolved target and before any exclusion, so a refusal precedes every effect.
+  // One expansion serves the whole batch: --harness pins its members to one harness and a single seat is one member.
+  const sugarHarness = options.harness ?? data.members[0]?.row.harness as string | undefined;
+  const sugar = options.sugar && sugarHarness ? expandSugar(sugarHarness, options.sugar) : null;
+  if (sugar) options = { ...options, overrides: withSugar(options.overrides, sugar) };
   // An explicit --workdir is checked while resolving the target, before the active/self exclusions can
   // drop the seat: a mistyped repair command must refuse, not report "nothing to relaunch".
   const teamRoot = ((global.doc?.teams as Record<string, any> | undefined)?.[scope] ?? {}).root;
@@ -209,12 +226,13 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
   }
   diagnostics.push(...classifierDiagnostics);
   const nudgePlans = new Map<Member, { pre_relaunch: PreRelaunchState; nudge: NudgeDecision }>();
-  if (options.nudge !== undefined) {
+  const nudgeMessage = options.autoNudge ?? options.nudge;
+  if (nudgeMessage !== undefined) {
     const states = deps.states(selectedObservations);
     for (const member of selected) {
       const state = states.get(member);
       if (!state) throw new Error("seat activity snapshot incomplete; nothing was replaced");
-      nudgePlans.set(member, { pre_relaunch: state, nudge: nudgeDecision(member, state) });
+      nudgePlans.set(member, { pre_relaunch: state, nudge: nudgeDecision(member, state, options.autoNudge !== undefined) });
     }
   }
   const label = options.harness ? `${options.harness} seats` : "seats";
@@ -222,6 +240,9 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
   if (!options.json) deps.write(selected.length
     ? `${options.dryRun ? "Would relaunch" : "Relaunching"} ${selected.length} active ${label} ${where}\n`
     : `No active ${label} ${where}; nothing to relaunch.\n`);
+  if (sugar && options.dryRun && !options.json && selected.length) {
+    deps.write(`  would apply ${[...Object.entries(sugar.env).map(([key, value]) => `${key}=${value}`), ...sugar.tail].join(" ")}\n`);
+  }
   // Crew rows have no conversation to resume.
   const durable = selected.filter(m => !isCrewRow(m));
   const prepared = deps.prepare(durable);
@@ -231,7 +252,7 @@ export async function relaunch(options: Options, deps = { context: relaunchConte
     const crewMember = isCrewRow(member);
     const i = durable.indexOf(member);
     const nudgePlan = nudgePlans.get(member);
-    const memberOptions = nudgePlan?.nudge.planned ? { ...options, message: continuation(member, options.nudge!) } : options;
+    const memberOptions = nudgePlan?.nudge.planned ? { ...options, message: continuation(member, nudgeMessage!) } : options;
     let result: MemberResult;
     try {
       result = signal?.aborted
@@ -321,7 +342,10 @@ async function runRelaunchCommand(argv: string[]): Promise<number> {
     return 0;
   } else {
     try { return await withLaunchSignals(signal => relaunch(parseOptions(argv), undefined, signal)); }
-    catch (error) {
+    catch (caught) {
+      // A refusal keeps its class here as it does in a member result, not a generic session_error.
+      const error = caught instanceof LauncherError && caught.errorClass
+        ? new TapError(2, caught.errorClass, caught.action ?? "tap help session", caught.detail ?? caught.message) : caught;
       const detail = short(error instanceof TapError ? error.detail : String(error));
       const code = error instanceof LaunchInterrupted ? error.exitCode : error instanceof TapError ? error.code : 2;
       const action = error instanceof TapError ? error.action : "tap help session";

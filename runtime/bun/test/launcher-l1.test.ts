@@ -56,10 +56,10 @@ function fixture(harness = "claude") {
   return { root, config, registry, socket };
 }
 
-function run(root: string, args: string[], publicEntry = false) {
+function run(root: string, args: string[], publicEntry = false, timeout = 20_000) {
   const result = spawnSync(publicEntry ? "bash" : process.execPath,
     publicEntry ? [publicBin, "session", "launch", ...args] : [cli, ...args], {
-    cwd: root, env: process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000, killSignal: "SIGKILL",
+    cwd: root, env: process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout, killSignal: "SIGKILL",
   });
   let detail = "";
   try { detail = JSON.parse(result.stdout).detail ?? ""; } catch { /* plain receipt */ }
@@ -74,7 +74,7 @@ function rewriteRow(path: string, update: (row: Record<string, unknown>) => void
 
 const MASKS: [RegExp, string][] = [[/l1-\d+-[0-9a-f]+/g, "<socket>"],
   [/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>"], [/%\d+/g, "%N"], [/\d{4}-\d\d-\d\dT[\d:.]+Z?/g, "<time>"],
-  [/\d{8}T\d{6}Z-[A-Za-z0-9._-]+?-[0-9a-f]{12}\b/g, "<backup>"], [/\|[0-9a-f]{16}\b/g, "|<instance>"], [/srv:\d+:\d+/g, "srv:<epoch>"]];
+  [/\d{8}T\d{6}Z-[A-Za-z0-9._-]+?-[0-9a-f]{12}\b/g, "<backup>"], [/\|[0-9a-f]{16}\b/g, "|<instance>"], [/srv:\d+:\d+/g, "srv:<epoch>"], [/after \d+ ms/g, "after <ms> ms"]];
 // The runner's tmux directory and the uid in its socket path vary per run and per machine.
 const tmuxDirs = [...new Set([original.TMUX_TMPDIR, original.TMUX_TMPDIR && realpathSync(original.TMUX_TMPDIR)].filter(Boolean) as string[])]
   .sort((a, b) => b.length - a.length);
@@ -110,6 +110,9 @@ function differential(key: string, args: string[], setup: (f: ReturnType<typeof 
   // A harness-start failure lands in whichever phase the last readiness poll
   // reached, so those cases list every phase the failure can honestly name.
   const phases = PHASED_FAILURES[key];
+  // A failed launch appends the dead pane's captured output, best effort
+  // (a missing capture never replaces the failure). The oracle predates it; drop it before comparing.
+  if (phases !== undefined) seen.stderr = seen.stderr.replace(/\nlaunch failed: exit \d+\nPane is dead \(status \d+, [^)\n]*\)(?=\n$)/, "");
   if (phases === undefined) asIncumbent(key, seen);
   else {
     if (!(key in golden)) throw new Error(`launch-l1-oracle.json has no case '${key}'`);
@@ -125,9 +128,9 @@ function differential(key: string, args: string[], setup: (f: ReturnType<typeof 
 const PHASED_FAILURES: Record<string, string[]> = {
   "reserved help handle": ["reserving help on team fixture"],
   "session appearing after claim": ["setting up tmux session fixture/reviewer"],
-  "shell mentioning claude": ["starting claude", "waiting for claude to register on team fixture"],
-  "failed claude start": ["starting claude", "waiting for claude to register on team fixture"],
-  "failed codex start": ["starting codex", "waiting for codex to be ready"],
+  "shell mentioning claude": ["starting claude", "waiting for the login shell to start claude", "waiting for claude to register on team fixture"],
+  "failed claude start": ["starting claude", "waiting for the login shell to start claude", "waiting for claude to register on team fixture"],
+  "failed codex start": ["starting codex", "waiting for the login shell to start codex", "waiting for codex to be ready"],
 };
 
 function fakeHarness(f: { root: string; registry: string }, beforeExec = "") {
@@ -521,11 +524,16 @@ test("a failed launch names its phase without a TTY, in text and --json", async 
     writeFileSync(loginShell, `#!/bin/bash\nread -r answer\nexec /bin/bash --noprofile --norc "$@"\n`);
     chmodSync(loginShell, 0o755);
     process.env.TAP_LAUNCH_SHELL = loginShell;
+    // A silent shell is indistinguishable from a slow one, so it runs to the ceiling.
+    process.env.TAP_LAUNCH_START_TIMEOUT_SECONDS = "2";
     const result = run(f.root, ["testseat", "reviewer", ...(json ? ["--json"] : [])]);
     expect(result.status).toBe(2);
     // Transaction failures render on stderr under --json too (the renderer's
     // existing contract); either way the phase is named before the cause.
     expect(result.diagnostic).toMatch(/tap session: while (starting claude|waiting for claude to register on team fixture): harness did not start for fixture\/reviewer/);
+    expect(result.diagnostic).toMatch(/the login shell \(bash\) produced no output and had not started claude after \d+ ms \(ceiling 2 s; load \d+\.\d\d on \d+ cores\)/);
+    expect(result.diagnostic).toContain("next: raise TAP_LAUNCH_START_TIMEOUT_SECONDS and retry the launch");
+    expect(result.diagnostic).not.toContain("answer the login-shell prompt");
     expect(result.stderr).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✓✗]|\x1b/);
   }
 }, 40_000);
@@ -541,14 +549,62 @@ test("a login shell blocked on a prompt is named and shown in the launch failure
   process.env.TAP_LAUNCH_SHELL = loginShell;
   const result = run(f.root, ["testseat", "reviewer", "--json"]);
   expect(result.status).toBe(2);
-  expect(result.diagnostic).toContain("harness did not start for fixture/reviewer: the login shell (bash) had not started claude after 5000 ms; it may be waiting for input");
+  expect(result.diagnostic).toMatch(/harness did not start for fixture\/reviewer: the login shell \(bash\) had not started claude after \d+ ms; it may be waiting for input/);
   expect(result.diagnostic).toContain("[oh-my-zsh] Would you like to update? [Y/n]");
+  expect(result.diagnostic).toContain("next: answer the login-shell prompt");
   expect(result.diagnostic).toContain("login-shell/zsh -lic exit");
   expect(JSON.parse(readFileSync(f.registry, "utf8")).seats).toEqual({});
   const sessions = spawnSync(realTmux, ["-L", f.socket, "list-sessions"], { env: process.env, encoding: "utf8" });
   expect(sessions.status, sessions.stderr).toBe(0);
   expect(sessions.stdout.trim()).toBe("");
 }, 40_000);
+
+test("a login shell that stays blank past five seconds still launches its harness", async () => {
+  const f = fixture();
+  fakeHarness(f);
+  const loginDir = join(f.root, "login-shell");
+  mkdirSync(loginDir);
+  const loginShell = join(loginDir, "bash");
+  writeFileSync(loginShell, `#!/bin/bash\n. '${f.root}/.bash_profile'\nsleep 6\nexec /bin/bash --noprofile --norc "$@"\n`);
+  chmodSync(loginShell, 0o755);
+  process.env.TAP_LAUNCH_SHELL = loginShell;
+  const started = performance.now();
+  const result = run(f.root, ["testseat", "reviewer", "--json"], false, 40_000);
+  expect({ status: result.status, diagnostic: result.diagnostic }).toEqual({ status: 0, diagnostic: "" });
+  expect(performance.now() - started).toBeGreaterThan(6000);
+  expect(JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer.status_reason).toBe("");
+}, 60_000);
+
+test("a login shell that execs some other program fails at five seconds, not the ceiling", async () => {
+  const f = fixture();
+  fakeHarness(f);
+  const other = join(f.root, "real/notharness");
+  if (process.platform === "linux") copyFileSync("/bin/sleep", other);
+  else symlinkSync("/bin/sleep", other);
+  const loginDir = join(f.root, "login-shell");
+  mkdirSync(loginDir);
+  const loginShell = join(loginDir, "bash");
+  writeFileSync(loginShell, `#!/bin/bash\nsleep 1\nexec '${other}' 600\n`);
+  chmodSync(loginShell, 0o755);
+  process.env.TAP_LAUNCH_SHELL = loginShell;
+  const started = performance.now();
+  const result = run(f.root, ["testseat", "reviewer", "--json"]);
+  expect(result.status).toBe(2);
+  expect(result.diagnostic).toMatch(/harness did not start for fixture\/reviewer: the pane is running notharness, not claude/);
+  expect(performance.now() - started).toBeLessThan(18_000);
+  expect(JSON.parse(readFileSync(f.registry, "utf8")).seats).toEqual({});
+}, 25_000);
+
+test("a malformed start ceiling is refused before the launch has any effect", async () => {
+  const f = fixture();
+  fakeHarness(f);
+  process.env.TAP_LAUNCH_START_TIMEOUT_SECONDS = "soon";
+  const result = run(f.root, ["testseat", "reviewer", "--json"]);
+  expect(result.status).toBe(2);
+  expect(result.diagnostic).toContain("TAP_LAUNCH_START_TIMEOUT_SECONDS must be positive, got 'soon'");
+  expect(JSON.parse(readFileSync(f.registry, "utf8")).seats).toEqual({});
+  expect(spawnSync(realTmux, ["-L", f.socket, "has-session", "-t", "=fixture/reviewer"]).status).not.toBe(0);
+}, 25_000);
 
 test("a live interpreter script named claude is not executable readiness", async () => {
   const f = fixture();
@@ -925,6 +981,10 @@ test("a live text-mode --fresh reseat prints the incumbent's reseat receipt", as
   const { result, seen } = differential("live text-mode --fresh reseat", ["testseat", "reviewer", "--fresh"], f => {
     fakeHarness(f);
     expect(run(f.root, ["testseat", "reviewer", "--json"], true).status).toBe(0);
+    // The receipt narrates a resumable conversation, so the old one needs its transcript on disk.
+    const id = seatRow(f).harness_session_id;
+    mkdirSync(join(f.root, ".claude/projects/p"), { recursive: true });
+    writeFileSync(join(f.root, `.claude/projects/p/${id}.jsonl`), "{}\n");
   });
   expect(result.status).toBe(0);
   expect(seen.stdout).toContain("reseated fixture/reviewer fresh");

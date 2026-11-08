@@ -8,6 +8,7 @@ import { NO_MACHINE_INDEX } from "../src/selector";
 import golden from "./fixtures/routing/ledger.json";
 import teamsCli from "./fixtures/routing/teams-cli.json";
 import { removeScratchTree } from "./support/scratch";
+import { addMessage, addSession, createOpenCodeStore } from "./support/opencode-store";
 import { loadModelReference } from "../src/launcher/model-reference";
 
 const root = resolve(import.meta.dir, "../../..");
@@ -328,6 +329,12 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
       const alias = run(["team","list","--seats",...shape]);
       expect({exit:alias.status,stdout:alias.stdout,stderr:alias.stderr}).toEqual({exit:seats.status,stdout:seats.stdout,stderr:seats.stderr});
     }
+    for (const shape of [[], ["--json"], ["--all","--json"], ["--wide"], ["--details"], ["--state","sleeping","--json"]]) {
+      const seats = run(["teams","--seats",...shape]);
+      for (const roster of [run(["teams","roster",...shape]),run(["team","list","roster",...shape])]) {
+        expect({exit:roster.status,stdout:roster.stdout,stderr:roster.stderr}).toEqual({exit:seats.status,stdout:seats.stdout,stderr:seats.stderr});
+      }
+    }
     const namedSeats = run(["teams","beta","--seats","--json"]);
     expect(namedSeats.status).toBe(1);
     expect(JSON.parse(namedSeats.stdout).error_class).toBe("unknown_option");
@@ -338,6 +345,15 @@ test("teams native, shell, installed-style and named doors preserve scope and ca
     expect({exit:missing.status,stdout:missing.stdout,stderr:missing.stderr}).toEqual({exit:1,stdout:"",stderr:"tap teams: no enrolled team 'missing' in the machine index\n"});
     const bad = run(["team","list","--unknown"]);
     expect(bad.status).toBe(2); expect(bad.stdout).toBe("");
+    // --recent reaches the same view through every door; the alias keeps its pointer line.
+    const recent = run(["teams","--recent","-n","1"]);
+    expect({exit:recent.status,stderr:recent.stderr},door.join(" ")).toEqual({exit:0,stderr:""});
+    expect(recent.stdout).toBe("TEAM   SEATS  LAST ACTIVE  STATUS\nalpha  1/1    -            ● idle\n");
+    const recentAlias = run(["team","list","--recent","-n","1"]);
+    expect(recentAlias.stdout).toBe(recent.stdout+"to see seats on this team: tap team (or tap team roster)\n");
+    const rosterRecent = run(["teams","roster","--recent"]);
+    expect({exit:rosterRecent.status,stdout:rosterRecent.stdout,stderr:rosterRecent.stderr}).toEqual({exit:1,stdout:"",
+      stderr:"tap teams: --recent orders teams, not seats; seats of one team: tap team --recent; next: tap team --recent\n"});
   }
   expect(readFileSync(beta.registry,"utf8")).toContain('"beta"');
   const ttyEnv: NodeJS.ProcessEnv = {...process.env,TERM:"xterm-256color"}; delete ttyEnv.NO_COLOR;
@@ -441,6 +457,117 @@ test("teams sort case-insensitively with blank lines between teams in both views
   expect(json.agents.map((row: any) => row.team)).toHaveLength(10);
 });
 
+test("teams --recent lists dormant teams too, most recently active first, from one roster pass", async () => {
+  const fx = fleet();
+  const now = Date.parse("2026-08-27T00:20:00Z");
+  process.env.TAP_WATCH_NOW = String(now / 1000);
+  const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+  // Working now, by the roster's own state reading: sorts first whatever its stored dates say.
+  fx.enroll("busy", {lead:{harness:"claude",registered_at:ago(30 * 86400)}}, {agents:[{handle:"lead",status:"active",agent_state:"working"}]});
+  // A dated turn end from the observed roster beats an old registration.
+  fx.enroll("Turns", {lead:{harness:"codex",registered_at:ago(30 * 86400)}}, {agents:[{handle:"lead",status:"active",agent_state:"idle",turn_ended_at:ago(30 * 60)}]});
+  // A dormant team dated by its crew's launch: crews count toward their team.
+  fx.enroll("crewed", {lead:{harness:"claude",registered_at:ago(20 * 86400)},helper:{harness:"claude",crew:true,last_launched:ago(2 * 3600)}},
+    {agents:[{handle:"lead",status:"suspended"},{handle:"helper",status:"suspended",crew:true}]});
+  // The transcript's newest dated record counts; its fresh mtime does not.
+  const transcript = join(fx.dir, "talked.jsonl");
+  writeFileSync(transcript, `${JSON.stringify({type:"user",timestamp:ago(5 * 3600)})}\n`);
+  utimesSync(transcript, new Date(now), new Date(now));
+  fx.enroll("talked", {lead:{harness:"codex",transcript_path:transcript,last_launched:ago(3 * 86400)}}, {agents:[{handle:"lead",status:"offline"}]});
+  // Equal dates break by name, ignoring case.
+  fx.enroll("tie-b", {x:{harness:"agy",last_launched:ago(2 * 86400)}}, {agents:[{handle:"x",status:"offline"}]});
+  fx.enroll("Tie-a", {x:{harness:"agy",last_launched:ago(2 * 86400)}}, {agents:[{handle:"x",status:"offline"}]});
+  // Daemons (poll delivery or the daemon harness) are infrastructure: their fresh dates never lift a team.
+  fx.enroll("watched", {lead:{harness:"codex",last_launched:ago(3 * 86400)},
+    bot:{harness:"pre-merge-watch",delivery:"poll",last_launched:ago(60)}, relay:{harness:"daemon",registered_at:ago(30)}},
+  {agents:[{handle:"lead",status:"offline"},{handle:"bot",status:"active",delivery:"poll",harness:"pre-merge-watch"},{handle:"relay",status:"active",harness:"daemon"}]});
+  // Nothing dated, and an unreachable team: both last, by name, never an error.
+  fx.enroll("undated", {x:{harness:"cursor"}}, {agents:[{handle:"x",status:"offline"}]});
+  fx.teams.bare = {root:join(fx.dir,"bare")};
+  fx.save();
+  const recent = await teamsView(["--recent"]);
+  expect(recent).toEqual({exit:0, stderr:"", stdout:
+    "TEAM     SEATS  LAST ACTIVE  STATUS\n"
+    + "busy     1/1    working      ● working\n"
+    + "Turns    1/1    30m          ● idle\n"
+    + "crewed   0/2    2h           ● idle\n"
+    + "talked   0/1    5h           ● idle\n"
+    + "Tie-a    0/1    2d           ● idle\n"
+    + "tie-b    0/1    2d           ● idle\n"
+    + "watched  2/3    3d           ● idle\n"
+    + "bare     0/0    -            ● unknown\n"
+    + "undated  0/1    -            ● idle\n"});
+  // One roster child per team, the same pass plain `tap teams` makes.
+  const calls = readFileSync(join(fx.responses,"calls"),"utf8").trim().split("\n").map(line => JSON.parse(line)).filter(c => c.event === "start");
+  expect(calls.map(c => c.team).sort()).toEqual(["Tie-a","Turns","busy","crewed","talked","tie-b","undated","watched"]);
+  // Without --recent: active (and unobserved) teams only, by name, and no new column.
+  expect((await teamsView([])).stdout).toBe("TEAM     SEATS  STATUS\nbare     0/0    ● unknown\nbusy     1/1    ● working\nTurns    1/1    ● idle\nwatched  2/3    ● idle\n");
+  const lines = (args: string[]) => teamsView(args).then(r => r.stdout.split("\n").filter(Boolean).slice(1).map(line => line.split(/\s+/)[0]));
+  expect(await lines(["--recent","-n","3"])).toEqual(["busy","Turns","crewed"]);
+  expect(await lines(["--recent","-n","1"])).toEqual(["busy"]);
+  expect(await lines(["--rec","-n","100"])).toEqual(["busy","Turns","crewed","talked","Tie-a","tie-b","watched","bare","undated"]);
+  expect(await lines(["-n","2","--recent","--all"])).toEqual(["busy","Turns"]);
+  const details = (await teamsView(["--recent","--details","-n","2"])).stdout;
+  expect(details).toMatch(/^TEAM +SEATS +LAST ACTIVE +ATTACHED +WARN +WORKDIR\nbusy +1\/1 +working +0 +- +\S+\nTurns +1\/1 +30m +0 +- +\S+\n$/);
+});
+
+test("teams --recent: a working team outranks in-collection and future dates; an out-of-range date is undated", async () => {
+  const fx = fleet();
+  const now = Date.parse("2026-08-27T00:20:00Z");
+  process.env.TAP_WATCH_NOW = String(now / 1000);
+  const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString();
+  fx.enroll("busy", {lead:{harness:"claude"}}, {agents:[{handle:"lead",status:"active",agent_state:"working"}]});
+  // A turn that ended after the view's clock was captured, during roster collection.
+  fx.enroll("ahead", {lead:{harness:"codex"}}, {agents:[{handle:"lead",status:"active",agent_state:"idle",turn_ended_at:iso(120)}]});
+  // OpenCode's newest message has a creation time no Date can hold: the team falls back to its launch.
+  const store = join(fx.dir, "opencode.db");
+  process.env.OPENCODE_DB_PATH = store;
+  const db = createOpenCodeStore(store);
+  addSession(db, "ses_far", fx.dir);
+  addMessage(db, { type: "assistant", time: { created: 9000000000000000 } }, { session: "ses_far" });
+  db.close();
+  fx.enroll("farclock", {oc:{harness:"opencode",harness_session_id:"ses_far",last_launched:iso(-4 * 86400)}}, {agents:[{handle:"oc",status:"offline"}]});
+  fx.enroll("older", {x:{harness:"agy",last_launched:iso(-86400)}}, {agents:[{handle:"x",status:"offline"}]});
+  fx.save();
+  expect(await teamsView(["--recent"])).toEqual({exit:0, stderr:"", stdout:
+    "TEAM      SEATS  LAST ACTIVE  STATUS\n"
+    + "busy      1/1    working      ● working\n"
+    + "ahead     1/1    just now     ● idle\n"
+    + "older     0/1    24h          ● idle\n"
+    + "farclock  0/1    4d           ● idle\n"});
+  expect((await teamsView(["--recent","-n","1"])).stdout).toBe("TEAM  SEATS  LAST ACTIVE  STATUS\nbusy  1/1    working      ● working\n");
+});
+
+test("teams --recent refusals: the -n value, -n without --recent, and the seat view", async () => {
+  const fx = fleet();
+  fx.enroll("alpha",{}, {agents:[]});
+  fx.save();
+  const refused = (detail: string, action = "tap help teams") => ({exit:1, stdout:"", stderr:`tap teams: ${detail}; next: ${action}\n`});
+  expect(await teamsView(["--recent","-n"])).toEqual(refused("-n needs a positive integer: the number of rows to keep, e.g. -n 15"));
+  expect(await teamsView(["-n","--recent"])).toEqual(refused("-n needs a positive integer: the number of rows to keep, e.g. -n 15"));
+  for (const value of ["0","x","-3","1.5"]) expect(await teamsView(["--recent","-n",value]), value).toEqual(refused(`-n must be a positive integer, got '${value}'`));
+  expect(await teamsView(["-n","5"])).toEqual(refused("-n limits a --recent listing; add --recent"));
+  expect(await teamsView(["--all","-n","5"])).toEqual(refused("-n limits a --recent listing; add --recent"));
+  for (const glued of ["-n5","-n=5"]) expect(await teamsView(["--recent",glued]), glued).toEqual(refused("-n takes its value as a separate word: -n <n>"));
+  // -n takes the word typed after it, here --state, so the filter lift never hands it the 5. A malformed
+  // -n refuses as it is lifted, before help or the view checks, as a malformed filter does.
+  expect(await teamsView(["--recent","-n","--state","idle","5"])).toEqual(refused("-n needs a positive integer: the number of rows to keep, e.g. -n 15"));
+  expect(await teamsView(["--recent","-n","0","--help"])).toEqual(refused("-n must be a positive integer, got '0'"));
+  expect(JSON.parse((await teamsView(["--seats","--recent","-n","--json"])).stdout)).toMatchObject({error_class:"usage_error",detail:"-n needs a positive integer: the number of rows to keep, e.g. -n 15"});
+  expect(await teamsView(["--recent","-n","--details"])).toEqual(refused("-n needs a positive integer: the number of rows to keep, e.g. -n 15"));
+  const seats = "--recent orders teams, not seats; seats of one team: tap team --recent";
+  expect(await teamsView(["--seats","--recent"])).toEqual(refused(seats, "tap team --recent"));
+  expect(await teamsView(["--state","idle","--recent","-n","2"])).toEqual(refused(seats, "tap team --recent"));
+  expect(JSON.parse((await teamsView(["--seats","--recent","--json"])).stdout)).toEqual({ok:false,error_class:"usage_error",action:"tap team --recent",detail:seats});
+  expect(JSON.parse((await teamsView(["--seats","--recent","-n","0","--json"])).stdout)).toMatchObject({error_class:"usage_error",detail:"-n must be a positive integer, got '0'"});
+  // No team-level JSON: the existing refusal stands.
+  expect(JSON.parse((await teamsView(["--recent","--json"])).stdout)).toMatchObject({error_class:"usage_error",detail:"--json requires --seats"});
+  // The argparse-compatible surface keeps its own grammar for the new long option.
+  expect((await teamsView(["--recent=yes"])).stderr).toContain("argument --recent: ignored explicit argument 'yes'");
+  expect((await teamsView(["--recent","--help"])).stdout).toContain("[--recent] [-n N]");
+  expect(existsSync(join(fx.responses,"calls"))).toBe(false);
+});
+
 test("machine seats refresh clock-derived cache fields at final collection time", async () => {
   const fx = fleet();
   fx.enroll("alpha",{}, {agents:[{handle:"expired",harness:"claude",status:"active",agent_state:"idle",prompt_cache:{
@@ -514,4 +641,56 @@ test("nested machine styling respects color opt-outs and subtracts the seat inde
     expect(mono.stdout).not.toContain("\x1b");
     expect(mono.stdout).toContain("329k/600k ●10m");
   }
+});
+
+test("seat filters imply the roster view and select the same seats in JSON and the table", async () => {
+  const fx = fleet();
+  fx.enroll("alpha",{},{agents:[
+    {handle:"opus",harness:"claude",delivery:"pane",status:"active",agent_state:"working",observed_model:"claude-opus-5-5",observed_effort:"xhigh"},
+    {handle:"astra",harness:"codex",delivery:"pane",status:"active",agent_state:"idle",turn_ended_at:"2026-08-27T00:05:00Z",model:"gpt-6-astra",effort:"high"},
+    {handle:"rest",harness:"codex",delivery:"pane",status:"offline",agent_state:"unknown",model:"gpt-6-astra"},
+    {handle:"mark",harness:"claude",delivery:"pane",status:"suspended",status_reason:"incapable",agent_state:"unknown"},
+    {handle:"bot",harness:"claude",delivery:"poll",status:"active",agent_state:"unknown"},
+  ]});
+  fx.enroll("dormant",{},{agents:[{handle:"away",harness:"codex",delivery:"pane",status:"offline",agent_state:"unknown"}]});
+  fx.save();
+  process.env.TAP_WATCH_NOW = String(Date.parse("2026-08-27T00:15:00Z") / 1000);
+  const handles = async (...flags: string[]): Promise<string[]> => {
+    const json = await teamsView([...flags,"--json"]);
+    expect(json.exit,json.stdout).toBe(0);
+    const seen = JSON.parse(json.stdout).agents.map((row: {handle:string}) => row.handle).sort();
+    const human = await teamsView([...flags,"--wide"]);
+    expect(human.exit).toBe(0);
+    for (const handle of ["opus","astra","rest","mark","bot","away"]) {
+      expect([handle,new RegExp(`^  ${handle} `,"m").test(human.stdout)]).toEqual([handle,seen.includes(handle)]);
+    }
+    return seen;
+  };
+  expect(await handles("--harness","codex")).toEqual(["astra"]);
+  expect(await handles("--seats","--harness","codex")).toEqual(["astra"]);
+  expect(await handles("--model","opus5.5")).toEqual(["opus"]);
+  expect(await handles("--model","5.5,astra6")).toEqual(["astra","opus"]);
+  expect(await handles("--state","working")).toEqual(["opus"]);
+  // 600s idle by a dated turn end is not active; a live daemon is, and offline never.
+  expect(await handles("--state","active")).toEqual(["bot","opus"]);
+  // An explicit --state replaces the default active-only scope.
+  expect(await handles("--state","offline")).toEqual(["away","rest"]);
+  expect(await handles("--state","incapable")).toEqual(["mark"]);
+  expect(await handles("--all","--harness","codex")).toEqual(["astra","away","rest"]);
+  expect(await handles("--harness","codex","--state","offline")).toEqual(["away","rest"]);
+
+  const human = await teamsView(["--harness","claude","--wide"]);
+  expect(human.stdout).toContain("opus5.5@xhigh");
+  expect(human.stdout).toContain("● ready");
+  expect(human.stdout).not.toContain("dormant");
+  expect((await teamsView(["--state","offline"])).stdout).toContain("dormant");
+  expect((await teamsView(["--harness","codex","--json"])).stdout).toContain('"model":"gpt-6-astra"');
+
+  expect((await teamsView(["--model","nothing"])).stdout).toBe("tap teams --seats: no seats match these filters\n");
+  expect(JSON.parse((await teamsView(["--state","sleeping","--json"])).stdout)).toMatchObject({ok:false,error_class:"usage_error",action:"tap help teams"});
+  const details = await teamsView(["--harness","codex","--details"]);
+  expect(details.exit).toBe(1);
+  expect(details.stderr).toContain("--details");
+  expect((await teamsView(["--seats","--details"])).stderr).toContain("--seats and --details are alternative views");
+  expect((await teamsView(["--state","idle"])).exit).toBe(0);
 });

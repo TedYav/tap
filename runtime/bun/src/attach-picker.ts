@@ -12,7 +12,7 @@ export interface PickerIdentity {
   instance: string; pane: string; paneId: string; session: string; serverEpoch: string;
   serverSocket: string; bootId: string; registeredAt: string; observedPane: string; observedPaneId: string;
 }
-export interface PickerSeat { handle: string; harness: string; session: string; crew: boolean; identity?: PickerIdentity }
+export interface PickerSeat { handle: string; harness: string; session: string; crew: boolean; role?: string; identity?: PickerIdentity }
 export interface PickerTeam { name: string; state: string; detail: string; seats: PickerSeat[]; root?: string; registry?: string }
 export interface PickerSelection { target: string; team: string; handle: string; root: string; registry: string; identity: PickerIdentity }
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -63,6 +63,7 @@ export function pickerModel(env = process.env, inspect: typeof observe = observe
       candidates.set(team, (candidates.get(team) ?? 0) + 1);
       const session = text(row.session) || text(row.pane).split(":", 1)[0] || "";
       pending.push({ team, seat: { handle, session, harness: text(row.harness), crew: row.crew === true || row.crew === 1,
+        ...(validToken(text(row.role)) ? { role: text(row.role) } : {}),
         identity: { instance: text(row.instance), pane: text(row.pane), paneId: text(row.pane_id), session: text(row.session),
           serverEpoch: text(row.server_epoch), serverSocket: text(row.server_socket), bootId: text(row.boot_id),
           registeredAt: text(row.registered_at), observedPane: "", observedPaneId: "" } },
@@ -80,6 +81,8 @@ export function pickerModel(env = process.env, inspect: typeof observe = observe
       item.team.seats.push(item.seat);
     }
   }
+  // Leaders first; the stable sort keeps handle order inside each group.
+  for (const team of teams) team.seats.sort((a, b) => Number(b.role === "leader") - Number(a.role === "leader"));
   if (observed.code !== 0) for (const team of teams) if (team.state === "ok" && (candidates.get(team) ?? 0) > 0) {
     team.state = "unobservable"; team.detail = "seat classifier could not observe this team";
   }
@@ -88,7 +91,7 @@ export function pickerModel(env = process.env, inspect: typeof observe = observe
 
 export function seatRow(seat: PickerSeat, team: string): string {
   const session = seat.session !== `${team}/${seat.handle}` ? `  ${safe(seat.session)}` : "";
-  return `${safe(seat.handle)}  ${safe(seat.harness)}${session}${seat.crew ? " (crew)" : ""}`;
+  return `${safe(seat.handle)}${seat.role ? ` (${safe(seat.role)})` : ""}  ${safe(seat.harness)}${session}${seat.crew ? " (crew)" : ""}`;
 }
 
 export type Choose = <T>(choices: PickerChoice<T>[], options: PickOptions) => Promise<PickResult<T>>;
@@ -119,7 +122,8 @@ export async function chooseAttachSelection(model: ReturnType<typeof pickerModel
   if (team.state !== "ok") throw new TapError(1, "team_unavailable", "tap teams / tap doctor", `${team.name}: ${team.state} — ${team.detail}`);
   if (!team.seats.length) throw new TapError(1, "no_candidates", "tap team / tap session resume <seat>", `${team.name} has no live attachable seats`);
   const selected = await choose(team.seats.map((seat, i) => ({ id: String(i), label: seatRow(seat, team.name), value: `${team.name}/${seat.handle}` })),
-    { verb: "attach", query: query.seatQuery, prompt: `${safe(team.name)} > `, header: "Pick a seat · Type to search · Enter attach · Esc cancel" });
+    { verb: "attach", query: query.seatQuery, prompt: `${safe(team.name)} > `, header: "Pick a seat · Type to search · Enter attach · Esc cancel",
+      tiebreak: "index" });
   if (selected.kind !== "selected") return selected;
   const target = selected.values[0]!;
   const seat = team.seats.find(row => `${team.name}/${row.handle}` === target)!;

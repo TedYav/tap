@@ -144,14 +144,14 @@ PY
 
 names="$(native_team --names)"
 [[ "$names" == *"scout"* ]] || die "plain --names lost the incapable seat: $names"
-active_names="$(native_team --names --active)"
+active_names="$(native_team --names --online)"
 if [[ "$active_names" == *"scout"* ]]; then die "active-only names kept the incapable seat: $active_names"; fi
 
 # The Bash door agrees where its surfaces can speak: the wide table carries
 # the stored pair verbatim, and both names views keep the same membership.
 bash_all="$(tap_in_team team --all)"
 [[ "$bash_all" == *"suspended"*"incapable"* ]] || die "bash wide roster lost the pair: $bash_all"
-if [[ "$(tap_in_team team --names --active)" == *"scout"* ]]; then die "bash active-only names kept the incapable seat"; fi
+if [[ "$(tap_in_team team --names --online)" == *"scout"* ]]; then die "bash active-only names kept the incapable seat"; fi
 
 # -- 7. Entry routes: the tap.sh entry and a direct Bun entry both land. --
 out="$(tap_in_team incapable peer)"

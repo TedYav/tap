@@ -551,3 +551,15 @@ test("a still-staged wire after nudge's one Enter is unverified (exit 5) on a no
   const enters = f.effects().split("\n").filter(line => line.endsWith(" Enter")).length;
   expect(enters).toBe(1);
 }, 30000);
+
+
+test("single-seat dry run carries default recovery disclosure and keeps explicit human stops binding", () => {
+  const f = fixture();
+  writeFileSync(join(f.root,"state/frame"), "› \n");
+  rmSync(join(f.root,"state/copy"));
+  const result = f.run("--dry-run");
+  expect(result.status,result.stderr).toBe(0);
+  expect(result.stdout).toContain("TAP recovery nudge: resume your prior work");
+  expect(result.stdout).toContain("unless the user or a message says stop");
+  expect(f.effects()).toBe("");
+},20000);

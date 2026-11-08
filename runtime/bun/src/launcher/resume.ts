@@ -243,6 +243,16 @@ export function findRecordByKey(records: LaunchRecord[], cwd: string, key: strin
 const findRecordBySession = (records: LaunchRecord[], cwd: string, name: string) => scoped(records, cwd).find(record => record.name === name) ?? null;
 const findRecord = (records: LaunchRecord[], harness: string, name: string) => records.find(record => record.harness === harness && record.name === name) ?? null;
 
+/** A row only an explicit resume may relaunch: the registry keeps it, but registryState's sessions omit it. */
+const onlyExplicitlyResumable = (row: unknown): boolean => seatIsRelaunchable(row, true) && !seatIsRelaunchable(row);
+
+/** The record a named resume recovers from a row at a known handle; null for every other row. Reads no tmux. */
+export function retainedResumeRecord(handle: string, row: Row | undefined, base: string, root: string): LaunchRecord | null {
+  if (!row || !onlyExplicitlyResumable(row)) return null;
+  const record = recordFromRow(handle, row, { name: base, worktree_root: root }, root);
+  return record ? withRecordDefaults(record) : null;
+}
+
 /** _failed_resume_record: exact-key recovery of a row only an explicit resume may relaunch. */
 async function failedResumeRecord(base: string, cwd: string, key: string): Promise<LaunchRecord | null> {
   const root = rootForCwd(cwd);
@@ -251,14 +261,12 @@ async function failedResumeRecord(base: string, cwd: string, key: string): Promi
     // The incumbent's order: every row not matched by handle is probed before
     // the relaunchable filters, so a failing probe fails the resume.
     if (handle !== key && await entrySession(row, process.env) !== key) continue;
-    if (seatIsRelaunchable(row) || !seatIsRelaunchable(row, true)) continue;
-    matches.push([handle, row]);
+    if (onlyExplicitlyResumable(row)) matches.push([handle, row]);
   }
   if (matches.length > 1) throw new Refusal(`resume key is ambiguous: ${key}; use an exact handle`);
   if (!matches.length) return null;
   const [handle, row] = matches[0]!;
-  const record = recordFromRow(handle, row, { name: base, worktree_root: root }, root);
-  return record ? withRecordDefaults(record) : null;
+  return retainedResumeRecord(handle, row, base, root);
 }
 
 /** The seat a record's session is judged by: its harness, never a registered crew pane (tap-9rrat). */

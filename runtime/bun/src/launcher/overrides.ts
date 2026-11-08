@@ -1,6 +1,11 @@
 import { environment, refuse } from "./catalog";
+import { withoutConfigKeys } from "./config-args";
 
-export interface Overrides { env?: string[]; unset_env?: string[]; argv?: string[] }
+/**
+ * `argv` is a typed tail and only appends. `config` is generated config: its `keys` replace their stored
+ * assignments, and its `argv` goes before the first `--` so a native separator never makes it positional.
+ */
+export interface Overrides { env?: string[]; unset_env?: string[]; argv?: string[]; config?: { keys: string[]; argv: string[] } }
 export interface OverrideRecipe {
   harness_env?: Record<string, string>;
   harness_unset_env?: string[];
@@ -17,6 +22,16 @@ export function parseEnvAssignments(values: string[] = []): Record<string, strin
   return env;
 }
 
+/** The composed tail, and how many trailing tokens of it this invocation supplied (typed or generated). */
+export function composeTail(stored: readonly string[], overrides: Overrides): { tail: string[]; fresh: number } {
+  const kept = withoutConfigKeys(stored, overrides.config?.keys ?? []);
+  const typed = overrides.argv ?? [], generated = overrides.config?.argv ?? [];
+  const joined = [...kept, ...typed], cut = joined.indexOf("--");
+  const tail = cut < 0 ? [...joined, ...generated] : [...joined.slice(0, cut), ...generated, ...joined.slice(cut)];
+  // Generated options placed inside the stored part replay with it; anywhere later they belong to this invocation.
+  return { tail, fresh: cut >= 0 && cut < kept.length ? typed.length : typed.length + generated.length };
+}
+
 /** Explicit sets replace stored values; unsets mask all lower environment tiers. */
 export function applyOverrides(recipe: OverrideRecipe, overrides: Overrides): Required<OverrideRecipe> {
   const sets = environment(parseEnvAssignments(overrides.env), "launch_env_forbidden");
@@ -29,7 +44,7 @@ export function applyOverrides(recipe: OverrideRecipe, overrides: Overrides): Re
   const unset = new Set(recipe.harness_unset_env ?? []);
   for (const key of Object.keys(sets)) unset.delete(key);
   for (const key of removes) { delete env[key]; unset.add(key); }
-  const tail = [...recipe.harness_tail ?? [], ...overrides.argv ?? []];
+  const { tail } = composeTail(recipe.harness_tail ?? [], overrides);
   if (tail.some(arg => arg.includes("\0"))) refuse("launch_arg_invalid", "NUL in harness argument");
   return { harness_env: env, harness_unset_env: [...unset].sort(), harness_tail: tail };
 }

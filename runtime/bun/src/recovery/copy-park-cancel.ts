@@ -67,6 +67,8 @@ export interface CopyParkCancelInput {
   /** Injected in tests; production captures the registered row and drives the real pane. */
   target?: () => RecoveryTarget;
   io?: EffectIO;
+  /** A fan-out eligibility check; independent of the park's recovery license. */
+  selection?: { gate(): string; record(sent: boolean): void };
 }
 export type CopyParkCancel =
   | { status: "skipped"; why?: string }
@@ -92,12 +94,15 @@ export function cancelUnattendedCopyMode(input: CopyParkCancelInput): CopyParkCa
     // The license is re-read at the key boundary, after the pane mutex, identity guard and frames.
     const result = recoveryEffect(recovery, "copy-mode cancel", `${input.mode}: copy-mode park recovery; no attached tmux client`,
       ["send-keys", "-t", input.paneId, "-X", "cancel"], input.io, undefined, undefined, () => {
+        const selectionRefusal = input.selection?.gate();
+        if (selectionRefusal) return selectionRefusal;
         // One cancel per dedicated run: this one, counted just now, is its only effect.
         if (readRun(recovery).effects !== 1) return "the recovery run has already spent its one cancel";
         if (!input.license().some(id => parks.includes(id))) return "no park licenses the cancel any longer";
         const now = observe(input.paneId);
         return now.status === "unattended" ? "" : now.status === "normal" ? "copy mode ended before the cancel" : now.why;
       }, () => observe(input.paneId).status === "normal");
+    input.selection?.record(result.event.effect === "possible");
     if (result.event.incident) {
       try { escalateRecovery(recovery, result.event.summary); } catch (error) { console.error(`tap recovery incident notification: ${error}`); }
     }

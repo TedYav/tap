@@ -91,8 +91,11 @@ PY
 
 case "$cmd" in
   display-message)
-    # A pane that no longer exists answers display-message with nothing.
-    [ "${FAKE_TMUX_GONE:-}" = 1 ] && { echo ""; exit 0; }
+    # A pane that no longer exists: answer with tmux's recognized absence
+    # error. Since d1767d995 an exit-0 empty record reads as unverifiable, not
+    # gone (unit3-tmux.test.ts made the same change). tmux 3.8 itself
+    # answers exit 0 empty; tap-xaeik tracks how that case should classify.
+    [ "${FAKE_TMUX_GONE:-}" = 1 ] && { echo "can't find pane: fake-pane" >&2; exit 1; }
     for arg in "$@"; do
       case "$arg" in
         # tap-goe3f: answer the identity gate's composite pane observation and the server

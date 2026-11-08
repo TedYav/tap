@@ -8,8 +8,9 @@ contributor instructions apply to changing TAP, not this installation. This is t
 installation runbook; the [configuration wizard](../skills/config-wizard/SKILL.md)
 owns the configuration step below.
 
-TAP is a pre-release beta, not yet a public open-source release, and bugs are expected. Tell the
-human so before you start, and tell them to send bug reports and feature requests to ted@tedyav.com.
+TAP is beta software; expect bugs. Tell the human before you start. Direct bug reports and
+feature requests to [GitHub Issues](https://github.com/TedYav/tap/issues), with ted@tedyav.com
+as a fallback if they cannot use Issues.
 
 A human who wants another agent to start this install copies the prompt from the
 [landing page](https://tedyav.github.io/tap/#agent-install); this runbook is what that agent follows.
@@ -74,13 +75,13 @@ a separate Bun, or run Git ancestry checks to verify this route.
 ### Permanent clone
 
 If the human gave you a TAP address, clone from theirs; otherwise use this one.
-Clone outside the folder your session runs in. If cloning fails with a
-permission error or "Repository not found", stop and tell the human to ask the
-maintainer for access, or to sign in to GitHub in this terminal:
+Clone outside the folder your session runs in:
 
 ```bash
 git clone https://github.com/TedYav/tap.git ~/tap
 ```
+
+If cloning fails, stop and show the human the error; do not substitute another URL.
 
 If a clone already exists at that path, check it before using it: after
 `git -C ~/tap fetch origin main`, `git -C ~/tap branch --show-current` prints
@@ -112,15 +113,16 @@ bash --version
 jq --version
 tmux -V
 tar --version
+command -v lsof
 ```
 
-Both routes require Git, Bash 5+, jq, tmux and tar. Archives also require gzip and
+Both routes require Git, Bash 5+, jq, tmux, tar and lsof. Archives also require gzip and
 `shasum` or `sha256sum`; URL installation needs curl. Check those tools with
 `command -v` before taking the archive route. Clone installs additionally require
 Bun 1.4.0+; check `bun --version` for that route. Python is not required.
 
 Explain, then ask. Your first message tells the human in one line what TAP is,
-that it is a pre-release and where bugs go, what is present, what is missing,
+that it is beta software and where bugs go, what is present, what is missing,
 and which harness CLIs you found. For each missing requirement give one line on
 what it does for TAP, the exact command, and who runs it. Say what tmux is
 whether or not it is installed: tmux runs each agent in its own named window the
@@ -177,10 +179,13 @@ On Linux, install the packages with the distribution's manager (with `sudo`, so
 the human runs it):
 
 ```bash
-sudo apt install git bash jq tmux tar     # Debian, Ubuntu
-sudo dnf install git bash jq tmux tar     # Fedora
-sudo pacman -S git bash jq tmux tar       # Arch
+sudo apt install git bash jq tmux tar lsof     # Debian, Ubuntu
+sudo dnf install git bash jq tmux tar lsof     # Fedora
+sudo pacman -S git bash jq tmux tar lsof       # Arch
 ```
+
+TAP uses `lsof` to identify harness sessions and check tmux client terminals.
+macOS includes it; on Linux, install it with the packages above.
 
 For the clone route, install Bun from its official installer, which provides
 1.4+ where distribution packages lag:
@@ -192,7 +197,10 @@ curl -fsSL https://bun.sh/install | bash  # then hash -r or a new terminal
 Have the human install and sign in to Claude Code and Codex before the launch
 check ([Claude Code setup](https://docs.claude.com/en/docs/claude-code/setup),
 [Codex CLI](https://github.com/openai/codex)). Start each CLI directly once to
-finish sign-in. TAP does not supply accounts.
+finish sign-in. TAP does not supply accounts. On Ubuntu 24.04, the distribution’s
+Node 18 is below [Claude Code’s npm requirement of Node 22+](https://code.claude.com/docs/en/setup#install-with-npm);
+use Node 22+ from nodejs.org or NodeSource before installing harnesses with npm.
+Claude Code’s native installer does not need Node.
 
 ## 2. Install and configure
 

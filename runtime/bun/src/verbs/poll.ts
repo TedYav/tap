@@ -110,7 +110,12 @@ export function cmdPoll(argv: string[]): number {
     try { parked = readdirSync(spool).filter(n => !n.startsWith("_") && n.endsWith(".md")).map(n => n.slice(0, -3)).sort(); } catch { /* no spool */ }
     const sources = [...canonical.map(id => ({ id, parked: false, bus: ctx.bus, foreign: false })),
       ...parked.filter(id => !existsSync(ctx.bus.payloadPath(id))).map(id => ({ id, parked: true, bus: ctx.bus, foreign: false }))];
-    if (forwardings(registry).length) for (const team of enrolledTeams()) {
+    // Foreign residency is discovery for explicit forwarding custody only, so
+    // enumerate enrolled sender buses when some edge (any state) delivers to
+    // this actor. The per-payload grant below still decides; a team-global
+    // check made every seat read every enrolled bus for one teammate's edge.
+    const forwardedTo = forwardings(registry).some(edge => edge.destination === me);
+    if (forwardedTo) for (const team of enrolledTeams()) {
       if (team.team === ctx.team) continue;
       const home = busHomeForRegistry(team.registryLocation);
       if (!home || home === ctx.bus.home) continue;
@@ -157,9 +162,11 @@ export function cmdPoll(argv: string[]): number {
       // requires an explicit destination team before any matching-handle grant.
       if (source.foreign && toTeam !== ctx.team) continue;
       // Custody follows the selected recipient team, including when these
-      // bytes remain on an enrolled sender bus. Use read's existing grant.
+      // bytes remain on an enrolled sender bus. Use read's existing grant;
+      // poll keeps only ok/grant, so skip the team-history remedy scan.
       const grant = addresseeGrant({ ...grantContext, id, from: envelopeField(raw, "from") || "",
-        actor: me, to: target, adoptedFrom: envelopeField(raw, "to_adopted_from") || "", recipientInstance: bound });
+        actor: me, to: target, adoptedFrom: envelopeField(raw, "to_adopted_from") || "", recipientInstance: bound,
+        includeRemedy: false });
       if (!grant.ok) {
         if (!bound && ambiguousForwarding(registry, me, target)) process.stderr.write(`tap poll: ambiguous unstamped predecessor mail ${id} to ${target}; inspect tap show ${path}. No read/reply authority transferred.\n`);
         continue;
@@ -185,7 +192,7 @@ export function cmdPoll(argv: string[]): number {
     }
     const rows = inboxRows({ me, rows: facts });
     if (!json && rows.length) {
-      process.stdout.write(`tap poll: inbox for ${ctx.team}/${me} (${forwardings(registry).length ? "includes explicit delegated custody on enrolled sender buses" : "this team only; cross-team obligations live on the sender bus, see tap outstanding"}):\n`);
+      process.stdout.write(`tap poll: inbox for ${ctx.team}/${me} (${forwardedTo ? "includes explicit delegated custody on enrolled sender buses" : "this team only; cross-team obligations live on the sender bus, see tap outstanding"}):\n`);
       for (const row of rows) { process.stdout.write(row.human); process.stderr.write(row.warnings); }
     }
 

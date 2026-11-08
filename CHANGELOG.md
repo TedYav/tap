@@ -3,6 +3,90 @@
 Release notes are curated when a release is prepared. A protocol bump adds the
 next `0.<protocol>.0` release heading in the same change.
 
+## 0.23.2 — 2026-11-07
+
+### Added
+
+- `tap team history` lists a team's current and departed seats. `tap restore
+  <handle>@N` (a bare handle restores its sole departure, or opens a terminal
+  picker when there are several) returns a departed seat as a suspended row that keeps its conversation, ready for
+  `tap session resume`. A live handle refuses and suggests `--as`.
+- Every seat list accepts `--harness`, `--model` and `--state` filters
+  (`tap team`, `tap teams`, `tap crew list`, `tap session list`, `tap admin ps`
+  and the other roster views). `--state active` hides seats idle for ten minutes
+  or more. `--active` is now `--online`; the old spelling still works and prints a
+  one-line notice. Model columns show readable names such as `opus5.5@xhigh`.
+- `tap teams --recent` and `tap team --recent` order teams and seats by last
+  activity, with a LAST ACTIVE column. `-n <count>` keeps the first rows, like
+  `head -n`. Filtered rosters list crews only when you ask for them.
+- `tap team refresh --stale` lists offline seats unused for at least seven days
+  and retires them after you confirm, so each can come back with `tap restore`.
+  `--stale=14d` changes the age; `--include-idle` also includes long-idle seats
+  that are still running. `--dry-run` only lists. Retiring without a terminal
+  requires `--yes`.
+- `tap out` opens a picker on a terminal when `--last` ties between seats or a
+  name has no exact match but fuzzy-matches a seat, instead of refusing or doing nothing. Scripts and
+  `--json` keep the previous behavior.
+- `tap session relaunch` takes `--context <size>` (such as `850k` or `1M`) to set
+  a seat's context window and `--ponytail <off|lite|full|ultra>`, in place of
+  hand-written per-harness settings. It applies to Claude and Codex seats.
+- `tap session relaunch --auto-nudge` sends a continuation prompt only to seats
+  observed working, or stopped by a confirmed usage or rate limit, before the
+  relaunch. Other selected seats still relaunch but receive no prompt.
+- `tap role <seat> leader` marks a team leader. Leaders sort first in `tap team`
+  and `tap attach`, and `tap team --json` carries the role. A role is a label,
+  not a permission.
+- `tap debug` can record on its own: set `always_on = true` under `[debug]` in
+  `config.toml` and the next eligible `tap` command starts a recorder when none is live. Rotated
+  and pruned history is now compressed into `~/.tap/debug/archive/` rather than
+  deleted (cap with `tap debug config --archive-mb`). Tmux flight capture is an
+  independent debug source that keeps working when Bun is unavailable.
+- Roster commands accept `--no-state` to skip activity sampling when you only
+  need who is registered.
+- `tap draft` with no arguments copies and prints the newest team draft backup;
+  `tap draft list` shows a short picker (`-n` sets the count).
+
+### Changed
+
+- TAP messages are presented as a colleague's request rather than something to
+  refuse. A recipient can disagree openly, goes with the team leader's call, and
+  escalates when stuck. The spoof guard stays.
+- Harness-wide recovery (`tap nudge` and related commands) targets seats in
+  error or blocked states by default and leaves healthy idle seats alone.
+- TAP no longer rewrites a human's stop request into an order. Interruption
+  notices say what happened and what to do next.
+- Launches wait up to 60 seconds for a slow login shell to start the harness
+  (`TAP_LAUNCH_START_TIMEOUT_SECONDS` changes it) instead of rolling back after
+  5 seconds on a loaded machine.
+- Several commands start faster and read less history: verbs load only the code
+  they need, roster and archive reads are batched and cached, and
+  `tap outstanding` reads only recent answers.
+- The public installation guide now matches the beta release, and bugs are
+  reported through GitHub Issues. Setup docs state the Linux prerequisites
+  (tmux, `lsof`, Bun) and which platforms and tmux versions have been tested.
+
+### Fixed
+
+- TAP panes now start in `$HOME` and enter their working directory themselves, so
+  a failed spawn can no longer leave the tmux server in a deleted worktree where
+  every later launch fails. Seat sessions still use their worktree as tmux's
+  default directory, so a new window or split opens there.
+- On Linux, seats bind to their sessions again; the `lsof` request omitted the
+  working-directory field that Linux does not volunteer. `lsof` is now a
+  requirement and `install.sh` says how to install it.
+- A Claude or Codex seat that is signed out, or sitting at a first-run menu, now
+  reads `blocked` with reason `sign_in`: delivery holds, no key is sent, and
+  `tap doctor <seat>` asks you to attach and sign in.
+- A failed resume keeps its conversation on the next launch prompt, which no
+  longer offers to start fresh over it.
+- The name prompt stays open on Option-Delete and Command-Delete; they delete a
+  word or clear the line.
+- Archive checks use less memory when settling seats.
+- Under launchd, the tmux flight recorder keeps tab separators in its output.
+- When a launch started from a tool shell fails, the failed pane's output is
+  kept so you can read why. The tmux reload command that `tap` prints now runs
+  when its path contains spaces.
+
 ## 0.23.1 — 2026-10-28
 
 ### Added

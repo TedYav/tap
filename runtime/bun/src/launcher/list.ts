@@ -30,6 +30,8 @@ import { LauncherError } from "./types";
 import { lookupHelp } from "../help";
 import { teamRegistryRefusal } from "../register-authority";
 import { table } from "../verbs/team";
+import { prettyModelName } from "../model-names";
+import { commaItems, emptySeatFilters, seatMatches, type SeatFilters } from "../seat-filter";
 
 /** The envelope with CR/LF in action and detail folded to spaces, so one refusal is one JSON line even when it echoes
  * operator text (an operand with an embedded newline): the shape `tap_error_line` and team attach use. */
@@ -196,15 +198,21 @@ function sessionListJson(rows: ListRow[], machine: boolean): string {
 
 const HEADERS = ["name", "harness", "live", "seated", "revive", "model", "preset", "last seen", "cwd"];
 
+/** The shared filters over a launch record: its harness and launch model. It has no observed state, so
+ * parseListArgs refuses `--state`. */
+const recordMatches = (filters: SeatFilters, record: ListRecord): boolean =>
+  seatMatches(filters, { harness: record.harness, models: [record.model], state: "unknown", idleSeconds: null });
+
 /** completion_names: cwd-matching rows first, then name, then unseen tmux. */
-function completionNames(records: ListRecord[], harness: string | null, cwd: string, tmux: Set<string>): string[] {
+function completionNames(records: ListRecord[], filters: SeatFilters, cwd: string, tmux: Set<string>): string[] {
   const cwdReal = realOrSelf(cwd);
   const under = (record: ListRecord) => (realOrSelf(record.cwd) === cwdReal ? 0 : 1);
   const names = records
-    .filter((record) => !harness || record.harness === harness)
+    .filter((record) => recordMatches(filters, record))
     .sort((a, b) => under(a) - under(b) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     .map((record) => record.name);
-  const seen = new Set(names);
+  // Every registered name, filtered or not: the tmux loop appends only sessions tap did not launch.
+  const seen = new Set(records.map((record) => record.name));
   for (const name of [...tmux].sort()) {
     if (!seen.has(name)) {
       names.push(name);
@@ -215,12 +223,12 @@ function completionNames(records: ListRecord[], harness: string | null, cwd: str
 }
 
 interface ListArgs {
-  harness: string | null; cwd: string; all: boolean; live: boolean;
+  filters: SeatFilters; cwd: string; all: boolean; live: boolean;
   machine: boolean; json: boolean; namesOnly: boolean; includeTmux: boolean;
 }
 
 const FLAGS = { "--all": "all", "--live": "live", "--machine": "machine", "--json": "json", "--names-only": "namesOnly", "--include-tmux": "includeTmux" } as const;
-const USAGE = "usage: tap session list [--harness HARNESS] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]\n";
+const USAGE = "usage: tap session list [--harness LIST] [--model LIST] [--cwd CWD] [--all] [--live] [--machine] [--json] [--names-only] [--include-tmux]\n";
 
 /** `-h`/`--help` asked for the usage; not a refusal, so it is its own signal. */
 class ListHelp extends Error {}
@@ -228,7 +236,8 @@ class ListHelp extends Error {}
 /** A parser refusal: `unknown_option` for a flag the command does not have, `usage_error` for a bad operand
  * (the classes `tap health` and `tap read` use). Text mode prints the usage line; JSON mode the envelope. */
 class ListUsage extends Error {
-  constructor(readonly errorClass: "unknown_option" | "usage_error", readonly detail: string) { super(detail); }
+  /** `explain` names the cause in text mode too, where other refusals print only the usage line. */
+  constructor(readonly errorClass: "unknown_option" | "usage_error", readonly detail: string, readonly explain = false) { super(detail); }
 }
 
 /** argparse's rule: a token starting with "-" is an option, so it cannot be a split option's operand and
@@ -238,27 +247,32 @@ class ListUsage extends Error {
  * or holds a space. */
 const isKnownListOption = (token: string): boolean => {
   const name = token.split("=", 1)[0]!;
-  return name === "-h" || name === "--help" || name === "--harness" || name === "--cwd" || Object.hasOwn(FLAGS, name);
+  return name === "-h" || name === "--help" || name === "--harness" || name === "--model" || name === "--state" || name === "--cwd" || Object.hasOwn(FLAGS, name);
 };
 const isListOption = (token: string): boolean =>
   isKnownListOption(token)
   || (token.startsWith("-") && token !== "-" && !/^-\d+$|^-\d*\.\d+$/.test(token) && !token.includes(" "));
 
 function parseListArgs(argv: string[]): ListArgs {
-  const args: ListArgs = { harness: null, cwd: process.cwd(), all: false, live: false, machine: false, json: false, namesOnly: false, includeTmux: false };
+  const args: ListArgs = { filters: emptySeatFilters(), cwd: process.cwd(), all: false, live: false, machine: false, json: false, namesOnly: false, includeTmux: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "-h" || arg === "--help") throw new ListHelp();
-    const valued = arg.match(/^--(harness|cwd)(?:=(.*))?$/);
+    const valued = arg.match(/^--(harness|model|state|cwd)(?:=(.*))?$/);
+    if (valued?.[1] === "state") throw new ListUsage("usage_error", "--state needs an observed state, and session records store none; use tap teams --state <list>", true);
     if (valued) {
       // An inline value keeps its literal text (`--cwd=-x`); a split operand that is itself an option is missing.
       if (valued[2] === undefined && isListOption(argv[i + 1] ?? "")) throw new ListUsage("usage_error", `--${valued[1]} needs a value`);
       const value = valued[2] ?? argv[++i];
       if (value === undefined) throw new ListUsage("usage_error", `--${valued[1]} needs a value`);
-      if (valued[1] === "cwd") args.cwd = value;
+      if (valued[1] === "cwd") { args.cwd = value; continue; }
+      const items = commaItems(value);
+      if (!items.length) throw new ListUsage("usage_error", `--${valued[1]} needs a value`);
+      if (valued[1] === "model") args.filters.model.push(...items);
       else {
-        if (!HARNESSES.includes(value)) throw new ListUsage("usage_error", `--harness '${value}' is not a supported harness`);
-        args.harness = value;
+        const unsupported = items.find(harness => !HARNESSES.includes(harness));
+        if (unsupported) throw new ListUsage("usage_error", `--harness '${unsupported}' is not a supported harness`);
+        args.filters.harness.push(...items);
       }
       continue;
     }
@@ -283,7 +297,7 @@ async function renderList(args: ListArgs): Promise<number> {
   // One all-window inventory distinguishes retained sessions from running ones.
   const { names, liveNames } = tmuxSessionSnapshot();
   if (args.namesOnly && args.includeTmux) {
-    const completions = completionNames(records, args.harness, args.cwd, names);
+    const completions = completionNames(records, args.filters, args.cwd, names);
     if (completions.length) process.stdout.write(`${completions.join("\n")}\n`);
     return 0;
   }
@@ -291,7 +305,7 @@ async function renderList(args: ListArgs): Promise<number> {
   // so the root is computed once — same answer, fewer children.
   const scopeRoot = args.machine ? null : rootForCwd(args.cwd);
   const filtered = records.filter((record) =>
-    (!args.harness || record.harness === args.harness)
+    recordMatches(args.filters, record)
     && (!scopeRoot || pathIsUnder(record.cwd, scopeRoot))
     && (!args.live || liveNames.has(record.name)));
   filtered.sort(recencyLess);
@@ -313,7 +327,7 @@ async function renderList(args: ListArgs): Promise<number> {
     live ? "yes" : "no",
     "yes",
     revive,
-    record.model ?? "-",
+    record.model ? prettyModelName(record.model) : "-",
     record.preset?.name ?? "-",
     record.lastSeen ?? "-",
     cwd,
@@ -332,7 +346,7 @@ export async function cmdSessionList(argv: string[]): Promise<number> {
     // The parser failed before it could set args.json, so JSON intent is read from argv (any `--json` token) or TAP_JSON.
     if (error instanceof ListUsage && (process.env.TAP_JSON === "1" || argv.includes("--json"))) {
       process.stdout.write(errorJson(error.errorClass, "tap help session list", `${error.detail}; ${USAGE.trim()}`));
-    } else process.stderr.write(USAGE);
+    } else process.stderr.write(error instanceof ListUsage && error.explain ? `tap session list: ${error.detail}; next: tap help session list\n` : USAGE);
     return 2;
   }
   // --json alone selects the envelope, as TAP_JSON=1 does.

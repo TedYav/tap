@@ -4,10 +4,11 @@
 import { TapError } from "../context";
 import { AGENT_FAMILIES } from "../harness-families";
 import { globalRegistryPath, readIndexJson } from "../index-home";
-import { nudgeMessageRefusal, renderNudgeWire } from "../nudge-wire";
+import { nudgeMessageRefusal, nudgeDoorbellText, renderNudgeWire } from "../nudge-wire";
 import { existsSync } from "node:fs";
 import { harnessEvidence } from "../readiness-stall";
 import { loadRegistry, seatMap } from "../registry";
+import { withAgentStates } from "../roster-observation";
 import { formatAge } from "../roster-activity";
 import { tmuxReadOnly } from "../tmux";
 import { observe, observedRows, readRegistry, type ObservedRow, type RegistryRow } from "./team";
@@ -20,6 +21,8 @@ export interface FanoutArgs {
   harness: string; team: string; message: string; interrupt: boolean; dryRun: boolean; yes: boolean;
   /** `--active-within <dur>`: nudge only seats whose harness shows activity this recently; null nudges every live seat. */
   activeWithin: { seconds: number; text: string } | null;
+  recentlyWorking: { seconds: number; text: string } | null;
+  all: boolean;
 }
 
 /** True when any of `flags` appears in flag position; a valued flag consumes the next token first. */
@@ -38,7 +41,7 @@ export function isFanoutArgv(argv: readonly string[]): boolean {
 }
 
 export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
-  const out: FanoutArgs = { harness: "", team: "", message: "", interrupt: true, dryRun: false, yes: false, activeWithin: null };
+  const out: FanoutArgs = { harness: "", team: "", message: "", interrupt: true, dryRun: false, yes: false, activeWithin: null, recentlyWorking: null, all: false };
   const value = (i: number, flag: string): string => {
     const next = argv[i + 1];
     if (next === undefined || next === "") throw new TapError(1, "usage_error", USAGE, `${flag} needs a value`);
@@ -46,10 +49,16 @@ export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
+    if (arg.startsWith("--recently-working=")) {
+      const text = arg.slice("--recently-working=".length);
+      out.recentlyWorking = {seconds: activeWithinSeconds(text, "--recently-working"), text}; continue;
+    }
     switch (arg) {
       case "--harness": out.harness = value(i, arg); i++; break;
       case "--team": out.team = value(i, arg); i++; break;
       case "--message": out.message = value(i, arg); i++; break;
+      case "--all": out.all = true; break;
+      case "--recently-working": out.recentlyWorking = {seconds:120,text:"2m"}; break;
       case "--no-interrupt": out.interrupt = false; break;
       case "--active-within": { const text = value(i, arg); out.activeWithin = { seconds: activeWithinSeconds(text), text }; i++; break; }
       case "--to": throw new TapError(1, "usage_error", USAGE, "the --harness fan-out form selects its seats by family; nudge one peer with tap nudge <peer>");
@@ -65,8 +74,12 @@ export function parseFanoutArgs(argv: readonly string[]): FanoutArgs {
   if (!AGENT_FAMILIES.has(out.harness)) {
     throw new TapError(1, "usage_error", USAGE, `unknown harness '${out.harness}' (one of: ${[...AGENT_FAMILIES].join(", ")})`);
   }
+  if ([out.all, out.recentlyWorking !== null, out.activeWithin !== null].filter(Boolean).length > 1)
+    throw new TapError(1, "usage_error", USAGE, "--all, --recently-working and --active-within cannot be combined");
   const refusal = out.message === "" ? null : nudgeMessageRefusal(out.message);
   if (refusal) throw new TapError(1, "usage_error", "tap send <peer> -f <file> for anything longer or multi-line", `${refusal}; use tap send; nothing sent`);
+  try { nudgeDoorbellText(out.message); }
+  catch (error) { throw new TapError(1, "usage_error", USAGE, String((error as Error).message)); }
   return out;
 }
 
@@ -74,12 +87,12 @@ const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
 
 /** A duration that names its unit (`90s`, `30m`, `2h`, `1d`), like `tap bus archive --older-than 7d`. A bare number
  * is refused rather than guessed: `30` meant as minutes would silently nudge nobody. */
-function activeWithinSeconds(raw: string): number {
+export function activeWithinSeconds(raw: string, flag = "--active-within"): number {
   const match = /^([1-9]\d*)([smhd])$/.exec(raw);
   const seconds = match ? Number(match[1]) * UNIT_SECONDS[match[2]!]! : NaN;
   if (Number.isSafeInteger(seconds)) return seconds;
   const hint = /^[1-9]\d*$/.test(raw) ? ` (add a unit: ${raw}s for seconds, ${raw}m for minutes)` : "";
-  throw new TapError(1, "usage_error", USAGE, `--active-within needs a duration with a unit (s, m, h or d), e.g. 30m or 2h; got '${raw}'${hint}`);
+  throw new TapError(1, "usage_error", USAGE, `${flag} needs a duration with a unit (s, m, h or d), e.g. 30m or 2h; got '${raw}'${hint}`);
 }
 
 export type Verdict = { kind: "target" } | { kind: "skip"; reason: string };
@@ -93,6 +106,17 @@ export function verdict(row: ObservedRow, team: string, harness: string, self: {
   if (row.delivery === "poll") return { kind: "skip", reason: "poll-mode (discovers work via tap poll)" };
   if (row.status !== "active") return { kind: "skip", reason: `${row.status}${row.statusReason ? ` (${row.statusReason})` : ""}` };
   return { kind: "target" };
+}
+
+/** Automatic selection requires positive state or dated turn evidence, never transcript mtime. */
+export function stateVerdict(row: ObservedRow, now: number, recent: FanoutArgs["recentlyWorking"]): Verdict {
+  if (row.agentState === "error" || row.agentState === "blocked") return {kind:"target"};
+  if (recent && row.agentState === "working") return {kind:"target"};
+  if (recent && (row.agentState === "idle" || row.agentState === "waiting")) {
+    const ended = row.turnEndedAt;
+    if (typeof ended === "number" && Number.isFinite(ended) && ended <= now && now - ended <= recent.seconds) return {kind:"target"};
+  }
+  return {kind:"skip",reason: recent ? `no working turn within ${recent.text} (${row.agentState ?? "unknown"}); --all to include` : `not stuck (${row.agentState ?? "unknown"})`};
 }
 
 /**
@@ -132,7 +156,7 @@ export interface Seat { team: string; handle: string; registryLocation: string; 
 
 export interface FanoutEffects {
   teams(): Array<{ team: string; registryLocation: string }>;
-  roster(registryLocation: string): { rows: FanoutRow[] } | { error: string };
+  roster(registryLocation: string, team: string): { rows: FanoutRow[] } | { error: string };
   /** Epoch seconds of the seat's last harness activity, or null when unknown; read only for `--active-within`. */
   activity(row: FanoutRow): number | null;
   now(): number;
@@ -157,7 +181,7 @@ export function runFanout(args: FanoutArgs, self: { team: string; handle: string
   const seats: Seat[] = [];
   let unreadable = 0;
   for (const entry of teams) {
-    const roster = fx.roster(entry.registryLocation);
+    const roster = fx.roster(entry.registryLocation, entry.team);
     if ("error" in roster) { fx.err(`tap nudge: team '${entry.team}' unreadable: ${roster.error}\n`); unreadable++; continue; }
     for (const row of roster.rows) {
       let v = verdict(row, entry.team, args.harness, self);
@@ -169,15 +193,16 @@ export function runFanout(args: FanoutArgs, self: { team: string; handle: string
         v = judged.verdict;
         if (judged.age !== null) activeAgo = judged.age;
       }
+      if (v.kind === "target" && !args.all && args.activeWithin === null) v = stateVerdict(row, fx.now(), args.recentlyWorking);
       seats.push({ team: entry.team, handle: row.handle, registryLocation: entry.registryLocation, instance: row.instance, verdict: v,
         ...(activeAgo !== undefined && v.kind === "target" ? { activeAgo } : {}) });
     }
   }
   const targets = seats.filter(seat => seat.verdict.kind === "target");
   const scope = args.team === "*" ? "all teams" : `team '${teams[0]!.team}'`;
-  const window = args.activeWithin === null ? "" : `, active within ${args.activeWithin.text}`;
+  const window = args.activeWithin ? `, active within ${args.activeWithin.text}` : args.all ? ", all eligible" : args.recentlyWorking ? `, stuck or working within ${args.recentlyWorking.text}` : ", stuck only";
   fx.out(`tap nudge: ${targets.length} ${args.harness} seat(s) to nudge across ${scope}${window}${args.dryRun ? " (dry run; nothing sent)" : ""}\n`);
-  if (args.dryRun) fx.out(`  each seat: the nudge ladder, then ${renderNudgeWire(args.message)}${args.interrupt ? "" : " (--no-interrupt)"}\n`);
+  if (args.dryRun) fx.out(`  each seat: the nudge ladder, then ${renderNudgeWire(nudgeDoorbellText(args.message))}${args.interrupt ? "" : " (--no-interrupt)"}\n`);
   for (const seat of targets) fx.out(`  ${seat.team}/${seat.handle}  target${seat.activeAgo === undefined ? "" : ` (last active ${formatAge(seat.activeAgo)} ago)`}\n`);
   const skipped = seats.filter(seat => seat.verdict.kind === "skip");
   if (skipped.length) fx.out(`skipped ${skipped.length}:\n`);
@@ -222,35 +247,41 @@ function indexTeams(indexHome?: string): Array<{ team: string; registryLocation:
   });
 }
 
-function productionRoster(scriptsDir: string) {
-  return (registryLocation: string): { rows: FanoutRow[] } | { error: string } => {
+export function productionRoster(scriptsDir: string) {
+  return (registryLocation: string, team: string, handle?: string): { rows: FanoutRow[] } | { error: string } => {
     if (registryLocation === "") return { error: "index entry names no registry_location (run tap doctor)" };
     const read = readRegistry(registryLocation, false, false);
     if (!read.ok) return { error: `registry unreadable at ${registryLocation} (run tap doctor)` };
-    const rows = read.rows as RegistryRow[];
+    const rows = (read.rows as RegistryRow[]).filter(row => handle === undefined || row.handle === handle);
     if (rows.length === 0) return { rows: [] };
     const observation = observe(rows, scriptsDir);
     if (observation.code !== 0) return { error: "seat classifier failed" };
     const socket = rows.some(row => typeof row.server_socket === "string" && row.server_socket) ? tmuxReadOnly(["display-message", "-p", "#{socket_path}"]) : null;
     const callerSocket = socket?.code === 0 && socket.stdout.trim().startsWith("/") ? socket.stdout.trim() : "";
     const stored = seatMap(loadRegistry(registryLocation));
-    return { rows: observedRows(rows, observation.rows, observation.serverEpoch, {}, callerSocket)
+    return { rows: withAgentStates(observedRows(rows, observation.rows, observation.serverEpoch, {}, callerSocket), {team})
       .map(row => ({ ...row, instance: typeof stored[row.handle]?.instance === "string" ? stored[row.handle]!.instance as string : "" })) };
   };
 }
 
 export function cmdNudgeFanout(argv: string[], scriptsDir: string, self: { team: string; handle: string },
-  nudgeSeat: (address: string, args: FanoutArgs, instance: string) => number): number {
+  nudgeSeat: (address: string, args: FanoutArgs, instance: string, stillStuck?: () => string) => number): number {
   const args = parseFanoutArgs(argv);
+  const roster = productionRoster(scriptsDir);
   return runFanout(args, self, {
     teams: () => indexTeams(process.env.TAP_INDEX_HOME),
-    roster: productionRoster(scriptsDir),
+    roster,
     activity: row => seatActivity(row, process.env),
     now: () => Math.trunc(Date.now() / 1000),
     nudge: seat => {
       const drift = recheck(seatMap(loadRegistry(seat.registryLocation))[seat.handle], args.harness, seat.instance);
       if (drift) throw new TapError(1, "target_changed", "tap nudge --dry-run to re-preview", `${drift}; not nudged`);
-      return nudgeSeat(`${seat.team}/${seat.handle}`, args, seat.instance);
+      const stillStuck = args.all || args.recentlyWorking || args.activeWithin ? undefined : () => {
+        const fresh = roster(seat.registryLocation, seat.team, seat.handle);
+        const row = "rows" in fresh ? fresh.rows.find(row => row.handle === seat.handle && row.instance === seat.instance) : undefined;
+        return row && (row.agentState === "error" || row.agentState === "blocked") ? "" : "seat recovered or state is unconfirmed; not nudged";
+      };
+      return nudgeSeat(`${seat.team}/${seat.handle}`, args, seat.instance, stillStuck);
     },
     confirm: question => confirm(question),
     interactive: () => process.stdin.isTTY === true,

@@ -1612,6 +1612,21 @@ smoke_all_entry() {
     clean_env+=("TAP_SMOKE_BUN=$TAP_SMOKE_BUN")
     admitted="$admitted TAP_SMOKE_BUN=$TAP_SMOKE_BUN"
   fi
+  # Install-shaped smokes stage the pinned fzf, which otherwise downloads from
+  # GitHub in every worker's discarded HOME (a 504 there cost a gate 24 files).
+  # Resolve the account's verified archive once -- fzf-archive-pin.sh reads the
+  # passwd home, so the sandbox HOME cannot hide it -- and admit the path.
+  # install-fzf.ts still checks its sha256; with no cache nothing is admitted
+  # and installs download as before.
+  local fzf_pin fzf_archive=""
+  fzf_pin="$(dirname "$script")/../skills/tap/scripts/smoke/fzf-archive-pin.sh"
+  if [ -f "$fzf_pin" ] && [ -n "${TAP_SMOKE_BUN:-}" ]; then
+    fzf_archive="$(PATH="$(dirname "$TAP_SMOKE_BUN"):$PATH" bash -c '. "$1" && printf %s "${TAP_FZF_TEST_ARCHIVE:-}"' _ "$fzf_pin" 2>/dev/null || true)"
+  fi
+  if [ -n "$fzf_archive" ] && [ -f "$fzf_archive" ]; then
+    clean_env+=("TAP_FZF_TEST_ARCHIVE=$fzf_archive")
+    admitted="$admitted TAP_FZF_TEST_ARCHIVE=$fzf_archive"
+  fi
   if [ -n "${TAP_SUITE_LOCK_HOME+x}" ]; then
     clean_env+=("TAP_SUITE_LOCK_HOME=$TAP_SUITE_LOCK_HOME")
     admitted="$admitted TAP_SUITE_LOCK_HOME=$TAP_SUITE_LOCK_HOME"
@@ -2434,6 +2449,7 @@ _smoke_worker_body='
   for name in \
     TAP_PYTHON \
     TAP_SMOKE_BUN \
+    TAP_FZF_TEST_ARCHIVE \
     TAP_SUITE_SANDBOX \
     EPISODIC_MEMORY_SUMMARIZER_GUARD \
     RUNNER_TRACKING_ID \

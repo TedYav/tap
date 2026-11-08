@@ -2,7 +2,12 @@
 
 - [Agent state](./agent-state.md): failed turns, modal holds and usable composers.
 - [Antigravity conversation capture](./agy-conversation-capture.md): native hook timing, identity and resume binding.
+- [Relaunch shorthands](./relaunch-shorthands.md): `--context` and `--ponytail` on `tap session relaunch`.
+- [Seat selection for `tap out`](./seat-picker.md): `--last`, and the terminal chooser for a tie or a missed name.
 - [Seat observations](./calibration.md): the opt-in calibration store, explicit reads and append/GC boundary.
+- [Seat roles](./roles.md): `tap role`, leader ordering and the removal notice; a role is a label, not a permission.
+- [Seat lookup](./seat-lookup.md): `whoami --pane --team`, registry fields and typed absence.
+- [Stale-seat refresh](./stale-seats.md): `tap team refresh --stale`, its one-pass list, activity age and confirmed retirement.
 - [Team startup and latest restart cohort](./team-up-last.md): ordinary resume membership, generation selection, preview and pinned recovery.
 
 Normative TAP v0.23 protocol pages. Open only the page needed for the current question.

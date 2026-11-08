@@ -63,6 +63,7 @@ import type { ObserveEngine } from "../observe";
 import { appendRegistryEventOrWarn, registryEventsPath } from "../events";
 import { fenceCrewLifetime } from "../crew-lifetime";
 import { verbArgv } from "../courier-argv";
+import { cmdRefreshStale, isStaleArgv } from "../team/stale";
 
 const US = "\x1f";
 
@@ -406,6 +407,11 @@ export function readRoster(registryPath: string): Row[] {
 }
 
 export function cmdRefresh(argv: string[], scriptsDir: string): number | Promise<number> {
+  // `--stale` is its own pass with its own selection and consent (team/stale.ts).
+  if (isStaleArgv(argv)) return cmdRefreshStale(argv, scriptsDir);
+  if (argv.includes("--include-idle")) {
+    throw new TapError(1, "usage_error", "tap help team refresh", "--include-idle selects the idle group of the stale pass; use it with --stale", VERB);
+  }
   // ORDER IS OBSERVABLE. The incumbent gates the fence in the `tap team`
   // dispatcher, BEFORE the subcommand parses its own argv, so a fenced bus plus
   // a bogus flag reports the FENCE, never unknown_option — and because

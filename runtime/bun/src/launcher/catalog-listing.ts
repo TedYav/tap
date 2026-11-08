@@ -16,6 +16,7 @@
  * indistinguishable from one that was never written.
  */
 import { addParams, HARNESSES, environment, hasUtf8Bom, presetEnvRefusals, pyParams, table, type Params, type Table } from "./catalog";
+import { parseAdvancedSettings, type AdvancedSettings } from "../config-file";
 import { LauncherError } from "./types";
 import type { Notices } from "./catalog-notices";
 import { join as joinPath } from "node:path";
@@ -43,6 +44,7 @@ export type ResolvedPreset = {
   provenance: { name: string; source_path: string; config_digest: string };
 };
 export type Catalog = {
+  advanced?: AdvancedSettings;
   source_path: string;
   presets: Map<string, ResolvedPreset>;
   /** Presets that ARE in the file but could not be made sense of, with the reason. */
@@ -309,6 +311,7 @@ export function catalogFromDocument(
   }
 
   return { source_path: sourcePath, presets, dropped, roles, version: document.version,
+    ...(document.advanced === undefined ? {} : { advanced: parseAdvancedSettings(document, sourcePath) }),
     harnessPolicy: table(document.harness) ? document.harness : {},
     harnessPolicySource: sourcePath };
 }
@@ -511,7 +514,7 @@ export const TOP_LEVEL_KEYS = ["version", "presets", "notes", "harness", "roles"
   "recovery", "delivery", "sentinel", "tmux", "diagnostics", "notifications",
   // Written by `tap setup --machine` and read by their own modules (injection-behavior,
   // onboarding, skill-policy); the catalog parse never reads them but must not call them typos.
-  "injection", "onboarding", "skills", "calibration", "experimental"];
+  "injection", "onboarding", "skills", "calibration", "experimental", "debug", "advanced"];
 export const SCHEMA_VERSIONS = [2, 3];
 export const RETIRED_SCHEMA_VERSIONS = [1];
 
@@ -690,6 +693,7 @@ export function parseDocument(
     degrade(`unknown top-level table '${key}'${hint ? ` (did you mean '${hint}'?)` : ""}`);
     delete document[key];
   }
+  parseAdvancedSettings(document, sourcePath);
   const version = document.version;
   // RATIFIED DEVIATION, narrow and diagnostic-only. TOML separates `1` from
   // `1.0` and JS has one number type, so a float version reports the RETIRED
@@ -1010,6 +1014,7 @@ export function loadPresetCatalog(
   // Deriving policy from whichever document supplied PRESETS silently dropped
   // both, and it did so on the most common migration state there is.
   let configPolicy: Table = {};
+  let configAdvanced: AdvancedSettings | undefined;
   // The RESOLVED path of the config read, not the path we asked for. A refusal
   // has to name the file the operator must edit, and with `config.toml` a symlink
   // those differ — the unified reader and the incumbent both name the real file.
@@ -1020,6 +1025,7 @@ export function loadPresetCatalog(
   try {
     const { bytes, resolvedPath, digest } = read(configPath);
     const document = parseDocument(bytes, resolvedPath, notice);
+    if (document.advanced !== undefined) configAdvanced = parseAdvancedSettings(document, resolvedPath);
     if (table(document.harness)) configPolicy = document.harness;
     configPolicySource = resolvedPath;
     const rawPresets = document.presets;
@@ -1042,7 +1048,7 @@ export function loadPresetCatalog(
       }
       return catalogFromDocument(document, rawPresets, resolvedPath, digest, notice);
     }
-    if (table(rawPresets)) vacant = { document, source: resolvedPath, digest };
+    if (table(rawPresets) || document.advanced !== undefined) vacant = { document, source: resolvedPath, digest };
   } catch (error) {
     if ((error as LauncherError).errorClass !== "preset_config_missing") throw error;
   }
@@ -1076,7 +1082,8 @@ export function loadPresetCatalog(
   const fromLegacy = parsePresetCatalog(legacy.bytes, legacy.resolvedPath, legacy.digest, notice);
   // The policy's source travels WITH the policy: presets are the legacy file's,
   // `[harness.*]` and its refusals belong to config.toml.
-  return { ...fromLegacy, harnessPolicy: configPolicy, harnessPolicySource: configPolicySource };
+  const { advanced: _legacyAdvanced, ...legacyCatalog } = fromLegacy;
+  return { ...legacyCatalog, ...(configAdvanced ? { advanced: configAdvanced } : {}), harnessPolicy: configPolicy, harnessPolicySource: configPolicySource };
 }
 
 /**
@@ -1097,7 +1104,10 @@ export function tryLoadCatalogForDisplay(
 ): Catalog | null {
   return notices.quietly(() => {
     try { return loadPresetCatalog(env, notices.sink, read, dir, legacyIsFile); }
-    catch { return null; }
+    catch (error) {
+      if ((error as LauncherError).errorClass === "advanced_config_invalid") throw error;
+      return null;
+    }
   });
 }
 

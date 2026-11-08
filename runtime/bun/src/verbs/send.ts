@@ -34,9 +34,9 @@ import { isDeepStrictEqual } from "node:util";
 import { existsSync, lstatSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { driverConfigPath, parseToml } from "../digest-window";
 import { readSecureBytes } from "../launcher/catalog";
-import { archiveRows } from "../bus-archive-index";
 import { basename, join } from "node:path";
 
+import { archivedMonth } from "../bus-archive-index";
 import { authorizePaneEffect, boundBootRefusal, canonicalPlaceLocked, evaluateBoundHarness, inspectClearFenceRecord, observeHarnessPid, submitVerify } from "../courier";
 import { stagedIdleEvidence, type InterruptFact } from "../submit-phase";
 import { stagedIdleWindowSeconds } from "../spool-publication";
@@ -353,6 +353,9 @@ function cmdSendOutcomeBody(
   // --delivery interrupt / --urgent choice authorizes an interrupt.
   const urgent = args.urgent;
   const id = resolveId(args, staged, from);
+  // Minted ids carry a stamp and random suffix; only a caller-supplied id can
+  // collide with archived history, so only it pays the month-bucket probe.
+  const callerSuppliedId = Boolean(args.id || staged.envelopeId);
   const charset = tokenRefusal(id, from, to, kind);
   if (charset) throw refusalError(charset);
   // tap-gyc91: a plain send is settle-only; --ask/--reply/--expect-reply request
@@ -1023,7 +1026,8 @@ function cmdSendOutcomeBody(
       // An explicit --id is native since D1, so the incumbent's placement
       // refusals for an id already on the bus are produced here with the
       // incumbent's bytes, in tap_canonical_place's order: a spool entry, an
-      // archived id, an existing canonical, a settled receipt.
+      // archived id (caller-supplied ids only: one lstat per month bucket, no
+      // manifest read), an existing canonical, a settled receipt.
       // tap_send_place_canonical's own selector (tap-send.sh:1216-1262) picks
       // the recipient lock (:1057-1214, generic wrap — its case statement has
       // no branch for tap_fail's exit 1, so every refusal there, spooled_id
@@ -1048,7 +1052,7 @@ function cmdSendOutcomeBody(
           ? new TapError(1, "spooled_id", "wait_for_redelivery_or_remove_spool_entry", detail)
           : lockedPlaceFailed(detail, "wait for redelivery or remove spool entry");
       }
-      if (archiveRows(ctx.bus.home, true).has(id)) {
+      if (callerSuppliedId && archivedMonth(ctx.bus.home, id)) {
         throw lockedPlaceFailed(`canonical_place: refusing duplicate archived id '${id}'`, "fix command");
       }
       if (existsSync(canonPath)) {

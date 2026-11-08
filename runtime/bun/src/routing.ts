@@ -17,8 +17,13 @@ import { tapScriptsDir, artifactBun } from "./scripts-dir";
 import { formatContextTokens, type TokenSample } from "./context-tokens";
 import { formatPromptCache, refreshPromptCache, type PromptCache } from "./prompt-cache";
 import { ensureAscii } from "./fsatomic";
-import { table as rosterTable, columnWidths, fitColumns, rosterWidth, rosterStyle, statusIndicator } from "./verbs/team";
+import { table as rosterTable, columnWidths, fitColumns, isDaemon, rosterWidth, rosterStyle, statusIndicator } from "./verbs/team";
 import { helpArgv } from "./help";
+import { TapError } from "./context";
+import { modelCell, prettyModelName } from "./model-names";
+import { displayState, emptySeatFilters, hasSeatFilters, idleSeconds, seatClock, seatMatches, takeSeatFilters, type SeatFacts } from "./seat-filter";
+import { WORKING, latestActivity, recentCount, recentOrder, seatLastActive, takeCount, type LastActive } from "./team/recent";
+import { transcriptActivity } from "./team/stale";
 
 type Result = { exit: number; stdout: string; stderr: string };
 type Row = Record<"handle" | "model" | "harness" | "family" | "tier" | "speed" | "cost" | "voice" | "one_liner", string>;
@@ -78,7 +83,7 @@ function referenceCalibration(roster: ObjectRow, strongest: boolean): Result {
     return success(reachable.filter(row => TIERS.get(row.tier) === best).map(row => `${text(row.agent.handle)}\n`).join(""));
   }
   const body = table(["HANDLE", "MODEL@EFFORT @ HARNESS (LAUNCH)", "FAMILY", "TIER", "QUALIFICATION", "STATUS"], rows.map(({agent,tuning,variant,tier}) => [
-    text(agent.handle), `${text(tuning?.model) || text(agent.model) || "?"}@${text(tuning?.effort) || "?"} @ ${text(agent.harness) || "?"}`,
+    text(agent.handle), `${prettyModelName(text(tuning?.model) || text(agent.model)) || "?"}@${text(tuning?.effort) || "?"} @ ${text(agent.harness) || "?"}`,
     variant?.family || text(agent.family) || "-", tier || "unknown", variant ? variantQualification(variant) : "unknown exact variant", text(agent.status) || "unknown",
   ]));
   return { exit: 0, stderr: notices.map(line => `${line}\n`).join(""), stdout: `tap team calibration: ${text(roster.team) || "(unnamed)"}\nReference; access unverified. Stored tuning describes launch only; unknown defaults stay unknown.\n\n${body}\nSaved recipes: tap presets. Calibration matches launch tuning; tap team shows observed model/effort.\n` };
@@ -150,12 +155,24 @@ export function compactAge(seconds: number): string {
   return `${value - floor === 0.5 && floor % 2 === 0 ? floor : Math.round(value)}${suffix}`;
 }
 
+/**
+ * The LAST ACTIVE cell of `--recent` views: `working`, an age, or `-` when nothing dates the row.
+ * `tap teams` ages like its spool warning (compactAge); `tap team` passes the roster's own formatAge
+ * so the cell agrees with the age in its state column.
+ */
+export function lastActiveCell(active: LastActive | null, now: number, age: (seconds: number) => string = compactAge): string {
+  if (!active) return "-";
+  if (active.source === WORKING) return "working";
+  // A date past the view's clock (skew, or activity during collection) is just now, never a negative age.
+  return active.at > now ? "just now" : age(now - active.at);
+}
+
 // Team order for human views: case-insensitive, then codepoint order so `Tap` and `tap` stay stable.
 function compareTeams(a: string, b: string): number {
   return compare(a.toLowerCase(), b.toLowerCase()) || compare(a, b);
 }
 
-function compare(a: string, b: string): number {
+export function compare(a: string, b: string): number {
   const aa = Array.from(a, ch => ch.codePointAt(0)!), bb = Array.from(b, ch => ch.codePointAt(0)!);
   for (let i = 0; i < Math.min(aa.length, bb.length); i++) if (aa[i] !== bb[i]) return aa[i]! - bb[i]!;
   return aa.length - bb.length;
@@ -224,7 +241,7 @@ export function calibrationView(roster: ObjectRow, activity: string, strongest: 
     const roles = (key: string) => Array.isArray(metadata[key]) ? metadata[key].filter((r: unknown): r is string => typeof r === "string").join(", ") : "";
     const primary = roles("primary_roles"), secondary = roles("secondary_roles");
     const stamp = idle.get(text(agent.pane));
-    return { handle, base: base?.handle || "", how, model: model || base?.model || "", harness: harness || base?.harness || "",
+    return { handle, base: base?.handle || "", how, model: model || base?.model || "", shown: model ? prettyModelName(model) : base?.model || "", harness: harness || base?.harness || "",
       family: base?.family || (agent.family_source === "preset" ? text(agent.family) : ""), tier: base?.tier || "", selectorTier, voice: base?.voice || "",
       one_liner: base?.one_liner || "", roles: primary + (secondary ? `${primary ? " " : ""}(${secondary})` : ""),
       status: text(agent.status) || "unknown", attached: attachedCell(agent.attached),
@@ -244,7 +261,7 @@ export function calibrationView(roster: ObjectRow, activity: string, strongest: 
   if (!joined.length) return success(out + "no seats registered yet — run: tap register\n");
   if (banner) out += `${banner}\n`;
   out += "\n" + table(["HANDLE", "BASE", "MODEL @ HARNESS", "FAMILY", "TIER", "VOICE", "ROLES", "STATUS", "ATTACHED", "IDLE"],
-    joined.map(row => [row.handle, row.base || "-", row.model ? `${row.model} @ ${row.harness}` : `- @ ${row.harness || "-"}`,
+    joined.map(row => [row.handle, row.base || "-", row.shown ? `${row.shown} @ ${row.harness}` : `- @ ${row.harness || "-"}`,
       row.family || "-", row.tier || "-", row.voice || "-", row.roles || "-", row.status, row.attached, row.idle]));
   const unjoined = joined.filter(row => !row.base);
   if (unjoined.length) {
@@ -270,14 +287,18 @@ export function writeRoutingResult(result: Result): number {
   return result.exit;
 }
 
-const TEAMS_USAGE = "usage: tap teams [-h] [--all] [--details]\n";
-const TEAMS_HELP = TEAMS_USAGE + "\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n";
+const TEAMS_USAGE = "usage: tap teams [-h] [--all] [--details] [--recent] [-n N]\n";
+const TEAMS_HELP = TEAMS_USAGE + "\noptions:\n  -h, --help  show this help message and exit\n  --all\n  --details\n  --recent\n  -n N\n";
 
-function parseTeams(argv: string[]): Result | { all: boolean; details: boolean } {
-  let all = false, details = false, ended = false;
+type TeamsArgs = { all: boolean; details: boolean; recent: boolean; count?: number };
+
+/** argparse-compatible for the original options; teamsView lifts seat filters and `-n <n>` out first. */
+function parseTeams(argv: string[]): Result | TeamsArgs {
+  let all = false, details = false, recent = false, ended = false;
   const extra: string[] = [];
   const explicit = (option: string, value: string) => failure(`${TEAMS_USAGE}tap teams: error: argument ${option}: ignored explicit argument ${pyRepr(value)}\n`, 2);
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
     if (!ended && arg === "--") ended = true;
     if (!ended && arg.startsWith("-h")) {
       const tail = arg.replace(/^-h+/, "");
@@ -287,21 +308,39 @@ function parseTeams(argv: string[]): Result | { all: boolean; details: boolean }
     }
     if (!ended && arg.startsWith("--")) {
       const equal = arg.indexOf("="), name = equal < 0 ? arg : arg.slice(0, equal);
-      const matches = ["--help", "--all", "--details"].filter(option => option.startsWith(name));
+      const matches = ["--help", "--all", "--details", "--recent"].filter(option => option.startsWith(name));
       if (matches.length > 1) return failure(`${TEAMS_USAGE}tap teams: error: ambiguous option: ${arg} could match ${matches.join(", ")}\n`, 2);
       const option = matches[0];
       if (option) {
         if (equal >= 0) return explicit(option === "--help" ? "-h/--help" : option, arg.slice(equal + 1));
         if (option === "--help") return success(TEAMS_HELP);
         if (option === "--all") all = true;
-        else details = true;
+        else if (option === "--details") details = true;
+        else recent = true;
         continue;
       }
     }
     extra.push(arg);
   }
   if (extra.length) return failure(`usage: tap [-h] {models,team-calibration,teams} ...\ntap: error: unrecognized arguments: ${extra.join(" ")}\n`, 2);
-  return { all, details };
+  return { all, details, recent };
+}
+
+/**
+ * A team is as recent as its most recent seat, crews included. Stored rows carry the dated evidence;
+ * the roster this view already observed says who is working now and when a turn ended. Daemons
+ * (isDaemon: poll delivery or the daemon harness) are infrastructure, not "I was working with this
+ * team", so they never date it; the attach team step leaves them out the same way.
+ */
+function teamActivity(stored: Record<string, unknown>, observed: ObjectRow[] | null, now: number): LastActive | null {
+  const seen = new Map((observed ?? []).map(row => [text(row.handle), row]));
+  // A working seat makes the team active now; no transcript needs reading. A daemon displays ready, never working.
+  if ([...seen.values()].some(row => jsonSeatState(row) === "working")) return { at: now, source: WORKING };
+  return latestActivity(Object.entries(stored).flatMap(([handle, row]) => {
+    if (!object(row) || isDaemon(row)) return [];
+    const ended = Date.parse(text(seen.get(handle)?.turn_ended_at)) / 1000;
+    return [seatLastActive(row, { working: false, turnEndedAt: Number.isFinite(ended) ? ended : null }, transcriptActivity, now)];
+  }));
 }
 
 function readObject(path: string): ObjectRow {
@@ -327,6 +366,18 @@ function observedRoster(team: string, scriptsDir: string): Promise<ObjectRow[] |
       } catch { resolveResult(null); }
     });
   });
+}
+
+/** The state column for one roster JSON row; `tap team` reads the same rule off its own rows. */
+function jsonSeatState(row: ObjectRow): string {
+  return displayState({status: text(row.status), statusReason: text(row.status_reason), agentState: text(row.agent_state) || "unknown",
+    agentStateReason: text(row.agent_state_reason), daemon: isDaemon(row)});
+}
+
+/** What the shared seat filters read off a roster JSON row. */
+function jsonSeatFacts(row: ObjectRow, now: number): SeatFacts {
+  const state = jsonSeatState(row), ended = Date.parse(text(row.turn_ended_at)) / 1000;
+  return {harness: text(row.harness), daemon: isDaemon(row), models: [text(row.observed_model), text(row.model)], state, idleSeconds: idleSeconds(state, ended, now)};
 }
 
 export function teamStatus(states: string[], unobserved = false, colored = !!process.stdout.isTTY && !process.env.NO_COLOR, unobservedLabel = "unknown"): string {
@@ -358,26 +409,44 @@ function spoolWarning(root: string, now: number): string {
 
 export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): Promise<Result> {
   const separator = argv.indexOf("--");
-  const options = separator < 0 ? argv : argv.slice(0,separator);
-  const seats = options.includes("--seats"), json = options.includes("--json"), wide = options.includes("--wide");
+  const head = separator < 0 ? argv : argv.slice(0,separator), tail = separator < 0 ? [] : argv.slice(separator);
+  const json = head.includes("--json"), wide = head.includes("--wide");
   const refuse = (error_class: string, detail: string, action = "tap help teams"): Result => json
     ? {exit:1,stdout:JSON.stringify({ok:false,error_class,action,detail})+"\n",stderr:""}
     : failure(`tap teams: ${detail}; next: ${action}\n`);
+  let filters = emptySeatFilters(), options = head, count: number | undefined;
+  // -n keeps the word typed after it through the filter lift, then comes out itself.
+  try { ({filters, rest:options} = takeSeatFilters(head,"tap help teams",["-n"])); ({count, rest:options} = takeCount(options,"tap help teams")); }
+  catch (error) {
+    if (error instanceof TapError) return refuse(error.errorClass,error.detail,error.action);
+    throw error;
+  }
+  // A seat filter asks about seats, so it implies the roster view.
+  const filtering = hasSeatFilters(filters), seats = options.includes("--seats") || filtering;
+  const viewClash = options.includes("--seats") ? "--seats and --details are alternative views" : "seat filters imply the seat view, and --details is the team view; pick one";
   if (seats && options.some(arg => arg === "--help" || arg === "-h")) return helpArgv(["teams"]);
   if (json && !seats) return refuse("usage_error", "--json requires --seats");
-  if (seats && argv.includes("--details")) return refuse("usage_error", "--seats and --details are alternative views");
-  const args = parseTeams(seats ? [...options.filter(arg => !["--seats", "--json", "--wide"].includes(arg)),...(separator < 0 ? [] : argv.slice(separator))] : argv);
+  if (seats && options.includes("--details")) return refuse("usage_error", viewClash);
+  let args: Result | TeamsArgs;
+  args = parseTeams(seats ? [...options.filter(arg => !["--seats", "--json", "--wide"].includes(arg)),...tail] : [...options,...tail]);
   if ("exit" in args) {
     if (seats && args.exit !== 0) return refuse("usage_error", args.stderr.trim().split("\n").at(-1) ?? "invalid option");
     return args;
   }
-  if (seats && args.details) return refuse("usage_error", "--seats and --details are alternative views");
-  const now = Date.now() / 1000, snapshot = loadGlobalRegistry();
+  try { args.count = recentCount(count, args.recent, "tap help teams"); }
+  catch (error) {
+    if (error instanceof TapError) return refuse(error.errorClass, error.detail, error.action);
+    throw error;
+  }
+  if (seats && args.details) return refuse("usage_error", viewClash);
+  // Ordering every seat on the machine is out of scope: --recent orders teams here, seats on tap team.
+  if (seats && args.recent) return refuse("usage_error", "--recent orders teams, not seats; seats of one team: tap team --recent", "tap team --recent");
+  const now = Date.now() / 1000, snapshot = loadGlobalRegistry(), filterClock = seatClock();
   if (seats && snapshot.marker === "invalid") return refuse("invalid_flip", "machine index is unreadable", "tap doctor");
   if (snapshot.marker === "absent") return seats ? refuse("unanchored_bus", NO_MACHINE_INDEX, "tap init  OR  tap session launch") : failure(`tap teams: ${NO_MACHINE_INDEX}; next: tap init  OR  tap session launch\n`);
   const doc = snapshot.marker === "live" ? snapshot.doc : null;
   const teams = doc && object(doc.teams) ? doc.teams : {};
-  type TeamRow = { name: string; root: string; active: number; total: number; attached: number; warn: string; status: string; unobserved: boolean };
+  type TeamRow = { name: string; root: string; active: number; total: number; attached: number; warn: string; status: string; unobserved: boolean; lastActive?: LastActive | null };
   const rows: TeamRow[] = [], pending: {name: string; root: string; stored: ObjectRow}[] = [];
   const agents: ObjectRow[] = [];
   for (const name of Object.keys(teams).sort(compare)) {
@@ -404,14 +473,17 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
     while (next < pending.length) {
       const {name, root, stored} = pending[next++]!;
       const observed = await observedRoster(name, scriptsDir);
-      if (seats && observed) agents.push(...observed.filter(row => args.all || row.status === "active").map(row => ({...row,team:name})));
+      // An explicit --state replaces the default live-only scope: it names the seats it wants.
+      const inScope = (row: ObjectRow) => args.all || filters.state.length > 0 || row.status === "active";
+      if (seats && observed) agents.push(...observed.filter(row => inScope(row) && seatMatches(filters,jsonSeatFacts(row,filterClock))).map(row => ({...row,team:name})));
       const active = observed?.filter(row => row.status === "active") ?? [];
       const total = observed?.length ?? Object.values(stored).filter(object).length;
       const attached = active.filter(row => pyTruthy(row.attached) && !["0", "no", "false"].includes(String(row.attached))).length;
       const states = active.map(row => row.agent_state === "idle-at-prompt" ? "idle" : text(row.agent_state));
       const warn = [observed === null ? "roster_unreadable" : "", spoolWarning(root, now),
         observed !== null && total > active.length ? `${total - active.length} dormant` : ""].filter(Boolean).join(" · ") || "-";
-      rows.push({name, root, active:active.length, total, attached, warn, status:teamStatus(states, observed === null), unobserved:observed === null});
+      rows.push({name, root, active:active.length, total, attached, warn, status:teamStatus(states, observed === null), unobserved:observed === null,
+        ...(args.recent ? {lastActive:teamActivity(stored, observed, filterClock)} : {})});
     }
   }));
   if (seats) {
@@ -427,7 +499,7 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
       return (expiry(a) - expiry(b) || compare(text(a.team),text(b.team)) || compare(text(a.handle),text(b.handle)));
     });
     if (json) return success(ensureAscii(JSON.stringify({ok:true,scope:"machine",agents,unobserved_teams:missing}))+"\n");
-    if (!agents.length) return {exit:0,stdout:`tap teams --seats: no ${args.all ? "registered" : "active"} seats${missing.length ? " observed" : ""}\n`,stderr:gap};
+    if (!agents.length) return {exit:0,stdout:`tap teams --seats: ${filtering ? "no seats match these filters" : `no ${args.all ? "registered" : "active"} seats${missing.length ? " observed" : ""}`}\n`,stderr:gap};
     const colored = rosterStyle();
     // JSON retains its flat ordering. The human view groups the same seats by team.
     const expiry = (row: ObjectRow): number => object(row.prompt_cache) && row.prompt_cache.state === "warm"
@@ -435,7 +507,8 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
       ? Date.parse(row.prompt_cache.expires_at) : Infinity;
     const cacheRank = (row: ObjectRow) => Number.isFinite(expiry(row)) ? 0
       : object(row.prompt_cache) && row.prompt_cache.state === "cold" ? 1 : 2;
-    const groups = rows.filter(row => args.all || row.active || row.unobserved).map(team => {
+    // Filters show only the teams that hold a selected seat, which may be a dormant team.
+    const groups = rows.filter(row => row.unobserved || (filtering ? agents.some(agent => agent.team === row.name) : args.all || row.active)).map(team => {
       const seats = agents.filter(agent => agent.team === team.name).sort((a,b) =>
         cacheRank(a) - cacheRank(b) || expiry(a) - expiry(b) || compare(text(a.handle),text(b.handle)));
       return {team,seats};
@@ -445,10 +518,8 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
       const sample = object(row.context_tokens) ? row.context_tokens as unknown as TokenSample : undefined;
       const count = sample?.input_tokens == null ? "—" : formatContextTokens(sample);
       const usage = row.harness === "opencode" && sample?.input_tokens != null && sample.window_tokens == null ? `${count}/?` : count;
-      const state = row.status === "unbound" ? "unbound" : row.status === "active" ? text(row.agent_state) || "unknown" : "offline";
-      const observed = text(row.observed_model), effort = text(row.observed_effort);
-      const model = observed ? observed + (effort ? `@${effort}` : "")
-        : row.model || row.effort ? `${text(row.model) || "?"}@${text(row.effort) || "?"} (launch)` : "?";
+      const state = jsonSeatState(row);
+      const model = modelCell({observedModel:text(row.observed_model),observedEffort:text(row.observed_effort),launchModel:text(row.model),launchEffort:text(row.effort)},colored);
       const preset = text(row.preset) ? text(row.preset) + (row.preset_inferred ? "?" : "") : "n/a";
       return [text(row.handle),text(row.harness),statusIndicator(state),
         [usage,formatPromptCache(row.prompt_cache as PromptCache | null,colored)].filter(Boolean).join(" "),
@@ -468,11 +539,18 @@ export async function teamsView(argv: string[], scriptsDir = tapScriptsDir()): P
     return {exit:0,stdout,
       stderr:gap + (hidden.length ? `tap teams: hid ${hidden.join(", ")} to fit ${terminal} columns; tap teams --seats --wide shows every column\n` : "")};
   }
-  const visible = rows.filter(row => args.all || row.active || row.unobserved).sort((a,b) => compareTeams(a.name,b.name));
-  if (!visible.length) return success(`tap teams (machine-wide): no ${args.all ? "enrolled" : "active"} teams\n`);
+  // --recent is for after a restart, when nothing is active: it lists dormant teams too.
+  const everyTeam = args.all || args.recent;
+  const listed = rows.filter(row => everyTeam || row.active || row.unobserved);
+  const visible = args.recent
+    ? recentOrder(listed, row => row.lastActive ?? null, (a,b) => compareTeams(a.name,b.name), args.count).map(({row}) => row)
+    : listed.sort((a,b) => compareTeams(a.name,b.name));
+  if (!visible.length) return success(`tap teams (machine-wide): no ${everyTeam ? "enrolled" : "active"} teams\n`);
+  const recency = (row: TeamRow): string[] => args.recent ? [lastActiveCell(row.lastActive ?? null, filterClock)] : [];
+  const extraHeader = args.recent ? ["LAST ACTIVE"] : [];
   return success(args.details
-    ? table(["TEAM", "SEATS", "ATTACHED", "WARN", "WORKDIR"], visible.map(row => [row.name, `${row.active}/${row.total}`, String(row.attached), row.warn, row.root]))
-    : table(["TEAM", "SEATS", "STATUS"], visible.map(row => [row.name, `${row.active}/${row.total}`, row.status])));
+    ? table(["TEAM", "SEATS", ...extraHeader, "ATTACHED", "WARN", "WORKDIR"], visible.map(row => [row.name, `${row.active}/${row.total}`, ...recency(row), String(row.attached), row.warn, row.root]))
+    : table(["TEAM", "SEATS", ...extraHeader, "STATUS"], visible.map(row => [row.name, `${row.active}/${row.total}`, ...recency(row), row.status])));
 }
 
 // One parser and summary owner for both public teams and synchronous team list.

@@ -14,21 +14,28 @@ interface DraftIO {
   copy(text: string): boolean;
 }
 function options(argv: string[]) {
-  let list = false, id = "";
-  for (let i = 0; i < argv.length; i++) {
+  let list = argv[0] === "list", indexOnly = false, id = "", count = 5, hasCount = false;
+  for (let i = list ? 1 : 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--list") list = true;
+    if (arg === "--list") { list = true; indexOnly = true; }
+    else if (arg === "-n") {
+      const value = argv[++i] ?? "";
+      if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value)))
+        throw new TapError(1, "usage_error", "tap help draft", "-n requires a positive integer");
+      count = Number(value); hasCount = true;
+    }
     else if (arg === "--" && i === argv.length - 1) break;
-    else if (arg.startsWith("--") || id || !validToken(arg)) throw new TapError(1, "usage_error", "tap help draft", `unexpected argument '${arg}'`);
+    else if (arg.startsWith("-") || id || !validToken(arg)) throw new TapError(1, "usage_error", "tap help draft", `unexpected argument '${arg}'`);
     else id = arg;
   }
-  if (list && id) throw new TapError(1, "usage_error", "tap help draft", "--list cannot be combined with a backup id");
-  return { list, id };
+  if (list && id) throw new TapError(1, "usage_error", "tap help draft", "list cannot be combined with a backup id");
+  if (hasCount && !list) throw new TapError(1, "usage_error", "tap draft list -n <count>", "-n requires list");
+  return { list, indexOnly, id, count };
 }
 const display = (text: string) => text.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 export async function recoverDraft(argv: string[], directory: string, io: DraftIO): Promise<number> {
-  const { list, id } = options(argv);
+  const { list, indexOnly, id, count } = options(argv);
   const entries = draftEntries(directory).flatMap(entry => {
     try {
       const raw = readFileSync(entry.path, "utf8");
@@ -39,30 +46,32 @@ export async function recoverDraft(argv: string[], directory: string, io: DraftI
     }
   });
   if (!entries.length) {
-    if (id) throw new TapError(2, "no_draft", "tap draft --list", `no backed-up draft for '${id}' on this team`);
+    if (id) throw new TapError(2, "no_draft", "tap draft list", `no backed-up draft for '${id}' on this team`);
     io.out("tap draft: no drafts backed up on this team\n");
     return 0;
   }
-  const rows = entries.map((e, i) => `${i + 1}. ${display(e.created.toString())}  ${display(e.handle.toString())}  ${display(e.id)}${e.incomplete ? "  [incomplete]" : ""}\n   ${display(e.body).slice(0, 100)}\n`).join("");
-  if (list || !id && !io.tty) {
+  const visible = entries.slice(0, count);
+  const rows = list ? visible.map((e, i) => `${i + 1}. ${display(e.created.toString())}  ${display(e.handle.toString())}  ${display(e.id)}${e.incomplete ? "  [incomplete]" : ""}\n${e.body.split("\n").map(line => `   ${display(line)}`).join("\n")}\n`).join("\n") : "";
+  if (list && (indexOnly || !io.tty)) {
     io.out(rows);
     return 0;
   }
-  let selected;
+  let selected = entries[0]!;
   if (id) {
     const exact = entries.find(e => e.id === id);
     const matches = exact ? [exact] : entries.filter(e => e.payload.equals(Buffer.from(id)));
-    if (matches.length > 1) throw new TapError(1, "ambiguous_draft", "tap draft --list", `multiple backups for '${id}'; select a full backup id`);
-    selected = matches[0];
-    if (!selected) throw new TapError(2, "no_draft", "tap draft --list", `no backed-up draft for '${id}' on this team`);
-  } else {
+    if (matches.length > 1) throw new TapError(1, "ambiguous_draft", "tap draft list", `multiple backups for '${id}'; select a full backup id`);
+    const match = matches[0];
+    if (!match) throw new TapError(2, "no_draft", "tap draft list", `no backed-up draft for '${id}' on this team`);
+    selected = match;
+  } else if (list) {
     io.err(rows);
     const answer = (await io.ask()).trim();
     if (!answer || answer.toLowerCase() === "q") return 0;
-    if (!/^[1-9][0-9]*$/.test(answer) || Number(answer) > entries.length) {
+    if (!/^[1-9][0-9]*$/.test(answer) || Number(answer) > visible.length) {
       io.err("tap draft: invalid selection; nothing copied\n"); return 1;
     }
-    selected = entries[Number(answer) - 1]!;
+    selected = visible[Number(answer) - 1]!;
   }
   if (selected.incomplete) {
     io.err(`${INCOMPLETE_DRAFT_NOTICE}; clipboard unchanged\n`);

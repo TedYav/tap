@@ -40,7 +40,7 @@ export type RegistryDoc = Record<string, unknown>;
  * lexeme in the message — an honest refusal beats a silent rounding, and TAP's
  * live schema contains no float in any seat row, so nothing legitimate is lost.
  */
-export function loadRegistry(path: string): RegistryDoc {
+export function loadRegistry(path: string, sourceText?: string): RegistryDoc {
   if (!isFile(path)) return {};
   // The 3-argument reviver (ES2025 "JSON source text access", live in bun 1.3.8)
   // is not in this TypeScript lib yet, so the callback is typed locally rather
@@ -71,7 +71,7 @@ export function loadRegistry(path: string): RegistryDoc {
     // and that form is refused above.
     return Object.is(value, -0) ? 0 : value;
   };
-  const data: unknown = JSON.parse(pyReadUtf8(path), reviver as (k: string, v: unknown) => unknown);
+  const data: unknown = JSON.parse(sourceText ?? pyReadUtf8(path), reviver as (k: string, v: unknown) => unknown);
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     throw new Error(`registry state doc is not an object: ${path}`);
   }
@@ -324,6 +324,12 @@ export interface SelfIdentity {
   handle: string;
   pane: string;
   paneId: string;
+  crew?: boolean;
+  instance?: string;
+}
+
+export class PaneLookupError extends Error {
+  constructor(readonly kind: "pane_unknown" | "pane_contested", detail: string) { super(detail); }
 }
 
 export interface HarnessSessionPane {
@@ -451,8 +457,9 @@ export function resolvePaneByRegisteredHandle(
  * remedy for a seat that hits this is `tap register`. The caller refuses
  * outright when the current generation is unobservable.
  *
- * Handles are visited in sorted order so two rows that could both match resolve
- * deterministically rather than by object insertion order.
+ * Supplying observedSession selects strict pane identity: require pane_id and
+ * session, reject duplicate current claims, and return the row's hook fields.
+ * Older callers retain sorted first-match selection and the address fallback.
  */
 export function resolveHandleByPane(
   registryPath: string,
@@ -461,14 +468,20 @@ export function resolveHandleByPane(
   serverEpochNow: string,
   selectedHandle?: string,
   selectedInstance?: string,
+  observedSession?: string,
 ): SelfIdentity | null {
   let doc: RegistryDoc;
   try {
     doc = loadRegistry(registryPath);
   } catch {
+    if (observedSession !== undefined) throw new PaneLookupError("pane_unknown", "the acting registry could not be read");
     return null;
   }
+  if (observedSession !== undefined && !seatsAxis(doc)) {
+    throw new PaneLookupError("pane_unknown", "the acting registry has no readable seats map");
+  }
   const handles = selectedHandle ? [selectedHandle] : Object.keys(seatMap(doc)).sort();
+  let found: SelfIdentity | null = null;
   for (const handle of handles) {
     const seat = seatMap(doc)[handle]!;
     if (typeof seat !== "object" || seat === null) continue;
@@ -477,11 +490,18 @@ export function resolveHandleByPane(
     const rowEpoch = String(seat.server_epoch ?? "");
     if (!rowEpoch || rowEpoch !== serverEpochNow) continue;
     const rowPaneId = seat.pane_id;
-    const matches = rowPaneId ? rowPaneId === paneId : seat.pane === pane;
+    // A hook asks about a stable pane id. A positional address can be reused
+    // when a lower-index sibling exits, even within this server generation.
+    const matches = observedSession !== undefined
+      ? rowPaneId === paneId && seat.session === observedSession
+      : rowPaneId ? rowPaneId === paneId : seat.pane === pane;
     if (!matches) continue;
-    return { handle, pane: String(seat.pane ?? pane), paneId };
+    const identity = { handle, pane: String(seat.pane ?? pane), paneId };
+    if (observedSession === undefined) return identity;
+    if (found) throw new PaneLookupError("pane_contested", `multiple active seats claim pane ${paneId} in this server generation`);
+    found = { ...identity, crew: seat.crew === true, instance: strField(seat.instance) };
   }
-  return null;
+  return found;
 }
 
 
@@ -489,11 +509,9 @@ export function resolveHandleByPane(
  * Which enrolled team root has this pane registered — the executable half of an
  * unanchored-cwd refusal.
  *
- * A refusal whose remedy this binary does not accept is worse than a terse one:
- * `--team` is not an option `whoami` or `done` takes, so an operator following
- * that advice lands in a SECOND error produced by the first error's remedy.
- * The incumbent answers this case with `cd <enrolled-root>`, which every verb
- * accepts, and it can only do so by looking the pane up ACROSS enrolled teams.
+ * A cwd remedy must name a real enrolled root. The `cd <enrolled-root>` form
+ * works for every verb, including those without `--team`, and finding that
+ * root requires a lookup across enrolled teams.
  *
  * It lives here, not in index-home, because reading a seat row is this module's
  * job — the first version of this function open-coded `doc.agents[...]` and

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { TapError } from "../src/context";
 import {
-  CURSOR_INTERRUPT_GAP_MS, CURSOR_INTERRUPT_SETTLE_MS, KNOWN_BLOCKERS, NUDGE_INTERRUPT,
+  FirstKeySelection, CURSOR_INTERRUPT_GAP_MS, CURSOR_INTERRUPT_SETTLE_MS, KNOWN_BLOCKERS, NUDGE_INTERRUPT,
   matchBlocker, previewLadder, runLadder, type ComposerRead, type EffectResult, type LadderIO, type LadderOptions,
 } from "../src/verbs/nudge-ladder";
 
@@ -279,4 +279,20 @@ test("a changed diagnosis after typing prevents the final Enter", () => {
   const p = pane();
   expect(runLadder(opts("codex", { interrupt: false, guard: keyed => keyed ? "work started before Enter" : "" }), p.io)).toBe(5);
   expect(p.effects.map(e => e.action)).toEqual(["nudge type"]);
+});
+
+test("default fan-out skips a recovered seat before any key and never rechecks after dismissal", () => {
+  const skipped = pane();
+  let selection = "seat recovered; not nudged";
+  const guard = new FirstKeySelection(() => selection);
+  expect(runLadder(opts("claude", {selection:guard}), skipped.io)).toBe(0);
+  expect(skipped.effects).toEqual([]);
+  expect(skipped.out.join(" ")).toContain("not nudged");
+  const modal = pane({frames:[MODAL,MODAL,MODAL,IDLE]});
+  let reads = 0;
+  const stillBlocked = new FirstKeySelection(() => ++reads === 1 ? "" : "seat recovered; not nudged");
+  expect(runLadder(opts("claude", {selection:stillBlocked}),modal.io)).toBe(0);
+  expect(modal.effects[0]!.action).toContain("dismiss");
+  expect(modal.effects.map(e=>e.action)).toContain("nudge type");
+  expect(reads).toBe(1);
 });

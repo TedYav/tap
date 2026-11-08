@@ -18,7 +18,7 @@ afterAll(() => rmSync(scratch, { recursive:true, force:true }));
 // A delayed consumer forces a real pipe backlog. Parent output is a small
 // receipt, never the large document whose completeness is under test.
 const reader = String.raw`
-import hashlib,json,subprocess,sys,time
+import hashlib,json,re,subprocess,sys,time
 mode,entry,*args=sys.argv[1:]
 if mode == 'file':
     with open('output.json','wb') as out:
@@ -43,7 +43,10 @@ else:
     except subprocess.TimeoutExpired:
         p.kill(); p.communicate(); raise
     rc=p.returncode
-result=dict(rc=rc,bytes=len(data),sha=hashlib.sha256(data).hexdigest())
+# 48b9e518e: team --json stamps each run's observation time (top-level observed_at);
+# two runs differ only there, so the byte-for-byte comparison masks that value.
+stable=re.sub(rb'"observed_at": ?"[0-9T:.Z-]+"', b'"observed_at":"<observed>"', data)
+result=dict(rc=rc,bytes=len(data),sha=hashlib.sha256(stable).hexdigest())
 try:
     if args[:2] == ['spool','list']:
         result['count']=len([json.loads(row) for row in data.splitlines()])

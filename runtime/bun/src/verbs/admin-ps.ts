@@ -11,9 +11,13 @@ import { agentFamilies, classifyCommCommand, harnessFamily, observeRows, parsePs
 import { physicalSocketPath, serverEpochFromRaw, tmuxReadOnly } from "../tmux";
 import { detectAgentState } from "../agent-state";
 import { isDaemon, rosterStyle, statusIndicator, table } from "./team";
+import { hasSeatFilters, idleSeconds, seatClock, seatMatches, takeSeatFilters, type SeatFilters } from "../seat-filter";
+import { harnessEvidence } from "../readiness-stall";
+import { readContextTokens } from "../context-tokens";
 
 const object = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
 const str = (x: unknown): string => typeof x === "string" ? x : "";
+const launchModel = (seat: Record<string, unknown>): string => object(seat.launch_tuning) ? str(seat.launch_tuning.model) : str(seat.model);
 export interface ProcessSample { pid: string; pgid: string; tpgid: string; cpu: number; rssKiB: number; elapsed: string; state: string; comm: string; command: string }
 export function parseResources(text: string): Map<string, ProcessSample> {
   const result = new Map<string, ProcessSample>();
@@ -68,7 +72,10 @@ export function harnessProcess(panePid: string, expected: string, samples: Map<s
   if (leader && !(SHELLS as readonly string[]).includes(leaderName) && leader.pgid === root.tpgid && classifyCommCommand(leader.comm, leader.command, families) === wanted) return leader;
 }
 
-interface Claim { team: string; handle: string; harness: string; socket: string; row: RowInput }
+interface Claim { team: string; handle: string; harness: string; socket: string; row: RowInput; model: string; sessionId: string; transcript: string }
+/** A registry seat's own identity, kept for every object seat so a filter can judge a seat that never became a row. */
+type SeatIdentity = Pick<Claim, "harness" | "model" | "sessionId" | "transcript">;
+const seatKey = (team: string | undefined, handle: string | undefined): string => JSON.stringify([team ?? "", handle ?? ""]);
 interface Diagnostic { team?: string; handle?: string; reason: string }
 export interface PsSeat { team: string; handle: string; harness: string; status: string; activity: string; pid: number | null; cpu_percent: number | null; rss_kib: number | null; footprint_kib: number | null; elapsed: string | null; process_state: string | null; reason: string }
 export interface PsDeps {
@@ -76,6 +83,8 @@ export interface PsDeps {
   resources(): {status: number | null; stdout: string};
   gather(rows: RowInput[], env: NodeJS.ProcessEnv, psText: string, psOk: boolean): ObservePayload;
   activity(harness: string, pane: string, env: NodeJS.ProcessEnv, epoch: string): string;
+  /** The transcript's observed model and dated turn end; read only for a `--model` or `--state` filter. */
+  turn?(harness: string, sessionId: string, transcript: string): {model: string | null; endedAt: number | null};
 }
 export function observeActivity(harness: string, pane: string, env: NodeJS.ProcessEnv, epoch: string, run = tmuxReadOnly): string {
   const codex = /^codex(?:-|$)/.test(harness);
@@ -99,7 +108,30 @@ const production: PsDeps = {
     return {...payload, ps_text: psText, ps_rc: psOk ? 0 : 1};
   },
   activity: observeActivity,
+  turn: observeTurn,
 };
+
+/** The transcript's observed model and dated turn end, for --model and --state. */
+export function observeTurn(harness: string, sessionId: string, transcript: string): {model: string | null; endedAt: number | null} {
+  const sample = readContextTokens(harness, sessionId, transcript);
+  // The roster's identity rule: a transcript bound to another session cannot date this seat's turn,
+  // so the seat is undated, and an undated idle seat stays active.
+  const evidence = sample?.unknown_reason === "session_mismatch" ? null
+    : harnessEvidence(harness, {transcript_path: transcript, harness_session_id: sessionId}, process.env);
+  return {model: sample?.tuning?.model ?? null, endedAt: evidence?.ended && evidence.at !== null ? evidence.at : null};
+}
+
+/** ps rows carry the native classifier's activity: no daemons, inactive seats, or the roster's
+ * own `waiting` and `unsubmitted` readings. A filter on those could only ever list nothing. */
+const PS_STATES: readonly string[] = ["working", "blocked", "error", "idle", "booting", "overprint", "unknown", "active"];
+
+function psFilters(args: string[]): {filters: SeatFilters; rest: string[]} {
+  const parsed = takeSeatFilters(args, "tap help admin ps");
+  const absent = parsed.filters.state.find(state => !PS_STATES.includes(state));
+  if (absent) throw new TapError(1, "usage_error", `tap teams --state ${absent}`, `it lists live seats by harness process, so it never shows state '${absent}' (it shows: ${PS_STATES.join(", ")})`, "tap admin ps");
+  if (parsed.filters.harness.includes("daemon")) throw new TapError(1, "usage_error", "tap teams --harness daemon", "daemons have no harness process, so it omits daemons", "tap admin ps");
+  return parsed;
+}
 
 /** Fixed attention floors avoid highlighting trivial winners on a quiet machine. */
 export function resourceCutoff(values: Array<number | null>, floor: number): number {
@@ -110,12 +142,16 @@ export function resourceCutoff(values: Array<number | null>, floor: number): num
 export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
   const json = args.includes("--json");
   process.env.TAP_JSON = json ? "1" : "0";
-  if (args.some(arg => arg !== "--json")) throw new TapError(1, "usage_error", "tap help admin ps", "accepted options: --json", "tap admin ps");
+  const {filters, rest} = psFilters(args);
+  const noState = rest.includes("--no-state");
+  if (rest.some(arg => !["--json", "--no-state"].includes(arg))) throw new TapError(1, "usage_error", "tap help admin ps", "accepted options: --json --no-state --harness <list> --model <list> --state <list>", "tap admin ps");
+  if (noState && (filters.model.length || filters.state.length)) throw new TapError(1, "usage_error", "tap help admin ps", "--no-state cannot combine with --model or --state (they require enrichment)", "tap admin ps");
   const index = loadGlobalRegistry();
   if (index.marker === "absent") throw noMachineIndexError("tap admin ps");
   if (index.marker !== "live" || !object(index.doc) || (index.doc.teams !== undefined && !object(index.doc.teams))) throw new TapError(1, "registry_invalid", "tap doctor", "machine index is unreadable", "tap admin ps");
   const teams = index.doc.teams ?? {};
   const claims: Claim[] = [], diagnostics: Diagnostic[] = [], seats: PsSeat[] = [];
+  const identities = new Map<string, SeatIdentity>();
   const roots = new Map<string, string[]>();
   for (const [name, entry] of Object.entries(teams)) {
     if (!object(entry) || !isAbsolute(str(entry.root)) || ![undefined, null, "", "registered"].some(state => state === entry.state)) continue;
@@ -140,6 +176,7 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
       if (!object(doc.seats)) throw new Error("invalid seats map");
       for (const [handle, seat] of Object.entries(doc.seats).sort(([a], [b]) => a.localeCompare(b))) {
         if (!object(seat)) { diagnostics.push({team, handle, reason: "invalid seat"}); continue; }
+        identities.set(seatKey(team, handle), {harness: str(seat.harness), model: launchModel(seat), sessionId: str(seat.harness_session_id), transcript: str(seat.transcript_path)});
         const fields = ["status", "status_reason", "delivery", "pane", "pane_id", "session", "server_epoch", "boot_id", "harness", "registered_at", "server_socket"];
         if (fields.some(key => seat[key] !== undefined && typeof seat[key] !== "string") || (seat.delivery !== undefined && !["", "pane", "poll"].includes(str(seat.delivery)))) { diagnostics.push({team, handle, reason: "invalid seat identity fields"}); continue; }
         const status = str(seat.status) || "active";
@@ -148,9 +185,23 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
         const socket = str(seat.server_socket) || physicalSocketPath();
         if (!isAbsolute(socket)) { diagnostics.push({team, handle, reason: "invalid socket path"}); continue; }
         if (isDaemon(seat)) continue;
-        claims.push({team, handle, socket, harness: str(seat.harness), row: {key: JSON.stringify([team, handle]), status, status_reason: str(seat.status_reason), delivery: str(seat.delivery), pane: str(seat.pane), pane_id: str(seat.pane_id), session: str(seat.session), registered_at: str(seat.registered_at), row_epoch: str(seat.server_epoch), row_boot: str(seat.boot_id), harness: str(seat.harness)}});
+        claims.push({team, handle, socket, harness: str(seat.harness), model: launchModel(seat), sessionId: str(seat.harness_session_id), transcript: str(seat.transcript_path), row: {key: JSON.stringify([team, handle]), status, status_reason: str(seat.status_reason), delivery: str(seat.delivery), pane: str(seat.pane), pane_id: str(seat.pane_id), session: str(seat.session), registered_at: str(seat.registered_at), row_epoch: str(seat.server_epoch), row_boot: str(seat.boot_id), harness: str(seat.harness)}});
       }
     } catch (error) { diagnostics.push({team, reason: error instanceof Error ? error.message : String(error)}); }
+  }
+  // --harness and --model are known before any probe, so an excluded seat is never captured.
+  const identity = {...filters, state: []};
+  const turns = new Map<SeatIdentity, {model: string | null; endedAt: number | null}>();
+  const turnOf = (claim: SeatIdentity) => {
+    if (!turns.has(claim)) turns.set(claim, (filters.model.length || filters.state.length ? deps.turn?.(claim.harness, claim.sessionId, claim.transcript) : undefined) ?? {model: null, endedAt: null});
+    return turns.get(claim)!;
+  };
+  // Seats a filter positively excluded; only their diagnostics may be dropped.
+  const excluded = new Set<string>();
+  const identityMatches = (seat: SeatIdentity) => seatMatches(identity, {harness: seat.harness, models: [turnOf(seat).model, seat.model], state: "unknown", idleSeconds: null});
+  if (identity.harness.length || identity.model.length) {
+    for (const [key, seat] of identities) if (!identityMatches(seat)) excluded.add(key);
+    claims.splice(0, claims.length, ...claims.filter(claim => !excluded.has(seatKey(claim.team, claim.handle))));
   }
   const resource = claims.length ? deps.resources() : {status: 0, stdout: ""};
   const samples = parseResources(resource.stdout);
@@ -165,7 +216,7 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
       const payload = deps.gather(group.map(c => c.row), env, psText, psOk);
       const epoch = buildSnapshot(payload, env).sharedEpoch;
       const observed = new Map(observeRows(payload, env).map(line => { const [key, ...rest] = line.split("\x1f"); return [key!, rest] as const; }));
-      const panes = new Map((payload.panes_text || "").split("\n").map(line => line.split("\t")).filter(p => p.length === 7).map(p => [p[2]!, p[4]!]));
+      const panes = new Map((payload.panes_text || "").split("\n").map(line => line.split("\t")).filter(p => p.length === 7 || p.length >= 10).map(p => [p[2]!, p[4]!]));
       for (const claim of group) {
         const fields = observed.get(claim.row.key!) || ["unknown", "observation_missing"];
         if (!["active", "unknown", "pending"].includes(fields[0]!)) continue;
@@ -173,8 +224,10 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
         const processSample = fields[0] === "active" && psOk ? harnessProcess(panes.get(fields[3] || "") || "", claim.harness, samples) : undefined;
         if (processSample && !processSample.state.startsWith("Z")) {
           Object.assign(row, {pid: Number(processSample.pid), cpu_percent: processSample.cpu, rss_kib: processSample.rssKiB, elapsed: processSample.elapsed, process_state: processSample.state});
-          try { row.activity = deps.activity(claim.harness, fields[3]!, env, epoch); }
-          catch (error) { row.reason = error instanceof Error ? error.message : "activity observation unavailable"; }
+          if (!noState) {
+            try { row.activity = deps.activity(claim.harness, fields[3]!, env, epoch); }
+            catch (error) { row.reason = error instanceof Error ? error.message : "activity observation unavailable"; }
+          }
         } else row.reason = !psOk ? "process snapshot unavailable" : fields[0] !== "active" ? fields[1] || "lifecycle unknown" : "harness process unavailable";
         if (row.reason) diagnostics.push({team: row.team, handle: row.handle, reason: row.reason});
         seats.push(row);
@@ -194,6 +247,23 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
       seat.reason = [seat.reason, "RSS fallback (footprint unavailable)"].filter(Boolean).join("; ");
     }
   }
+  if (hasSeatFilters(filters)) {
+    const now = seatClock(), byId = new Map(claims.map(claim => [JSON.stringify([claim.team, claim.handle]), claim]));
+    const kept = seats.filter(seat => {
+      const claim = byId.get(JSON.stringify([seat.team, seat.handle]))!;
+      const turn = turnOf(identities.get(seatKey(seat.team, seat.handle)) ?? claim);
+      return seatMatches(filters, {harness: seat.harness, models: [turn.model, claim.model], state: seat.activity, idleSeconds: idleSeconds(seat.activity, turn.endedAt, now)});
+    });
+    // Only a classified state that does not match excludes. A seat whose state could not be read is
+    // omitted from a --state view it does not match, but its failure stays and fails the run.
+    for (const seat of seats) if (!kept.includes(seat) && seat.activity !== "unknown") excluded.add(seatKey(seat.team, seat.handle));
+    seats.splice(0, seats.length, ...kept);
+  }
+  if (excluded.size) {
+    // A seat the caller filtered out cannot fail the observation they asked for. Every other
+    // failure stays, including one for a selected seat rejected before it had a row.
+    diagnostics.splice(0, diagnostics.length, ...diagnostics.filter(d => !d.handle || !excluded.has(seatKey(d.team, d.handle))));
+  }
   const memory = (seat: PsSeat) => seat.footprint_kib ?? seat.rss_kib;
   seats.sort((a, b) => a.team.localeCompare(b.team) || a.handle.localeCompare(b.handle));
   if (json) process.stdout.write(`${JSON.stringify({ok: diagnostics.length === 0, ...(diagnostics.length ? {error_class: "observation_incomplete", action: "inspect diagnostics and retry tap admin ps"} : {}), resource_scope: "harness_process", seats, diagnostics})}\n`);
@@ -206,7 +276,7 @@ export function cmdAdminPs(args: string[], deps: PsDeps = production): number {
       const text = format ? format(value) : (value / divisor).toFixed(1);
       return value >= cutoff ? (color ? `\x1b[1;33m${text}*\x1b[0m` : `${text}*`) : text;
     };
-    process.stdout.write(seats.length ? table(["TEAM", "SEAT", "HARNESS", "PID", "CPU%AVG", "MEMORY", "ELAPSED", "PROC", "STATUS", "REASON"], seats.map(s => [s.team, s.handle, s.harness, s.pid?.toString() || "—", metric(s.cpu_percent, 1, cpuCutoff), metric(memory(s), 1, memoryCutoff, formatMemory), s.elapsed || "—", s.process_state || "—", statusIndicator(s.activity === "unknown" ? s.status : s.activity), s.reason])) : "tap admin ps: no active seats observed\n");
+    process.stdout.write(seats.length ? table(["TEAM", "SEAT", "HARNESS", "PID", "CPU%AVG", "MEMORY", "ELAPSED", "PROC", "STATUS", "REASON"], seats.map(s => [s.team, s.handle, s.harness, s.pid?.toString() || "—", metric(s.cpu_percent, 1, cpuCutoff), metric(memory(s), 1, memoryCutoff, formatMemory), s.elapsed || "—", s.process_state || "—", statusIndicator(s.activity === "unknown" ? s.status : s.activity), s.reason])) : hasSeatFilters(filters) ? "tap admin ps: no seats match these filters\n" : "tap admin ps: no active seats observed\n");
     if (cpuCutoff !== Infinity || memoryCutoff !== Infinity) process.stdout.write("* top consumers: CPU >=25% avg or memory >=1 GB; top 3 per column, ties included\n");
     if (diagnostics.length) process.stderr.write(tapErrorLine(new TapError(1, "observation_incomplete",
       "inspect diagnostics and retry tap admin ps", diagnostics.map(d => `${d.team || "machine"}${d.handle ? `/${d.handle}` : ""}: ${d.reason}`).join("; ")), "tap admin ps"));

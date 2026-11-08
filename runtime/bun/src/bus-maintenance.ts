@@ -3,7 +3,7 @@
 import { lstatSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
 import { archiveBus } from "./bus-archive";
-import { archiveRows, type MaintenanceReport } from "./bus-archive-index";
+import { type MaintenanceReport } from "./bus-archive-index";
 import { maintenanceDue } from "./bus-maintenance-trigger";
 import { atomicWrite } from "./fsatomic";
 import { acquirePathLock, childBusEnv } from "./panelock";
@@ -44,7 +44,6 @@ export function runBusMaintenance(home: string, now = Date.now(), env = process.
         else if (result === "held") report.held++;
         else if (result === "busy") busy++;
       }
-      archiveRows(home, true); // Index repair remains an explicit operator action.
       report.archived = archiveBus(home, 7, false, now).archived;
       if (report.held) {
         report.status = "blocked";

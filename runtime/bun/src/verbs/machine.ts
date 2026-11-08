@@ -22,6 +22,7 @@ import { CODEX_BEGIN, SHELL_BLOCK_BEGIN, SHELL_BLOCK_BEGINS, SHELL_BLOCK_END, SH
 import { relocateCodexEndMarker } from "../codex-fence";
 import { archiveHistory, removeRoots } from "../install-history";
 import { tapRoot } from "../scripts-dir";
+import { setTmuxEnabled, type TmuxControlIO } from "../debug-tmux";
 
 const REPO = tapRoot();
 type Entry = { kind: string; path: string; [key: string]: any };
@@ -566,7 +567,7 @@ export async function setupMachine(ask: Prompt, detected?: string[], json = fals
   configDir();
   return finishSetup(async(notes,log)=>{
     const found = detected ?? Object.keys(binaries).filter(h=>Bun.which(binaries[h]!,{PATH:searchPath()}));
-    log("Pre-release beta: expect bugs; send bug reports and feature requests to ted@tedyav.com.");
+    log("Beta: expect bugs; send bug reports and feature requests to https://github.com/TedYav/tap/issues, or email ted@tedyav.com if you cannot use Issues.");
     log(`Detected executables: ${found.join(", ") || "none"}. This does not verify login or model access.`);
     if (!found.length) { log(`No supported CLI detected (${Object.values(binaries).join(", ")}); install and sign in before running tap setup --machine. To request another harness: https://github.com/TedYav/tap/issues, or have your agent add it with tap help skill extend`); return 0; }
     const snapshot = setupSnapshot();
@@ -874,7 +875,7 @@ function uninstallDefaultsPreservedNote(): string {
   return "TAP's tmux defaults could not be removed (their files cannot be read); they are inert once TAP is gone — tmux's source-file -q ignores an unreadable file — so uninstall continues. next: when readable, tap tmux-defaults remove, or delete the file and its marked source line yourself";
 }
 
-export async function uninstallMachine(ask: Prompt, options: UninstallOptions = {}): Promise<number> {
+export async function uninstallMachine(ask: Prompt, options: UninstallOptions = {}, tmuxIO?: TmuxControlIO): Promise<number> {
   const manifest = readManifest();
   console.log("Uninstall removes TAP integration; agent sessions keep running. To stop them first, run tap down <team/seat> for each session before uninstalling.");
   if (!existsSync(manifestPath())) { console.log("Nothing to uninstall: no install manifest. History, dependencies, and plugins are preserved."); return await uninstallKeybindingOnly(ask, options); }
@@ -910,7 +911,13 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     console.log("Changed files/targets are preserved. Dependencies and unrelated plugins stay. Recorded TAP plugin registrations are removed only while their source matches.");
     if (!(await confirm(ask, "Remove these TAP artifacts?", "n"))) { console.log("Uninstall cancelled; next: tap uninstall when ready."); return 0; }
   }
-  // The binding runs the installed tap, so it goes first; if tmux refuses, nothing else is removed.
+  // Stop the owned scheduler before removing its plist or forwarding entry.
+  if (manifest.entries.some(entry => entry.launchd_label === "local.tmux-flight")) {
+    const stopped = await setTmuxEnabled(false, process.env, tmuxIO);
+    if (stopped.state === "off") manifest.entries = readManifest().entries;
+    else if (stopped.state === "unavailable") throw new Error("cannot observe owned tmux capture; uninstall stopped before removing its files");
+  }
+  // The binding runs the installed tap; a refusal keeps the integration intact.
   const keybinding = uninstallKeybinding(true);
   for (const line of keybinding.lines) console.log(line);
   if (keybinding.preserved) { console.log("Uninstall stopped before removing TAP itself, so the tmux binding does not point at a deleted executable. next: fix the problem above (or restart tmux), then rerun tap uninstall"); return 2; }

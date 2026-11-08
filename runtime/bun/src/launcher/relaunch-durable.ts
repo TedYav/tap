@@ -11,7 +11,7 @@ import { assertResetUnfenced } from "../reset";
 import { seatIsRelaunchable } from "./complete";
 import { Notices } from "./catalog-notices";
 import { invocationShellCommand, launchInvocation, shlexQuote } from "./invocation";
-import { applyOverrides } from "./overrides";
+import { applyOverrides, composeTail } from "./overrides";
 import { entrySession } from "./observation";
 import { rootForCwd } from "./records";
 import { registryEntry } from "./resume";
@@ -87,6 +87,8 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
     if (resumed === null) return refuse("no_exact_resume_identity", `run tap in from the live seat pane; ${where}tap clear ${member.handle} starts FRESH context`,
       `seat '${tag}' (${record.harness}) has no resumable conversation id (revive tier '${reviveTier(record.harness, record.harness_session_id)}'); relaunch will not silently start a different conversation`);
     checkRelaunchExpectation(scope, member.handle, target.entry, member.team_doc, { identity, resume: expectedResume }, process.env);
+    // Counted against the stored tail before the overrides replace it: generated config may land inside it.
+    const typedTail = options.overrides ? composeTail(record.harness_tail ?? [], options.overrides).fresh : 0;
     if (options.overrides) record = { ...record, ...applyOverrides(record, options.overrides) };
     const unsupported = refuseUnsupportedInstruction(record.harness, options.message, `${member.team}/${member.handle}`, process.env);
     if (unsupported) return refuse(unsupported.errorClass, unsupported.action, unsupported.detail);
@@ -110,7 +112,7 @@ export async function relaunchOne(member: Member, options: Options, caller: Call
     const notices = new Notices(diagnostic);
     notices.suppress(options.json);
     const built = launchInvocation("resume", record, notices, { prompt: options.message, resume: expectedResume,
-      typedTail: options.overrides?.argv?.length ?? 0 });
+      typedTail });
     if (options.workdir !== undefined && expectedResume !== null && record.harness === "codex"
       && !codexSessionExists(expectedResume, codexChildStoreEnv(process.env, built))) return refuseUnresumable();
     const nativeEnv = { ...process.env, ...built.env };

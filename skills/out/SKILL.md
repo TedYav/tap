@@ -14,14 +14,15 @@ Free your handle and remove your registry entry:
 tap out
 ```
 
-Bare form targets your own derived handle; pass a name to remove a specific one. **Idempotent** — removing an absent handle is a no-op.
+Bare form targets your own derived handle; pass a name to remove a specific one. **Idempotent** — removing an absent handle is a no-op. On a terminal, a name that matches no seat but resembles one opens a chooser seeded with that name; Esc removes nothing.
 
 **Most recently exited teammate:** `tap out --last` (`tap out -` is an alias)
 uses the same absence classifier as `tap team refresh`. It considers active pane-backed rows and rows marked suspended/pane_gone by delivery whose session is positively absent, or whose recorded pane ID
 is absent from a readable pane set in the same current server epoch. It excludes
 live, launching, pending, poll, other suspended and foreign-team/socket rows. Missing `exited_at`
-stamps are recorded on first observed absence; the unique latest stamp wins,
-and a tie refuses with the candidates. Unreadable snapshots refuse without
+stamps are recorded on first observed absence; the unique latest stamp wins.
+A tie opens an fzf chooser on a terminal; without a terminal (agents) or with
+`--json` it refuses with the candidates. Unreadable snapshots refuse without
 stamping. The selected row and its absence are checked again under retirement
 custody. If the harness is still shutting down after `/exit`, wait and retry.
 For the final session's exit, `--last` accepts the recognized-empty namespace

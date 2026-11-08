@@ -48,6 +48,7 @@ import { configDirectory, isRegularFile, readSecureBytes } from "../launcher/cat
 import { childBusEnv, lockRoot } from "../panelock";
 import { Notices } from "../launcher/catalog-notices";
 import { tapScriptsDir } from "../scripts-dir";
+import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
 
 const TAP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const HELP = "tap help goalie";
@@ -364,7 +365,7 @@ function cmdOn(ctx: Context, argv: string[], scriptsDir: string, env: NodeJS.Pro
   const goalieRun = resolve(scriptsDir, "../../../runtime/bun/src/goalie-run.ts");
   const spawnedCmd = goalieSidecarCommand(ctx.bus.home, goalieRun, env);
   const spawned = spawnSync("tmux", ["new-window", "-d", "-P", "-F", "#{pane_id} #{pane_pid}",
-    "-t", `=${session}`, "-n", GOALIE_WINDOW, "-c", root, spawnedCmd], { encoding: "utf8" });
+    "-t", `=${session}`, "-n", GOALIE_WINDOW, "-c", stableSpawnCwd(process.env), inWorkdir(root, spawnedCmd)], { encoding: "utf8" });
   const [paneId = "", panePid = ""] = (spawned.stdout ?? "").trim().split(/\s+/);
   if (panePid === "") {
     if (!quiet && notifyOk) process.stderr.write("tap goalie: could not start the sidecar; lease remains armed\n");

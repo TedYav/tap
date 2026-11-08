@@ -2,16 +2,19 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { TapError, callingPane, noMachineIndexError, observeCallerIdentity, requireActingRegistry, resolveContext, resolveSelf, type ResolvedContext } from "../context";
+import { TapError, callingPane, noMachineIndexError, observeCallerIdentity, requireActingRegistry, resolveContext, reportingContext, resolveSelf, type ResolvedContext } from "../context";
 import { renderRefusals } from "../error-line";
 import { helpArgv } from "../help";
 import { createOpenCodeContextReader } from "../opencode-context";
 import { readContextTokens, withClaudeWindow, formatContextTokens, type TokenSample } from "../context-tokens";
 import { claudeWindows } from "../context-window";
+import { rosterCache, rosterCacheTtl, rosterRegistryStamp } from "../roster-cache";
 import { formatPromptCache } from "../prompt-cache";
 import { contextQueueFacts, pendingInboundAsks, type AddresseeGate } from "../context-census";
 import { addresseeGrant, historyDirForBus } from "../addressee-grant";
-import { judgeStalled, type StalledJudgement } from "../roster-stalled";
+import { modelCell } from "../model-names";
+import { DEFAULT_STALE_AFTER, judgeStalled, type StalledJudgement } from "../roster-stalled";
+import { displayState, emptySeatFilters, hasSeatFilters, idleSeconds, isSeatFilterFlag, seatClock, seatMatches, takeSeatFilters, type SeatFacts, type SeatFilters, type SeatState } from "../seat-filter";
 import {
   actingRegistryForTeamOverride,
   flipMarkerState,
@@ -25,7 +28,7 @@ import { busHomeForEnrolled, isNoMachineIndex } from "../selector";
 import { runTeamStop, type RegistryPolicy, type StopEffects } from "../team/stop";
 import { parseStopArgs, type StopVerb } from "../team/stop-plan";
 import { crewSelectGate, noSelection, parseSelection, registryRoster, rosterGate, scanOptionalSelection, selectConflictGate, selectedHandles, selectionBlob } from "../team/selection";
-import { crewLifetimeHealth } from "../crew-lifetime";
+import { crewLifetimeHealth, type CrewLifetimeOptions } from "../crew-lifetime";
 import { teamStopQueueSummary } from "../team-stop-queue";
 import { loadRegistry, seatMap } from "../registry";
 import { disarm, readLoose } from "../watch-lease";
@@ -34,7 +37,7 @@ import { armPath } from "../watch-notice";
 import type { LifecycleTmux } from "../lifecycle-target";
 import { REGISTRY_MAX_BUFFER } from "../spawn";
 import { ensureAscii } from "../fsatomic";
-import { formatAge, type RosterAgentState } from "../roster-activity";
+import { formatAge } from "../roster-activity";
 import { ServerUnresponsive, tmuxReadOnly, physicalSocketPath } from "../tmux";
 import { observeNamespace, observeGeneration } from "../launcher/generation";
 import { selectRestartCohort } from "../team/up-last";
@@ -44,7 +47,7 @@ import { archiveNudge } from "../bus-archive-index";
 import { cmdRefresh } from "./refresh";
 import { effectiveWindows, windowsDoc } from "../digest-window";
 import { configDirectory, isRegularFile, readSecureBytes } from "../launcher/catalog";
-import { rosterDisplayFacts, tryLoadCatalogForDisplay } from "../launcher/catalog-listing";
+import { rosterDisplayFacts, tryLoadCatalogForDisplay, type Catalog } from "../launcher/catalog-listing";
 import { harnessModelFamily } from "../launcher/catalog-metadata";
 import { loadModelReference, matchingVariant } from "../launcher/model-reference";
 import type { LaunchTuning } from "../launcher/tuning";
@@ -58,7 +61,10 @@ import { cmdTeamRestore } from "../team/restore";
 import { cmdTeamPurge } from "../team/purge";
 import { cmdTeamDetach } from "../team/detach";
 import { cmdTeamOut } from "../team/out";
-import { calibrationView, teamsView, writeRoutingResult } from "../routing";
+import { cmdTeamHistory } from "../team-history";
+import { calibrationView, compare, lastActiveCell, teamsView, writeRoutingResult } from "../routing";
+import { recentCount, recentOrder, seatLastActive, takeCount, type LastActive } from "../team/recent";
+import { transcriptActivity } from "../team/stale";
 import { isOldStoreRefusal } from "../register-authority";
 import { lifecycleDisposition, lifecycleReceipt } from "../lifecycle-target";
 import { assertBoundParentLifetimes, captureCohortParentLifetimes, chooseSeatCohort, chooseTeam, confirmAction, discoveryTerminalAvailable, parentSeatSnapshot, readDiscoverySeats, requireDiscoveryTerminal, revalidateTeam, type BoundCohort, type BoundTeam, type Picker } from "../team/discovery";
@@ -70,10 +76,8 @@ import { crewFamilyHandles } from "../crew-ownership";
 import { observedRows, withAgentStates, type ObservedRow } from "../roster-observation";
 export { observedRows, withAgentStates, readComputeJobs, type AgentStateOptions, type ObservedRow } from "../roster-observation";
 
-type HumanAgentState = RosterAgentState | "offline" | "unbound" | "incapable" | "unsubmitted" | "ready";
-
 const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-const AGENT_COLOR: Record<HumanAgentState, number> = {
+const AGENT_COLOR: Record<SeatState, number> = {
   ready: 96,
   working: 32,
   waiting: 93,
@@ -88,7 +92,7 @@ const AGENT_COLOR: Record<HumanAgentState, number> = {
   incapable: 35,
   unsubmitted: 33,
 };
-export const TEAM_SUBCOMMANDS = ["doctor", "list", "roster", "calibration", "attach", "detach", "refresh", "shutdown", "down", "out", "up", "reset", "purge", "restore"];
+export const TEAM_SUBCOMMANDS = ["doctor", "list", "roster", "calibration", "attach", "detach", "refresh", "shutdown", "down", "out", "up", "reset", "purge", "restore", "history"];
 export { AGENT_FAMILIES, DENYLIST } from "../harness-families";
 
 
@@ -110,18 +114,27 @@ interface TeamOptions {
   json: boolean;
   all: boolean;
   names: boolean;
-  active: boolean;
+  online: boolean;
+  /** Spelled `--active`: the migration alias of `--online`. */
+  activeAlias?: boolean;
   offline: boolean;
+  /** `--harness`, `--model` and `--state`: the shared seat filters. */
+  filters: SeatFilters;
+  includeCrews: boolean;
   team?: string;
   wide: boolean;
   stalled: boolean;
+  noState: boolean;
+  noCache: boolean;
   /** Retired refresh spelling: prints an advisory and the ordinary read-only roster. */
   refreshModels?: boolean;
   /** Seconds a seat must have been idle (from its dated turn end); set only with --stalled. */
   staleAfter?: number;
+  /** `--recent`: order seats by last activity, most recent first. */
+  recent: boolean;
+  /** `-n <n>` with --recent: keep the first n seats after the sort. */
+  count?: number;
 }
-
-const DEFAULT_STALE_AFTER = 600;
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -173,7 +186,7 @@ function initialArgs(argv: string[]): string[] {
   const first = argv[0] ?? "";
   if (!first) return argv.length > 0 ? argv.slice(1) : argv;
   if (first.startsWith("--")) {
-    if (first && !["--json", "--all", "--names", "--active", "--offline", "--wide", "--stalled", "--stale-after", "--refresh-models"].includes(first)) {
+    if (first && !["--json", "--all", "--names", "--online", "--active", "--offline", "--wide", "--stalled", "--stale-after", "--refresh-models", "--no-state", "--no-cache", "--recent", "--context", "--include-crews"].includes(first)) {
       throw new TapError(1, "unknown_option", "tap help team", `unknown option '${first}'`);
     }
     return argv;
@@ -183,29 +196,47 @@ function initialArgs(argv: string[]): string[] {
       1,
       "unknown_subcommand",
       "tap help team",
-      `unknown subcommand '${first}' (usage: tap team [list|roster|calibration|attach|detach|down|out|up|refresh|shutdown|reset|restore|purge] [--json|--all|--wide])`,
+      `unknown subcommand '${first}' (usage: tap team [list|roster|calibration|attach|detach|down|out|up|refresh|history|shutdown|reset|restore|purge] [--json|--all|--wide])`,
     );
   }
   return first === "roster" ? argv.slice(1) : argv;
 }
 
+/** One --stale-after value in seconds, refusing anything but a positive safe integer. */
+function staleSeconds(value: string): number {
+  if (!/^\d+$/.test(value)) throw new TapError(1, "usage_error", "tap help team", `--stale-after must be a positive integer (seconds), got '${value}'`);
+  const seconds = Number(value);
+  if (seconds <= 0) throw new TapError(1, "usage_error", "tap help team", "--stale-after must be > 0");
+  if (!Number.isSafeInteger(seconds)) throw new TapError(1, "usage_error", "tap help team", `--stale-after must not exceed ${Number.MAX_SAFE_INTEGER}, got '${value}'`);
+  return seconds;
+}
+
 function parseOptions(argv: string[], allowTeamPositional: boolean = false): TeamOptions {
-  const out: TeamOptions = { json: false, all: false, names: false, active: false, offline: false, wide: false, stalled: false };
+  const out: TeamOptions = { json: false, all: false, names: false, online: false, offline: false, filters: emptySeatFilters(), includeCrews: false, wide: false, stalled: false, noState: false, noCache: false, recent: false };
   let staleAfter: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--json") out.json = true;
+    else if (arg === "--recent") out.recent = true;
+    else if (arg === "--include-crews") out.includeCrews = true;
+    else if (arg === "--no-state") out.noState = true;
+    else if (arg === "--no-cache") out.noCache = true;
     else if (arg === "--stalled") out.stalled = true;
     else if (arg === "--stale-after") {
       staleAfter = argv[++i];
       if (!staleAfter) throw new TapError(1, "usage_error", "tap help team", "--stale-after needs a value (seconds)");
+      // Checked as read, so a later --stale-after cannot replace a bad value (such as a flag) unseen.
+      staleSeconds(staleAfter);
     }
     else if (arg === "--all") out.all = true;
     else if (arg === "--names") out.names = true;
-    else if (arg === "--active") out.active = true;
+    else if (arg === "--online") out.online = true;
+    else if (arg === "--active") { out.online = true; out.activeAlias = true; }
     else if (arg === "--offline") out.offline = true;
     else if (arg === "--wide") out.wide = true;
     else if (arg === "--refresh-models") out.refreshModels = true;
+    // cmdTeam reads --context from argv; accepting it here keeps it in place, so it is never lifted from under a value flag.
+    else if (arg === "--context") continue;
     else if (arg.startsWith("--")) {
       throw new TapError(1, "unknown_option", "tap help team", `unknown option '${arg}'`);
     } else if (allowTeamPositional && !out.team) {
@@ -237,30 +268,36 @@ function parseOptions(argv: string[], allowTeamPositional: boolean = false): Tea
   if (out.stalled && out.all) {
     throw new TapError(1, "usage_error", "tap help team", "--stalled and --all are alternative views — pick one (--all skips the state pass --stalled reads)");
   }
-  if (out.stalled) {
-    if (staleAfter !== undefined && !/^\d+$/.test(staleAfter)) {
-      throw new TapError(1, "usage_error", "tap help team", `--stale-after must be a positive integer (seconds), got '${staleAfter}'`);
-    }
-    const seconds = staleAfter === undefined ? DEFAULT_STALE_AFTER : Number(staleAfter);
-    if (seconds <= 0) throw new TapError(1, "usage_error", "tap help team", "--stale-after must be > 0");
-    if (!Number.isSafeInteger(seconds)) throw new TapError(1, "usage_error", "tap help team", `--stale-after must not exceed ${Number.MAX_SAFE_INTEGER}, got '${staleAfter}'`);
-    out.staleAfter = seconds;
-  }
-  if (out.active && out.offline) {
+  if (out.stalled) out.staleAfter = staleAfter === undefined ? DEFAULT_STALE_AFTER : staleSeconds(staleAfter);
+  if (out.online && out.offline) {
     throw new TapError(
       1,
       "usage_error",
       "tap help team",
-      "--active and --offline are mutually exclusive",
+      "--online and --offline are mutually exclusive",
     );
   }
   return out;
 }
 
+/**
+ * Roster flags besides the seat filters that take the word typed after them, whatever it is. Each
+ * extractor keeps them with that word, so lifting one flag never joins an unrelated word to another.
+ */
+const ROSTER_VALUE_FLAGS = ["-n", "--stale-after"];
+/** The bare seat-filter spellings, whose value is the next word. */
+const SEAT_FILTER_VALUE_FLAGS = ["--harness", "--model", "--state"];
+
 /** Shared with onboarding so invalid roster forms cannot initialize a repository. */
 export function parseRosterOptions(argv: string[]): TeamOptions {
-  const args = argv.filter(arg => arg !== "--context");
-  return parseOptions(initialArgs(args), args[0] === "roster");
+  const { filters, rest } = takeSeatFilters(argv, "tap help team", ROSTER_VALUE_FLAGS);
+  const { count, rest: args } = takeCount(rest, "tap help team", ROSTER_VALUE_FLAGS);
+  if (args.includes("--no-state") && (filters.state.length || filters.model.length || args.includes("--stalled") || args.includes("--context"))) {
+    throw new TapError(1, "usage_error", "tap help team", "--no-state cannot combine with --state, --model, --stalled or --context (they require enrichment)");
+  }
+  const options: TeamOptions = { ...parseOptions(initialArgs(args), args[0] === "roster"), filters };
+  options.count = recentCount(count, options.recent, "tap help team");
+  return options;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -314,8 +351,12 @@ export function readRegistry(path: string, wantJson: boolean, crewOnly: boolean)
         session: pythonOr(ent.session, ""), registered_at: pythonOr(ent.registered_at, ""),
         crew: ent.crew === true, server_epoch: pythonOr(ent.server_epoch, ""),
         ...(ent.server_socket ? {server_socket: ent.server_socket} : {}),
+        // Dated evidence for `--recent` (team/recent.ts); absent keys stay absent.
+        ...(ent.last_launched ? {last_launched: ent.last_launched} : {}),
+        ...(ent.exited_at ? {exited_at: ent.exited_at} : {}),
         boot_id: pythonOr(ent.boot_id, ""), preset: record(ent.preset) ? pythonOr(ent.preset.name, "") : "",
         model: ent.model, launch_tuning: ent.launch_tuning,
+        ...(typeof ent.role === "string" ? { role: ent.role } : {}),
       });
     }
     return { ok: true, team, rows };
@@ -330,22 +371,22 @@ export function readRegistry(path: string, wantJson: boolean, crewOnly: boolean)
 }
 
 
-function presetFacts(
-  rows: RegistryRow[],
-): Record<string, Record<string, unknown>> {
-  const handles = rows.map((row) => str(row.handle)).filter(Boolean);
-  const recorded = Object.fromEntries(
-    rows.map((row) => [str(row.handle), str(row.preset)]).filter(([, preset]) => preset),
-  );
-  let facts: Record<string, Record<string, unknown>>;
+function rosterCatalog(): Catalog | null {
   try {
-    const catalog = tryLoadCatalogForDisplay(new Notices(() => {}), process.env,
+    return tryLoadCatalogForDisplay(new Notices(() => {}), process.env,
       readSecureBytes, configDirectory(process.env), isRegularFile);
-    facts = rosterDisplayFacts(handles, { recorded, catalog });
-  } catch {
-    // An invalid config location has the same display-only fallback as an unreadable catalog.
-    facts = rosterDisplayFacts(handles, { recorded, catalog: null });
+  } catch (error) {
+    const config = error as {errorClass?: string; action?: string; detail?: string; message?: string};
+    if (config.errorClass === "advanced_config_invalid") throw new TapError(1, config.errorClass,
+      config.action ?? "fix config.toml", config.detail ?? config.message ?? "invalid advanced settings");
+    return null;
   }
+}
+
+function presetFacts(rows: RegistryRow[], catalog: Catalog | null): Record<string, Record<string, unknown>> {
+  const handles = rows.map((row) => str(row.handle)).filter(Boolean);
+  const recorded = Object.fromEntries(rows.map(row => [str(row.handle), str(row.preset)]).filter(([, preset]) => preset));
+  const facts = rosterDisplayFacts(handles, {recorded, catalog});
   const reference = rows.some(row => record(row.launch_tuning)) ? loadModelReference() : [];
   for (const row of rows) {
     const handle = str(row.handle), fact = facts[handle];
@@ -394,16 +435,25 @@ function contextCell(row: ObservedRow): string {
   return [usage, formatPromptCache(row.tokenSample?.prompt_cache, rosterStyle())].filter(Boolean).join(" ");
 }
 
-function withTokenSamples(rows: ObservedRow[], panePids = new Map<string,string>()): ObservedRow[] {
+/** Only a live seat in this namespace has a transcript sample worth reading. */
+const sampleable = (row: ObservedRow): boolean => row.status === "active" && !row.foreignNamespace;
+const claudeHarness = (row: ObservedRow): boolean => /^claude(?:-|$)/.test(row.harness);
+
+/** Transcript and store reads only: no tmux, no ps. The observed model comes from here. */
+function readTokenSamples(rows: ObservedRow[]): ObservedRow[] {
   const readOpenCode = createOpenCodeContextReader();
-  const active = rows.filter(row => row.status === "active" && !row.foreignNamespace);
-  const windows = claudeWindows(active.filter(row => /^claude(?:-|$)/.test(row.harness)).map(row => panePids.get(row.observedPaneId) ?? "").filter(Boolean));
+  return rows.map(row => !sampleable(row) ? row : {...row, tokenSample: row.harness === "opencode"
+    ? readOpenCode(row.harnessSessionId ?? "", row.transcriptPath ?? "")
+    : readContextTokens(row.harness, row.harnessSessionId ?? "", row.transcriptPath ?? "")});
+}
+
+/** After the state pass: batched Claude windows and the session-mismatch rule. */
+function attachTokenSamples(rows: ObservedRow[], panePids = new Map<string,string>()): ObservedRow[] {
+  const windows = claudeWindows(rows.filter(row => sampleable(row) && claudeHarness(row)).map(row => panePids.get(row.observedPaneId) ?? "").filter(Boolean));
   return rows.map(row => {
-    if (!active.includes(row)) return row;
-    let tokenSample = row.harness === "opencode"
-      ? readOpenCode(row.harnessSessionId ?? "", row.transcriptPath ?? "")
-      : readContextTokens(row.harness, row.harnessSessionId ?? "", row.transcriptPath ?? "");
-    if (/^claude(?:-|$)/.test(row.harness)) {
+    if (!sampleable(row)) return row;
+    let tokenSample = row.tokenSample;
+    if (claudeHarness(row) && tokenSample) {
       const window = windows.get(panePids.get(row.observedPaneId) ?? "");
       if (window?.state === "set") tokenSample = withClaudeWindow(tokenSample, window.value);
       else if (window?.state === "unset") tokenSample = withClaudeWindow(tokenSample, null);
@@ -414,11 +464,47 @@ function withTokenSamples(rows: ObservedRow[], panePids = new Map<string,string>
   });
 }
 
+interface EnrichPlan {
+  team: string;
+  panePids?: Map<string,string>;
+  panes?: Map<string, CrewLifetimeOptions & { title?: string }>;
+  /** Capture each kept seat's state: pane captures plus the Claude window probe. */
+  states: boolean;
+  /** Probe each kept live crew's lifetime. */
+  lifetimes: boolean;
+  filters: SeatFilters;
+}
+
+/**
+ * The roster's one enrichment owner: every output shape (--names, --json, human,
+ * --stalled, calibration) gets its rows here. --harness and --model are judged
+ * before any pane capture, so a seat they exclude costs no tmux or ps probe;
+ * --state needs the observed state, so it runs after the capture of the seats kept.
+ */
+function enrichRoster(rows: ObservedRow[], plan: EnrichPlan): ObservedRow[] {
+  const now = seatClock();
+  const identity = { ...plan.filters, state: [] };
+  const keep = (filters: SeatFilters) => (row: ObservedRow) => seatMatches(filters, seatFacts(row, now));
+  if (plan.filters.harness.length) rows = rows.filter(keep({ ...identity, model: [] }));
+  if (plan.states || plan.filters.model.length) rows = readTokenSamples(rows);
+  if (plan.filters.model.length) rows = rows.filter(keep(identity));
+  if (plan.states) {
+    const paneTitles = new Map([...plan.panes ?? []].flatMap(([id, pane]) => pane.title === undefined ? [] : [[id, pane.title] as const]));
+    rows = attachTokenSamples(withAgentStates(rows, { team: plan.team, paneTitles }), plan.panePids);
+  }
+  if (plan.filters.state.length) rows = rows.filter(keep(plan.filters));
+  if (plan.lifetimes) for (const row of rows) {
+    if (row.crew && row.status === "active") row.crewLifetime = row.foreignNamespace ? "unknown" : crewLifetimeHealth(row.observedPaneId, plan.panes?.get(row.observedPaneId));
+  }
+  return rows;
+}
+
 function width(value: string): number { return Array.from(value.replace(ANSI, "")).length; }
 
 function truncate(value: string, size: number): string {
-  const chars = Array.from(value);
-  if (chars.length <= size) return value;
+  if (width(value) <= size) return value;
+  // Clipping plain text cannot split an escape sequence or leak styling into the next row.
+  const chars = Array.from(value.replace(ANSI, ""));
   if (size <= 3) return chars.slice(0, size).join("");
   return `${chars.slice(0, size - 3).join("")}...`;
 }
@@ -430,14 +516,15 @@ export function columnWidths(headers: string[], records: string[][]): number[] {
 
 /**
  * Which columns survive at `terminal` width: dropped right-to-left until the
- * row fits, never `handle` (0) or `state` (2), so a narrow terminal loses
- * whole columns instead of wrapping. `null` keeps every column.
+ * row fits, never the `keep` columns (`handle` (0) and `state` (2); `--recent`
+ * adds `last active`), so a narrow terminal loses whole columns instead of
+ * wrapping. `null` keeps every column.
  */
-export function fitColumns(widths: number[], terminal: number | null): number[] {
+export function fitColumns(widths: number[], terminal: number | null, keep: readonly number[] = [0, 2]): number[] {
   const kept = widths.map((_, i) => i);
   if (terminal === null) return kept;
   for (let i = widths.length - 1; i >= 0; i--) {
-    if (i === 0 || i === 2) continue;
+    if (keep.includes(i)) continue;
     const used = kept.reduce((sum, j) => sum + widths[j]!, 0) + 2 * (kept.length - 1);
     if (used <= terminal) break;
     kept.splice(kept.indexOf(i), 1);
@@ -486,10 +573,22 @@ export function isDaemon(row: { delivery?: unknown; harness?: unknown }): boolea
 }
 
 function rosterMatches(row: ObservedRow, options: TeamOptions): boolean {
-  if (!options.active && !options.offline) return true;
+  if (!options.online && !options.offline) return true;
   if (isDaemon(row)) return false;
-  return options.active ? row.status === "active"
+  return options.online ? row.status === "active"
     : ["offline", "gone", "suspended", "expired"].includes(row.status);
+}
+
+/** Leaders first (stable), then the other seats, daemons last: the order every human roster view shows. */
+export function leadersFirst<T extends { role?: string; delivery?: unknown; harness?: unknown }>(rows: T[]): T[] {
+  const live = rows.filter(row => !isDaemon(row));
+  return [...live.filter(row => row.role === "leader"), ...live.filter(row => row.role !== "leader"), ...rows.filter(isDaemon)];
+}
+
+/** The handle with its role, e.g. `opus (leader)`; a leader is also bold on a styled terminal. */
+export function handleCell(row: { handle: string; role?: string }): string {
+  const label = row.role ? `${row.handle} (${row.role})` : row.handle;
+  return row.role === "leader" && rosterStyle() ? `\x1b[1m${label}\x1b[0m` : label;
 }
 
 export function rosterStyle(): boolean {
@@ -502,25 +601,29 @@ function humanHarness(row: ObservedRow): string {
 
 /** Observed model@effort from the bound-transcript sample; the (launch)
  * marker keeps the fallback honest when no observation exists. */
-function modelCell(row: ObservedRow): string {
+function rowModelCell(row: ObservedRow): string {
   const tuning = row.tokenSample?.tuning;
-  if (tuning) return tuning.effort ? `${tuning.model}@${tuning.effort}` : tuning.model;
-  return row.model || row.effort ? `${row.model || "?"}@${row.effort || "?"} (launch)` : "?";
+  return modelCell({ observedModel: tuning?.model, observedEffort: tuning?.effort, launchModel: row.model, launchEffort: row.effort }, rosterStyle());
+}
+
+function rowState(row: ObservedRow): SeatState {
+  return displayState({ ...row, daemon: isDaemon(row) });
+}
+
+/** What the shared seat filters read off a roster row; the row must have had its state pass. */
+function seatFacts(row: ObservedRow, now: number): SeatFacts {
+  const state = rowState(row);
+  return { harness: row.harness, daemon: isDaemon(row), models: [row.tokenSample?.tuning?.model, row.model], state, idleSeconds: idleSeconds(state, row.turnEndedAt, now) };
 }
 
 function humanAgent(row: ObservedRow, team: string): string {
-  const state: HumanAgentState = isDaemon(row) && row.status === "active" ? "ready"
-    : row.status === "suspended" && row.statusReason === "incapable"
-    ? "incapable"
-    : row.status === "active"
-    ? (row.agentStateReason === "sentinel_unsubmitted" ? "unsubmitted" : row.agentState)
-    : row.status === "unbound" ? "unbound" : "offline";
+  const state = rowState(row);
   // The exhausted healing alarm is the roster-visible half of the stuck-paint
   // alarm (tap-cl1es): the leader reads the cause and the manual cure here.
   // Working counts from turn start; idle and waiting from turn end (tap-i5fzq).
   const dated = row.agentState === "working" ? row.turnStartedAt : row.turnEndedAt;
   const age = row.status === "active" && dated != null && state === row.agentState
-    ? ` ${formatAge(Number(process.env.TAP_WATCH_NOW || Math.trunc(Date.now() / 1000)) - dated)}` : "";
+    ? ` ${formatAge(seatClock() - dated)}` : "";
   const label = row.agentStateReason === "heal_exhausted" && (row.agentState === "overprint" || row.agentState === "booting")
     ? `${row.agentState} · heal exhausted (tap nudge)`
     : `${state}${age}`;
@@ -529,7 +632,7 @@ function humanAgent(row: ObservedRow, team: string): string {
 
 /** Shared roster/ps status semantics; keep the label useful without terminal color. */
 export function statusIndicator(state: string, label = state): string {
-  const color = Object.hasOwn(AGENT_COLOR, state) ? AGENT_COLOR[state as HumanAgentState] : AGENT_COLOR.unknown;
+  const color = Object.hasOwn(AGENT_COLOR, state) ? AGENT_COLOR[state as SeatState] : AGENT_COLOR.unknown;
   const dot = rosterStyle() ? `\x1b[${color}m●\x1b[0m` : "●";
   return `${dot} ${label}`;
 }
@@ -540,7 +643,7 @@ function isoSeconds(epoch: number | null | undefined): string | null {
 
 interface StalledView extends StalledJudgement { afterSeconds: number }
 
-function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Record<string, unknown>>, queue: Record<string, unknown> = {}, stalled?: StalledView): string {
+function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Record<string, unknown>>, queue: Record<string, unknown> = {}, stalled?: StalledView, observedAt?: number, recency?: Map<string, LastActive | null>): string {
   const stalledFor = new Map((stalled?.stalled ?? []).map(s => [s.handle, s.stalledForSeconds]));
   const agents = rows.map((row) => {
     const sampled = row.tokenSample?.input_tokens == null ? null : row.tokenSample;
@@ -551,9 +654,11 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
     // context_tokens is null.
     const contextTokens = sampled ? (({ tuning, prompt_cache, ...rest }) => rest)(sampled) : null;
     const tuning = row.tokenSample?.tuning ?? null;
+    const active = recency?.get(row.handle) ?? null;
     const item: Record<string, unknown> = {
       handle: row.handle,
       harness: row.harness,
+      delivery: row.delivery,
       model: row.model ?? null,
       effort: row.effort ?? null,
       launch_tuning: row.launchTuning ?? null,
@@ -569,6 +674,8 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
       turn_started_at: isoSeconds(row.turnStartedAt),
       turn_ended_at: isoSeconds(row.turnEndedAt),
       turn_ended_source: row.turnEndedSource ?? null,
+      // Only with --recent: the shared recency rule's answer and its witness (team/recent.ts).
+      ...(recency ? { last_active_at: active ? isoSeconds(active.at) : null, last_active_source: active?.source ?? null } : {}),
       context_tokens: contextTokens,
       prompt_cache: row.tokenSample?.prompt_cache ?? null,
       // Why the count is unknown: the reader's reason, or not_sampled for a row
@@ -596,10 +703,12 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
     }
     // Always present so a consumer grouping by family reads null, not a missing key.
     item.family = row.family ?? null;
+    // Always present: the seat's `tap role` label, or null.
+    item.role = row.role || null;
     item.family_source = row.familySource ?? null;
     return item;
   });
-  const doc = { team: team || null, agents, ...(stalled ? { stalled_after_seconds: stalled.afterSeconds, unjudged: stalled.unjudged } : {}) };
+  const doc = { team: team || null, agents, observed_at: observedAt === undefined ? null : new Date(observedAt).toISOString(), ...(stalled ? { stalled_after_seconds: stalled.afterSeconds, unjudged: stalled.unjudged } : {}) };
   return `${ensureAscii(JSON.stringify(doc))}\n`;
 }
 
@@ -607,7 +716,7 @@ const UNJUDGED_TEXT = { no_turn_end_date: "no dated turn end", inbound_unknown: 
 
 /** The roster's idle seats joined to what each still owes; see roster-stalled.ts for the claim rules. */
 function stalledView(ctx: ResolvedContext, sampled: ObservedRow[], team: string, afterSeconds: number): StalledView {
-  const now = Number(process.env.TAP_WATCH_NOW || Math.trunc(Date.now() / 1000));
+  const now = seatClock();
   // Only idle seats can qualify, so only they are asked what they owe.
   const handles = sampled.filter(row => row.agentState === "idle").map(row => row.handle);
   // The grant `tap poll` and `tap read` use: adopted and forwarded custody and retired-instance
@@ -886,19 +995,22 @@ function parseSessionAndWindow(row: ObservedRow): { session: string; windowIndex
   return { session, windowIndex };
 }
 
+function crewParentsBySession(rows: ObservedRow[]): Map<string, ObservedRow[]> {
+  const parents = new Map<string, ObservedRow[]>();
+  for (const row of rows) {
+    if (row.crew) continue;
+    const { session } = parseSessionAndWindow(row);
+    if (!session) continue;
+    const list = parents.get(session) ?? [];
+    list.push(row);
+    parents.set(session, list);
+  }
+  return parents;
+}
+
 function buildHumanRosterRows(rows: ObservedRow[], hierarchyRows = rows): DisplayItem[] {
   const visibleHandles = new Set(rows.map(row => row.handle));
-  const sessionParents = new Map<string, ObservedRow[]>();
-  for (const row of hierarchyRows) {
-    if (!row.crew) {
-      const { session } = parseSessionAndWindow(row);
-      if (session) {
-        const list = sessionParents.get(session) ?? [];
-        list.push(row);
-        sessionParents.set(session, list);
-      }
-    }
-  }
+  const sessionParents = crewParentsBySession(hierarchyRows);
 
   const childrenByParent = new Map<string, { row: ObservedRow; windowIndex: number }[]>();
   const rootlessCrew: { row: ObservedRow; session: string }[] = [];
@@ -977,33 +1089,66 @@ function socketLabel(path: string): string {
   return basename(path) === "default" ? path : basename(path);
 }
 
-function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows): void {
-  rows = [...rows.filter(row => !isDaemon(row)), ...rows.filter(isDaemon)];
+/** `recency` (--recent) keeps the given order, flat: no leaders-first and no crew nesting, plus a last-active column. */
+function renderHuman(team: string, rows: ObservedRow[], all: boolean, wide: boolean, hierarchyRows = rows, recency?: Map<string, LastActive | null>, parentContext = false): void {
+  if (!recency) rows = leadersFirst(rows);
+  const contextParents = new Set<string>();
+  if (parentContext) {
+    const visible = new Set(rows.map(row => row.handle));
+    const parents = crewParentsBySession(hierarchyRows);
+    rows = rows.flatMap(row => {
+      if (!row.crew) return [row];
+      const candidates = parents.get(parseSessionAndWindow(row).session) ?? [];
+      if (candidates.some(parent => visible.has(parent.handle))) return [row];
+      const parent = candidates[0];
+      if (!parent) return [row];
+      visible.add(parent.handle);
+      contextParents.add(parent.handle);
+      return [parent, row];
+    });
+  }
+  const record = (row: ObservedRow, cells: string[]): string[] => {
+    if (!contextParents.has(row.handle)) return cells;
+    cells[0] += " (crew parent)";
+    // Context parents were not enriched: label their purpose rather than imply sampled state.
+    cells[all ? 4 : 2] = "context only";
+    return cells.map(cell => {
+      const plain = cell.replace(ANSI, "");
+      return rosterStyle() ? `\x1b[2m${plain}\x1b[0m` : plain;
+    });
+  };
+  const now = seatClock();
+  const recent = (row: ObservedRow): string[] => recency ? [lastActiveCell(recency.get(row.handle) ?? null, now, formatAge)] : [];
+  const recentHeader = recency ? ["last active"] : [];
   process.stdout.write(`tap ${process.env.TAP_TEAM_LIST_VERB || "team"}: ${team || "(unnamed)"}\n`);
   if (all) {
     // The nine-column schema keeps its TTY truncation; only a redirected run
     // gains the no-truncation guarantee, so `tap team --all | head` is whole.
     process.stdout.write(table(
-      ["handle", "kind", "harness", "pane", "status", "attached", "unattended", "reason", "notes/asks"],
-      rows.map((row) => [
-        row.handle, row.crew ? "CREW" : "SEAT", humanHarness(row), row.pane, row.status,
+      ["handle", "kind", "harness", "pane", "status", ...recentHeader, "attached", "unattended", "reason", "notes/asks"],
+      rows.map((row) => record(row, [
+        handleCell(row), row.crew ? "CREW" : "SEAT", humanHarness(row), row.pane, row.status, ...recent(row),
         row.attached && row.attached !== "0" ? "yes" : "no", row.unattended ? "yes" : "no", row.foreignNamespace ? `bound under ${socketLabel(row.serverSocket!)}` : row.crewLifetime === "legacy_supervised" ? "legacy parent lifetime; tap team refresh" : row.statusReason, `${row.digestWindow ?? 10}s/${row.askWindow ?? 10}s`,
-      ]),
+      ])),
       process.stdout.isTTY ? undefined : null,
     ));
   } else {
-    const displayItems = buildHumanRosterRows(rows, hierarchyRows);
+    // The hierarchy pass runs in both layouts: its stderr warnings (ambiguous session parents, rootless
+    // crews) describe the registry, not the layout. The flat --recent view then keeps the recency order.
+    const nested = buildHumanRosterRows(rows, hierarchyRows);
+    const displayItems = recency ? rows.map(row => ({ row, prefix: "" })) : nested;
     // Keep context beside state; narrow terminals drop preset, model and family first.
-    const headers = ["handle", "harness", "state", "context", "family", "model", "preset"];
-    const records = displayItems.map(({ row, prefix }) => [
-      prefix + row.handle, humanHarness(row), humanAgent(row, team) + (row.foreignNamespace ? ` (bound under ${socketLabel(row.serverSocket!)})` : ""),
+    const headers = ["handle", "harness", "state", ...recentHeader, "context", "family", "model", "preset"];
+    const records = displayItems.map(({ row, prefix }) => record(row, [
+      prefix + handleCell(row), humanHarness(row), humanAgent(row, team) + (row.foreignNamespace ? ` (bound under ${socketLabel(row.serverSocket!)})` : ""),
+      ...recent(row),
       contextCell(row),
       row.family || "-",
-      modelCell(row),
+      rowModelCell(row),
       row.preset || "n/a",
-    ]);
+    ]));
     const terminal = rosterWidth(wide);
-    const kept = fitColumns(columnWidths(headers, records), terminal);
+    const kept = fitColumns(columnWidths(headers, records), terminal, recency ? [0, 2, 3] : undefined);
     process.stdout.write(table(kept.map(i => headers[i]!), records.map(record => kept.map(i => record[i]!)), null));
     const hidden = headers.filter((_, i) => !kept.includes(i));
     if (hidden.length) {
@@ -1388,21 +1533,49 @@ export function productionStopEffects(ctx: ResolvedContext): StopEffects {
   };
 }
 
-export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<number> {
+/** Only a warm advisory read may skip onboarding and live context resolution. */
+export async function tryCachedRoster(argv: string[], scriptsDir: string): Promise<number | null> {
+  const crew = argv[0] === "crew" && argv[1] === "list";
+  if (!crew && (argv[0] !== "team" || argv[1] && !argv[1]!.startsWith("-") && argv[1] !== "roster")) return null;
+  const args = argv.slice(crew ? 2 : 1);
+  let options: TeamOptions;
+  try {
+    if (crew && takeSeatFilters(args, "tap help crew").rest.some(arg => !["--no-state", "--no-cache"].includes(arg))) return null;
+    options = parseRosterOptions(args);
+  } catch { return null; }
+  if (options.noCache || process.env.TAP_VERBOSE === "1" || rosterCacheTtl() === 0) return null;
+  const ctx = reportingContext(process.cwd(), process.env, options.team);
+  if (!ctx) return null;
+  const oldCrew = process.env.TAP_TEAM_CREW_ONLY, oldVerb = process.env.TAP_TEAM_LIST_VERB;
+  try {
+    if (crew) { process.env.TAP_TEAM_CREW_ONLY = "1"; process.env.TAP_TEAM_LIST_VERB = "crew list"; }
+    return await cmdTeam(args, scriptsDir, ctx);
+  } finally {
+    if (oldCrew === undefined) delete process.env.TAP_TEAM_CREW_ONLY; else process.env.TAP_TEAM_CREW_ONLY = oldCrew;
+    if (oldVerb === undefined) delete process.env.TAP_TEAM_LIST_VERB; else process.env.TAP_TEAM_LIST_VERB = oldVerb;
+  }
+}
+
+export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<number>;
+export function cmdTeam(argv: string[], scriptsDir: string, cacheContext: ResolvedContext): number | Promise<number> | null;
+export function cmdTeam(argv: string[], scriptsDir: string, cacheContext?: ResolvedContext): number | Promise<number> | null {
   if (argv.length <= 2 && ["help", "-h", "--help"].includes(argv.at(-1) ?? "")) {
     const result = helpArgv(["team", ...argv]);
     process.stdout.write(result.stdout); process.stderr.write(result.stderr); return result.exit;
   }
   // The machine alias must see the original argv, before roster-only flags are consumed.
-  if (argv[0] === "list" && argv[1]?.startsWith("-") && argv.includes("--seats")) {
+  if (argv[0] === "list" && argv[1]?.startsWith("-") && (argv.includes("--seats") || argv.some(isSeatFilterFlag))) {
     return teamsView(argv.slice(1),scriptsDir).then(writeRoutingResult);
   }
   const withContextDetails = argv.includes("--context");
-  argv = argv.filter(arg => arg !== "--context");
+  // A --context typed as a value flag's value stays, so the roster parser refuses that flag's missing value.
+  argv = argv.filter((arg, i, typed) => arg !== "--context" || [...ROSTER_VALUE_FLAGS, ...SEAT_FILTER_VALUE_FLAGS].includes(typed[i - 1] ?? ""));
   // Machine-wide discovery must work before resolving the caller's cwd bus.
   if (argv[0] === "list") {
     const args = argv.slice(1);
     const name = args[0];
+    // `tap teams roster` beats a team literally named roster; `tap team roster roster` reaches one.
+    if (name === "roster") return teamsView(["--seats", ...args.slice(1)],scriptsDir).then(writeRoutingResult);
     if (name && !name.startsWith("-")) return cmdTeam(["roster", ...args], scriptsDir);
     if (args.includes("--seats")) return teamsView(args,scriptsDir).then(writeRoutingResult);
     // Bare list enumerates enrolled teams, not a roster: there are no seats to judge.
@@ -1434,6 +1607,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   if (argv[0] === "attach") return cmdTeamAttach(argv.slice(1), scriptsDir);
   if (argv[0] === "detach") return cmdTeamDetach(argv.slice(1));
   if (argv[0] === "out") return cmdTeamOut(argv.slice(1));
+  if (argv[0] === "history") return cmdTeamHistory(argv.slice(1));
   if (argv[0] === "up") return teamUp(argv.slice(1), scriptsDir);
   if (argv[0] === "purge") return cmdTeamPurge(argv.slice(1));
   if (argv[0] === "reset") return cmdTeamReset(argv.slice(1));
@@ -1446,10 +1620,11 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
 
   const rosterAlias = argv[0] === "roster";
   const calibrating = argv[0] === "calibration";
-  if (calibrating && argv.slice(1).some(arg => arg !== "--strongest")) throw new TapError(1, "usage_error", "tap help team", "usage: tap team calibration [--strongest]", "tap team calibration");
+  const calibrationArgs = calibrating ? takeSeatFilters(argv.slice(1), "tap help team calibration") : null;
+  if (calibrationArgs?.rest.some(arg => arg !== "--strongest")) throw new TapError(1, "usage_error", "tap help team", "usage: tap team calibration [--strongest] [--harness <list>] [--model <list>] [--state <list>]", "tap team calibration");
   let options: TeamOptions;
   try {
-    options = calibrating ? parseOptions(["--json"]) : parseRosterOptions(argv);
+    options = calibrationArgs ? { ...parseOptions(["--json"]), filters: calibrationArgs.filters } : parseRosterOptions([...argv, ...(withContextDetails ? ["--context"] : [])]);
   } catch (error) {
     if (error instanceof TapError && argv.includes("--json")) {
       jsonRefusal(error);
@@ -1461,10 +1636,11 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     }
     throw error;
   }
+  if (options.activeAlias && !cacheContext) process.stderr.write("tap team: --active is now --online; it still works during migration\n");
 
   let ctx: ResolvedContext;
   try {
-    ctx = teamContext(options.team);
+    ctx = cacheContext ?? teamContext(options.team);
   } catch (error) {
     if (error instanceof TapError) {
       // A genuinely absent machine index has nothing to pick from — that is
@@ -1514,12 +1690,15 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     }
     throw error;
   }
-  if (!options.team) {
+  if (!options.team && !cacheContext) {
     ctx.bus.ensureDirs();
   }
   const crewOnly = process.env.TAP_TEAM_CREW_ONLY === "1";
+  // Stamp before reading: a concurrent registry replacement invalidates the next read.
+  const registryStamp = rosterRegistryStamp(ctx.registryPath);
   const registry = readRegistry(ctx.registryPath, options.json, crewOnly);
   if (!registry.ok) {
+    if (cacheContext) return null;
     if (calibrating) {
       process.stderr.write(`tap team calibration: acting registry unreadable; repair or restore the acting registry file (tap doctor names it), then retry\n`);
     } else if (registry.rawError) {
@@ -1533,13 +1712,18 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
     return 1;
   }
 
-  if (!options.team && !options.json && !options.names && !crewOnly) repoSetupHeadsUp(ctx.root);
+  if (!cacheContext && !options.team && !options.json && !options.names && !crewOnly) repoSetupHeadsUp(ctx.root);
 
   const renderedTeam = options.team ? ctx.team : str(registry.team);
-  const archiveHint = !options.json && !options.names && !crewOnly ? archiveNudge(ctx.bus.home) : "";
+  let archiveHint = !cacheContext && !options.json && !options.names && !crewOnly ? archiveNudge(ctx.bus.home) : "";
   const sourceRows = registry.rows ?? [];
+  // Bare --names prints stored handles without observing; --recent needs the observation to order them.
+  const plainNames = options.names && !options.online && !options.offline && !options.stalled && !options.recent;
+  if (cacheContext && (sourceRows.length === 0 || plainNames && !hasSeatFilters(options.filters))) return null;
   if (options.names && sourceRows.length === 0) return 0;
-  if (options.names && !options.active && !options.offline && !options.stalled) {
+  const filtering = hasSeatFilters(options.filters);
+  const includeCrews = crewOnly || options.includeCrews || !(filtering || options.online || options.offline || options.stalled);
+  if (plainNames && !filtering) {
     for (const row of sourceRows) {
       const handle = str(row.handle);
       if (handle) process.stdout.write(`${handle}\n`);
@@ -1548,7 +1732,7 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   }
   if (sourceRows.length === 0) {
     if (calibrating) return calibration(JSON.stringify({ team: ctx.team, agents: [] }), argv.includes("--strongest"));
-    if (options.json) process.stdout.write(`${JSON.stringify({ team: options.team ? ctx.team : null, agents: [], ...(options.stalled ? { stalled_after_seconds: options.staleAfter, unjudged: [] } : {}) })}\n`);
+    if (options.json) process.stdout.write(`${JSON.stringify({ team: options.team ? ctx.team : null, agents: [], observed_at: null, ...(options.stalled ? { stalled_after_seconds: options.staleAfter, unjudged: [] } : {}) })}\n`);
     else if (options.stalled) process.stdout.write(`tap team: no stalled seats (idle >= ${options.staleAfter}s with an unanswered ask)\n`);
     else if (crewOnly) process.stdout.write("tap crew list: no crew registered\n");
     else process.stdout.write("tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n");
@@ -1557,49 +1741,90 @@ export function cmdTeam(argv: string[], scriptsDir: string): number | Promise<nu
   }
 
   let stalledSeatCount = 0;
-  const observation = observe(sourceRows, scriptsDir);
-  if (observation.code !== 0) {
-    if (options.json) jsonRefusal(new TapError(observation.code, "classifier_failed", "tap doctor",
-      "seat classifier failed; roster unavailable"));
-    return observation.code;
+  let catalog: Catalog | null;
+  try { catalog = rosterCatalog(); }
+  catch (error) {
+    if (cacheContext) return null;
+    if (options.json && error instanceof TapError) { jsonRefusal(error); return error.code; }
+    throw error;
   }
-  const facts = options.names ? {} : presetFacts(sourceRows);
-  const socket = sourceRows.some(row => str(row.server_socket)) ? tmuxReadOnly(["display-message", "-p", "#{socket_path}"]) : null;
-  const callerSocket = socket?.code === 0 && socket.stdout.trim().startsWith("/") ? socket.stdout.trim() : "";
-  const hierarchyRows = observedRows(sourceRows, observation.rows, observation.serverEpoch, facts, callerSocket);
-  if (!options.names) for (const row of hierarchyRows) {
-    if (row.crew && row.status === "active") row.crewLifetime = row.foreignNamespace ? "unknown" : crewLifetimeHealth(row.observedPaneId);
+  const cacheTtl = options.noCache || calibrating ? 0 : rosterCacheTtl(process.env, catalog?.advanced?.roster_cache_ttl_seconds);
+  const facts = options.names ? {} : presetFacts(sourceRows, catalog);
+  const all = options.all || crewOnly;
+  // --recent observes state in every shape, --all and --names included: a working seat sorts first.
+  const states = !options.noState && (options.stalled || options.recent || options.filters.state.length > 0 || (!options.names && (options.json || !all)));
+  const filters = Object.fromEntries(Object.entries(options.filters).map(([key, values]) => [key, [...values].sort()]));
+  const cache = registryStamp === null ? null : rosterCache(join(ctx.bus.home, "runtime-cache"), states ? "full" : "nostate", {
+    team: ctx.team, socket: physicalSocketPath(), registryStamp, filters, facts,
+    mode: {states, crewOnly, includeCrews, names:options.names, online:options.online, offline:options.offline},
+    epochPin: process.env.TAP_SERVER_EPOCH,
+  }, cacheTtl);
+  const cached = cacheContext ? cache?.read() : null;
+  if (cacheContext && !cached) return null;
+  let hierarchyRows: ObservedRow[], rows: ObservedRow[], observedAt: number;
+  if (cached) {
+    ({hierarchyRows, rows} = cached.snapshot);
+    observedAt = cached.observedAt;
+  } else {
+    const observation = observe(sourceRows, scriptsDir);
+    if (observation.code !== 0) {
+      if (options.json) jsonRefusal(new TapError(observation.code, "classifier_failed", "tap doctor",
+        "seat classifier failed; roster unavailable"));
+      return observation.code;
+    }
+    const socket = sourceRows.some(row => str(row.server_socket)) ? tmuxReadOnly(["display-message", "-p", "#{socket_path}"]) : null;
+    const callerSocket = socket?.code === 0 && socket.stdout.trim().startsWith("/") ? socket.stdout.trim() : "";
+    hierarchyRows = observedRows(sourceRows, observation.rows, observation.serverEpoch, facts, callerSocket);
+    rows = hierarchyRows.filter(row => (includeCrews || !row.crew) && rosterMatches(row, options));
+    // Cold reads narrow harness/model filters before captures. Selectors live
+    // in the entry key, so switching selectors replaces one of two fixed files.
+    rows = enrichRoster(rows, {team:renderedTeam, panePids:observation.panePids, panes:observation.panes,
+      filters:options.filters, lifetimes:!options.names, states});
+    observedAt = Date.now();
+    cache?.write({rows, hierarchyRows, serverEpoch:observation.serverEpoch, callerSocket}, observedAt);
   }
-  let rows = hierarchyRows.filter(row => rosterMatches(row, options));
-  if (options.refreshModels) {
-    if (!options.json) process.stderr.write("tap team: --refresh-models is retired; running OpenCode 2 seats publish model windows automatically. Nothing was refreshed.\n");
+  if (options.refreshModels && !options.json) {
+    process.stderr.write("tap team: --refresh-models is retired; running OpenCode 2 seats publish model windows automatically. Nothing was refreshed.\n");
   }
-  // --stalled reads every matched seat's state once, then keeps only the stalled ones.
+  if (cacheContext) {
+    if (options.activeAlias) process.stderr.write("tap team: --active is now --online; it still works during migration\n");
+    if (!options.team && !options.json && !options.names && !crewOnly) repoSetupHeadsUp(ctx.root);
+    if (!options.json && !options.names && !crewOnly) archiveHint = archiveNudge(ctx.bus.home);
+  }
   let view: StalledView | undefined;
-  let statesRead = false;
   if (options.stalled) {
-    rows = withTokenSamples(withAgentStates(rows, { team: renderedTeam }), observation.panePids);
-    statesRead = true;
     view = stalledView(ctx, rows, renderedTeam, options.staleAfter!);
     const listed = new Set(view.stalled.map(s => s.handle));
     const seatCount = rows.length;
     rows = rows.filter(row => listed.has(row.handle));
     stalledSeatCount = seatCount;
   }
+  let recency: Map<string, LastActive | null> | undefined;
+  if (options.recent) {
+    // The stored row carries the dated evidence; the observation says who is working now.
+    const stored = new Map(sourceRows.map(row => [str(row.handle), row as unknown as Record<string, unknown>]));
+    const now = seatClock();
+    const ordered = recentOrder(rows, row => seatLastActive(stored.get(row.handle) ?? {},
+      { working: rowState(row) === "working", turnEndedAt: row.turnEndedAt }, transcriptActivity, now),
+    (a, b) => compare(a.handle, b.handle), options.count);
+    rows = ordered.map(({ row }) => row);
+    recency = new Map(ordered.map(({ row, active }) => [row.handle, active]));
+  }
   if (options.names) {
     for (const row of rows) {
       process.stdout.write(`${row.handle}\n`);
     }
   } else if (options.json) {
-    const queue = withContextDetails ? contextQueueFacts(ctx.bus.home, globalRegistryPath(), renderedTeam, rows.map(row => row.handle), Number(process.env.TAP_WATCH_NOW || Math.trunc(Date.now() / 1000))) : {};
-    const json = rosterJson(renderedTeam, statesRead ? rows : withTokenSamples(withAgentStates(rows, { team: renderedTeam }), observation.panePids), facts, queue, view);
+    const queue = withContextDetails ? contextQueueFacts(ctx.bus.home, globalRegistryPath(), renderedTeam, rows.map(row => row.handle), seatClock()) : {};
+    const json = rosterJson(renderedTeam, rows, facts, queue, view, observedAt, recency);
     if (calibrating) return calibration(json, argv.includes("--strongest"));
     process.stdout.write(json);
   } else {
-    const all = options.all || crewOnly;
-    const sampledRows = all || statesRead ? rows : withTokenSamples(withAgentStates(rows, { team: renderedTeam }), observation.panePids);
-    if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows);
+    const sampledRows = rows;
+    if (filtering && !rows.length && !view) process.stdout.write(`tap ${process.env.TAP_TEAM_LIST_VERB || "team"}: no seats match these filters\n`);
+    else if (!view || rows.length) renderHuman(renderedTeam, sampledRows, all, options.wide, hierarchyRows, recency, includeCrews && !crewOnly);
     if (view) process.stdout.write(stalledFooter(view, stalledSeatCount));
+    if (cached) process.stdout.write(`cached observation ${Math.max(0, Math.floor((Date.now() - observedAt) / 1000))}s ago\n`);
     if (!all) {
       const mismatchedBindings = sampledRows.filter((row) => row.status === "active" && row.delivery === "pane" &&
         !row.foreignNamespace && /^(claude|codex)(?:-|$)/.test(row.harness) &&

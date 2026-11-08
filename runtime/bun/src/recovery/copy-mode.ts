@@ -1,9 +1,9 @@
 import { tmuxReadOnly } from "../tmux";
 import { readRun } from "./state";
-import { escalateRecovery, recoveryEffect } from "./effect";
+import { escalateRecovery, recoveryEffect, REAL_RECOVERY_IO } from "./effect";
 
 /** Recorded nudge uses the same effect recorder as detective; ordinary courier retains its existing helper. */
-export function recordedCopyCancel(id: string): number {
+export function recordedCopyCancel(id: string, selection?: { gate(): string; record(sent: boolean): void }): number {
   const run = readRun(id);
   const mode = () => {
     const r = tmuxReadOnly(["display-message", "-p", "-t", run.target.paneId, "#{pane_in_mode}"]);
@@ -13,7 +13,8 @@ export function recordedCopyCancel(id: string): number {
   if (!before) return 3;
   if (before === "0") return 0;
   const result = recoveryEffect(id, "copy-mode cancel", `${run.mode}: authorized staged-sentinel recovery requires ordinary input`,
-    ["send-keys", "-t", run.target.paneId, "-X", "cancel"]);
+    ["send-keys", "-t", run.target.paneId, "-X", "cancel"], REAL_RECOVERY_IO, process.env, undefined, selection?.gate);
+  selection?.record(result.event.effect === "possible");
   if (result.event.incident) {
     try { escalateRecovery(id, result.event.summary); } catch (error) { console.error(`tap recovery incident notification: ${error}`); }
   }

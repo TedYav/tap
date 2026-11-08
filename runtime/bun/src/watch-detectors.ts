@@ -1,4 +1,4 @@
-import { frontmatterFields, PY_STRIP } from "./payload-fields";
+import { readFrontmatter, PY_STRIP } from "./payload-fields";
 import { contextUsedPercent, pendingInboundAsks } from "./context-census";
 // The watch tick's four pane detectors (slice W2a): context pressure, codex
 // livelock, codex context-freeze, opencode wedge. Each was a `_watch_process_*`
@@ -25,7 +25,7 @@ import { contextUsedPercent, pendingInboundAsks } from "./context-census";
 //   watch-detectors.ts context-freeze   <armed_at> <now> <armed_by> [samples]
 //   watch-detectors.ts opencode-wedge   <armed_at> <now> <armed_by> [samples]
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { clearCommand } from "./clear-command";
@@ -34,6 +34,7 @@ import { markerSelectedIndex } from "./index-home";
 import { latestOutbound } from "./latest-outbound";
 import { opencodeTurnState } from "./opencode-turn-state";
 import { type Seat } from "./registry";
+import { type PaneRecord } from "./observe";
 import { capturePane, tmuxReadOnly } from "./tmux";
 import { registryPanes, seatsOf } from "./watch-registry";
 import {
@@ -60,6 +61,8 @@ export interface Seams {
   paneAlive(pane: string): boolean;
   /** `tmux capture-pane -t <pane> -p`: the raw frame, or null when tmux failed. */
   capture(pane: string, harness: string): string | null;
+  /** The retained frame's observation time; absent for live, uncached readers. */
+  observedAt?(pane: string): bigint;
   /** `_watch_tick_seat_state`. */
   seatState(handle: string): string;
   /** `tap_clear_command <harness>` ("" for an unlisted harness). */
@@ -228,8 +231,9 @@ export function codexLivelock(armedAt: string, now: bigint, threshold: string, a
     const ent = s.agent(handle);
     if (!ent) continue;
     const harness = ent.harness;
+    if (harness !== "codex") { samples = sampleForget(samples, handle); continue; }
     const pane = s.resolvedPane(handle);
-    if (harness !== "codex" || !pane) { samples = sampleForget(samples, handle); continue; }
+    if (!pane) { samples = sampleForget(samples, handle); continue; }
     if (!s.paneAlive(pane)) { samples = sampleForget(samples, handle); continue; }
     const full = substituted(s.capture(pane, harness)) ?? ""; // `|| true`: a failed capture is an empty frame
     const timer = codexWorkingSeconds(full);
@@ -262,7 +266,7 @@ export function codexLivelock(armedAt: string, now: bigint, threshold: string, a
     const bodyContent = cmdSubst(withoutWorkingLines(stripAnsi(full)));
     if (!hasInk(bodyContent)) { samples = sampleForget(samples, handle); continue; }
     const body = sha256Hex(`${bodyContent}\n${outbound}\n${key}\n${pane}`);
-    const ctrl = freezeStep(samples, handle, now, body, timer.toString(), thresholdN, true);
+    const ctrl = freezeStep(samples, handle, s.observedAt?.(pane) ?? now, body, timer.toString(), thresholdN, true);
     samples = ctrl.samples;
     if (!ctrl.fire) continue;
     const reason = `codex-livelock: '${handle}' has been Working for ${timer}s while inbound '${ident}' is unsettled for ${age}s, with no observed pane or outbound progress for ${ctrl.frozen}s`;
@@ -290,8 +294,9 @@ export function contextFreeze(armedAt: string, now: bigint, armedBy: string, sam
     if (!handle) continue;
     const ent = s.agent(handle);
     if (!ent) continue;
+    if (ent.harness !== "codex") continue;
     const pane = s.resolvedPane(handle);
-    if (ent.harness !== "codex" || !pane) continue;
+    if (!pane) continue;
     if (!s.paneAlive(pane)) continue;
     const frame = s.capture(pane, ent.harness);
     if (frame === null) { samples = sampleForget(samples, handle); continue; } // unread frame: skip the seat (see unreadFrame)
@@ -302,7 +307,7 @@ export function contextFreeze(armedAt: string, now: bigint, armedBy: string, sam
     const bodyContent = cmdSubst(withoutWorkingLines(full));
     if (!hasInk(bodyContent)) { samples = sampleForget(samples, handle); continue; }
     const body = sha256Hex(bodyContent);
-    const ctrl = freezeStep(samples, handle, now, body, timer.toString(), window, true);
+    const ctrl = freezeStep(samples, handle, s.observedAt?.(pane) ?? now, body, timer.toString(), window, true);
     samples = ctrl.samples;
     if (!ctrl.fire) continue;
     const reason = `context-freeze: codex seat '${handle}' Working timer advanced to ${timer}s while context+scrollback stayed frozen for ${ctrl.frozen}s (>= ${window}s; empty-inbox wait-stall)`;
@@ -342,8 +347,9 @@ export function opencodeWedge(armedAt: string, now: bigint, armedBy: string, sam
     if (!handle) continue;
     const ent = s.agent(handle);
     if (!ent) continue;
+    if (ent.harness !== "opencode") continue;
     const pane = s.resolvedPane(handle);
-    if (ent.harness !== "opencode" || !pane) continue;
+    if (!pane) continue;
     if (!s.paneAlive(pane)) continue;
     const sesId = ent.harness_session_id;
     if (sesId) {
@@ -354,7 +360,7 @@ export function opencodeWedge(armedAt: string, now: bigint, armedBy: string, sam
         if (frame === null) { samples = sampleForget(samples, handle); continue; }
         const full = cmdSubst(stripAnsi(frame));
         const body = sha256Hex(collapseSpinner(full));
-        const ctrl = freezeStep(samples, handle, now, body, "", thresh, false);
+        const ctrl = freezeStep(samples, handle, s.observedAt?.(pane) ?? now, body, "", thresh, false);
         samples = ctrl.samples;
         if (ctrl.fire) {
           const reason = `opencode-wedge: seat '${handle}' turn active (db: in-turn) but transcript frozen for ${ctrl.frozen}s (>= ${thresh}s) — suspected provider silent-timeout; MANUAL recovery (interrupt+resubmit) by goalie/operator`;
@@ -370,7 +376,7 @@ export function opencodeWedge(armedAt: string, now: bigint, armedBy: string, sam
     const full = cmdSubst(stripAnsi(frame));
     if (!full.includes("esc interrupt")) { samples = sampleForget(samples, handle); continue; } // `grep -q`
     const body = sha256Hex(collapseSpinner(full));
-    const ctrl = freezeStep(samples, handle, now, body, "", thresh, false);
+    const ctrl = freezeStep(samples, handle, s.observedAt?.(pane) ?? now, body, "", thresh, false);
     samples = ctrl.samples;
     if (!ctrl.fire) continue;
     const reason = `opencode-wedge: seat '${handle}' turn active but transcript frozen for ${ctrl.frozen}s (>= ${thresh}s) — suspected provider silent-timeout; MANUAL recovery (interrupt+resubmit) by goalie/operator`;
@@ -394,30 +400,30 @@ export { frontmatterFields } from "./payload-fields";
  * ("" when the inbox is clear). Transport truth: the payload's mtime is the age clock.
  */
 export function oldestUnsettledInbound(payloads: string, receipts: string, handle: string, now: bigint, localTeam: string): string {
+  return oldestUnsettledBySeat(payloads, receipts, now, localTeam).get(handle) ?? "";
+}
+
+/** One scan for every local recipient; settled mail never needs its header. */
+function oldestUnsettledBySeat(payloads: string, receipts: string, now: bigint, localTeam: string): Map<string, string> {
   let names: string[];
-  try { names = readdirSync(payloads).filter((n) => n.endsWith(".md") && !n.startsWith("_") && !n.startsWith(".")).sort(); } catch { return ""; }
-  const pending: Array<{ ident: string; age: bigint; toTeam: string; order: number }> = [];
-  let order = 0;
+  const pending = new Map<string, { ident: string; age: bigint }>();
+  try { names = readdirSync(payloads).filter((n) => n.endsWith(".md") && !n.startsWith("_") && !n.startsWith(".")).sort(); } catch { return new Map(); }
   for (const name of names) {
     const ident = name.slice(0, -3);
     const path = join(payloads, name);
     if (isSettled(receipts, ident)) continue;   // `tap_is_done`: `[ -f ]` on .done or .cancelled (rule 38)
     let meta: Record<string, string>;
-    try { meta = frontmatterFields(readFileSync(path, "utf8")); } catch { meta = {}; }
-    if (meta.to !== handle || ["probe", "notice", "progress"].includes(meta.kind ?? "")) continue;
+    try { meta = readFrontmatter(path); } catch { meta = {}; }
+    if (meta.to === undefined || ["probe", "notice", "progress"].includes(meta.kind ?? "")) continue;
+    if (meta.to_team && meta.to_team !== localTeam) continue;
     let age: bigint;
     try { age = now - BigInt(Math.trunc(statSync(path).mtimeMs / 1000)); } catch { continue; }
     if (age < 0n) age = 0n;
-    pending.push({ ident, age, toTeam: meta.to_team ?? "", order: order++ });
+    const prior = pending.get(meta.to);
+    if (!prior || age > prior.age) pending.set(meta.to, { ident, age });
   }
-  // `sorted(key=age, reverse=True)` is stable: equal ages keep filename order
-  pending.sort((a, b) => (a.age === b.age ? a.order - b.order : a.age > b.age ? -1 : 1));
-  for (const row of pending) {
-    // tap_target_team_is_local: an empty to_team is local; else it must equal the local team
-    if (row.toTeam !== "" && row.toTeam !== localTeam) continue;
-    return `${row.ident}\t${row.age}`;
-  }
-  return "";
+  // Equal ages retain the first filename, as the stable descending age sort did.
+  return new Map([...pending].map(([handle, row]) => [handle, `${row.ident}\t${row.age}`]));
 }
 
 /**
@@ -434,7 +440,7 @@ export function busActivity(payloads: string, receipts: string, now: bigint, flo
   const meta = (ident: string): Record<string, string> => {
     let m = cache.get(ident);
     if (m === undefined) {
-      try { m = frontmatterFields(readFileSync(join(payloads, `${ident}.md`), "utf8")); } catch { m = {}; }
+      try { m = readFrontmatter(join(payloads, `${ident}.md`)); } catch { m = {}; }
       cache.set(ident, m);
     }
     return m;
@@ -490,6 +496,13 @@ export interface RealSeamsArgs {
    * Empty or absent fails closed, exactly as the old empty output did.
    */
   team?: string;
+  /** Advisory evidence owned by one tick, never by the courier or recovery paths. */
+  snapshot?: {
+    seats: Record<string, Seat>;
+    roster: readonly { handle: string; paneId: string }[];
+    panes: ReadonlyMap<string, PaneRecord>;
+    at: bigint;
+  };
 }
 
 /** The production world. */
@@ -497,9 +510,13 @@ export function realSeams(a: RealSeamsArgs): Seams {
   const env = a.env ?? process.env;
   const bus = a.bus;
   const arm = armPath(bus);
+  const snapshot = a.snapshot;
+  const frames = new Map<string, string | null>();
+  let outbound: ReturnType<typeof latestOutbound> | null | undefined;
+  let inbound: Map<string, string> | undefined;
   const seats = (): Record<string, Seat> | null => {
     // `[ -f registry.json ]` (rule 38, F4); an old-format registry is a said refusal, read as no record.
-    return seatsOf(a.registry);
+    return snapshot?.seats ?? seatsOf(a.registry);
   };
   const tickActive = env.TAP_WATCH_TICK_ACTIVE === "1";
   // M6 U2: `tap_spool_team_name` was C's authority fact (enrollment key, not bus
@@ -515,6 +532,11 @@ export function realSeams(a: RealSeamsArgs): Seams {
     return { alive: id !== "", id };
   };
   const resolvedPane = (handle: string): string | null => {
+    if (snapshot) {
+      const id = snapshot.roster.find(row => row.handle === handle)?.paneId;
+      const pane = id ? snapshot.panes.get(id) : undefined;
+      return pane && !pane.dead ? pane.pane_id : null;
+    }
     if (tickActive && env.TAP_WATCH_TICK_PANE_RECORDS !== undefined) {
       for (const rec of env.TAP_WATCH_TICK_PANE_RECORDS.split("\n")) {
         const [cachedHandle, cachedPane = "", cachedId = ""] = rec.split("\x1f");
@@ -528,6 +550,7 @@ export function realSeams(a: RealSeamsArgs): Seams {
   };
   return {
     rosterHandles: () => {
+      if (snapshot) return snapshot.roster.map(row => row.handle);
       if (tickActive && env.TAP_WATCH_TICK_ROSTER_HANDLES !== undefined) return env.TAP_WATCH_TICK_ROSTER_HANDLES.split("\n");
       const m = seats();
       if (!m) return [];
@@ -541,8 +564,9 @@ export function realSeams(a: RealSeamsArgs): Seams {
       return { pane: str(e.pane), harness: str(e.harness), harness_session_id: str((e as Record<string, unknown>).harness_session_id) };
     },
     resolvedPane,
-    paneAlive: (pane) => paneAlive(pane).alive,
+    paneAlive: (pane) => snapshot ? snapshot.panes.has(pane) && !snapshot.panes.get(pane)!.dead : paneAlive(pane).alive,
     capture: (pane) => {
+      if (snapshot && frames.has(pane)) return frames.get(pane)!;
       // The incumbent's raw read: `tmux capture-pane -t <pane> -p` -- no -J, for every
       // harness. B1's reader (`captureInputFrame`, which joins wrapped rows for every
       // harness but OpenCode) replaces this seam once B1 is in this branch's ancestry;
@@ -550,8 +574,11 @@ export function realSeams(a: RealSeamsArgs): Seams {
       // line the incumbent never matched would start to) without a ratified deviation
       // (partner review A1, a reviewer).
       const r = capturePane(pane, false, false);
-      return r.code === 0 ? r.stdout : null;
+      const frame = r.code === 0 ? r.stdout : null;
+      if (snapshot) frames.set(pane, frame);
+      return frame;
     },
+    ...(snapshot ? { observedAt: () => snapshot.at } : {}),
     seatState: (handle) => {
       // `_watch_tick_seat_state`: resolve first; no pane -> "unknown" without asking
       const pane = resolvedPane(handle);
@@ -573,15 +600,19 @@ export function realSeams(a: RealSeamsArgs): Seams {
       if (t === null) return false;
       return pendingInboundAsks(bus, index.path, t, [handle])[handle] === false;
     },
-    oldestUnsettledInbound: (handle, now) =>
-      oldestUnsettledInbound(env.TAP_PAYLOADS ?? join(bus, "payloads"), env.TAP_RECEIPTS ?? join(bus, "receipts"), handle, now, teamName() ?? ""),
+    oldestUnsettledInbound: (handle, now) => {
+      inbound ??= oldestUnsettledBySeat(env.TAP_PAYLOADS ?? join(bus, "payloads"), env.TAP_RECEIPTS ?? join(bus, "receipts"), now, teamName() ?? "");
+      return inbound.get(handle) ?? "";
+    },
     latestOutbound: (handle, now) => {
       const t = teamName();
       if (t === null) return null;
       try {
-        const row = latestOutbound(env.TAP_PAYLOADS ?? join(bus, "payloads"), env.TAP_SPOOL ?? join(bus, "spool"), t, Number(now))[handle] ?? { epoch: 0, id: "" };
+        if (outbound === undefined) outbound = latestOutbound(env.TAP_PAYLOADS ?? join(bus, "payloads"), env.TAP_SPOOL ?? join(bus, "spool"), t, Number(now));
+        if (outbound === null) return null;
+        const row = outbound[handle] ?? { epoch: 0, id: "" };
         return `${row.epoch}\t${row.id}`;
-      } catch { return null; }
+      } catch { outbound = null; return null; }
     },
     opencodeDbTurnState: (sessionId) => opencodeTurnState(sessionId, env),
     leaseField: (key) => fieldValue(readLoose(arm), key),

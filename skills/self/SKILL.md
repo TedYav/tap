@@ -56,6 +56,16 @@ The brief contains these sections; use explicit `none` for empty state:
   skill invocation that restores the role, such as `/tap:conduct` or
   `/consult prime ai-native-development`. Include durable source pointers for
   role and priming instructions; reload them as guidance rather than paste them.
+  Also list every other behavior-shaping state active in the session, each with
+  the invocation that restores it: primed expert roles, mode skills such as
+  `/ponytail` (with its level), and working preferences the operator stated
+  here. The resumed seat reapplies them as guidance without replaying their
+  initialization.
+- **Operator words** — text the operator wrote after the verb and flags (for
+  example `rebrief when you come back, rerun the gate`) is an instruction, not
+  plumbing. Carry it verbatim, labeled as the operator's words, and let it shape
+  Keep scope, emphasis and Next step. If it conflicts with a live hold or
+  obligation, say so in the brief; never silently drop either.
 - **Keep scope** — the requester's selected work and boundaries. Narrowing scope
   never silently retires an ask, custody or monitor: transfer it or retain a
   one-line pointer and its owner.
@@ -65,7 +75,15 @@ The brief contains these sections; use explicit `none` for empty state:
   and each live scheduler/watcher/job id with its output and done signal. Carry
   these forward, including parked work and explicit holds.
 - **Evidence pins** — durable absolute paths, commits and source pointers.
-- **Next step** — the exact action or wait, with the condition that resumes or stops it.
+- **Next step** — the ordered actions or wait, with the condition that resumes or
+  stops each. Several steps are fine; contradictory ones are not. A brief that
+  says wait names the resume condition and does not also say “and do X”: work
+  that waits on that condition goes under a labeled **After resume** list. An
+  update that supersedes an earlier instruction says what it supersedes.
+
+Before resetting, resolve the source paths the first action needs (charter,
+plan, handoff, tree) and confirm each exists. Fix a missing pointer or carry an
+explicit fallback in the brief.
 
 Write references that stand alone after context loss. Never use “the above” or
 “what we were doing” as an anchor. Keep the source under the seat-owned worktree

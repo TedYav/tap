@@ -68,6 +68,8 @@ Repeatable `--env KEY=VALUE` replaces the stored value; the last assignment to a
 
 Overrides persist with the session. Relaunch retains the existing settings and conversation, appends new arguments, and saves environment changes at the guarded replacement boundary. A dry run changes nothing. A bare relaunch handle selects the current enrolled team; `team/handle` selects that explicit team. The same overrides apply to each selected seat in a batch, crew included.
 
+Relaunch's `--context` and `--ponytail` shorthands expand to these same overrides: [relaunch shorthands](relaunch-shorthands.md).
+
 This supersedes earlier preset exclusivity for `--env` and the earlier replacement/leading-position behavior for explicit launch arguments. Existing stored passthrough vectors retain their original interpretation; new explicit tails and unset keys use separate additive record fields.
 
 ## Repairing a seat's workdir (tap-p8xog)

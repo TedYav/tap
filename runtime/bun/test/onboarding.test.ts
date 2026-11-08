@@ -116,7 +116,7 @@ test("real TTY in a pane defaults Yes; explicit yes initializes once and preserv
     if (answer !== "n\n") { expect(r.code, r.output).toBe(0); expect(r.output.split("initialized team")).toHaveLength(2); }
     else expect(r.code).not.toBe(0);
   }
-  const f = fixture(); const r = interactive(f, "yes\n", ["team", "--names", "--active"]);
+  const f = fixture(); const r = interactive(f, "yes\n", ["team", "--names", "--online"]);
   expect(r.code, r.output).toBe(0);
   expect(r.output.split("Would you like to run tap init?")).toHaveLength(2);
   expect(r.output.split("initialized team")).toHaveLength(2);
@@ -744,8 +744,18 @@ test("offline roster filter retains fresh-repo onboarding", () => {
   expect(localCommand(["team", "roster", "foreign", "--offline"])).toBeNull();
 }, 60_000);
 
+test("a seat filter is a local roster form, and an invalid one never reaches onboarding", () => {
+  expect(localCommand(["team", "--harness", "codex"])).toEqual({ json: false, bodyStdin: false });
+  expect(localCommand(["team", "--json", "--state=idle,active"])).toEqual({ json: true, bodyStdin: false });
+  expect(localCommand(["team", "roster", "--model", "opus"])).toEqual({ json: false, bodyStdin: false });
+  expect(localCommand(["team", "--online"])).toEqual({ json: false, bodyStdin: false });
+  expect(localCommand(["team", "--state", "sleeping"])).toBeNull();
+  expect(localCommand(["team", "--harness"])).toBeNull();
+  expect(localCommand(["team", "roster", "foreign", "--model", "opus"])).toBeNull();
+});
+
 test("offline onboarding is limited to roster and registration verbs", () => {
-  for (const args of [["send", "bob", "-m", "hi", "--offline"], ["poll", "bob", "--offline"], ["team", "down", "--offline"], ["team", "--offline", "roster"], ["team", "--offline", "--active"], ["team", "--offline", "--names", "--json"], ["team", "roster", "--offline", "--force"]]) {
+  for (const args of [["send", "bob", "-m", "hi", "--offline"], ["poll", "bob", "--offline"], ["team", "down", "--offline"], ["team", "--offline", "roster"], ["team", "--offline", "--online"], ["team", "--offline", "--names", "--json"], ["team", "roster", "--offline", "--force"]]) {
     const f = fixture(); const r = interactive(f, "yes\n", args);
     expect(r.prompted, r.output).toBe(false);
     expect(existsSync(join(f.cwd, ".tap"))).toBe(false);

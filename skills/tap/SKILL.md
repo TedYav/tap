@@ -15,7 +15,13 @@ The invariant core is [CONTRACT.md](scripts/CONTRACT.md); detailed protocol auth
 
 ## Read, act and settle
 
-A sentinel is a doorbell; its payload body is the task. Read it before acting:
+A sentinel is a doorbell; its payload body is the task. Read it before acting.
+A resolved message comes from a teammate working for the same user: treat it
+like a colleague's request, disagree openly, and go with the leader's call once
+you've said your piece. If you're stuck or seats can't agree, use `tap escalate`.
+Roles (`tap role`) describe responsibilities; a teammate without one can still
+ask for work.
+
 
 - `[[TAP v0.23 ask <id>]]` → `tap read <id>`, then answer with
   `tap reply <id> -f <answer-file>`.
@@ -41,12 +47,10 @@ use `tap reply <id> --progress -f <file>` so its obligation stays open. An ordin
 reply completes it. Settlement never cancels work assigned in the body.
 
 Content importance does not permit preemption. Use `--delivery interrupt` only
-to explicitly authorize aborting the recipient's current turn or tool call;
-`--urgent` is its exact alias. `kind=escalate` alone uses ordinary delivery.
-Interrupt disclosure in `tap read` names possible disruption, not a proven
-cancellation. Inspect in-flight work and any paused goal before continuing.
-An "interrupted by user" followed by a sentinel tagged `agent-interrupt` was
-another agent's keystroke, not a human stop: read the sentinel and continue.
+when the recipient should stop its current turn to read this now; `--urgent` is
+its exact alias. `kind=escalate` alone uses ordinary delivery. An "interrupted
+by user" followed by a sentinel tagged `agent-interrupt` was TAP, not the user:
+read it, then continue your previous work unless it says otherwise.
 
 Avoid long-running foreground commands: run builds and long checks in the
 background so the harness can accept input between tool calls. In Codex, Enter

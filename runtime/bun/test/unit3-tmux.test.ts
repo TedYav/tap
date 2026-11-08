@@ -553,7 +553,9 @@ esac
 });
 
 describe("identity resolution observes pane and generation atomically", () => {
-  function fixture(record: string) {
+  // tmux answers a missing pane or server with a nonzero exit and its message on
+  // stderr; an exit-0 answer that cannot be parsed is a failed read, not absence.
+  function fixture(record: string, failure = "") {
     const scratch = mkdtempSync(join(tmpdir(), "tap-identity-pane."));
     const bin = join(scratch, "bin");
     const busHome = join(scratch, "bus");
@@ -564,6 +566,7 @@ describe("identity resolution observes pane and generation atomically", () => {
     writeFileSync(join(bin, "tmux"), `#!/bin/sh
 [ "$1" = display-message ] || exit 1
 [ "$3" = -t ] && [ "$4" = self:0.0 ] || exit 1
+if [ -n "$FAKE_FAILURE" ]; then printf '%s\n' "$FAKE_FAILURE" >&2; exit 1; fi
 printf '%s' "$FAKE_RECORD"
 `, { mode: 0o755 });
     writeFileSync(registryPath, JSON.stringify({
@@ -580,6 +583,7 @@ printf '%s' "$FAKE_RECORD"
       TAP_VERSION_SEEN_PATH: join(scratch, "version-seen.json"),
       TMUX: "/fake,1,0",
       FAKE_RECORD: record,
+      FAKE_FAILURE: failure,
     } as NodeJS.ProcessEnv;
     delete env.TAP_TMUX_SOCKET;
     delete env.TAP_TMUX_SOCKET_PATH;
@@ -602,13 +606,16 @@ printf '%s' "$FAKE_RECORD"
     }
   });
 
-  for (const [name, record, errorClass] of [
-    ["gone", "\n", "pane_gone"],
-    ["malformed id", "7\tself\t123:456\n", "generation_unverifiable"],
-    ["missing generation", "%7\tself\t\n", "generation_unverifiable"],
+  for (const [name, record, failure, errorClass] of [
+    ["gone (tmux cannot find the pane)", "", "can't find pane: %7", "pane_gone"],
+    ["gone (no server on the socket)", "", "no server running on /fake", "pane_gone"],
+    ["an unrecognized tmux failure", "", "server exited unexpectedly", "generation_unverifiable"],
+    ["empty (exit 0, nothing read)", "\n", "", "generation_unverifiable"],
+    ["malformed id", "7\tself\t123:456\n", "", "generation_unverifiable"],
+    ["missing generation", "%7\tself\t\n", "", "generation_unverifiable"],
   ] as const) {
     test(`fails closed when the identity record is ${name}`, () => {
-      const f = fixture(record);
+      const f = fixture(record, failure);
       try {
         expect(() => resolveSelf(f.ctx, "self:0.0", 2, f.env)).toThrow(TapError);
         try {

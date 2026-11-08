@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { awaitStableHarness, awaitReplacedHarness, codexComposerIdle, opencodeComposerIdle, opencodeReadySignal, memoizedStartupObservation, paneTailLines, PaneObservationTimeout, parsePaneFacts, type PaneFacts } from "../src/launcher/readiness";
-import { bindFingerprintOf, bindBaselineAfterPlaceholderBind, sessionBindSignal } from "../src/launcher/transaction";
+import { awaitStableHarness, awaitReplacedHarness, codexComposerIdle, opencodeComposerIdle, opencodeReadySignal, memoizedStartupObservation, paneTailLines, PaneObservationTimeout, parsePaneFacts, startStallWatch, START_STALLED, type PaneFacts } from "../src/launcher/readiness";
+import { bindFingerprintOf, bindBaselineAfterPlaceholderBind, foreignPaneProgram, launchChainCommand, launchStartCeilingMs, sessionBindSignal, startFailureText } from "../src/launcher/transaction";
+import type { PsRow } from "../src/observe";
 
 const first:PaneFacts={pane:"fixture/seat:0.0",pane_id:"%1",server_epoch:"srv:1:1",pane_pid:2002,command:"codex",dead:false,path:"/fixture"};
 const makeFacts = (): PaneFacts => ({ ...first });
@@ -455,4 +456,212 @@ exit 1
   expect(await paneTailLines(first, env)).toEqual([]);
   writeFileSync(join(root, "tmux"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   expect(await paneTailLines(first, env)).toBeNull();
+});
+
+// A login shell the machine is slow to run: facts name the shell until it execs
+// the harness. The window and ceiling mirror runCreated's defaults.
+const shellPane: PaneFacts = { ...first, command: "zsh", pane_pid: 1001 };
+const isHarness = (facts: PaneFacts) => !facts.dead && facts.command === "codex";
+// The pane root (pid 1001) as ps sees it; by default the login shell, running an rc child in the foreground.
+const psRoot = (comm: string, command = comm) => () => ({ ok: true, table: new Map<string, PsRow>([
+  ["1001", ["1001", "1100", comm, command]], ["1100", ["1100", "1100", "/usr/bin/python3", "python3 -c pass"]]]) });
+function startWait(read: (time: number) => PaneFacts | null, tail: (time: number) => string[] | null, ready?: (time: number) => boolean,
+  root = psRoot("/bin/zsh", "-zsh")) {
+  let time = 0, samples = 0;
+  const watch = startStallWatch("codex", async () => { samples++; return tail(time); },
+    async facts => foreignPaneProgram(facts, "codex", "/bin/zsh", {}, root));
+  return awaitStableHarness(async () => read(time), isHarness, 5000, {
+    observeUntilDeadline: true, startCeilingMs: 60_000, awaitingStart: watch,
+    ready: ready && (async () => ready(time)), now: () => time, sleep: async ms => { time += ms; },
+  }).then(result => ({ ...result, time, samples }));
+}
+const startsAt = (at: number) => (time: number) => time < at ? shellPane : first;
+
+test("a blank login shell that starts its harness after five seconds still launches", async () => {
+  const result = await startWait(startsAt(8000), () => []);
+  expect(result).toMatchObject({ facts: first, reason: null });
+  expect(result.samples).toBe(7); // Once a second until the harness appears, not at the 50 ms poll rate.
+});
+
+test("the survival window counts from the first match, not from entry", async () => {
+  expect((await startWait(startsAt(8000), () => [])).time).toBe(13_000);
+  expect((await startWait(startsAt(3000), () => [])).time).toBe(8000);
+  expect((await startWait(() => first, () => [])).time).toBe(5000);
+});
+
+test("a late start keeps its full window past the ceiling", async () => {
+  const result = await startWait(startsAt(59_950), () => []);
+  expect(result.facts).toEqual(first);
+  expect(result.time).toBe(64_950);
+});
+
+test("a ready signal after a late start ends the window at the settle", async () => {
+  const result = await startWait(startsAt(8000), () => [], () => true);
+  expect(result.facts).toEqual(first);
+  expect(result.time).toBe(8650); // Confirmed at 8050, then READY_SETTLE_MS.
+});
+
+test.each([["exits", null], ["dies", { ...first, dead: true }]] as const)("a harness that %s inside the window after a late start fails", async (_how, after) => {
+  const result = await startWait(time => time < 8000 ? shellPane : time < 10_000 ? first : after, () => []);
+  expect(result).toMatchObject({ facts: null, reason: "harness exited or became unobservable during readiness" });
+  expect(result.time).toBe(10_000);
+});
+
+test("a non-blank tail that stops changing fails at once past the first five seconds", async () => {
+  const result = await startWait(() => shellPane, () => ["Update oh-my-zsh? [Y/n]"]);
+  expect(result).toMatchObject({ facts: null, reason: START_STALLED });
+  expect(result.time).toBe(6000); // First sampled at one second, unchanged for five.
+});
+
+test("a prompt that appears late is blocked five seconds after it appears", async () => {
+  const result = await startWait(() => shellPane, time => time < 20_000 ? [] : ["Update oh-my-zsh? [Y/n]"]);
+  expect(result).toMatchObject({ facts: null, reason: START_STALLED });
+  expect(result.time).toBe(25_000);
+});
+
+test("a tail that keeps changing keeps waiting, then ends at the ceiling", async () => {
+  const moving = (time: number) => [`step ${Math.floor(time / 2000)}`];
+  const started = await startWait(startsAt(30_000), moving);
+  expect(started.facts).toEqual(first);
+  const stuck = await startWait(() => shellPane, moving);
+  expect(stuck).toMatchObject({ facts: null, reason: null });
+  expect(stuck.time).toBe(60_000);
+});
+
+test("a failed capture is no evidence: it waits to the ceiling and never resets a stall", async () => {
+  const unseen = await startWait(() => shellPane, () => null);
+  expect(unseen).toMatchObject({ facts: null, reason: null });
+  expect(unseen.time).toBe(60_000);
+  const flaky = await startWait(() => shellPane, time => time % 2000 ? ["Continue? [y/N]"] : null);
+  expect(flaky).toMatchObject({ facts: null, reason: START_STALLED });
+  expect(flaky.time).toBe(7000); // The 6000 sample failed; the next good one still counts from 1000.
+});
+
+test("a blank pane runs to the ceiling and reads as slow, never as a prompt", async () => {
+  const result = await startWait(() => shellPane, () => []);
+  expect(result).toMatchObject({ facts: null, reason: null });
+  expect(result.time).toBe(60_000);
+  const text = startFailureText("claude", { command: "zsh", loginShell: "/bin/zsh", shell: true, tail: [] }, false,
+    { elapsedMs: result.time, ceilingMs: 60_000 }, "load 126.31 on 16 cores");
+  expect(text).toEqual({
+    cause: "the login shell (zsh) produced no output and had not started claude after 60000 ms (ceiling 60 s; load 126.31 on 16 cores)",
+    hint: "next: raise TAP_LAUNCH_START_TIMEOUT_SECONDS and retry the launch",
+  });
+});
+
+test("a stalled tail keeps the prompt diagnosis, with the measured time", () => {
+  expect(startFailureText("claude", { command: "zsh", loginShell: "/bin/zsh", shell: true, tail: ["Continue? [y/N]"] }, true,
+    { elapsedMs: 6123, ceilingMs: 60_000 }, "load 1.00 on 8 cores")).toEqual({
+    cause: "the login shell (zsh) had not started claude after 6123 ms; it may be waiting for input",
+    hint: "next: answer the login-shell prompt in a terminal with /bin/zsh -lic exit, then retry the launch",
+  });
+});
+
+test.each([["moving", ["step 9"]], ["unobserved", null]] as const)("a %s pane at the ceiling offers both recoveries without asserting a prompt", (_kind, tail) => {
+  const text = startFailureText("claude", { command: "zsh", loginShell: "/bin/zsh", shell: true, tail: tail as string[] | null }, false,
+    { elapsedMs: 60_040, ceilingMs: 60_000 }, "load 1.00 on 8 cores");
+  expect(text.cause).toBe("the login shell (zsh) had not started claude after 60040 ms (ceiling 60 s; load 1.00 on 8 cores)");
+  expect(text.hint).toBe("next: if the pane shows a prompt, answer it in a terminal with /bin/zsh -lic exit; otherwise raise TAP_LAUNCH_START_TIMEOUT_SECONDS and retry the launch");
+});
+
+test("a non-shell command keeps its name, with a ceiling recovery only when it timed out", () => {
+  const pane = { command: "vim", loginShell: "/bin/zsh", shell: false, tail: [] };
+  const measure = { elapsedMs: 60_040, ceilingMs: 60_000 };
+  expect(startFailureText("claude", pane, true, measure, "load 1.00 on 8 cores")).toEqual({ cause: "the pane is running vim, not claude", hint: "" });
+  expect(startFailureText("claude", pane, false, measure, "load 1.00 on 8 cores")).toEqual({
+    cause: "the pane is running vim, not claude, after 60040 ms (ceiling 60 s; load 1.00 on 8 cores)",
+    hint: "next: raise TAP_LAUNCH_START_TIMEOUT_SECONDS and retry the launch",
+  });
+});
+
+test("a silent dead pane ends the wait at five seconds, not at the ceiling", async () => {
+  const result = await startWait(() => ({ ...shellPane, dead: true }), () => []);
+  expect(result).toMatchObject({ facts: null, reason: "codex exited during startup" });
+  expect(result.time).toBe(5000);
+});
+
+test("a match lost before confirmation returns to the start ceiling", async () => {
+  const blip = await startWait(time => time === 1000 ? first : shellPane, () => []);
+  expect(blip).toMatchObject({ facts: null, reason: null });
+  expect(blip.time).toBe(60_000);
+  let reads = 0;
+  const flapping = await startWait(() => ++reads % 2 ? first : shellPane, () => []);
+  expect(flapping).toMatchObject({ facts: null, reason: null });
+  expect(flapping.time).toBeLessThanOrEqual(60_050);
+});
+
+test("without a start ceiling one deadline still bounds appearance and survival", async () => {
+  let time = 0;
+  const result = await awaitStableHarness(async () => time < 4000 ? shellPane : first, isHarness, 5000,
+    { observeUntilDeadline: true, now: () => time, sleep: async ms => { time += ms; } });
+  expect(result.facts).toEqual(first);
+  expect(time).toBe(5000);
+});
+
+test("a wrong program with a changing screen fails at the five-second mark, not the ceiling", async () => {
+  const moving = (time: number) => [`frame ${time}`];
+  const exec = await startWait(() => ({ ...shellPane, command: "vim" }), moving, undefined, psRoot("/usr/bin/vim", "vim notes.txt"));
+  expect(exec).toMatchObject({ facts: null, reason: "the pane is running vim, not codex" });
+  expect(exec.time).toBe(5000);
+  // A wrapper that runs another harness as a child leaves the shell as root; the foreground names it.
+  const child = await startWait(() => ({ ...shellPane, command: "claude" }), moving);
+  expect(child).toMatchObject({ facts: null, reason: "the pane is running claude, not codex" });
+  expect(child.time).toBe(5000);
+});
+
+test("a denylisted root whose argv names the harness fails at five seconds, as on main", async () => {
+  const result = await startWait(() => ({ ...shellPane, command: "cat" }), () => [], undefined, psRoot("/bin/cat", "/bin/cat /tmp/codex"));
+  expect(result).toMatchObject({ facts: null, reason: "the pane is running cat, not codex" });
+  expect(result.time).toBe(5000);
+});
+
+test("a denylisted executable renamed by exec -a fails at five seconds; a truncated Homebrew zsh still waits", async () => {
+  const renamed = await startWait(() => ({ ...shellPane, command: "cat" }), () => [], undefined, psRoot("/bin/cat", "codex"));
+  expect(renamed).toMatchObject({ facts: null, reason: "the pane is running cat, not codex" });
+  expect(renamed.time).toBe(5000);
+  const homebrew = await startWait(time => time < 8000 ? shellPane : first, () => [], undefined,
+    psRoot("/opt/homebrew/bi", "/opt/homebrew/bin/zsh -lic exec \"$0\" \"$@\" /usr/bin/env codex"));
+  expect(homebrew).toMatchObject({ facts: first, reason: null });
+  expect(homebrew.time).toBe(13_000);
+});
+
+test("env and the shell's rc commands on the exec chain keep the extended wait", async () => {
+  const viaEnv = await startWait(time => time < 8000 ? { ...shellPane, command: "env" } : first, () => [], undefined,
+    psRoot("/usr/bin/env", "/usr/bin/env -u TAP_STATELESS FOO=1 codex"));
+  expect(viaEnv).toMatchObject({ facts: first, reason: null });
+  expect(viaEnv.time).toBe(13_000);
+  // Measured: a slow zsh rc shows its own children (sleep, python3) as the pane command.
+  const rcChild = await startWait(time => time < 8000 ? { ...shellPane, command: "python3" } : first, () => []);
+  expect(rcChild).toMatchObject({ facts: first, reason: null });
+  expect(rcChild.time).toBe(13_000);
+});
+
+test("a pane root is foreign only when ps positively shows a program past the chain that is not the harness", () => {
+  const facts = { ...shellPane, command: "zsh" };
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/opt/homebrew/bin/claude", "claude"))).toBe("claude");
+  // The root may exec the harness between the tmux read and this one; a version-named Claude is found through argv.
+  expect(foreignPaneProgram(facts, "claude", "/bin/zsh", {}, psRoot("/opt/x/.local/share/claude/versions/2.1.30", "claude --session-id x"))).toBeNull();
+  // macOS ps cuts comm to 16 bytes when it is not the last column; argv[0] names the root.
+  expect(foreignPaneProgram(facts, "codex", "/opt/homebrew/bin/zsh", {}, psRoot("/opt/homebrew/bi", "/opt/homebrew/bin/zsh -lic exec \"$0\" \"$@\" /usr/bin/env codex"))).toBeNull();
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/private/tmp/tap", "/private/tmp/tap-launch-test-x/real/notharness 600"))).toBe("notharness");
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/usr/bin/login", "-zsh"))).toBeNull();
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/usr/bin/vim", ""))).toBe("vim");
+  // argv[0] is the exec's choice; a denylisted executable outranks it.
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/bin/cat", "codex"))).toBe("cat");
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/usr/bin/ssh", "zsh"))).toBe("ssh");
+  // A denylisted root decides before argv, as paneHarness does: cat reading a file named codex is not codex.
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, psRoot("/bin/cat", "/bin/cat /tmp/codex"))).toBe("cat");
+  expect(foreignPaneProgram(facts, "codex", "/bin/zsh", {}, () => ({ ok: false, table: null }))).toBeNull();
+  expect(foreignPaneProgram({ ...facts, pane_pid: 4242 }, "codex", "/bin/zsh", {}, psRoot("/usr/bin/vim"))).toBeNull();
+  for (const name of ["zsh", "-zsh", "bash", "sh", "env"]) expect(launchChainCommand(name, "/bin/zsh")).toBe(true);
+  for (const name of ["codex", "python3", "sleep", "vim"]) expect(launchChainCommand(name, "/bin/zsh")).toBe(false);
+});
+
+test("the start ceiling defaults to a minute and refuses what is not a positive duration", () => {
+  expect(launchStartCeilingMs({})).toBe(60_000);
+  expect(launchStartCeilingMs({ TAP_LAUNCH_START_TIMEOUT_SECONDS: "90" })).toBe(90_000);
+  expect(launchStartCeilingMs({ TAP_LAUNCH_START_TIMEOUT_SECONDS: "0.5" })).toBe(500);
+  for (const raw of ["", "0", "-1", "soon", "inf", "nan", "1e400"]) {
+    expect(() => launchStartCeilingMs({ TAP_LAUNCH_START_TIMEOUT_SECONDS: raw })).toThrow(`TAP_LAUNCH_START_TIMEOUT_SECONDS must be positive, got '${raw}'`);
+  }
 });

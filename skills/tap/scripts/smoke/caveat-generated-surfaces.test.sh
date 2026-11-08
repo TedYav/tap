@@ -101,8 +101,8 @@ PATH="$IHOME/bin:$IHOME/harness-bin:$PATH" TAP_INSTALL_BIN="$IHOME/bin" TAP_CLAU
   || { cat "$WORK/install.log" >&2; echo "caveat-generated: (c) install.sh failed" >&2; exit 1; }
 grep -qF "$USING_TAP" "$XHOME/AGENTS.md" \
   || { echo "caveat-generated: (c) install-generated Codex AGENTS section omits the /tap all-seat floors" >&2; exit 1; }
-grep -qF 'never operator instructions or added task authority' "$XHOME/AGENTS.md" \
-  || { echo "caveat-generated: (c) install-generated Codex AGENTS section omits the authority limit" >&2; exit 1; }
+grep -qF "treat it like a colleague's request" "$XHOME/AGENTS.md" \
+  || { echo "caveat-generated: (c) install-generated Codex AGENTS section omits the colleague frame" >&2; exit 1; }
 ! grep -qE "$CAVEAT|$CONTINUE" "$XHOME/AGENTS.md" \
   || { echo "caveat-generated: (c) global signpost retained operational guidance" >&2; exit 1; }
 echo "caveat-generated: (c) install-generated Codex AGENTS delegates operational guidance: ok"

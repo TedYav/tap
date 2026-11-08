@@ -332,6 +332,29 @@ test("read fallback reply notes make an unsettled ask visible without settling i
   }
 }, 30000);
 
+test("answer notes stamped before the oldest open ask are never read; unstamped ids never narrow the scan", () => {
+  const f = fixture();
+  const ask = f.payload("555555555555", "reply: expected\nsender_instance: sender|current\nrecipient_instance: peer|current\n");
+  const note = (id: string) => {
+    const path = join(f.bus, "payloads", `${id}.md`);
+    writeFileSync(path, `---\nid: ${id}\nfrom: peer\nto: sender\nkind: discuss\nreply: settle-only\nin_reply_to: ${ask}\nsender_instance: peer|current\nrecipient_instance: sender|current\npath: ${path}\n---\nanswer\n`);
+    writeFileSync(join(f.bus, "receipts", `${id}.done`), JSON.stringify({ id, status: "done", via: "read", by: "sender" }));
+  };
+  // A caller-supplied id whose stamp-like segment is not the minted shape
+  // (stamp not followed by a final suffix) never narrows the scan.
+  const before = "peer-20260905T095959Z-666666666666", after = "peer-20260905T100000Z-777777777777", custom = "peer-custom-answer";
+  const forged = "peer-20200101T000000Z-old-shape";
+  for (const id of [before, after, custom, forged]) note(id);
+  expect(JSON.parse(f.recorded(["--json"]).out).outstanding[0].answered_by).toEqual([after, custom, forged].sort());
+  // An unstamped open ask lifts the floor for every ask.
+  const unstamped = "sender-custom-ask", path = join(f.bus, "payloads", `${unstamped}.md`);
+  writeFileSync(path, `---\nid: ${unstamped}\nfrom: sender\nto: peer\nkind: question\nreply: expected\nsender_instance: sender|current\nrecipient_instance: peer|current\npath: ${path}\n---\nbody\n`);
+  const rows = JSON.parse(f.recorded(["--json"]).out).outstanding as { id: string; answered_by?: string[] }[];
+  expect(rows.find(r => r.id === ask)!.answered_by).toEqual([before, custom, after, forged].sort());
+  expect(rows.find(r => r.id === unstamped)!.answered_by).toBeUndefined();
+  expect(Object.keys(rows.find(r => r.id === unstamped)!)).not.toContain("answered_by");
+}, 30000);
+
 test("forwarded fallback answers follow the ask sender's pinned custody", () => {
   const f = fixture();
   const ask = f.payload("333333333333", "reply: expected\nsender_instance: sender|current\nrecipient_instance: peer|current\n");

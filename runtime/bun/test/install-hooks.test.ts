@@ -65,7 +65,7 @@ const MODES: Record<string, Mode> = {
   "cursor-bom": "cursor",
   "cursor-legacy": "cursor",
   "cursor-absent": "cursor",
-  "gemini-fresh": "gemini",
+  "gemini-clean": "gemini",
   "gemini-done": "gemini",
   "gemini-nonobject": "gemini",
   "gemini-invalid": "gemini",
@@ -241,7 +241,7 @@ describe("install-hooks oracle parity (fixture captured once from python3)", () 
 // A second run changes nothing: same rc, byte-identical surface files. The
 // second run's stdout may differ ("already wired" shapes); the bytes may not.
 describe("install-hooks idempotence (second run changes nothing)", () => {
-  for (const name of ["claude-fresh", "agents-fresh", "codex-fresh", "cursor-fresh", "gemini-fresh"]) {
+  for (const name of ["claude-fresh", "agents-fresh", "codex-fresh", "cursor-fresh", "gemini-clean"]) {
     const expected = ORACLE[name]!;
     const mode = MODES[name]!;
     test(`${name} twice`, () => {

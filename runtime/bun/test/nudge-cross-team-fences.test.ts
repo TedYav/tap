@@ -9,7 +9,7 @@ import { resetFenceRefusal } from "../src/reset";
 import { removeScratchTree } from "./support/scratch";
 
 type Fence = "none" | "Sender" | "Target" | "Target-clear" | "Sender-clear";
-function fixture(fenced: Fence, afterEnterReadFails = false, sentinelRecipient?: "other", guard = false) {
+function fixture(fenced: Fence, afterEnterReadFails = false, sentinelRecipient?: "other", guard = false, selection: "none" | "recovered" | "after-copy" = "none", copy = false) {
   const dir = realpathSync(mkdtempSync(join(process.env.TAP_HOME!, "nudge-xteam-fence-")));
   const bin = join(dir, "bin"), index = join(dir, "index");
   mkdirSync(bin); mkdirSync(index);
@@ -40,7 +40,7 @@ while (["-L","-S"].includes(args[0])) args.splice(0,2);
 const cmd=args[0], fmt=args.at(-1);
 if (cmd==="display-message") {
  const fields={"#{pid}:#{start_time}":"900:100", "#{pane_id}\\t#{session_name}\\t#{pane_pid}\\t#{pane_current_command}\\t#{pane_dead}":"%301\\tTarget/peer\\t301\\tcodex\\t0",
- "#{pane_id}":"%301", "#{pane_current_command}":"codex", "#{pane_pid}":"301", "#{pane_in_mode}":"0", "#{pane_dead}":"0", "#{session_windows}":"1", "#{pane_width}":"100"};
+ "#{pane_id}":"%301", "#{pane_current_command}":"codex", "#{pane_pid}":"301", "#{pane_in_mode}":process.env.REVIEW_COPY_MODE==="1" && !existsSync(root+"/copy-done") ? "1" : "0", "#{pane_dead}":"0", "#{session_windows}":"1", "#{pane_width}":"100"};
  console.log(fields[fmt] ?? "");
 } else if (cmd==="list-sessions") console.log("Target/peer\\t900:100\\t0");
 else if (cmd==="list-panes") console.log(fmt==="#{pane_id}" ? "%301" : "Target/peer\\tTarget/peer:0.0\\t%301\\tcodex\\t301\\t900:100\\t0");
@@ -51,7 +51,7 @@ else if (cmd==="capture-pane") {
  }
  process.stdout.write(readFileSync(root+"/frame"));
 }
-else if (cmd==="send-keys") { appendFileSync(root+"/effects",args.join(" ")+"\\n"); if(args.includes("Enter")) writeFileSync(root+"/frame","› \\n"); }
+else if (cmd==="send-keys") { appendFileSync(root+"/effects",args.join(" ")+"\\n"); if(args.includes("cancel")) writeFileSync(root+"/copy-done", "1"); if(args.includes("Enter")) writeFileSync(root+"/frame","› \\n"); }
 `, { mode: 0o700 });
   if (fenced === "Sender" || fenced === "Target") {
     writeFileSync(join(homes[fenced]!, "reset.fence.json"), "{}\n");
@@ -64,7 +64,7 @@ else if (cmd==="send-keys") { appendFileSync(root+"/effects",args.join(" ")+"\\n
   }
   const env = { ...process.env, HOME: dir, XDG_CONFIG_HOME: join(dir, "config"), PATH: `${bin}:${process.env.PATH}`,
     FAKE_ROOT: dir, TAP_HOME: homes.Sender!, TAP_INDEX_HOME: index, TAP_BOOT_ID: "boot:1",
-    TAP_SERVER_EPOCH: "srv:900:100", TAP_TUI_SETTLE_SCALE: "0.01", REVIEW_FAIL_AFTER_SENT: afterEnterReadFails ? "1" : "0", REVIEW_NUDGE_GUARD: guard ? "1" : "0" };
+    TAP_SERVER_EPOCH: "srv:900:100", TAP_TUI_SETTLE_SCALE: "0.01", REVIEW_FAIL_AFTER_SENT: afterEnterReadFails ? "1" : "0", REVIEW_NUDGE_GUARD: guard ? "1" : "0", REVIEW_SELECTION:selection, REVIEW_COPY_MODE:copy ? "1" : "0" };
   const r = spawnSync("bun", [join(import.meta.dir, "support/nudge-cross-team-entry.ts")], { cwd: join(dir, "Sender"), env, encoding: "utf8", timeout: 25000 });
   return { dir, r, effects: readFileSync(join(dir, "effects"), "utf8") };
 }
@@ -112,3 +112,22 @@ test("a bare to: naming a different seat on the argv team refuses before any pan
     expect(f.effects).toBe("");
   } finally { removeScratchTree(f.dir); }
 }, 30000);
+
+
+for (const copy of [false,true]) test(`default selection can skip before ${copy ? "copy cancel" : "staged Enter"} without effects`, () => {
+  const f = fixture("none",false,undefined,false,"recovered",copy);
+  try {
+    expect(f.r.status, f.r.stderr).toBe(0);
+    expect(f.effects).toBe("");
+    expect(f.r.stdout).toContain("recovered; not nudged");
+  } finally {removeScratchTree(f.dir);}
+},30000);
+
+test("selection is not reconsidered after copy-mode cancel before staged Enter", () => {
+  const f = fixture("none",false,undefined,false,"after-copy",true);
+  try {
+    expect(f.r.status,f.r.stderr).toBe(0);
+    expect(f.effects).toContain("-X cancel");
+    expect(f.effects).toContain("Enter");
+  } finally {removeScratchTree(f.dir);}
+},30000);

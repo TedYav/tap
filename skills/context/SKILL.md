@@ -52,7 +52,11 @@ the required `tmp/<seat>/handoff-<UTC>.md` and passes `--handoff FILE` itself;
 the operator need not supply plumbing. The brief carries charter and exact role
 invocation, Keep scope, constraints, still-owned obligations, custody, scheduler
 ids, decision reasons, source pointers and Next step. Narrowing scope requires
-transferring an owned obligation or keeping its one-line pointer.
+transferring an owned obligation or keeping its one-line pointer. Put the
+operator's own words about the resume in the request: the seat carries them
+into the brief verbatim. The brief also lists active modes and roles with
+their restoring invocations, and its Next step may hold several ordered actions
+but never contradicts itself (a wait names its resume condition).
 
 Optional `--notify SEAT` names an outcome audience only. A peer requesting the
 outcome passes itself. Omission never infers another seat: successful recovery

@@ -40,8 +40,8 @@ import { busForRoot } from "./admin";
 import { resolveSelection } from "../team-selection";
 import { TOKEN_RE } from "../remote-target";
 import { cmdNudgeFanout, isFanoutArgv } from "./nudge-fanout";
-import { PreKeyRefusal, previewLadder, runLadder, type ComposerRead, type LadderIO } from "./nudge-ladder";
-import { nudgeMessageRefusal, parseNudgeWire, renderNudgeWire } from "../nudge-wire";
+import { FirstKeySelection, PreKeyRefusal, previewLadder, runLadder, type ComposerRead, type LadderIO } from "./nudge-ladder";
+import { nudgeDoorbellText, nudgeMessageRefusal, parseNudgeWire, renderNudgeWire } from "../nudge-wire";
 import { createRun, updateRun } from "../recovery/state";
 import { targetRow } from "../recovery/cli";
 import { observePaneKind } from "../pane-state";
@@ -139,7 +139,7 @@ function terminalityRefusal(bus: string, id: string, digest = false): TapError |
  */
 function submitRecorded(input: { runId: string; pane: string; paneId: string; paneCmd: string; id: string; expected: string;
   registry: string; handle: string; bus: string; recipientBus: string; scriptsDir: string; families: ReadonlySet<string>; repainted: boolean;
-  boundary?: NudgeBoundary }): number {
+  boundary?: NudgeBoundary; selection?: FirstKeySelection }): number {
   const row = seatMap(loadRegistry(input.registry))[input.handle] as Record<string, unknown> | undefined;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
   const bound: BoundRecipient = { paneId: input.paneId, serverEpoch: text(row?.server_epoch), harness: input.paneCmd,
@@ -154,7 +154,8 @@ function submitRecorded(input: { runId: string; pane: string; paneId: string; pa
   const fx: PaneEffects = { ...REAL_EFFECTS, pressEnter: () => {
     const run = readRun(input.runId, effectEnv);
     const result = recoveryEffect(input.runId, "nudge Enter", `${run.mode}: complete visible sentinel and canonical recipient authorized by nudge`,
-      ["send-keys", "-t", run.target.paneId, "Enter"], REAL_RECOVERY_IO, effectEnv, undefined, () => input.boundary?.check(false) || "");
+      ["send-keys", "-t", run.target.paneId, "Enter"], REAL_RECOVERY_IO, effectEnv, undefined, () => input.selection?.gate() || input.boundary?.check(false) || "");
+    input.selection?.record(result.event.effect === "possible");
     if (result.event.incident) escalateRecovery(input.runId, result.event.summary, effectEnv);
     if (result.code !== 0) process.stderr.write(`tap recovery: ${result.event.summary}; tap debug recovery ${input.runId}\n`);
     // A positively recorded pre-key refusal sent nothing: stop, never press again.
@@ -234,8 +235,8 @@ export function cmdNudge(argv: string[], scriptsDir: string, families: ReadonlyS
       let self = { team: "", handle: process.stdin.isTTY ? "user" : "unknown" };
       try { const ctx = resolveSelection(process.env.TAP_HOME ?? "", ""); self = { team: ctx.team, handle: nudgeActor(ctx).handle }; }
       catch { /* outside every enrolled checkout: --team names the teams */ }
-      return cmdNudgeFanout(argv, scriptsDir, self, (address, args, instance) =>
-        nudgePinnedSeat([address, ...(args.message ? ["--message", args.message] : []), ...(args.interrupt ? [] : ["--no-interrupt"])], scriptsDir, families, instance));
+      return cmdNudgeFanout(argv, scriptsDir, self, (address, args, instance, stillStuck) =>
+        nudgePinnedSeat([address, ...(args.message ? ["--message", args.message] : []), ...(args.interrupt ? [] : ["--no-interrupt"])], scriptsDir, families, instance, undefined, stillStuck));
     }
     return nudge(argv, scriptsDir, families);
   } catch (error) {
@@ -269,12 +270,12 @@ export interface NudgeBoundary {
   out?(text: string): void;
 }
 
-export function nudgePinnedSeat(argv: string[], scriptsDir: string, families: ReadonlySet<string>, instance: string, boundary?: NudgeBoundary): number {
-  return nudge(argv, scriptsDir, families, instance, boundary);
+export function nudgePinnedSeat(argv: string[], scriptsDir: string, families: ReadonlySet<string>, instance: string, boundary?: NudgeBoundary, stillStuck?: () => string): number {
+  return nudge(argv, scriptsDir, families, instance, boundary, stillStuck ? new FirstKeySelection(stillStuck) : undefined);
 }
 
 /** `pinnedInstance`: the fan-out's selected seat instance; a replaced seat refuses before any key. */
-function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>, pinnedInstance = "", boundary?: NudgeBoundary): number {
+function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>, pinnedInstance = "", boundary?: NudgeBoundary, selection?: FirstKeySelection): number {
   const out = boundary?.out ?? ((text: string) => { process.stdout.write(text); });
   let to = "";
   let pane = "";
@@ -309,7 +310,9 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
   if (!deliver && (message !== "" || !interrupt)) {
     throw new TapError(1, "usage_error", USAGE, "--message and --no-interrupt shape the delivery rung, which --pane skips; nothing sent");
   }
-  const wire = renderNudgeWire(message);
+  let wire: string;
+  try { wire = renderNudgeWire(nudgeDoorbellText(message)); }
+  catch (error) { throw new TapError(1, "usage_error", USAGE, (error as Error).message); }
   // Inside a detective worker's recovery run (TAP_RECOVERY_RUN), nudge is that run's
   // staged-sentinel submit only: the run's own mode governs and rungs 1 and 3 never run.
   const parentRun = process.env.TAP_RECOVERY_RUN || "";
@@ -504,7 +507,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
   };
   try {
     exitCode = runLadder({ harness: paneCmd, interrupt, wire, label: toLabel || pane, deliver,
-      guard: boundary?.check, stagedOnly: Boolean(boundary?.stagedId) },
+      guard: boundary?.check, selection, stagedOnly: Boolean(boundary?.stagedId) },
       ladderIo(ensureRun, pane, ladderPaneId, paneCmd, stagedInRun, out));
     return exitCode;
   } catch (error) {
@@ -539,7 +542,8 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
             return verdict.status === "ok" ? "" : verdict.detail;
           } };
         const cancel = cancelUnattendedCopyMode({ mode: policy.mode, registry, handle: to, pane, paneId: argvBinding.paneId,
-          home: ctx.bus.home, license: () => copyModeCancelLicense(requeue) });
+          home: ctx.bus.home, license: () => copyModeCancelLicense(requeue), selection });
+        if (selection?.skipped && !selection.keyed) { out(`tap nudge: ${toLabel}: skipped: ${selection.skipped}\n`); return 0; }
         if (reportCopyModeRequeue(toLabel, argvBinding.paneId, cancel, requeueCopyModeParks(requeue))) return 0;
       }
       return null;
@@ -643,7 +647,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const effectBus = bus || ctx.bus.home; const lateRefusal = terminalityRefusal(effectBus, id, digest !== null); if (lateRefusal) throw lateRefusal;
     return runRecordedNudge({ policy, registry: sel2.registryLocation, handle: sentinelHandle, team: sentinelTeam, pane, paneId: sentinelBinding.paneId,
       paneCmd, id, expected, effectBus, recipientBus: busForRoot(sel2.rootReal), scriptsDir, families, toLabel, drift,
-      repainted: repaintedByHeal && paneCmd === "opencode", digest, boundary });
+      repainted: repaintedByHeal && paneCmd === "opencode", digest, boundary, selection });
   }
 
   /**
@@ -672,7 +676,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     process.stderr.write(`tap nudge: composer of ${toLabel || pane} shows the scrolled tail of a TAP wire; submitting it by shape, not identity\n`);
     return runRecordedNudge({ policy, registry: registryLocation, handle, team, pane, paneId: bound.paneId, paneCmd, id: SCROLLED_TAIL_SLOT,
       expected: tail, effectBus: ctx.bus.home, recipientBus: busForRoot(rootReal), scriptsDir, families, toLabel, drift: tailDrift,
-      repainted: repaintedByHeal && paneCmd === "opencode", boundary });
+      repainted: repaintedByHeal && paneCmd === "opencode", boundary, selection });
   }
 }
 
@@ -761,7 +765,7 @@ export function finishRecordedNudge(runId: string, exitCode: number): void {
 function runRecordedNudge(input: { policy: { mode: string }; registry: string; handle: string; team: string; pane: string; paneId: string; paneCmd: string;
   id: string; expected: string; effectBus: string; recipientBus: string; scriptsDir: string; families: ReadonlySet<string>; toLabel: string;
   drift: (when: string) => TapError; repainted: boolean; digest?: { indexPath: string; from: string; toTeam: string; members: string[] } | null;
-  boundary?: NudgeBoundary }): number {
+  boundary?: NudgeBoundary; selection?: FirstKeySelection }): number {
   const out = input.boundary?.out ?? ((text: string) => { process.stdout.write(text); });
   const { policy, pane, paneCmd, id, expected, effectBus, toLabel, drift } = input;
   const [startBin, ...startArgs] = recoveryCliArgv(input.scriptsDir, ["nudge-start", policy.mode, input.registry, input.handle, pane, input.paneId, id, effectBus, String(process.pid), expected]);
@@ -783,11 +787,13 @@ function runRecordedNudge(input: { policy: { mode: string }; registry: string; h
   try {
     input.boundary?.onRun?.(runId);
     // Bounded callers refuse copy mode in their observation; they never cancel it.
-    const copyRc = input.boundary ? 0 : recordedCopyCancel(runId);
+    const copyRc = input.boundary ? 0 : recordedCopyCancel(runId, input.selection);
+    if (input.selection?.skipped && !input.selection.keyed) { out(`tap nudge: ${toLabel}: skipped: ${input.selection.skipped}\n`); return 0; }
     if (copyRc === 6) throw drift("before copy-mode cancel");
     if (copyRc !== 0) { exitCode = copyRc; return copyRc; }
     const submitRc = submitRecorded({ runId, pane, paneId: input.paneId, paneCmd, id, expected, registry: input.registry,
-      handle: input.handle, bus: effectBus, recipientBus: input.recipientBus, scriptsDir: input.scriptsDir, families: input.families, repainted: input.repainted, boundary: input.boundary });
+      handle: input.handle, bus: effectBus, recipientBus: input.recipientBus, scriptsDir: input.scriptsDir, families: input.families, repainted: input.repainted, boundary: input.boundary, selection: input.selection });
+    if (input.selection?.skipped && !input.selection.keyed) { out(`tap nudge: ${toLabel}: skipped: ${input.selection.skipped}\n`); return 0; }
     if (submitRc === 6) throw drift("before submit");
     if (submitRc === 7) {
       if (input.digest) {

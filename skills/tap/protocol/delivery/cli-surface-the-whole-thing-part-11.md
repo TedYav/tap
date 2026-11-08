@@ -96,5 +96,5 @@ non-empty line after removing carriage returns, matching its named-file behavior
 <!-- The tap nudge grammar lives on its owning page, nudge.md; --interrupt, --from, --reason, -m and -f retired in tap-xe42x. -->
 
 ```text
-tap nudge --harness <family> [--team <team|*>] [--active-within <duration>] [--message <text>] [--no-interrupt] [--dry-run] [--yes]   # fleet wake: each seat runs the ladder; see [nudge-fanout.md](./nudge-fanout.md)
+tap nudge --harness <family> [--team <team|*>] [--recently-working[=<duration>] | --all | --active-within <duration>] [--message <text>] [--no-interrupt] [--dry-run] [--yes]   # fleet wake: each seat runs the ladder; see [nudge-fanout.md](./nudge-fanout.md)
 ```

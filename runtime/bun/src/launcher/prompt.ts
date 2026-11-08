@@ -286,6 +286,10 @@ export class NameEditor {
   }
   /** Backspace drops the placeholder and the character before the cursor, reaching into the prefix. */
   backspace(): void { this.placeholder = ""; this.text = Array.from(this.text).slice(0, -1).join(""); }
+  /** Option-Delete or Ctrl-W: like Backspace, but takes the word before the cursor and any separators after it. */
+  deleteWord(): void { this.placeholder = ""; this.text = this.text.replace(/[^._-]*[._-]*$/, ""); }
+  /** Command-Delete or Ctrl-U: empties the line, prefix and placeholder alike. */
+  clear(): void { this.placeholder = ""; this.text = ""; }
 }
 
 /** A name check: null accepts, a string is the reason to ask again. */
@@ -295,6 +299,7 @@ export type AskName = (question: string, prefix: string, suffix: string, check: 
 /**
  * prompt_name: ask for a name whose default is prefix + suffix, the suffix grey.
  * Enter accepts, typing replaces the suffix, Backspace edits into the prefix.
+ * Option-Delete or Ctrl-W deletes a word; Command-Delete or Ctrl-U clears the line.
  * A key a handle cannot contain (space, "/", a leading "-") never enters the line,
  * a pasted one included: it rings the bell and the line names what is allowed.
  * An invalid name asks again with its reason; Esc (or end of input) returns
@@ -370,11 +375,19 @@ async function askName(question: string, prefix: string, suffix: string, check: 
       text += more.toString("latin1");
       return true;
     };
+    // Plain mode never redraws, so an edit erases what it removed from the echoed line.
+    const edit = (change: () => void): void => {
+      const before = Array.from(editor.text).length;
+      change();
+      if (!grey) process.stderr.write("\b \b".repeat(before - Array.from(editor.text).length));
+    };
     for (let i = 0; i < text.length; i++) {
       const char = text[i]!;
       if (char === "\x1b") {
-        // A CSI or SS3 sequence (arrows, function keys) is skipped whole; any other Esc quits.
+        // A CSI or SS3 sequence (arrows, function keys) is skipped whole; any other Esc quits,
+        // except Esc-Delete, which is how a terminal spells Option-Delete.
         if (i + 1 === text.length && !await drain()) { process.stderr.write("\n"); return null; }
+        if (text[i + 1] === "\x7f" || text[i + 1] === "\b") { edit(() => editor.deleteWord()); i++; continue; }
         if (text[i + 1] !== "[" && text[i + 1] !== "O") { process.stderr.write("\n"); return null; }
         // The sequence ends at its final byte, 0x40-0x7E.
         let end = i + 2;
@@ -396,8 +409,11 @@ async function askName(question: string, prefix: string, suffix: string, check: 
       }
       if (char === "\x04" && !grey) { process.stderr.write("\n"); return null; }
       if (char === "\x7f" || char === "\b") {
-        if (grey) editor.backspace();
-        else if (editor.text) { editor.backspace(); process.stderr.write("\b \b"); }
+        edit(() => editor.backspace());
+      } else if (char === "\x17") {
+        edit(() => editor.deleteWord());
+      } else if (char === "\x15") {
+        edit(() => editor.clear());
       } else if (char >= " ") {
         if (editor.type(char)) { refused = true; process.stderr.write("\x07"); }
         else if (!grey) process.stderr.write(char);

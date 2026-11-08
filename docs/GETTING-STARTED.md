@@ -50,6 +50,8 @@ tap launch claude
 tap launch codex
 ```
 
+The examples use **Ctrl-b** as the tmux prefix (your prefix, if you remapped it).
+
 TAP starts and registers each seat. A launch from a foreground terminal opens
 that agent. From an agent or without a terminal, launch leaves it running in
 the background; visit it from your terminal with `tap attach claude` or
@@ -299,6 +301,23 @@ Attach, answer the prompt yourself, then detach with **Ctrl-b**, then **d**. The
 waiting messages then go through.
 
 ## TAP and tmux
+
+TAP is developed and tested on macOS; CI runs on macOS. Linux support is best
+effort: an Ubuntu 24.04 container smoke reached Claude Code and Codex sign-in,
+but did not test an authenticated exchange. The optional keybinding and tmux
+defaults installers require tmux 3.2 or newer. Linux desktop notifications and
+`wl-copy`/`xclip` integration have not been exercised end to end. `notify-send`
+needs a desktop notification service and session; it cannot show notifications
+in a headless SSH session.
+
+On Linux hosts managed by systemd, whether SSH-launched seats survive logout
+also depends on the host's logout policy. Detach, log out, reconnect and run
+`tmux ls` once before relying on unattended seats. `loginctl enable-linger "$USER"`
+keeps your user service manager running after logout (administrator approval may
+be required), but it does not protect tmux inside a login session when
+`KillUserProcesses=yes`. See [systemd's tmux logout guidance](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html#KillUserProcesses=)
+for running it outside that session scope. Linger is irrelevant on hosts without
+systemd; this path was not tested in the Linux container smoke.
 
 TAP runs every seat inside tmux. First-run setup can install two optional tmux
 integrations (never on a plain sync; both removable, and neither edits your

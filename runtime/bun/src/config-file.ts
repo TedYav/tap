@@ -6,6 +6,35 @@ import { LauncherError } from "./config-error";
 export type Table = Record<string, unknown>;
 export type CatalogSource = { path: string; digest: string; data: Table };
 
+/** Expert operational tuning. Normal installations use these defaults. */
+const ADVANCED_SETTINGS = {
+  roster_cache_ttl_seconds: { default: 5, min: 0 },
+  reporting_cache_ttl_seconds: { default: 5, min: 0 },
+  debug_tmux_sample_seconds: { default: 5, min: 1, max: 3600, integer: true },
+  debug_tmux_inventory_seconds: { default: 60, min: 1, max: 86400, integer: true },
+  debug_tmux_timeout_seconds: { default: 3, min: .1, max: 30 },
+  debug_tmux_incident_gap_seconds: { default: 600, min: 0, max: 86400, integer: true },
+} as const;
+export type AdvancedSettings = { -readonly [K in keyof typeof ADVANCED_SETTINGS]: number };
+
+export function parseAdvancedSettings(data: Table, path: string): AdvancedSettings {
+  const raw = data.advanced;
+  const invalid = (detail: string): never => refuse("advanced_config_invalid", `${path}: [advanced] ${detail}`, `fix ${path}`);
+  if (raw !== undefined && !table(raw)) invalid("must be a table");
+  const values = Object.fromEntries(Object.entries(ADVANCED_SETTINGS).map(([key, spec]) => [key, spec.default])) as AdvancedSettings;
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    if (!Object.hasOwn(ADVANCED_SETTINGS, key)) invalid(`unknown key '${key}'`);
+    const name = key as keyof AdvancedSettings, spec = ADVANCED_SETTINGS[name];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < spec.min) invalid(`'${key}' must be a finite number >= ${spec.min}`);
+    if ("max" in spec && (value as number) > spec.max) invalid(`'${key}' must be <= ${spec.max}`);
+    if ("integer" in spec && !Number.isInteger(value)) invalid(`'${key}' must be an integer`);
+    values[name] = value as number;
+  }
+  if (values.debug_tmux_inventory_seconds < values.debug_tmux_sample_seconds)
+    invalid("'debug_tmux_inventory_seconds' must be >= 'debug_tmux_sample_seconds'");
+  return values;
+}
+
 /**
  * Is this parsed TOML value a TABLE?
  *
@@ -222,9 +251,48 @@ export function readCatalog(path: string): CatalogSource {
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   const data = Bun.TOML.parse(text);
   if (!table(data)) refuse("preset_config_invalid", `${path} is not a TOML table`);
+  parseAdvancedSettings(data, path);
   return { path: resolvedPath, digest, data };
 }
 
 export function isRegularFile(path: string): boolean {
   try { return statSync(path).isFile(); } catch { return false; }
+}
+
+export type CaptureSource = "tmux" | "tap-events";
+export type CaptureFidelity = "best-effort" | "precise";
+export type DebugConfig = { always_on: boolean; capture: CaptureSource[]; fidelity: CaptureFidelity; max_mb: number; retain_mb: number; archive_mb: number };
+
+/** Debug readers refuse invalid settings without printing or changing process state. */
+export function debugConfigFromTable(value: unknown, path: string): DebugConfig {
+  const invalid = (detail: string): never => refuse("debug_config_invalid", detail, `fix ${path}`);
+  if (value !== undefined && !table(value)) invalid("[debug] must be a table");
+  const raw = (value ?? {}) as Table;
+  const capture = raw.capture ?? ["tmux", "tap-events"];
+  if (!Array.isArray(capture) || capture.some(source => source !== "tmux" && source !== "tap-events"))
+    invalid("debug.capture must be an array containing only tmux and tap-events");
+  const fidelity = raw.fidelity ?? "best-effort", always = raw.always_on ?? false;
+  if (fidelity !== "best-effort" && fidelity !== "precise") invalid("debug.fidelity must be best-effort or precise; trace is manual");
+  if (typeof always !== "boolean") invalid("debug.always_on must be true or false");
+  const cap = (name: string, fallback: number, maximum: number): number => {
+    const value = raw[name] ?? fallback;
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > maximum)
+      invalid(`debug.${name} must be an integer between 1 and ${maximum}`);
+    return value as number;
+  };
+  return { always_on: always as boolean, capture: [...new Set(capture as CaptureSource[])], fidelity: fidelity as CaptureFidelity,
+    max_mb: cap("max_mb", 1024, 10240), retain_mb: cap("retain_mb", 2048, 1048576), archive_mb: cap("archive_mb", 10240, 1048576) };
+}
+
+export function debugConfig(env: NodeJS.ProcessEnv = process.env): DebugConfig {
+  const path = join(configDirectory(env), "config.toml");
+  try {
+    let doc: Table = {};
+    try { doc = readCatalog(path).data; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    return debugConfigFromTable(doc.debug, path);
+  } catch (error) {
+    if (error instanceof LauncherError && error.errorClass === "debug_config_invalid") throw error;
+    refuse("debug_config_invalid", `cannot read debug settings: ${error instanceof Error ? error.message : String(error)}`, `fix ${path}`);
+  }
 }

@@ -4,7 +4,7 @@
 or stream disconnect and the same frame proves a usable composer. It renders
 `error`; ordinary delivery, nudge and compaction may use the composer
 subject to their existing draft and identity checks. `blocked` retains its
-input-holding meaning: an approval, trust or usage-limit modal. An error
+input-holding meaning: an approval, trust, sign-in or usage-limit modal. An error
 without composer proof retains the existing unknown/booting classification. A usage-limit dialog is blocked;
 a usage-limit banner above an available prompt is error. Newer working or
 completed responses supersede older error text. Quoted errors and quota
@@ -28,6 +28,14 @@ approval-timeout has no deny key for it. Diagnosis and roster display do not
 dismiss it or install an update. Launcher readiness and licensed courier
 delivery may [choose Skip once](../delivery/default-deny.md#codex-update-skip)
 and continue only after proving an empty composer on the same pane.
+
+A harness that has never been signed in is `blocked/sign_in`: Codex's
+"Choose how you want to use Codex." menu with its closing key hint, Claude
+Code's "Select login method:" menu, and Claude Code's first-run text-style
+picker, which precedes sign-in on a fresh configuration. A live composer row
+on the same frame supersedes them, so a quoted screen is not one. Sign-in is
+not an approval request and TAP sends it no keys; `tap doctor <seat>` asks the
+operator to attach and sign in.
 
 Claude Code usage-limit menus remain blocked when their choices wrap across
 terminal rows. Automatic nudge can dismiss only the captured menu layouts it

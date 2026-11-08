@@ -176,6 +176,17 @@ cat >"$WORK/roster/.tap/bus/registry.json" <<'JSON'
 JSON
 capture "$WORK/team-seated-ref" "${BASE_ENV[@]}" TAP_HOME="$WORK/roster/.tap/bus" bash "$INCUMBENT" team --json
 capture "$WORK/team-seated-new" "${BASE_ENV[@]}" TAP_HOME="$WORK/roster/.tap/bus" TAP_BUN_ROUTE_TRACE="$TRACE" "$BIN" team --json
+# These are independent observations; compare the contract apart from their wall clocks.
+python3 - "$WORK/team-seated-ref.out" "$WORK/team-seated-new.out" <<'OBSERVATION_CLOCK'
+import json, re, sys
+for path in sys.argv[1:]:
+    with open(path) as stream:
+        doc = json.load(stream)
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", doc.pop("observed_at"))
+    with open(path, "w") as stream:
+        json.dump(doc, stream, separators=(",", ":"), ensure_ascii=True)
+        stream.write("\n")
+OBSERVATION_CLOCK
 assert_same "$WORK/team-seated-ref" "$WORK/team-seated-new" "compiled native team observation"
 grep -q '"handle":"pollbot"' "$WORK/team-seated-new.out" || fail "compiled native team did not observe the seated roster"
 grep -q '"agent_state":"unknown","agent_state_reason":"no_pane"' "$WORK/team-seated-new.out" || fail "compiled native team did not classify the pane-less roster row"

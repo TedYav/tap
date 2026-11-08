@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { NATIVE_HANDLERS, route } from "../main";
+import { loadNativeHandlers, route } from "../main";
 import { cmdSessionComplete, completionHandles, completionRegistryPath, seatIsRelaunchable } from "../src/launcher/complete";
 import { HARNESSES } from "../src/launcher/catalog";
 import { removeScratchTree } from "./support/scratch";
@@ -21,6 +21,8 @@ const module = join(repo, "runtime/bun/src/launcher/complete.ts");
 const dispatcher = join(repo, "bin/tap");
 // Captured from registry_v20 at d9b94af16 before retirement (436-test baseline green).
 import relaunchVerdicts from "./support/python-closure-relaunch.json";
+
+const NATIVE_HANDLERS = await loadNativeHandlers();
 const scriptsDir = join(repo, "skills/tap/scripts");
 
 // One scratch root for the file: removeScratchTree runs one lsof per call, and

@@ -94,6 +94,9 @@ export function refusalTexts(refusal: string): [string, string] {
     case "pane_process_gone":
       return ["session changed during observation", "re-run tap team doctor"];
     case "fcwd_unavailable":
+      // Distinct from a missing lsof: the tool ran but named no working
+      // directory, so the binding cannot be cross-checked.
+      return ["lsof did not report the harness process's working directory", "re-run tap team doctor"];
     case "tools_unavailable":
       return ["session identity observation tools unavailable", "re-run tap team doctor"];
     default:

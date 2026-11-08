@@ -111,10 +111,20 @@ export interface LadderIO {
   out(line: string): void;
 }
 
+/** Fan-out selection can shrink only before the first possible key. It grants no recovery authority. */
+export class FirstKeySelection {
+  keyed = false;
+  skipped = "";
+  constructor(private readonly check: () => string) {}
+  gate = (): string => this.keyed ? "" : (this.skipped = this.check());
+  record = (sent: boolean): void => { if (sent) this.keyed = true; };
+}
+
 export interface LadderOptions {
   harness: string; interrupt: boolean; wire: string; label: string; deliver: boolean;
   /** Additional readonly admission, repeated inside every recorded key boundary. */
   guard?(keyed: boolean): string;
+  selection?: FirstKeySelection;
   /** Complete the selected staged input only; never fall through to a new nudge. */
   stagedOnly?: boolean;
 }
@@ -140,20 +150,23 @@ export function runLadder(opts: LadderOptions, io: LadderIO): number {
   const tracked: LadderIO = { ...io, effect(action, keys, gate, verify) {
     let result: EffectResult;
     // An effect that throws (e.g. its receipt write failed) cannot prove its keys did not land.
-    try { result = io.effect(action, keys, () => opts.guard?.(keyed) || gate?.() || "", verify); } catch (error) {
+    try { result = io.effect(action, keys, () => opts.selection?.gate() || opts.guard?.(keyed) || gate?.() || "", verify); } catch (error) {
       if (error instanceof PreKeyRefusal) throw error.refusal;
       keyed = true;
       throw error;
     }
+    opts.selection?.record(result.sent);
     if (result.sent) keyed = true;
     return result;
   } };
   try {
     const code = ladder(opts, tracked, () => keyed);
+    if (opts.selection?.skipped && !opts.selection.keyed) { io.out(`tap nudge: ${opts.label}: skipped: ${opts.selection.skipped}`); return 0; }
     if (!keyed || code === 0 || code === 5) return code;
     io.out(`tap nudge: ${opts.label}: stopped after a key had been sent (exit ${code}) (${POSSIBLE})`);
     return 5;
   } catch (error) {
+    if (opts.selection?.skipped && !opts.selection.keyed) { io.out(`tap nudge: ${opts.label}: skipped: ${opts.selection.skipped}`); return 0; }
     // Before any key a refusal is an ordinary refusal; after one, nothing can prove what the pane did.
     if (!keyed) throw error;
     const detail = error instanceof TapError ? error.detail : error instanceof Error ? error.message : String(error);

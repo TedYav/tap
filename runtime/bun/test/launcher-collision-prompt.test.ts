@@ -78,6 +78,35 @@ test("name prompt: an arrow key's escape sequence is ignored, not a quit", () =>
   expect(named(editName(["\x1b[A", "\r"]))).toBe('"opus-2"');
 }, PTY_TIMEOUT);
 
+test("NameEditor: deleteWord takes one word and its trailing separators; clear empties the line", () => {
+  const worded = new NameEditor("opus-fork-", "2");
+  worded.deleteWord();
+  expect([worded.text, worded.placeholder]).toEqual(["opus-", ""]);
+  worded.deleteWord();
+  expect(worded.text).toBe("");
+  worded.deleteWord();
+  expect(worded.text).toBe("");
+  const cleared = new NameEditor("opus-", "2");
+  cleared.clear();
+  expect(cleared.value()).toBe("");
+});
+
+test("name prompt: Option-Delete and Command-Delete edit the name instead of quitting", () => {
+  for (const optionDelete of ["\x1b\x7f", "\x1b\b", "\x17"]) expect(named(editName(["my-seat", optionDelete, "x\r"]))).toBe('"opus-my-x"');
+  // On the untouched default, the chord removes the grey suffix and the prefix word.
+  expect(named(editName(["\x1b\x7fother\r"]))).toBe('"other"');
+  expect(named(editName(["my-seat\x15other\r"]))).toBe('"other"');
+}, PTY_TIMEOUT);
+
+test("name prompt: NO_COLOR erases everything a delete chord removed", () => {
+  const edited = editName(["my-seat\x1b\x7fx\r"], NO_COLOR);
+  expect(named(edited)).toBe('"my-x"');
+  expect(edited.output.split("\b \b").length - 1).toBe(4);
+  const cleared = editName(["ab\x15c\r"], NO_COLOR);
+  expect(named(cleared)).toBe('"c"');
+  expect(cleared.output.split("\b \b").length - 1).toBe(2);
+}, PTY_TIMEOUT);
+
 test("name prompt: Esc inside a typed burst quits; whole CSI and SS3 sequences are bypassed", () => {
   const quit = editName(["7\x1b\r"]);
   expect([quit.exit, named(quit)]).toEqual([2, undefined]);

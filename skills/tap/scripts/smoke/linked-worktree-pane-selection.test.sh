@@ -43,13 +43,19 @@ git -C "$REPO" worktree add -q "$WT" -b lane-smoke
 # pid:start_time); the trace proves the fake observation actually ran.
 cat >"$WORK/bin/ps" <<'SH'
 #!/usr/bin/env bash
+case "$*" in *pid=,ppid=,tty=*) printf '%s ' "$PPID" ;; esac
 printf '1 ttys001\n'
 SH
 cat >"$WORK/bin/tmux" <<SH
 #!/usr/bin/env bash
 echo "tmux \${1:-}" >> "$TRACE"
 case "\${1:-}" in
-  list-panes) printf '%%5\t/dev/ttys001\n' ;;
+  list-panes)
+    # Reporting reads the four-field identity record from the inventory itself.
+    case "\$*" in
+      *pane_tty*session_name*) echo "tmux identity-record" >> "$TRACE"; printf '%%5\t/dev/ttys001\ttap/glm\t4242:100\n' ;;
+      *) printf '%%5\t/dev/ttys001\n' ;;
+    esac ;;
   display-message)
     for a in "\$@"; do
       case "\$a" in
@@ -155,7 +161,7 @@ grep -Eq '"handle"[[:space:]]*:[[:space:]]*"glm"' "$WORK/whoami.out" \
   || fail "whoami did not resolve handle glm: $(cat "$WORK/whoami.out")"
 grep -Eq '"team"[[:space:]]*:[[:space:]]*"tap"' "$WORK/whoami.out" \
   || fail "whoami did not name team tap: $(cat "$WORK/whoami.out")"
-grep -q 'display-message' "$TRACE" || fail "the fake pane observation never ran"
+grep -Eq 'display-message|identity-record' "$TRACE" || fail "the fake pane observation never ran"
 
 # ── team --context names the pane's existing team and bus ───────────────────
 rc=0

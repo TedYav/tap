@@ -33,7 +33,7 @@
   "shell mentioning claude": {
    "status": 2,
    "stdout": "",
-   "stderr": "tap session: harness did not start for fixture/reviewer: the login shell (bash) had not started claude after 5000 ms; it may be waiting for input\npane %N shows:\n  claude\nnext: answer the login-shell prompt in a terminal with /bin/bash -lic exit, then retry the launch\n"
+   "stderr": "tap session: harness did not start for fixture/reviewer: the login shell (bash) had not started claude after <ms> ms; it may be waiting for input\npane %N shows:\n  claude\nnext: answer the login-shell prompt in a terminal with /bin/bash -lic exit, then retry the launch\n"
   },
   "claude SIGTERM after binding": {
    "code": 143,

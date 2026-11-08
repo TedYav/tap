@@ -15,6 +15,7 @@ import { accessSync, constants, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { TapError } from "../context";
+import { shellQuote } from "../shell-quote";
 import { ensureAscii } from "../fsatomic";
 import { displayText } from "../fzf";
 import { NO_SERVER_ON, tmux, tmuxSessionNamespace } from "../tmux";
@@ -522,7 +523,7 @@ export function cmdTmuxDefaults(argv: string[]): number {
     ...(dry ? { preview: { defaults_file_content: conf, source_line: line } } : {}) },
     `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: tmux defaults (clipboard=${spec.mode}${spec.terminal === "inherit" ? ", your default-terminal kept" : ""}${spec.status ? ", status bar" : ""}) in ${st.defaults_file}, source line in ${st.user_conf}` +
     `${normalizeLine ? " (source line moved back before your settings)" : ""}` +
-    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + st.defaults_file : ""}` +
+    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + shellQuote(st.defaults_file) : ""}` +
     `${!dry && !unchanged ? "; for terminal colors, detach and reattach the current tmux client after loading the defaults" : ""}` +
     `${!dry && !unchanged && owned?.status && !spec.status ? "; the status bar already loaded stays until tmux restarts" : ""}`);
   return 0;

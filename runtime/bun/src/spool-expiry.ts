@@ -4,6 +4,7 @@ import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openS
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { Bus } from "./bus";
+import { archivedMonth } from "./bus-archive-index";
 import { envelopeField, validateEnvelope } from "./envelope";
 import { appendRegistryEventOrWarn } from "./events";
 import { lockNameFits } from "./fsatomic";
@@ -120,7 +121,8 @@ export function cleanupPark(ctx: DeadlineContext, id: string, budget?: ParkNotic
       }
       if (notifiable) {
         const candidate = `${id}-park-expired`, noticeId = noticeNameTooLong(candidate) ? hashedNoticeId("park-expired", observed.raw) : candidate;
-        const known = existsSync(join(ctx.home,"payloads",`${noticeId}.md`)) || existsSync(join(ctx.home,"archive",`${noticeId}.cancelled.md`)) || new Bus(ctx.home).isDone(noticeId);
+        const known = existsSync(join(ctx.home,"payloads",`${noticeId}.md`)) || existsSync(join(ctx.home,"archive",`${noticeId}.cancelled.md`)) || new Bus(ctx.home).isDone(noticeId)
+          || Boolean(archivedMonth(ctx.home, noticeId));  // a notice archived before its park retired
         if (!known && budget && budget.remaining <= 0) return "busy";
         const noticeLock = acquireObligationLock(noticeId, 0, env);
         if (!noticeLock) return "busy";

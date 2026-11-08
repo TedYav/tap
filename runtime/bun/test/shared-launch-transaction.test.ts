@@ -207,7 +207,7 @@ test.each(["claude", "opencode"])("ready %s launch lets an immediate clean exit 
 test.each([0, 17])("exit %s before launch readiness leaves no stranded session", async code => {
   const f = fixture("claude");
   writeFileSync(join(f.root, "bin/claude"), `#!/bin/sh\necho early-exit-fixture\nexit ${code}\n`);
-  await expect(launchTransaction({ kind: "new", record: f.record }, f.env)).rejects.toThrow();
+  await expect(launchTransaction({ kind: "new", record: f.record }, f.env)).rejects.toThrow("early-exit-fixture");
   await until(() => spawnSync(tmux, ["-S", f.socket, "has-session", "-t", `=${f.record.name}`]).status !== 0);
   expect(JSON.parse(readFileSync(f.registry, "utf8")).seats).toEqual({});
 }, 20_000);
@@ -309,7 +309,7 @@ function pinnedOracle() {
   if (oracleRoot) return oracleRoot;
   const archive = resolve(import.meta.dir, "support/shared-launch/precut-source.tar.gz");
   const hash = new Bun.CryptoHasher("sha256").update(readFileSync(archive)).digest("hex");
-  expect(hash).toBe("605677029296b9dc8e7eec71fab3f7b650ad9f4b75c11847c7e7702d74ba7846");
+  expect(hash).toBe("ea55dd6da9be1b81850a5718885c8959a20ff9b8b8b997ad4d75478826499214");
   oracleRoot = realpathSync(mkdtempSync(join(original.TAP_INDEX_HOME!, "precut-")));
   expect(spawnSync("tar", ["-xzf", archive, "-C", oracleRoot]).status).toBe(0);
   return oracleRoot;

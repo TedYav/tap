@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { dumps, isMap, loads, pyStr, type JsonMap, type JsonValue } from "./watch-detect";
 import { isSettled } from "./watch-lease";
+import { readFrontmatterHeader } from "./payload-fields";
 
 // python `str.strip()` / `.lower()` on the values the programs touch
 const PY_WS = "[\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
@@ -169,7 +170,7 @@ export function probedAppend(probedJson: string, seat: string): string {
 /** The program's own frontmatter read: fence on line 1, first `kind:` line before the closing fence. */
 function kindOf(path: string): string | null {
   let text: string;
-  try { text = readFileSync(path, "utf8"); } catch { return null; }
+  try { text = readFrontmatterHeader(path, true); } catch { return null; }
   const lines = text.split(/\r\n|\r|\n/);
   if (text.length > 0 && !text.endsWith("\n") && !text.endsWith("\r")) { /* readlines keeps a last unterminated line */ }
   else lines.pop();
@@ -191,9 +192,10 @@ export function hasUnsettled(payloads: string, receipts: string): boolean {
   for (const b of names) {
     if (!b.endsWith(".md") || b.startsWith(".") || b.startsWith("_")) continue;
     const pid = b.slice(0, -3);
+    if (isSettled(receipts, pid)) continue;
     const kind = kindOf(join(payloads, b));
     if (kind !== null && SUPERVISION.has(kind)) continue;
-    if (!isSettled(receipts, pid)) return true;   // `tap_is_done`: `[ -f ]` on .done or .cancelled (rule 38)
+    return true;
   }
   return false;
 }

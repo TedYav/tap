@@ -397,11 +397,12 @@ describe("the production team/index facts (M6 U2)", () => {
     if (opts?.settled) writeFileSync(join(scratch, "bus", "receipts", "ask.done"), "");
     if (opts?.index === "live") writeFileSync(join(scratch, "index", "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {} }));
     if (opts?.index === "invalid") writeFileSync(join(scratch, "index", "global-registry.json"), "not json at all");
-    return realSeams({
-      bus: join(scratch, "bus"), scripts: join(scratch, "scripts"), registry: join(scratch, "registry-decoy.json"),
-      env: { ...process.env, TAP_INDEX_HOME: join(scratch, "index") }, now: "2000", team: "enrolled",
-    });
+    return teamSeams(scratch);
   };
+  const teamSeams = (scratch: string) => realSeams({
+    bus: join(scratch, "bus"), scripts: join(scratch, "scripts"), registry: join(scratch, "registry-decoy.json"),
+    env: { ...process.env, TAP_INDEX_HOME: join(scratch, "index") }, now: "2000", team: "enrolled",
+  });
   const teamless = (scratch: string) =>
     realSeams({ bus: join(scratch, "bus"), scripts: join(scratch, "scripts"), registry: join(scratch, "registry-decoy.json"), env: process.env, now: "2000" });
 
@@ -416,7 +417,7 @@ describe("the production team/index facts (M6 U2)", () => {
       expect(s.oldestUnsettledInbound("seat", 2000n)).toBe("ask\t1900");
       expect(s.inboxClear("seat")).toBe(false);
       writeFileSync(join(scratch, "bus", "receipts", "ask.done"), "");
-      expect(s.oldestUnsettledInbound("seat", 2000n)).toBe("");
+      expect(teamSeams(scratch).oldestUnsettledInbound("seat", 2000n)).toBe("");
     } finally { removeScratchTree(scratch); }
   });
 
@@ -428,7 +429,7 @@ describe("the production team/index facts (M6 U2)", () => {
       expect(s.oldestUnsettledInbound("seat", 2000n)).toBe("ask\t1900");
       expect(s.inboxClear("seat")).toBe(false);
       writeFileSync(join(scratch, "bus", "receipts", "ask.cancelled"), "");
-      expect(s.oldestUnsettledInbound("seat", 2000n)).toBe("");
+      expect(teamSeams(scratch).oldestUnsettledInbound("seat", 2000n)).toBe("");
       expect(s.inboxClear("seat")).toBe(true);
     } finally { removeScratchTree(scratch); }
   });

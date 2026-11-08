@@ -52,6 +52,11 @@ export interface GrantInput {
   to: string;
   adoptedFrom: string;
   recipientInstance: string;
+  /** Build the instance-clearing remedy on a mismatch (default true). It lists
+   *  team-history and reads tombstones, so callers that keep only `ok`/`grant`
+   *  (poll, the parked-recipient predicate) pass false: a mismatch then returns
+   *  the base refusal with `remedy` left `unknown`. */
+  includeRemedy?: boolean;
 }
 
 export type RemedyKind = "unknown" | "command" | "none";
@@ -264,6 +269,7 @@ export function addresseeGrant(input: GrantInput): GrantResult {
     }
     r.instanceMismatch = true;
     r.detail = `'${id}' is bound to recipient instance '${rinst}', not the current '${actor}' instance`;
+    if (input.includeRemedy === false) return r;
     if (fork && adoptionGrant(adoptReg, actor, fork) === actor) {
       const bound = adoptedInstance(adoptReg, fork);
       r.detail = `'${id}' is bound to recipient instance '${rinst}', not the adopted '${fork}' instance '${bound}'`;

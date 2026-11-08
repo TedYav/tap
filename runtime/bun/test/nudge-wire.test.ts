@@ -1,6 +1,6 @@
 // tap-xe42x: the senderless nudge doorbell's grammar and its message bound.
 import { expect, test } from "bun:test";
-import { NUDGE_MESSAGE_MAX_BYTES, nudgeMessageRefusal, parseNudgeWire, renderNudgeWire } from "../src/nudge-wire";
+import { nudgeDoorbellText, NUDGE_CUSTOM_MAX_BYTES, NUDGE_MESSAGE_MAX_BYTES, nudgeMessageRefusal, parseNudgeWire, renderNudgeWire } from "../src/nudge-wire";
 import { parseStuckSentinel } from "../src/stuck-sentinel";
 
 test("bare and message forms render and parse back to the same context", () => {
@@ -49,4 +49,17 @@ test("the payload parser refuses a nudge: it names no payload id", () => {
   const verdict = parseStuckSentinel("[[TAP v0.23 nudge]]", "codex");
   expect(verdict.ok).toBe(false);
   expect(JSON.stringify(verdict)).toContain("names no payload id");
+});
+
+
+test("producer composition preserves human stops and bounds custom context after disclosure", () => {
+  expect(nudgeDoorbellText()).toContain("unless the user or a message says stop");
+  expect(parseNudgeWire(renderNudgeWire(nudgeDoorbellText()))!.message).toBe(nudgeDoorbellText());
+  const wrapped = renderNudgeWire(nudgeDoorbellText()).match(/.{1,80}/g)!.join("\n");
+  expect(parseNudgeWire(wrapped)?.message).toBe(nudgeDoorbellText());
+  const caller = "Your harness was just relaunched for an account switch. Continue what you were working on.";
+  expect(nudgeDoorbellText(caller)).toContain(caller);
+  expect(nudgeDoorbellText(caller)).toContain("unless the user or this message says stop");
+  expect(Buffer.byteLength(nudgeDoorbellText("x".repeat(NUDGE_CUSTOM_MAX_BYTES)))).toBe(200);
+  expect(()=>nudgeDoorbellText("x".repeat(NUDGE_CUSTOM_MAX_BYTES+1))).toThrow("available after TAP");
 });

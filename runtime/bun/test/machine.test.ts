@@ -97,7 +97,7 @@ test("wizard asks team-setup and interrupt choices, keeps saved values and tips 
    if(q.startsWith("Add shell"))return "n";
    throw new Error(`unexpected prompt ${q}`);
  },["codex"])).toBe(0);
- expect(output[0]).toContain("Pre-release beta: expect bugs");
+ expect(output[0]).toBe("Beta: expect bugs; send bug reports and feature requests to https://github.com/TedYav/tap/issues, or email ted@tedyav.com if you cannot use Issues.");
  const initQ=questions.find(q=>q.startsWith("The first time TAP is used"))!;
  expect(initQ).toContain("[keep ask]");
  const behaviorQ=questions.find(q=>q.startsWith("How should agents' messages reach you"))!;
@@ -679,7 +679,7 @@ test("malformed Gemini hooks do not abort install or hide readable manifest entr
 
 test("first install completes wizard before final PATH remedy and records shell PATH",()=>{
  const root=fixture(),tools=join(root,"tools");mkdirSync(tools);
- for(const name of ["bash","bun","python3","git","jq","tmux","tar","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
+ for(const name of ["bash","bun","python3","git","jq","tmux","tar","lsof","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
   const binary=Bun.which(name);if(binary)symlinkSync(binary,join(tools,name));
  }
  for(const name of ["codex","open"])writeFileSync(join(tools,name),"#!/bin/sh\nexit 0\n",{mode:0o755});
@@ -727,7 +727,7 @@ finally:
 
 test("wizard Enter on the alias prompt takes the affirmative default",()=>{
  const root=fixture(),tools=join(root,"tools");mkdirSync(tools);
- for(const name of ["bash","bun","python3","git","jq","tmux","tar","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
+ for(const name of ["bash","bun","python3","git","jq","tmux","tar","lsof","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
   const binary=Bun.which(name);if(binary)symlinkSync(binary,join(tools,name));
  }
  for(const name of ["codex","open"])writeFileSync(join(tools,name),"#!/bin/sh\nexit 0\n",{mode:0o755});

@@ -24,6 +24,7 @@ import { nextEligible } from "../src/verbs/attach";
 import { observeAll, readRoster, trimRegistryLocked } from "../src/verbs/refresh";
 import { tmuxSessionNamespace } from "../src/tmux";
 import { TapError } from "../src/context";
+import { SEAT_HARNESS_VALUES } from "../src/seat-filter";
 
 const root = resolve(import.meta.dir, "../../..");
 const shippedEntry = join(root, "bin/tap");
@@ -112,6 +113,7 @@ if [ -n "$COMPUTE_QUEUE" ]; then cat "$COMPUTE_QUEUE"; else printf '{"jobs":[]}\
     TAP_BOOT_ID: "bootuuid:00000000-0000-0000-0000-000000000001",
     TAP_BOOT_ID_LEGACY: "boot:1",
     TAP_WATCH_NOW: "1787790000",
+    TAP_ROSTER_CACHE_TTL: "0",
     TAP_BUN_ROUTE_TRACE: trace,
     COLUMNS: "200",
     NO_COLOR: "1",
@@ -263,7 +265,7 @@ describe("native team roster", () => {
     const names = run(["team", "--names"], f.worktree, f.env);
     expect(names.status, names.stderr).toBe(0);
     expect(names.stdout).toBe("gone\nlive\npollbot\nstale\n");
-    const namesActive = run(["team", "--names", "--active"], f.worktree, f.env);
+    const namesActive = run(["team", "--names", "--online"], f.worktree, f.env);
     expect(namesActive.status, namesActive.stderr).toBe(0);
     expect(namesActive.stdout).toBe("live\n");
 
@@ -300,7 +302,10 @@ while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
 printf '%s\n' "$*" >> "$TMUX_TRACE"
 case "$1" in
   list-sessions) printf 'live-session\t1:1\t1\n' ;;
-  list-panes) printf 'live-session\tlive-session:0.0\t%%7\tcodex\t123\t1:1\t0\n' ;;
+  list-panes)
+    if [ "$TITLE_IN_LIST" = yes ]; then
+      printf 'live-session\tlive-session:0.0\t%%7\tcodex\t123\t1:1\t0\t\t\t'; cat "$STATE_TITLE"
+    else printf 'live-session\tlive-session:0.0\t%%7\tcodex\t123\t1:1\t0\n'; fi ;;
   capture-pane) cat "$STATE_FRAME" ;;
   display-message) case "$*" in *pane_title*) cat "$STATE_TITLE" ;; *) printf '1:1\n' ;; esac ;;
   *) exit 1 ;;
@@ -325,6 +330,10 @@ esac`);
     const trace = readFileSync(tmuxTrace, "utf8");
     expect(trace).toContain("capture-pane -e -p -t %7");
     expect(trace).toContain("display-message -p -t %7 #{pane_title}");
+    f.env.TITLE_IN_LIST = "yes"; f.env.STATE_TITLE = titlePath;
+    writeFileSync(titlePath, "⠹ DemoProject\n"); writeFileSync(tmuxTrace, "");
+    expect(observed()).toMatchObject({agent_state:"working", agent_state_reason:"title_working"});
+    expect(readFileSync(tmuxTrace, "utf8")).not.toContain("display-message -p -t %7 #{pane_title}");
   }, 30_000);
 
   test("default human reports agent state with additive context JSON fields", () => {
@@ -516,9 +525,10 @@ esac`);
       const cells = line.trimEnd().split(/\s{2,}/);
       return [cells[0], [cells[3], ...cells.slice(5)]];
     }));
-    expect(rows.observed).toEqual(["84k/380k", "gpt-6-astra@xhigh", "n/a"]);
+    // Human cells show the short name; the JSON below keeps the raw observed id.
+    expect(rows.observed).toEqual(["84k/380k", "astra6@xhigh", "n/a"]);
     expect(rows.fallback).toEqual(["—", "fable@high (launch)", "n/a"]);
-    expect(rows.compacted).toEqual(["—", "gpt-6-astra@high", "n/a"]);
+    expect(rows.compacted).toEqual(["—", "astra6@high", "n/a"]);
     const agents = Object.fromEntries(JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents.map((a: { handle: string }) => [a.handle, a]));
     expect(agents.observed).toMatchObject({model: null, effort: null, observed_model: "gpt-6-astra", observed_effort: "xhigh", observed_at: "2026-09-26T04:00:00Z"});
     expect(agents.observed.context_tokens).toEqual({input_tokens: 84000, observed_at: "2026-09-26T04:01:00Z", source: "codex_transcript",
@@ -671,7 +681,7 @@ esac`);
       },
     });
 
-    for (const argv of [["team", "--all"], ["team", "--names"], ["team", "--names", "--active"]]) {
+    for (const argv of [["team", "--all"], ["team", "--names"], ["team", "--names", "--online"]]) {
       writeFileSync(tmuxTrace, "");
       expect(run(argv, f.worktree, f.env).status).toBe(0);
       expect(readFileSync(tmuxTrace, "utf8")).not.toContain("capture-pane");
@@ -1383,30 +1393,30 @@ esac`);
       ["team", "show"],
       ["team", "--future-option"],
       ["team", "--names", "--json"],
-      ["team", "--active"],
+      ["team", "--online"],
       ["team", "--json", "extra"],
       ["team", "roster", "--future-option"],
       ["team", "roster", "--names", "--json"],
-      ["team", "roster", "--active"],
+      ["team", "roster", "--online"],
       ["team", "--json", "--all"],
       ["team", "--names", "--all"],
-      ["team", "--active", "--names"],
+      ["team", "--online", "--names"],
     ];
     const actual = argvs.map(argv => { const r = run(argv, f.worktree, f.env); return [argv.join(" "), r.status, r.stdout, r.stderr]; });
     expect(actual).toEqual([
       ["team ", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
-      ["team  --json", 0, "{\"team\":null,\"agents\":[]}\n", ""],
-      ["team show", 1, "", "tap team: unknown subcommand 'show' (usage: tap team [list|roster|calibration|attach|detach|down|out|up|refresh|shutdown|reset|restore|purge] [--json|--all|--wide]); next: tap help team\n"],
+      ["team  --json", 0, "{\"team\":null,\"agents\":[],\"observed_at\":null}\n", ""],
+      ["team show", 1, "", "tap team: unknown subcommand 'show' (usage: tap team [list|roster|calibration|attach|detach|down|out|up|refresh|history|shutdown|reset|restore|purge] [--json|--all|--wide]); next: tap help team\n"],
       ["team --future-option", 1, "", "tap team: unknown option '--future-option'; next: tap help team\n"],
       ["team --names --json", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap team --names   (or: tap team --json)\",\"detail\":\"--names and --json are alternative output shapes \\u2014 pick one\"}\n", ""],
-      ["team --active", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
+      ["team --online", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
       ["team --json extra", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap help team\",\"detail\":\"unexpected arg 'extra'\"}\n", ""],
       ["team roster --future-option", 1, "", "tap team roster: unknown option '--future-option'; next: tap help team\n"],
       ["team roster --names --json", 1, "{\"ok\":false,\"error_class\":\"usage_error\",\"action\":\"tap team --names   (or: tap team --json)\",\"detail\":\"--names and --json are alternative output shapes \\u2014 pick one\"}\n", ""],
-      ["team roster --active", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
-      ["team --json --all", 0, "{\"team\":null,\"agents\":[]}\n", ""],
+      ["team roster --online", 0, "tap team: no agents registered yet — start one: tap launch <preset|harness> [name]\n", ""],
+      ["team --json --all", 0, "{\"team\":null,\"agents\":[],\"observed_at\":null}\n", ""],
       ["team --names --all", 0, "", ""],
-      ["team --active --names", 0, "", ""],
+      ["team --online --names", 0, "", ""],
     ]);
 
     const container = fixture();
@@ -1763,8 +1773,8 @@ esac`);
 
     const help = spawnSync(shippedEntry, ["help", "team"], { env: f.env, encoding: "utf8" });
     expect(help.status).toBe(0);
-    expect(help.stdout).toContain("tap team [--json | --names | --all | --wide] [--active | --offline]");
-    expect(help.stdout).toContain("tap team roster [<team>] [--json | --names | --all | --wide] [--active | --offline]");
+    expect(help.stdout).toContain("tap team [--json | --names | --all | --wide] [--online | --offline]");
+    expect(help.stdout).toContain("tap team roster [<team>] [--json | --names | --all | --wide] [--online | --offline]");
     expect(help.stdout).not.toContain("tap team [roster] [<team>]");
   }, 30_000);
 });
@@ -2016,14 +2026,14 @@ esac`);
   writeFileSync(transcript, JSON.stringify({type:"assistant",sessionId:"seat",timestamp:"2026-09-19T09:00:00Z",message:{usage:{input_tokens:84000,cache_creation_input_tokens:0,cache_read_input_tokens:0}}})+"\n");
   seedPostFlip(f, {live:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"claude",harness_session_id:"seat",transcript_path:transcript}});
   const ps = join(f.dir,"bin","ps");
-  writeFileSync(ps, "#!/bin/sh\ncase \"$1\" in -axo) echo \"123 1 claude\";; *) echo \"claude PATH=/bin CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000\";; esac\n", {mode:0o755});
+  writeFileSync(ps, "#!/bin/sh\ncase \"$1\" in -axo) echo \"123 1 claude\";; *) echo \"123 claude PATH=/bin CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000\";; esac\n", {mode:0o755});
   const human = run(["team"],f.worktree,f.env);
   expect(human.stdout).toMatch(/live\s+claude\s+● \w+\s+84k\/100k\s+anthropic/);
   expect(human.stdout).not.toContain("Warning: stats unavailable");
   const overridden = JSON.parse(run(["team","--json"],f.worktree,f.env).stdout).agents[0];
   expect(overridden.context_used_percent).toBe(42);
   expect(overridden.context_tokens).toMatchObject({input_tokens:84000,used_percent:84,percent_source:"claude_process_env"});
-  writeFileSync(ps, "#!/bin/sh\ncase \"$1\" in -axo) echo \"123 1 claude\";; *) echo \"claude PATH=/bin\";; esac\n", {mode:0o755});
+  writeFileSync(ps, "#!/bin/sh\ncase \"$1\" in -axo) echo \"123 1 claude\";; *) echo \"123 claude PATH=/bin\";; esac\n", {mode:0o755});
   const unset = JSON.parse(run(["team","--json"],f.worktree,f.env).stdout).agents[0];
   expect(unset.context_tokens).toMatchObject({input_tokens:84000,used_percent:8,percent_source:"default_1m",window_tokens:1000000});
 
@@ -2953,7 +2963,7 @@ test("roster filters share selection across output shapes and exclude daemons", 
     "c-daemon": {status: "offline", delivery: "pane", harness: "daemon"},
   });
   const before = readFileSync(registry);
-  for (const [flag, expected] of [["--active", ["live"]], ["--offline", ["expired", "gone", "offline", "suspended"]]] as const) {
+  for (const [flag, expected] of [["--online", ["live"]], ["--offline", ["expired", "gone", "offline", "suspended"]]] as const) {
     for (const prefix of [["team"], ["team", "roster"], ["team", "roster", "roster"]]) {
       const names = run([...prefix, flag, "--names"], f.worktree, f.env);
       expect(names.status, names.stderr).toBe(0);
@@ -2969,7 +2979,7 @@ test("roster filters share selection across output shapes and exclude daemons", 
       }
     }
   }
-  for (const flags of [["--active", "--offline"], ["--offline", "--active", "--names"]]) {
+  for (const flags of [["--online", "--offline"], ["--offline", "--online", "--names"]]) {
     const result = run(["team", ...flags], f.worktree, f.env);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
@@ -2998,32 +3008,115 @@ test("daemon styling is terminal-only and respects NO_COLOR and TERM=dumb", () =
   expect(dumb.stdout).not.toContain("\x1b");
 });
 
-test("filtered crew keeps parent context without displaying the excluded parent", () => {
-  for (const [flag, parentStatus, childStatus] of [["--active", "suspended", "active"], ["--offline", "active", "suspended"]]) {
+describe("team --include-crews", () => {
+  function crewFixture() {
+    const f = fixture();
+    const pane = {delivery: "pane", pane: "live-session:0.0", pane_id: "%7", session: "live-session", server_epoch: "srv:1:1", status: "suspended"};
+    seedPostFlip(f, {
+      parent: {...pane, harness: "claude", model: "fable"},
+      child: {...pane, harness: "codex", model: "gpt-6-sol", crew: true},
+      sibling: {...pane, harness: "claude", model: "opus", crew: true},
+    });
+    return f;
+  }
+
+  test("unfiltered includes crews; every seat filter opts out unless explicitly included", () => {
+    const f = crewFixture();
+    const names = (...flags: string[]) => {
+      const r = run(["team", "--names", ...flags], f.worktree, f.env);
+      expect(r.status, r.stderr).toBe(0);
+      return r.stdout.trim().split("\n").filter(Boolean);
+    };
+    expect(names()).toEqual(["child", "parent", "sibling"]);
+    for (const filter of [["--harness", "codex"], ["--model", "gpt-6-sol"], ["--state", "offline"]]) {
+      expect(names(...filter)).toEqual(filter[0] === "--state" ? ["parent"] : []);
+      expect(names(...filter, "--include-crews")).toEqual(filter[0] === "--state" ? ["child", "parent", "sibling"] : ["child"]);
+    }
+    expect(names("--offline")).toEqual(["parent"]);
+    expect(names("--offline", "--include-crews")).toEqual(["child", "parent", "sibling"]);
+    const json = run(["team", "--include-crews", "--harness", "codex", "--json"], f.worktree, f.env);
+    expect(json.status, json.stderr).toBe(0);
+    expect(JSON.parse(json.stdout).agents.map((r: any) => r.handle)).toEqual(["child"]);
+    // A crew-only view still selects crews without needing the team opt-in.
+    expect(run(["crew", "list", "--harness", "codex"], f.worktree, f.env).stdout).toContain("child");
+  }, 60_000);
+
+  test("cached filtered rosters distinguish crew inclusion", () => {
+    const f = crewFixture();
+    delete f.env.TAP_WATCH_NOW;
+    f.env.TAP_ROSTER_CACHE_TTL = "60";
+    for (const include of [false, true, true, false, false]) {
+      const result = run(["team", "--harness", "codex", "--no-state", "--json", ...(include ? ["--include-crews"] : [])], f.worktree, f.env);
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).agents.map((r: any) => r.handle)).toEqual(include ? ["child"] : []);
+    }
+  }, 30_000);
+
+  test("matching child has a dim context parent, no unmatched siblings, and a plain-text marker", () => {
+    const f = crewFixture();
+    const args = ["team", "--include-crews", "--harness", "codex", "--wide"];
+    const plain = run(args, f.worktree, f.env);
+    expect(plain.status, plain.stderr).toBe(0);
+    expect(plain.stdout).toMatch(/parent \(crew parent\).*context only/);
+    expect(plain.stdout).toMatch(/^`-- child\s+codex/m);
+    expect(plain.stdout).not.toContain("sibling");
+    expect(plain.stdout).not.toContain("\x1b");
+    const env = {...f.env}; delete env.NO_COLOR;
+    const tty = runTty(args, f.worktree, env, 220);
+    expect(tty.status, tty.stderr).toBe(0);
+    expect(tty.stdout).toContain("\x1b[2mparent (crew parent)\x1b[0m");
+    expect(tty.stdout).not.toContain("\x1b[2m`-- child");
+    const allTty = runTty([...args, "--all"], f.worktree, env, 220);
+    expect(allTty.status, allTty.stderr).toBe(0);
+    expect(allTty.stdout).toContain("\x1b[2m10s/10s\x1b[0m");
+    expect(runTty(args, f.worktree, {...env, NO_COLOR: ""}, 220).stdout).not.toContain("\x1b");
+    const dumb = spawnSync("python3", ["-B", "-c", TTY_RUNNER, "220", shippedEntry, ...args], {cwd: f.worktree, env: {...env, TERM: "dumb"}, encoding: "utf8"});
+    expect(dumb.status, dumb.stderr).toBe(0);
+    expect(dumb.stdout).not.toContain("\x1b");
+    for (const extra of [["--all"], ["--recent", "-n", "1"]]) {
+      const r = run([...args, ...extra], f.worktree, f.env);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("parent (crew parent)");
+      expect(r.stdout).toContain("child");
+      expect(r.stdout).not.toContain("sibling");
+    }
+  }, 60_000);
+});
+
+test("filtered crew includes an excluded parent only as display context", () => {
+  for (const [flag, parentStatus, childStatus] of [["--online", "suspended", "active"], ["--offline", "active", "suspended"]]) {
     const f = fixture();
     const pane = {delivery: "pane", pane: "live-session:0.0", pane_id: "%7", session: "live-session", server_epoch: "srv:1:1", harness: "codex"};
     seedPostFlip(f, { parent: {...pane, status: parentStatus}, child: {...pane, status: childStatus, crew: true} });
-    const result = run(["team", flag!], f.worktree, f.env);
+    const result = run(["team", flag!, "--include-crews"], f.worktree, f.env);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/^child\s+codex/m);
-    expect(result.stdout).not.toMatch(/^parent\s/m);
-    expect(result.stdout).not.toContain("`--");
+    expect(result.stdout).toMatch(/^`-- child\s+codex/m);
+    expect(result.stdout).toContain("parent (crew parent)");
+    expect(result.stdout).toContain("context only");
     expect(result.stderr).not.toContain("tap-zhx82");
   }
 });
 
 test("roster filter conflicts preserve JSON errors on named aliases", () => {
   const f = fixture(); seedPostFlip(f, {});
-  for (const prefix of [["team"], ["team", "roster"], ["team", "roster", "roster"], ["teams", "roster"], ["team", "list", "roster"]]) {
-    const result = run([...prefix, "--json", "--active", "--offline"], f.worktree, f.env);
+  for (const prefix of [["team"], ["team", "roster"], ["team", "roster", "roster"]]) {
+    const result = run([...prefix, "--json", "--online", "--offline"], f.worktree, f.env);
     expect(result.status).toBe(1);
     expect(result.stderr).toBe("");
-    expect(JSON.parse(result.stdout)).toMatchObject({ok: false, error_class: "usage_error", action: "tap help team", detail: "--active and --offline are mutually exclusive"});
+    expect(JSON.parse(result.stdout)).toMatchObject({ok: false, error_class: "usage_error", action: "tap help team", detail: "--online and --offline are mutually exclusive"});
+  }
+  // `teams roster` is the machine seat view, which beats this fixture's team named roster;
+  // that view has no lifecycle flags, so it refuses them in its own JSON envelope.
+  for (const prefix of [["teams", "roster"], ["team", "list", "roster"]]) {
+    const result = run([...prefix, "--json", "--online", "--offline"], f.worktree, f.env);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({ok: false, error_class: "usage_error", action: "tap help teams"});
   }
 });
 
 test("filtered crew nests under the first visible parent when earlier parents are excluded", () => {
-  for (const [flag, hiddenStatus, visibleStatus] of [["--active", "suspended", "active"], ["--offline", "active", "suspended"]]) {
+  for (const [flag, hiddenStatus, visibleStatus] of [["--online", "suspended", "active"], ["--offline", "active", "suspended"]]) {
     const f = fixture();
     const pane = {delivery: "pane", pane: "live-session:0.0", pane_id: "%7", session: "live-session", server_epoch: "srv:1:1", harness: "codex"};
     seedPostFlip(f, {
@@ -3031,7 +3124,7 @@ test("filtered crew nests under the first visible parent when earlier parents ar
       "b-visible": {...pane, status: visibleStatus},
       child: {...pane, status: visibleStatus, crew: true},
     });
-    const result = run(["team", flag!], f.worktree, f.env);
+    const result = run(["team", flag!, "--include-crews"], f.worktree, f.env);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/^b-visible\s+codex/m);
     expect(result.stdout).toMatch(/^`-- child\s+codex/m);
@@ -3256,6 +3349,240 @@ esac`);
   });
 });
 
+describe("tap team --recent", () => {
+  // TAP_WATCH_NOW is 2026-08-27T00:20:00Z. `live` works on screen but its transcript is days old,
+  // so it sorts first only because the state pass saw it working.
+  function recentFixture() {
+    const f = fixture();
+    const capturePath = join(f.dir, "frame.txt");
+    f.env.STATE_FRAME = capturePath;
+    replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+  list-sessions) printf 'live-session\t1:1\t1\n' ;;
+  list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\n' ;;
+  capture-pane) cat "$STATE_FRAME" ;;
+  display-message) printf '1:1\n' ;;
+  *) exit 1 ;;
+esac`);
+    const rule = "─".repeat(40);
+    writeFileSync(capturePath, `⏺ history\n✢ Crystallizing… (3m 0s · ↓ 5k tokens)\n${rule} roster/live ─\n❯ \n${rule}\n  Opus 5.5 med | status\n  ⏵⏵ bypass permissions on · ← 3 agents\n`);
+    const liveTranscript = join(f.dir, "live.jsonl"), freshTranscript = join(f.dir, "fresh.jsonl");
+    writeFileSync(liveTranscript, `${JSON.stringify({ type: "user", timestamp: "2026-08-25T00:20:00.000Z", message: {} })}\n`);
+    writeFileSync(freshTranscript, `${JSON.stringify({ type: "user", timestamp: "2026-08-27T00:10:00.000Z" })}\n`);
+    const parked = (session: string, extra: Record<string, unknown>) => ({ status: "suspended", delivery: "pane", pane: `${session}:0.0`, session, ...extra });
+    seedPostFlip(f, {
+      live: { status: "active", delivery: "pane", pane: "live-session:0.0", pane_id: "%7", session: "live-session",
+        server_epoch: "srv:1:1", harness: "claude", transcript_path: liveTranscript, role: "leader" },
+      fresh: parked("fresh-session", { harness: "codex", transcript_path: freshTranscript, last_launched: "2026-08-20T00:00:00Z" }),
+      "tie-b": parked("tie-b-session", { harness: "agy", last_launched: "2026-08-26T12:00:00Z" }),
+      "tie-a": parked("tie-a-session", { harness: "agy", last_launched: "2026-08-26T12:00:00Z" }),
+      old: parked("old-session", { harness: "codex", exited_at: "2026-08-26T00:20:00Z", registered_at: "2026-08-01T00:00:00Z" }),
+      nodate: parked("nodate-session", { harness: "cursor" }),
+    });
+    return f;
+  }
+  const ok = (r: ReturnType<typeof run>) => { expect(r.status, r.stderr).toBe(0); return r.stdout; };
+
+  test("every output shape keeps one recency order: working first, undated last, ties by handle", () => {
+    const f = recentFixture();
+    const names = (...extra: string[]) => ok(run(["team", "--recent", "--names", ...extra], f.worktree, f.env));
+    expect(names()).toBe("live\nfresh\ntie-a\ntie-b\nold\nnodate\n");
+    // Without --recent the order is the registry's, and nothing is observed for --names.
+    expect(ok(run(["team", "--names"], f.worktree, f.env))).toBe("fresh\nlive\nnodate\nold\ntie-a\ntie-b\n");
+    const doc = JSON.parse(ok(run(["team", "--recent", "--json"], f.worktree, f.env)));
+    expect(doc.agents.map((a: any) => [a.handle, a.last_active_at, a.last_active_source])).toEqual([
+      ["live", "2026-08-27T00:20:00Z", "working"],
+      ["fresh", "2026-08-27T00:10:00Z", "transcript"],
+      ["tie-a", "2026-08-26T12:00:00Z", "launched"],
+      ["tie-b", "2026-08-26T12:00:00Z", "launched"],
+      ["old", "2026-08-26T00:20:00Z", "exited"],
+      ["nodate", null, null],
+    ]);
+    expect(doc.agents[0].agent_state).toBe("working");
+    // The fields are additive and appear only with --recent.
+    const plain = JSON.parse(ok(run(["team", "--json"], f.worktree, f.env)));
+    expect(plain.agents[0]).not.toHaveProperty("last_active_at");
+    expect(plain.agents[0]).not.toHaveProperty("last_active_source");
+    // The human roster is flat in that order (the leader is not hoisted) with a last-active column.
+    const human = ok(run(["team", "--recent"], f.worktree, f.env)).split("\n");
+    expect(human[0]).toBe("tap team: roster");
+    expect(human[1]).toMatch(/^handle +harness +state +last active +context +family +model +preset$/);
+    const cell = (line: string) => line.split(/ {2,}/)[3];
+    expect(human.slice(2, 8).map(line => [line.split(/\s+/)[0], cell(line)])).toEqual([
+      ["live", "working"], ["fresh", "10m"], ["tie-a", "12h20m"], ["tie-b", "12h20m"], ["old", "1d"], ["nodate", "-"],
+    ]);
+    // --all keeps its nine-column table, gains the column after status, and still sorts working first.
+    const all = ok(run(["team", "--all", "--recent"], f.worktree, f.env)).split("\n");
+    expect(all[1]).toMatch(/^handle +kind +harness +pane +status +last active +attached +unattended +reason +notes\/asks$/);
+    expect(all.slice(2, 8).map(line => line.split(/\s+/)[0])).toEqual(["live", "fresh", "tie-a", "tie-b", "old", "nodate"]);
+    expect(all[2]).toMatch(/^live \(leader\) +SEAT +claude +live-session:0\.0 +active +working /);
+  }, 60_000);
+
+  test("-n keeps the first n after filters and the sort; --no-state dates a working seat by its evidence", () => {
+    const f = recentFixture();
+    const names = (...extra: string[]) => ok(run(["team", "--recent", "--names", ...extra], f.worktree, f.env));
+    expect(names("-n", "2")).toBe("live\nfresh\n");
+    expect(names("-n", "1")).toBe("live\n");
+    expect(names("-n", "50")).toBe("live\nfresh\ntie-a\ntie-b\nold\nnodate\n");
+    expect(names("--offline", "-n", "2")).toBe("fresh\ntie-a\n");
+    expect(names("--harness", "agy,cursor")).toBe("tie-a\ntie-b\nnodate\n");
+    // No state pass: nothing is known to be working, so the live seat's days-old transcript places it.
+    expect(names("--no-state")).toBe("fresh\ntie-a\ntie-b\nold\nlive\nnodate\n");
+    // The roster door reaches the same order for a named team.
+    expect(ok(run(["team", "roster", "roster", "--recent", "-n", "3", "--names"], f.worktree, f.env))).toBe("live\nfresh\ntie-a\n");
+    expect(ok(run(["team", "-n", "2", "--recent", "--names"], f.worktree, f.env))).toBe("live\nfresh\n");
+    const human = ok(run(["team", "--recent", "-n", "2"], f.worktree, f.env)).split("\n").filter(Boolean);
+    expect(human.slice(2).map(line => line.split(/\s+/)[0])).toEqual(["live", "fresh"]);
+  }, 60_000);
+
+  test("the flat view keeps the ambiguous-session warning, and a daemon sorts by its own activity", () => {
+    const f = fixture();
+    const parked = (pane: string, extra: Record<string, unknown>) => ({ status: "suspended", delivery: "pane", pane, session: "old-session", harness: "codex", ...extra });
+    seedPostFlip(f, {
+      pa: parked("old-session:0.0", { registered_at: "2026-08-01T00:00:00Z" }),
+      pb: parked("old-session:1.0", { last_launched: "2026-08-26T00:20:00Z" }),
+      pc: parked("old-session:2.0", { crew: true, last_launched: "2026-08-27T00:00:00Z" }),
+      zbot: { status: "active", delivery: "poll", harness: "pre-merge-watch", unattended: true, last_launched: "2026-08-27T00:19:00Z" },
+    });
+    const warning = "tap team: warning: multiple parent seats for session 'old-session' — nesting under 'pa'; see tap-7ph7f\n";
+    const nested = run(["team"], f.worktree, f.env);
+    expect(nested.status, nested.stderr).toBe(0);
+    expect(nested.stderr).toBe(warning);
+    const flat = run(["team", "--recent"], f.worktree, f.env);
+    expect(flat.status, flat.stderr).toBe(0);
+    // Same line on the same stream; the rows keep recency order, the daemon by its own launch.
+    expect(flat.stderr).toBe(warning);
+    expect(flat.stdout.split("\n").slice(2).filter(Boolean).map(line => line.split(/\s+/)[0])).toEqual(["zbot", "pc", "pb", "pa"]);
+    expect(ok(run(["team", "--recent", "--names"], f.worktree, f.env))).toBe("zbot\npc\npb\npa\n");
+  }, 60_000);
+
+  // Review fixtures (astra-ponytail): `a` launched a minute after TAP_WATCH_NOW (clock skew), and `oc`,
+  // an OpenCode seat whose newest message has a creation time no Date can hold.
+  function reviewFixture() {
+    const f = recentFixture();
+    const path = join(f.worktree, ".tap", "team-registry.json");
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.seats.a = { status: "suspended", delivery: "pane", pane: "a-session:0.0", session: "a-session", harness: "agy", last_launched: "2026-08-27T00:21:00Z" };
+    doc.seats.oc = { status: "suspended", delivery: "pane", pane: "oc-session:0.0", session: "oc-session", harness: "opencode",
+      harness_session_id: "ses_far", last_launched: "2026-08-26T06:20:00Z" };
+    writeFileSync(path, JSON.stringify(doc, null, 2) + "\n");
+    const db = createOpenCodeStore(f.env.OPENCODE_DB_PATH!);
+    addSession(db, "ses_far", f.worktree);
+    addMessage(db, { type: "assistant", time: { created: 9000000000000000 } }, { session: "ses_far" });
+    db.close();
+    return f;
+  }
+
+  test("review 1: a working seat outranks a future-dated one, which reads just now", () => {
+    const f = reviewFixture();
+    expect(ok(run(["team", "--recent", "-n", "1", "--names"], f.worktree, f.env))).toBe("live\n");
+    expect(ok(run(["team", "--recent", "-n", "2", "--names"], f.worktree, f.env))).toBe("live\na\n");
+    const human = ok(run(["team", "--recent", "-n", "2"], f.worktree, f.env)).split("\n");
+    expect(human[3]!.split(/ {2,}/)[3]).toBe("just now");
+  }, 60_000);
+
+  test("review 2: -n reads the word after it as typed, before seat filters are lifted out", () => {
+    const f = recentFixture();
+    const missing = run(["team", "roster", "--recent", "-n", "--harness", "codex", "2", "--names"], f.worktree, f.env);
+    expect({ exit: missing.status, stdout: missing.stdout, stderr: missing.stderr }).toEqual({ exit: 1, stdout: "",
+      stderr: "tap team roster: -n needs a positive integer: the number of rows to keep, e.g. -n 15; next: tap help team\n" });
+    expect(ok(run(["team", "--recent", "--harness", "codex", "-n", "1", "--names"], f.worktree, f.env))).toBe("fresh\n");
+  }, 60_000);
+
+  // Every placement of `-n 2`, `--harness codex` and the team operand `roster`, through both verbs. Each
+  // value flag takes the word typed after it, so lifting one flag never joins another word to a flag.
+  // The fixture's freshest seat is not codex and three codex seats differ in recency, so a dropped filter
+  // or a dropped -n both change the names. `tap teams` has no team operand: there the well-formed rows
+  // refuse the stray `roster`, and every refusal names the same flag as on tap team.
+  test("value flags read the word typed after them, whatever other flags sit around them", () => {
+    const f = recentFixture();
+    const path = join(f.worktree, ".tap", "team-registry.json");
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.seats.mid = { status: "suspended", delivery: "pane", pane: "mid-session:0.0", session: "mid-session", harness: "codex", last_launched: "2026-08-26T18:00:00Z" };
+    writeFileSync(path, JSON.stringify(doc, null, 2) + "\n");
+    const H = ["--harness", "codex"], N = ["-n", "2"], T = "roster";
+    const picked = "fresh\nmid\n", stray = "tap: error: unrecognized arguments: roster";
+    const needsN = "-n needs a positive integer: the number of rows to keep, e.g. -n 15", needsH = "--harness needs a comma list of values";
+    const badHarness = `--harness 'roster' is not a supported harness (one of: ${SEAT_HARNESS_VALUES.join(", ")})`;
+    // [words after --recent, tap team roster … --names, tap teams …]; a string is the names printed, {refused} the detail.
+    type Outcome = string | { refused: string } | null;
+    const rows: [string[], Outcome, Outcome][] = [
+      [[...N, ...H, T], picked, { refused: stray }],
+      [[...H, ...N, T], picked, { refused: stray }],
+      [[...H, T, ...N], picked, { refused: stray }],
+      [[T, ...N, ...H], picked, { refused: stray }],
+      [[T, ...H, ...N], picked, { refused: stray }],
+      [[...N, T, ...H], picked, { refused: stray }],
+      [[...H, "--context", ...N, T], picked, { refused: "tap: error: unrecognized arguments: --context roster" }],
+      // --harness takes -n as its value; -n takes --harness as its value.
+      [["--harness", "-n", "2", "codex", T], { refused: needsH }, { refused: needsH }],
+      [["-n", "--harness", "codex", "2", T], { refused: needsN }, { refused: needsN }],
+      [["-n", T, "2", ...H], { refused: "-n must be a positive integer, got 'roster'" }, { refused: "-n must be a positive integer, got 'roster'" }],
+      [["--harness", T, ...N], { refused: badHarness }, { refused: badHarness }],
+      [[...H, T, "-n"], { refused: needsN }, { refused: needsN }],
+      [[...N, T, "--harness"], { refused: needsH }, { refused: needsH }],
+      // A display switch is not lifted out from under a value flag either.
+      [["-n", "--context", "2", T], { refused: needsN }, { refused: needsN }],
+      [["--harness", "--context", "codex", T], { refused: needsH }, { refused: needsH }],
+      // --stale-after takes the next word too (tap team only), so --harness is its value, not a filter.
+      [["--stalled", "--stale-after", "--harness", "codex", "600", T], { refused: "--stale-after must be a positive integer (seconds), got '--harness'" }, null],
+      // A repeated value flag checks every value as it is read, so a later one cannot hide a bad one.
+      [["--stalled", "--stale-after", "--harness", "codex", "--stale-after", "600"], { refused: "--stale-after must be a positive integer (seconds), got '--harness'" }, null],
+      [["-n", "x", "-n", "2", T], { refused: "-n must be a positive integer, got 'x'" }, { refused: "-n must be a positive integer, got 'x'" }],
+      [[...H, "-n", "1", "-n", "2", T], picked, { refused: stray }],
+    ];
+    const seen = (argv: string[]) => { const r = run(argv, f.worktree, f.env); return { exit: r.status, stdout: r.stdout, stderr: r.stderr }; };
+    const want = (verb: string, outcome: string | { refused: string }, action: string) => typeof outcome === "string"
+      ? { exit: 0, stdout: outcome, stderr: "" } : { exit: 1, stdout: "", stderr: `${verb}: ${outcome.refused}; next: ${action}\n` };
+    // Every row runs before the assertion, so a failure lists each wrong placement at once.
+    const wrong: unknown[] = [];
+    const check = (argv: string[], expected: ReturnType<typeof want>) => {
+      const got = seen(argv);
+      if (!Bun.deepEquals(got, expected)) wrong.push({ argv: argv.join(" "), got, expected });
+    };
+    for (const [words, team, teams] of rows) {
+      if (team !== null) check(["team", "roster", "--recent", ...words, "--names"], want("tap team roster", team, "tap help team"));
+      if (teams !== null) check(["teams", "--recent", ...words], want("tap teams", teams, "tap help teams"));
+    }
+    expect(wrong).toEqual([]);
+  }, 180_000);
+
+  test("review 3: an out-of-range timestamp is undated in every shape; the seat falls back to its launch", () => {
+    const f = reviewFixture();
+    for (const extra of [["--no-state"], []]) {
+      const json = run(["team", "--recent", "--json", ...extra], f.worktree, f.env);
+      expect(json.status, json.stderr).toBe(0);
+      expect(JSON.parse(json.stdout).agents.find((a: any) => a.handle === "oc")).toMatchObject({ last_active_at: "2026-08-26T06:20:00Z", last_active_source: "launched" });
+    }
+    // Between tie-b (12h20m) and old (1d), in names and in the human roster alike.
+    expect(ok(run(["team", "--recent", "--names", "--no-state"], f.worktree, f.env))).toBe("a\nfresh\ntie-a\ntie-b\noc\nold\nlive\nnodate\n");
+    const human = ok(run(["team", "--recent"], f.worktree, f.env)).split("\n").filter(line => line.startsWith("oc "));
+    expect(human.map(line => line.split(/ {2,}/)[3])).toEqual(["18h00m"]);
+  }, 60_000);
+
+  test("-n refuses a missing, non-positive or glued value and needs --recent", () => {
+    const f = recentFixture();
+    const refused = (args: string[], detail: string) => {
+      const r = run(["team", ...args], f.worktree, f.env);
+      expect({ exit: r.status, stdout: r.stdout, stderr: r.stderr }, args.join(" ")).toEqual({ exit: 1, stdout: "", stderr: `tap team: ${detail}; next: tap help team\n` });
+    };
+    refused(["-n", "5"], "-n limits a --recent listing; add --recent");
+    refused(["--all", "-n", "5"], "-n limits a --recent listing; add --recent");
+    refused(["--recent", "-n"], "-n needs a positive integer: the number of rows to keep, e.g. -n 15");
+    refused(["--recent", "-n", "--names"], "-n needs a positive integer: the number of rows to keep, e.g. -n 15");
+    for (const value of ["0", "-2", "x"]) refused(["--recent", "-n", value], `-n must be a positive integer, got '${value}'`);
+    refused(["--recent", "-n5"], "-n takes its value as a separate word: -n <n>");
+    refused(["-n5", "--recent"], "-n takes its value as a separate word: -n <n>");
+    const json = run(["team", "--recent", "-n", "0", "--json"], f.worktree, f.env);
+    expect(json.status).toBe(1);
+    expect(json.stderr).toBe("");
+    expect(JSON.parse(json.stdout)).toEqual({ ok: false, error_class: "usage_error", action: "tap help team", detail: "-n must be a positive integer, got '0'" });
+    const roster = run(["team", "roster", "roster", "-n", "3"], f.worktree, f.env);
+    expect({ exit: roster.status, stderr: roster.stderr }).toEqual({ exit: 1, stderr: "tap team roster: -n limits a --recent listing; add --recent; next: tap help team\n" });
+  }, 60_000);
+});
+
 test("plugin windows stay directory-specific and a missing session remains unknown", () => {
   const {f,calls,publish}=openCodeRosterFixture(true);publish();
   const result=run(["team","--refresh-models","--json"],f.worktree,f.env);
@@ -3391,3 +3718,364 @@ esac`);
   expect(combined.findings.map((v: {name: string}) => v.name)).toEqual(["session-binding", "session-binding", "session-binding", "seat-state"]);
   expect(readFileSync(registry, "utf8")).toBe(before);
 }, 30_000);
+
+describe("shared seat filters on tap team", () => {
+  // Two live panes share one frame; the transcript dates the claude seat's turn end 15m before TAP_WATCH_NOW.
+  function filterFixture() {
+    const f = fixture();
+    const capturePath = join(f.dir, "frame.txt");
+    f.env.STATE_FRAME = capturePath;
+    replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+  list-sessions) printf 'live-session\t1:1\t1\n' ;;
+  list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\nlive-session\tlive-session:0.1\t%%8\tclaude\t124\t1:1\t0\n' ;;
+  capture-pane) cat "$STATE_FRAME" ;;
+  display-message) printf '1:1\n' ;;
+  *) exit 1 ;;
+esac`);
+    const rule = "─".repeat(40);
+    writeFileSync(capturePath, `⏺ history\n✻ Baked for 1m 29s · done 12:05 AM\n${rule} roster/live ─\n❯ \n${rule}\n  Opus 5.5 med | status\n  ⏵⏵ bypass permissions on · ← 3 agents\n`);
+    const transcript = join(f.dir, "claude.jsonl");
+    writeFileSync(transcript, `${JSON.stringify({ type: "assistant", timestamp: "2026-08-27T00:05:00.000Z", message: { stop_reason: "end_turn" } })}\n`);
+    const pane = (id: string, index: number) => ({ status: "active", delivery: "pane", pane: `live-session:0.${index}`, pane_id: id, session: "live-session", server_epoch: "srv:1:1", harness: "claude" });
+    seedPostFlip(f, {
+      dated: { ...pane("%7", 0), transcript_path: transcript, launch_tuning: { model: "opus[1m]", effort: "xhigh" } },
+      undated: { ...pane("%8", 1), launch_tuning: { model: "claude-fable-5-1", effort: "low" } },
+      resting: { status: "offline", delivery: "pane", harness: "codex", launch_tuning: { model: "gpt-6-astra", effort: "high" } },
+      gateway: { status: "active", delivery: "poll", harness: "gateway-daemon" },
+    });
+    // Every output shape must select the same seats; returns them sorted.
+    const selected = (...flags: string[]): string[] => {
+      const names = run(["team", "--names", ...flags], f.worktree, f.env);
+      expect(names.status, names.stderr).toBe(0);
+      const json = run(["team", "--json", ...flags], f.worktree, f.env);
+      expect(json.status, json.stderr).toBe(0);
+      const human = run(["team", ...flags], f.worktree, f.env);
+      expect(human.status, human.stderr).toBe(0);
+      const handles = names.stdout.split("\n").filter(Boolean).sort();
+      expect(JSON.parse(json.stdout).agents.map((seat: { handle: string }) => seat.handle).sort()).toEqual(handles);
+      const rows = human.stdout.split("\n").slice(2).filter(line => line && !line.startsWith("Warning:") && !line.startsWith("tap team:")).map(line => line.trim().split(/\s+/)[0]);
+      expect(rows.sort()).toEqual(handles);
+      return handles;
+    };
+    return { f, selected };
+  }
+
+  test("--harness, --model and --state select identical seats in --names, --json and the table", () => {
+    const { selected } = filterFixture();
+    expect(selected("--harness", "codex")).toEqual(["resting"]);
+    expect(selected("--harness", "CLAUDE,codex")).toEqual(["dated", "resting", "undated"]);
+    expect(selected("--harness", "daemon")).toEqual(["gateway"]);
+    expect(selected("--model", "fable5.1")).toEqual(["undated"]);
+    expect(selected("--model", "astra,opus")).toEqual(["dated", "resting"]);
+    expect(selected("--state", "offline")).toEqual(["resting"]);
+    expect(selected("--state", "ready")).toEqual(["gateway"]);
+    expect(selected("--state", "idle")).toEqual(["dated", "undated"]);
+    expect(selected("--harness", "claude", "--model", "opus")).toEqual(["dated"]);
+    expect(selected("--harness", "codex", "--model", "opus")).toEqual([]);
+  }, 120_000);
+
+  test("--state active drops the dated long idle, keeps the undated idle and live daemons, and excludes offline", () => {
+    const { selected, f } = filterFixture();
+    expect(selected("--state", "active")).toEqual(["gateway", "undated"]);
+    // The threshold is exact: a turn that ended 599s ago is still active, 600s ago is not.
+    const ended = Date.parse("2026-08-27T00:05:00.000Z") / 1000;
+    f.env.TAP_WATCH_NOW = String(ended + 599);
+    expect(selected("--state", "active")).toEqual(["dated", "gateway", "undated"]);
+    f.env.TAP_WATCH_NOW = String(ended + 600);
+    expect(selected("--state", "active")).toEqual(["gateway", "undated"]);
+  }, 120_000);
+
+  test("filters AND with --online, --offline and --all, and refuse before any selection", () => {
+    const { selected, f } = filterFixture();
+    expect(selected("--online", "--state", "active")).toEqual(["undated"]);
+    expect(selected("--offline", "--harness", "claude")).toEqual([]);
+    expect(selected("--offline", "--harness", "codex")).toEqual(["resting"]);
+    const all = run(["team", "--all", "--harness", "codex"], f.worktree, f.env);
+    expect(all.status, all.stderr).toBe(0);
+    expect(all.stdout).toMatch(/\bresting\b/);
+    expect(all.stdout).not.toContain("dated");
+    const none = run(["team", "--model", "nothing-here"], f.worktree, f.env);
+    expect({ status: none.status, stdout: none.stdout }).toEqual({ status: 0, stdout: "tap team: no seats match these filters\n" });
+    const bad = run(["team", "--state", "sleeping"], f.worktree, f.env);
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toBe("");
+    expect(bad.stderr).toContain("--state 'sleeping' is not a supported seat state (one of: working,");
+    const badJson = run(["team", "roster", "--json", "--state", "sleeping"], f.worktree, f.env);
+    expect(badJson.status).toBe(1);
+    expect(JSON.parse(badJson.stdout)).toMatchObject({ ok: false, error_class: "usage_error", action: "tap help team" });
+    const missing = run(["team", "--harness"], f.worktree, f.env);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("--harness needs a comma list of values");
+  }, 120_000);
+
+  test("--stalled judges only the seats the filters keep", () => {
+    const { f } = filterFixture();
+    // Both idle claude seats owe an ask: the dated one is stalled, the undated one unjudged.
+    const bus = join(f.worktree, ".tap", "bus");
+    for (const dir of ["payloads", "receipts"]) mkdirSync(join(bus, dir), { recursive: true });
+    for (const to of ["dated", "undated"]) writeFileSync(join(bus, "payloads", `ask-${to}.md`), `---\nid: ask-${to}\nfrom: lead\nto: ${to}\nreply: expected\n---\nbody\n`);
+    const judged = (...flags: string[]) => {
+      const r = run(["team", "--json", "--stalled", ...flags], f.worktree, f.env);
+      expect(r.status, r.stderr).toBe(0);
+      const doc = JSON.parse(r.stdout);
+      return { stalled: doc.agents.map((seat: { handle: string }) => seat.handle), unjudged: doc.unjudged.map((seat: { handle: string }) => seat.handle) };
+    };
+    expect(judged()).toEqual({ stalled: ["dated"], unjudged: ["undated"] });
+    expect(judged("--model", "fable")).toEqual({ stalled: [], unjudged: ["undated"] });
+    expect(judged("--model", "opus")).toEqual({ stalled: ["dated"], unjudged: [] });
+    expect(judged("--harness", "codex")).toEqual({ stalled: [], unjudged: [] });
+    const human = run(["team", "--stalled", "--model", "opus"], f.worktree, f.env);
+    expect(human.stdout).toContain("stalled: 1 seat idle >= 600s with an unanswered ask (of 1)");
+  }, 60_000);
+
+  test("tap crew list and tap team calibration take the filters", () => {
+    const { f } = filterFixture();
+    const crew = run(["crew", "list", "--state", "sleeping"], f.worktree, f.env);
+    expect(crew.status).toBe(1);
+    expect(crew.stderr).toContain("'sleeping'");
+    const stray = run(["crew", "list", "--json"], f.worktree, f.env);
+    expect(stray.status).toBe(1);
+    expect(stray.stderr).toContain("unexpected arg '--json'");
+    const calibration = run(["team", "calibration", "--harness", "codex"], f.worktree, f.env);
+    expect(calibration.status, calibration.stderr).toBe(0);
+    expect(calibration.stdout).toContain("resting");
+    expect(calibration.stdout).not.toContain("undated");
+  }, 60_000);
+
+  test("--active is the alias of --online: same stdout, one stderr line naming it", () => {
+    const { f } = filterFixture();
+    for (const shape of [["--names"], ["--json"], []]) {
+      const online = run(["team", "--online", ...shape], f.worktree, f.env);
+      const alias = run(["team", "--active", ...shape], f.worktree, f.env);
+      expect(online.status, online.stderr).toBe(0);
+      expect(alias.status).toBe(0);
+      // Capture and observation timestamps use each run's wall clock.
+      const stable = (text: string) => {
+        if (!text.startsWith("{")) return text;
+        const doc = JSON.parse(text); doc.observed_at = null;
+        for (const row of doc.agents) row.sampled_at = null;
+        return JSON.stringify(doc);
+      };
+      expect(stable(alias.stdout)).toBe(stable(online.stdout));
+      expect(online.stderr).not.toContain("--online");
+      expect(alias.stderr.split("\n").filter(line => line.includes("--online"))).toEqual(["tap team: --active is now --online; it still works during migration"]);
+    }
+    const clash = run(["team", "--active", "--offline"], f.worktree, f.env);
+    expect(clash.status).toBe(1);
+    expect(clash.stderr).toContain("--online and --offline are mutually exclusive");
+  }, 60_000);
+
+  test("the model column shows short names, JSON keeps raw ids, and effort color follows the roster style rule", () => {
+    const { f } = filterFixture();
+    const plain = run(["team"], f.worktree, f.env);
+    expect(plain.stdout).toContain("opus@xhigh (launch)");
+    expect(plain.stdout).toContain("fable5.1@low (launch)");
+    expect(plain.stdout).not.toContain("\x1b");
+    const agents = JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents;
+    expect(agents.find((seat: { handle: string }) => seat.handle === "dated")).toMatchObject({ model: "opus[1m]", effort: "xhigh" });
+    expect(agents.find((seat: { handle: string }) => seat.handle === "undated")).toMatchObject({ model: "claude-fable-5-1" });
+    const env = { ...f.env };
+    delete env.NO_COLOR;
+    const color = runTty(["team", "--wide"], f.worktree, env, 200);
+    expect(color.stdout).toContain("opus@\x1b[38;5;208mxhigh\x1b[0m (launch)");
+    expect(color.stdout).toContain("fable5.1@\x1b[38;5;27mlow\x1b[0m (launch)");
+    const preset = color.stdout.split("\n").filter(line => line.includes("(launch)")).map(line => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trimEnd().length);
+    expect(new Set(preset).size).toBe(1);
+    const noColor = runTty(["team", "--wide"], f.worktree, { ...env, NO_COLOR: "" }, 200);
+    expect(noColor.stdout).toContain("opus@xhigh (launch)");
+    const dumb = spawnSync("python3", ["-B", "-c", TTY_RUNNER, "200", shippedEntry, "team", "--wide"], { cwd: f.worktree, env: { ...env, TERM: "dumb" }, encoding: "utf8" });
+    expect(dumb.stdout).toContain("opus@xhigh (launch)");
+  }, 60_000);
+});
+
+test("--harness and --model skip the pane capture of excluded seats; --state still captures the kept ones", () => {
+  const f = fixture();
+  const calls = join(f.dir, "tmux-calls.log");
+  f.env.TMUX_CALL_LOG = calls;
+  f.env.STATE_FRAME = join(f.dir, "frame.txt");
+  writeFileSync(f.env.STATE_FRAME, "› \n  gpt-6-astra high · Context 90% left\n");
+  replaceTmux(f, String.raw`
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+  list-sessions) printf 'live-session\t1:1\t1\n' ;;
+  list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\nlive-session\tlive-session:0.1\t%%8\tcodex\t124\t1:1\t0\n' ;;
+  capture-pane) cat "$STATE_FRAME" ;;
+  display-message) printf '1:1\n' ;;
+  *) exit 1 ;;
+esac`);
+  const pane = (id: string, index: number, harness: string) => ({ status: "active", delivery: "pane", pane: `live-session:0.${index}`, pane_id: id, session: "live-session", server_epoch: "srv:1:1", harness });
+  seedPostFlip(f, {
+    claude: { ...pane("%7", 0, "claude"), launch_tuning: { model: "opus[1m]", effort: "xhigh" } },
+    codex: { ...pane("%8", 1, "codex"), launch_tuning: { model: "gpt-6-astra", effort: "high" } },
+  });
+  // Pane captures per seat for one invocation, read from the injected tmux's own call log.
+  const captures = (...argv: string[]) => {
+    writeFileSync(calls, "");
+    const r = run(["team", ...argv], f.worktree, f.env);
+    expect(r.status, r.stderr).toBe(0);
+    const lines = readFileSync(calls, "utf8").split("\n").filter(line => line.includes("capture-pane"));
+    return { claude: lines.filter(line => line.includes("%7")).length, codex: lines.filter(line => line.includes("%8")).length, stdout: r.stdout };
+  };
+  expect(captures("--json")).toMatchObject({ claude: 1, codex: 1 });
+  for (const shape of [["--json"], [], ["--state", "idle,working,unknown"]]) {
+    const filtered = captures("--harness", "codex", ...shape);
+    expect([shape.join(" "), filtered.claude, filtered.codex > 0]).toEqual([shape.join(" "), 0, true]);
+    expect(filtered.stdout).not.toContain("claude  ");
+  }
+  expect(captures("--model", "astra6", "--json")).toMatchObject({ claude: 0, codex: 1 });
+  expect(captures("--model", "opus", "--json")).toMatchObject({ claude: 1, codex: 0 });
+  // --names needs no state, so a harness or model filter captures nothing at all.
+  expect(captures("--names", "--harness", "codex")).toEqual({ claude: 0, codex: 0, stdout: "codex\n" });
+  expect(captures("--names", "--model", "opus")).toEqual({ claude: 0, codex: 0, stdout: "claude\n" });
+  expect(captures("--names", "--state", "unknown,idle,working", "--harness", "claude")).toMatchObject({ claude: 1, codex: 0 });
+}, 60_000);
+
+test("one epoch bracket covers every capture and drift invalidates the whole observation", () => {
+  const f = fixture(), calls = join(f.dir, "epoch.calls"), epoch = join(f.dir, "epoch");
+  f.env.TMUX_CALL_LOG = calls; f.env.EPOCH_FILE = epoch;
+  delete f.env.TAP_SERVER_EPOCH;
+  replaceTmux(f, String.raw`
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) for n in 7 8 9; do printf 'live-session\tlive-session:0.%s\t%%%s\tclaude\t123\t1:1\t0\t\t\t\n' "$n" "$n"; done ;;
+ capture-pane)
+   if [ "$FLIP_EPOCH" = yes ]; then printf '2:2\n' > "$EPOCH_FILE"; fi
+   printf '❯ \n42%% (84K) ctx\n' ;;
+ display-message) cat "$EPOCH_FILE" ;;
+ *) exit 1 ;;
+esac`);
+  seedPostFlip(f, Object.fromEntries([7,8,9].map(n => [`seat${n}`, {status:"active", delivery:"pane", pane:`live-session:0.${n}`, pane_id:`%${n}`, session:"live-session", server_epoch:"srv:1:1", harness:"claude"}])));
+  for (const drift of [false, true]) {
+    writeFileSync(calls, ""); writeFileSync(epoch, "1:1\n"); f.env.FLIP_EPOCH = drift ? "yes" : "no";
+    const r = run(["team", "--json"], f.worktree, f.env);
+    expect(r.status, r.stderr).toBe(0);
+    expect(readFileSync(calls, "utf8").split("\n").filter(s => s.includes("#{pid}:#{start_time}") && s.includes("display-message"))).toHaveLength(2);
+    const agents = JSON.parse(r.stdout).agents;
+    expect(agents).toHaveLength(3);
+    // Existing default JSON schema, including nullable enrichment fields.
+    expect(Object.keys(agents[0]).sort()).toEqual([
+      "agent_state", "agent_state_reason", "ask_window_seconds", "attached", "context_source", "context_tokens",
+      "context_unknown_reason", "context_used_percent", "crew", "delivery", "digest_window_seconds", "effort",
+      "family", "family_source", "handle", "harness", "launch_tuning", "model", "observed_at", "observed_effort",
+      "observed_model", "pane", "prompt_cache", "role", "sampled_at", "status", "status_reason", "turn_ended_at",
+      "turn_ended_source", "turn_started_at", "unattended", "waiting_on",
+    ]);
+    if (drift) for (const row of agents) expect(row).toMatchObject({agent_state:"unknown", agent_state_reason:"capture_failed", context_used_percent:null, sampled_at:null});
+    else for (const row of agents) expect(row.agent_state_reason).not.toBe("capture_failed");
+  }
+});
+
+test("--no-state skips captures, compute and token reads on roster and crew routes", () => {
+  const f = fixture(), calls = join(f.dir, "light.calls");
+  f.env.TMUX_CALL_LOG = calls;
+  replaceTmux(f, String.raw`
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t1:1\t0\t\t\t\n' ;;
+ *) exit 1 ;;
+esac`);
+  writeFileSync(join(f.dir, "bin", "compute"), '#!/bin/sh\necho COMPUTE >> "$TMUX_CALL_LOG"\nexit 1\n', {mode:0o755});
+  const transcript = join(f.dir, "transcript.jsonl");
+  writeFileSync(transcript, JSON.stringify({type:"assistant", sessionId:"sid", message:{model:"observed-model", usage:{input_tokens:1234}}}) + "\n");
+  seedPostFlip(f, {seat:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"claude",crew:true,transcript_path:transcript,harness_session_id:"sid"}});
+  for (const route of [["team"], ["team", "roster", "roster"]]) {
+    writeFileSync(calls, "");
+    const r = run([...route, "--no-state", "--json"], f.worktree, f.env);
+    expect(r.status, r.stderr).toBe(0);
+    const row = JSON.parse(r.stdout).agents[0];
+    expect(row.agent_state).toBe("unknown"); expect(row.agent_state_reason).toBe("not_observed");
+    expect(row.context_tokens).toBeNull();
+    expect(readFileSync(calls,"utf8")).not.toMatch(/capture-pane|show-options|COMPUTE/);
+  }
+  writeFileSync(calls, "");
+  const crew = run(["crew", "list", "--no-state"], f.worktree, f.env);
+  expect(crew.status, crew.stderr).toBe(0);
+  expect(crew.stdout).toContain("seat");
+  expect(readFileSync(calls,"utf8")).not.toMatch(/capture-pane|show-options|COMPUTE/);
+  for (const flags of [["--state","idle"],["--model","opus"],["--stalled"],["--context"]]) {
+    const r = run(["team", "--no-state", "--json", ...flags], f.worktree, f.env);
+    expect(r.status).toBe(1); expect(JSON.parse(r.stdout).error_class).toBe("usage_error");
+  }
+});
+
+test("roster cache hits spawn nothing, preserve observed_at, and invalidate locally", () => {
+  const f = fixture(), trace = join(f.dir, "cache.calls"), epoch = join(f.dir, "cache.epoch");
+  f.env.TMUX_CALL_LOG = trace; f.env.EPOCH_FILE = epoch;
+  f.env.STATE_FRAME = join(root, "runtime/bun/test/fixtures/agent-state/claude/idle-real.txt");
+  f.env.TAP_ROSTER_CACHE_TTL = "60"; delete f.env.TAP_WATCH_NOW; delete f.env.TAP_SERVER_EPOCH;
+  writeFileSync(epoch,"1:1\n");
+  replaceTmux(f, String.raw`
+printf 'tmux %s\n' "$*" >> "$TMUX_CALL_LOG"
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t'; cat "$EPOCH_FILE" | tr '\n' '\t'; printf '1\n' ;;
+ list-panes) printf 'live-session\tlive-session:0.0\t%%7\tclaude\t123\t'; cat "$EPOCH_FILE" | tr '\n' '\t'; printf '0\t\t\t\n' ;;
+ capture-pane) cat "$STATE_FRAME" ;;
+ display-message) cat "$EPOCH_FILE" ;;
+ *) exit 1 ;;
+esac`);
+  for (const command of ["ps", "compute", "git"]) writeFileSync(join(f.dir,"bin",command), `#!/bin/sh\nprintf '${command} %s\\n' "$*" >> "$TMUX_CALL_LOG"\n${command === "compute" ? "printf '{\"jobs\":[]}\\n'" : "exit 1"}\n`,{mode:0o755});
+  const registry = seedPostFlip(f, {seat:{status:"active",delivery:"pane",pane:"live-session:0.0",pane_id:"%7",session:"live-session",server_epoch:"srv:1:1",harness:"claude",crew:true,preset:{name:"known"}}});
+  const json = (...flags: string[]) => {
+    writeFileSync(trace, "");
+    const r = run(["team","--json",...flags],f.worktree,f.env);
+    expect(r.status,r.stderr).toBe(0);
+    return {doc:JSON.parse(r.stdout),calls:readFileSync(trace,"utf8")};
+  };
+  const first = json(); expect(first.calls).toContain("capture-pane"); expect(first.doc.observed_at).toMatch(/^\d{4}-/);
+  const hit = json(); expect(hit.calls).toBe(""); expect(hit.doc).toEqual(first.doc);
+  writeFileSync(epoch,"2:2\n");
+  const stale = json(); expect(stale.calls).toBe(""); expect(stale.doc.observed_at).toBe(first.doc.observed_at);
+  expect(json("--no-cache").calls).toContain("list-panes");
+  writeFileSync(epoch,"1:1\n");
+  const changed = JSON.parse(readFileSync(registry,"utf8")); changed.seats.seat.role = "leader";
+  writeFileSync(registry, JSON.stringify(changed));
+  const updated = json(); expect(updated.calls).toContain("capture-pane"); expect(updated.doc.agents[0].role).toBe("leader");
+  const cacheDir = join(f.worktree,".tap","bus","runtime-cache");
+  expect(existsSync(join(f.worktree,".tap","runtime-cache"))).toBe(false);
+  writeFileSync(join(cacheDir,"roster-full.json"),"{broken");
+  expect(json().calls).toContain("capture-pane");
+  const light = json("--no-state"); expect(light.calls).not.toContain("capture-pane");
+  expect(light.doc.agents[0]).toMatchObject({agent_state_reason:"not_observed",context_unknown_reason:"not_sampled"});
+  const lightHit = json("--no-state"); expect(lightHit.calls).toBe(""); expect(lightHit.doc.observed_at).toBe(light.doc.observed_at);
+  expect(readdirSync(cacheDir).sort()).toEqual(["roster-full.json","roster-nostate.json"]);
+  const human = run(["team"],f.worktree,f.env); expect(human.stdout).toContain("cached observation");
+  f.env.TAP_ROSTER_CACHE_TTL = "0"; expect(json().calls).toContain("capture-pane");
+  f.env.TAP_ROSTER_CACHE_TTL = "60";
+  for (const now of ["100", "200"]) { f.env.TAP_WATCH_NOW = now; expect(json().calls).toContain("capture-pane"); }
+  delete f.env.TAP_WATCH_NOW; delete f.env.TAP_ROSTER_CACHE_TTL;
+  const configDir = join(f.home,".config","tap"); mkdirSync(configDir,{recursive:true});
+  const config = join(configDir,"config.toml");
+  writeFileSync(config,"version=2\n[advanced]\nroster_cache_ttl_seconds=0\n");
+  expect(json().calls).toContain("capture-pane");
+  f.env.TAP_ROSTER_CACHE_TTL = "60";
+  json(); expect(json().calls).toBe("");
+  writeFileSync(config,"version=2\n[presets.known]\nharness='claude'\nmetadata.model_family='new-family'\n");
+  const newPreset = json(); expect(newPreset.calls).toContain("capture-pane");
+  expect(newPreset.doc.agents[0].family).toBe("new-family");
+  expect(newPreset.doc.agents[0].metadata.model_family).toBe("new-family");
+  const saved = Object.fromEntries(readdirSync(cacheDir).map(name => [name, readFileSync(join(cacheDir,name),"utf8")]));
+  for (const verb of ["health", "doctor"]) run([verb,"--json"],f.worktree,f.env);
+  expect(Object.fromEntries(readdirSync(cacheDir).map(name => [name, readFileSync(join(cacheDir,name),"utf8")]))).toEqual(saved);
+  const body = join(f.dir,"body.md"); writeFileSync(body,"fixture");
+  for (const args of [["register","probe","--json"],["in","probe","--json"],["send","missing","-f",body]]) {
+    writeFileSync(trace,""); run(args,f.worktree,f.env);
+    expect(readFileSync(trace,"utf8"),args.join(" ")).toContain("git ");
+  }
+  const crewFirst = run(["crew","list"],f.worktree,f.env); expect(crewFirst.status,crewFirst.stderr).toBe(0);
+  writeFileSync(trace,"");
+  expect(run(["crew","list"],f.worktree,f.env).stdout).toContain("cached observation");
+  expect(readFileSync(trace,"utf8")).toBe("");
+  expect(run(["crew","list","--all"],f.worktree,f.env).status).toBe(1);
+  writeFileSync(config,"version=2\n[advanced]\nunknown_knob=1\n");
+  const invalid = run(["team","--json"],f.worktree,f.env);
+  expect(invalid.status).toBe(1); expect(JSON.parse(invalid.stdout).error_class).toBe("advanced_config_invalid");
+  expect(invalid.stdout).toContain("unknown_knob");
+}, 60_000);

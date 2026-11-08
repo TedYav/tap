@@ -484,7 +484,11 @@ export function observeProcessStore(run: ProcRunner, harness: string, worktree: 
     }
   }
   let opened: ProcResult;
-  try { opened = run(["lsof", "-a", "-p", String(owner), "-Fn"]); } catch { return none("tools_unavailable"); }
+  // `-Ffn`, not `-Fn`: the parser below needs the descriptor field to find the
+  // `fcwd` row. macOS lsof volunteers it under `-Fn`; Linux lsof (4.95)
+  // prints only the requested fields, so `-Fn` there has no `fcwd` and every
+  // seat refused as fcwd_unavailable. Both platforms agree under `-Ffn`.
+  try { opened = run(["lsof", "-a", "-p", String(owner), "-Ffn"]); } catch { return none("tools_unavailable"); }
   if (opened.timedOut || opened.status !== 0) return none("tools_unavailable");
   let after: Record<number, ProcRow>;
   try { after = processSnapshot(run); } catch { return none("tools_unavailable"); }

@@ -12,3 +12,4 @@ Normative TAP v0.23 protocol pages. Open only the page needed for the current qu
 - [Trust model](./trust-model.md) — source bytes 158555–159464
 - [IDs](./ids.md) — source bytes 265170–265635
 - [Envelope (payload frontmatter)](./envelope-payload-frontmatter.md) — source bytes 265635–273498
+- [Debug capture sources and fidelity](./debug-journal.md) — source selection, best-effort/precise collection and manual traces

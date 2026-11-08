@@ -10,12 +10,15 @@ import { closeSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync
 import { dirname, isAbsolute, join } from "node:path";
 import { atomicWrite } from "../fsatomic";
 import { acquireNoFollowLock, DELIVERY_NOW_WINDOW_DEFAULT, DELIVERY_POLITE_WINDOW_DEFAULT } from "../digest-window";
+import { parseAdvancedSettings } from "../config-file";
 
 const KEY_SEGMENT = /^[A-Za-z0-9_-]+$/;
 /** Root segments whose readers are known, with when a new value reaches them.
  * Every table in the launcher catalog's TOP_LEVEL_KEYS needs an entry; the
  * census test in config.test.ts fails when the two lists drift. */
 export const EFFECTS: Record<string, string> = {
+  debug: "capture and fidelity apply on the next debug start; always_on is checked on the next command",
+  advanced: "takes effect on the next roster read",
   experimental: "takes effect on the next fresh launch; existing seats keep their recorded mode",
   calibration: "takes effect on the next tap calibrate",
   sentinel: "takes effect on the next delivery",
@@ -46,6 +49,7 @@ export const EFFECTS: Record<string, string> = {
  * get refuses it when unset: recovery.aggressiveness is chosen per verb, and
  * skills.full_kit unset means "keep what is installed", which differs from false. */
 export const DEFAULTS: Record<string, string | number | boolean> = {
+  "advanced.roster_cache_ttl_seconds": parseAdvancedSettings({}, "config.toml").roster_cache_ttl_seconds,
   "experimental.opencode_shared_server": false,
   "calibration.enabled": false,
   "sentinel.preview": false,
@@ -163,7 +167,7 @@ function splitValueTail(rest: string): { value: string; tail: string } {
  * in the ranges — they can never start a line, so they cannot look like a
  * header or key. The lexer only LOCATES the target line; the write is gated
  * by a document-level diff, so a lexer miss refuses rather than corrupts. */
-function appendCodeRanges(line: string, state: { quote: string | null }, out: string): string {
+function appendCodeRanges(line: string, state: { quote: string | null }, out: string, comments?: string[]): string {
   let start = 0;
   let i = 0;
   while (i < line.length) {
@@ -176,7 +180,7 @@ function appendCodeRanges(line: string, state: { quote: string | null }, out: st
       continue;
     }
     const char = line[i]!;
-    if (char === "#") return out + line.slice(start, i);
+    if (char === "#") { comments?.push(line.slice(i)); return out + line.slice(start, i); }
     if (char === '"' || char === "'") {
       if (line.startsWith(char.repeat(3), i)) {
         out += line.slice(start, i);
@@ -310,7 +314,7 @@ function lastHeader(code: string[]): number {
 /** Replace the value of one key line in place: the key keeps its exact
  * spelling (quoted or bare), and indent, `=` spacing, and trailing comment
  * survive byte-for-byte. */
-function replaceLineValue(line: string, literal: string): string | null {
+function replaceLineValue(line: string, literal: string, preserveTail = true): string | null {
   let quote: string | null = null;
   for (let i = 0; i < line.length; i++) {
     const char = line[i]!;
@@ -323,11 +327,25 @@ function replaceLineValue(line: string, literal: string): string | null {
     if (char === "=") {
       const after = line.slice(i + 1);
       const leading = after.match(/^\s*/)!;
-      const { tail } = splitValueTail(after.slice(leading[0].length));
+      const tail = preserveTail ? splitValueTail(after.slice(leading[0].length)).tail : "";
       return `${line.slice(0, i + 1)}${leading[0]}${literal}${tail}`;
     }
   }
   return null;
+}
+
+/** Let TOML find the complete value span; retain comments from replaced lines. */
+function replaceValueLines(lines: string[], start: number, literal: string): boolean {
+  let end = start;
+  while (end < lines.length && !parseDoc(lines.slice(start, end + 1).join("\n"))) end++;
+  if (end === lines.length) return false;
+  const replacement = replaceLineValue(lines[start]!, literal, end === start);
+  if (replacement === null) return false;
+  if (end === start) { lines[start] = replacement; return true; }
+  const comments: string[] = [], state = { quote: null as string | null };
+  for (const line of lines.slice(start, end + 1)) appendCodeRanges(line, state, "", comments);
+  lines.splice(start, end - start + 1, replacement, ...comments);
+  return true;
 }
 
 /** Insertion spelling that mirrors the quoting the file already uses. */
@@ -373,8 +391,7 @@ export function editTomlKey(text: string, segments: string[], literal: string): 
     const [bodyStart, bodyEnd] = tableBody(code, headerStart);
     for (let i = bodyStart; i < bodyEnd; i++) {
       if (samePath(keyPath(code[i]!) ?? [], rest)) {
-        const replaced = replaceLineValue(lines[i]!, literal);
-        if (replaced !== null) { lines[i] = replaced; return lines.join("\n"); }
+        if (replaceValueLines(lines, i, literal)) return lines.join("\n");
       }
     }
     lines.splice(headerStart + 1, 0, keyLineFor(rest, literal, insertionQuoted(code, bodyStart, bodyEnd, headerStart)));
@@ -384,8 +401,7 @@ export function editTomlKey(text: string, segments: string[], literal: string): 
   const limit = header < 0 ? code.length : header;
   for (let i = 0; i < limit; i++) {
     if (samePath(keyPath(code[i]!) ?? [], segments)) {
-      const replaced = replaceLineValue(lines[i]!, literal);
-      if (replaced !== null) { lines[i] = replaced; return lines.join("\n"); }
+      if (replaceValueLines(lines, i, literal)) return lines.join("\n");
     }
   }
   // Insertions mirror the quoting the file already emits, so a setup-written

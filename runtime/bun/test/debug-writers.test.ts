@@ -33,6 +33,26 @@ function fixture() {
   return { root, index, bus, run, env, enabled };
 }
 
+test("tmux-only source excludes command, attempt and frame writers before reading input", () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.enabled, JSON.stringify({ id: "capture", directory: f.run, config: { capture: ["tmux"] } }));
+    const unread = () => { throw new Error("tap-events input must stay unread"); };
+    recordCommand(["help"], f.env, process.pid);
+    recordDebug(frameArgs, unread, f.env); recordDebug(["_attempt"], unread, f.env);
+    expect(readdirSync(f.run)).toEqual([]);
+    expect(readdirSync(join(f.bus, "payloads"))).toEqual([]);
+    expect(existsSync(join(f.bus, "receipts"))).toBe(false);
+    writeFileSync(f.enabled, JSON.stringify({ id: "capture", directory: f.run, config: { capture: ["tap-events"] } }));
+    recordCommand(["help"], f.env, process.pid);
+    recordDebug(frameArgs, () => Buffer.from("selected frame"), f.env);
+    recordDebug(["_attempt"], () => Buffer.from('{"payload_id":"selected","status":"unverified"}'), f.env);
+    expect(readFileSync(join(f.run, "events.jsonl"), "utf8")).toContain('"tap.command"');
+    expect(readFileSync(join(f.bus, "receipts/first.submit-unverified.frame"), "utf8")).toBe("selected frame");
+    expect(existsSync(join(f.bus, "payloads/selected.debug.attempts"))).toBe(true);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
 test("writers short-circuit disabled/stopped before stdin or bus; frames retain raw bytes and first metadata", () => {
   const f = fixture();
   try {

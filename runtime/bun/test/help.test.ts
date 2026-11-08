@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { ADMIN_SUBCOMMANDS } from "../src/verbs/admin";
 import { CREW_SUBCOMMANDS } from "../src/verbs/crew";
-import { NATIVE_HANDLERS } from "../main";
+import { NATIVE_VERBS } from "../main";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +25,7 @@ import {
   isHelpForm,
   lookupHelp,
 } from "../src/help";
+import { expectFrozenFixture } from "./support/frozen-fixture";
 
 const root = resolve(import.meta.dir, "../../..");
 const tapBin = joinp("bin/tap");
@@ -88,7 +89,7 @@ function dispatcherRows(): Set<string> {
   // The router is the one dispatcher (verb-prelude row C): its native table
   // and the forms main.ts accepts before or beside route(), each
   // checked against the arm that accepts it, plus the one help-only topic.
-  for (const verb of Object.keys(NATIVE_HANDLERS)) rows.add(verb);
+  for (const verb of NATIVE_VERBS) rows.add(verb);
   const main = read("runtime/bun/main.ts");
   for (const [verb, arm] of [["ask", 'argv[0] === "ask"'], ["launch", 'argv[0] === "launch"'], ["init", 'verb === "init"']] as const) {
     if (!main.includes(arm)) throw new Error(`main.ts lost the ${verb} pre-route arm`);
@@ -99,7 +100,7 @@ function dispatcherRows(): Set<string> {
   for (const sub of TEAM_SUBCOMMANDS) rows.add(`team ${sub}`);
   rows.add("team");
 
-  const session = /session: argv => \{([\s\S]*?)\n  \},/.exec(main)?.[1];
+  const session = /session: async \(\) => \{([\s\S]*?)\n  \},/.exec(main)?.[1];
   if (!session) throw new Error("main.ts lost the native session handler");
   for (const match of session.matchAll(/argv\[0\] === "([a-z]+)"/g)) {
     // Completion is an internal shell protocol, deliberately absent from help.
@@ -203,6 +204,9 @@ function dispatcherRows(): Set<string> {
   if (!/teams: async[\s\S]*?argv\[0\] === "refresh"\) return runNative\("admin"/.test(main)) throw new Error("main.ts lost the teams refresh arm");
   rows.add("teams");
   rows.add("teams refresh");
+  // `tap teams roster` aliases the machine seat view (main.ts), ahead of a team named roster.
+  if (!/teams: async[\s\S]*?name === "roster"\) return writeRoutingResult\(await teamsView\(\["--seats"/.test(main)) throw new Error("main.ts lost the teams roster arm");
+  rows.add("teams roster");
   const completion = read("runtime/bun/src/completion.ts");
   if (!completion.includes('argv.length === 1 && argv[0] === "zsh"')) throw new Error("completion.ts lost its zsh arm");
   rows.add("completion");
@@ -480,7 +484,7 @@ describe("accepted rows come from accepting cases", () => {
   });
 
   test("ask is a help row dispatched before route(), not a native handler", () => {
-    expect("ask" in NATIVE_HANDLERS).toBe(false);
+    expect(NATIVE_VERBS.has("ask")).toBe(false);
     expect(catalogKeys().has("ask")).toBe(true);
   });
 
@@ -836,11 +840,13 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
     readFileSync(join(import.meta.dir, "fixtures", "help", ...parts), "utf8");
 
   test("JSON catalog index is frozen and agrees with lookupHelp text", () => {
+    // Regenerate after an intended help change: TAP_UPDATE_FIXTURES=1 bash runtime/bun/test/run.sh runtime/bun/test/help.test.ts
+    expectFrozenFixture(join(import.meta.dir, "fixtures", "help", "catalog-index.json"), JSON.stringify(helpCatalogIndex(), null, 2) + "\n");
     const frozen = fixture("catalog-index.json");
-    expect(JSON.stringify(helpCatalogIndex(), null, 2) + "\n").toBe(frozen);
 
     const index = JSON.parse(frozen) as ReturnType<typeof helpCatalogIndex>;
-    expect(index.filter((row) => row.dedicated)).toHaveLength(94);
+    // 97 with the team history page and the teams roster page (the machine seat view alias).
+    expect(index.filter((row) => row.dedicated)).toHaveLength(97);
     expect(index.filter((row) => row.tombstone)).toHaveLength(3);
     expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(47);
 
@@ -939,7 +945,7 @@ describe("team and admin family pages", () => {
     for (const child of [...children.filter(c => c !== "roster"), "up", "out", "refresh"]) {
       expect(index.stdout).toContain(`  ${child} `);
     }
-    expect(index.stdout).toContain("tap team [--json | --names | --all | --wide] [--active | --offline]");
+    expect(index.stdout).toContain("tap team [--json | --names | --all | --wide] [--online | --offline]");
     expect(index.stdout).toContain("tap help team <operation>");
   });
 
@@ -1180,4 +1186,20 @@ test("unwedge help keeps report, explicit rungs, exact predecessor and uncertain
   const page = lookupHelp(["unwedge"]);
   expect(page.exit).toBe(0);
   for (const text of ["--rung message", "--rung nudge", "--rung continue", "--rung restart", "--after <recovery-id>", "two minutes", "no automatic", "exact native", "5 possible", "custody", "--json"]) expect(page.stdout).toContain(text);
+});
+
+test("seat filters and the renamed flags are documented on every seat list's page", () => {
+  for (const page of [["team", "roster"], ["teams"]]) {
+    const text = lookupHelp(page).stdout;
+    for (const flag of ["--harness <list>", "--model <list>", "--state <list>", "active is every live"]) expect([page.join(" "), text.includes(flag)]).toEqual([page.join(" "), true]);
+  }
+  for (const page of [["team"], ["admin", "ps"], ["team", "calibration"], ["crew"]]) {
+    expect([page.join(" "), lookupHelp(page).stdout.includes("--state <list>")]).toEqual([page.join(" "), true]);
+  }
+  const roster = lookupHelp(["team", "roster"]).stdout;
+  expect(roster).toContain("--online    Only lifecycle-active seats");
+  expect(roster).toContain("--active    Old spelling of --online");
+  expect(roster).toContain("Seat filters narrow first");
+  expect(lookupHelp(["teams", "roster"]).stdout).toContain("tap teams roster — every team's seats");
+  expect(lookupHelp(["session", "list"]).stdout).toContain("--state            refused");
 });

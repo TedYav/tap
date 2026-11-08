@@ -296,3 +296,12 @@ test("gather-from-env: a set-empty boot pin reports the seat unobservable; an un
   expect(unsetOut.stdout).not.toContain("boot_id_unobservable");
   expect(unsetOut.stdout).not.toBe(emptyOut.stdout);
 });
+
+test("the pane listing carries lifetime options and title without a fallback listing", () => {
+  const calls: Call[] = [];
+  const pane = PANE("a", "codex").trimEnd() + '\t{"version":1}\ttoken\tCodex title\twith tab\n';
+  const g = gather(opts({run: fakeTmux({sessions:{code:0,stdout:SESSION("a")},all:{code:0,stdout:pane}}, calls)}));
+  expect(g.panes_text).toBe(pane);
+  expect(calls.filter(c => c.args[0] === "list-panes")).toHaveLength(1);
+  expect(calls.find(c => c.args[0] === "list-panes")!.args.at(-1)).toContain("#{@tap_crew_lifetime}\t#{@tap_crew_lifetime_token}\t#{pane_title}");
+});

@@ -14,8 +14,8 @@ test("one batched scan reads every candidate once across eleven seats", async ()
     paths.add(path);
   }
   const reads = new Map<string, number>();
-  const realRead = fs.readFileSync;
-  const spy = spyOn(fs, "readFileSync").mockImplementation(((path: any, ...args: any[]) => {
+  const realRead = fs.openSync;
+  const spy = spyOn(fs, "openSync").mockImplementation(((path: any, ...args: any[]) => {
     const key = String(path);
     if (paths.has(key)) reads.set(key, (reads.get(key) ?? 0) + 1);
     return (realRead as any)(path, ...args);

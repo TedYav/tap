@@ -2,7 +2,7 @@
 # attach.test.sh — `tap attach <handle>` and the `tap team --names` list it reads.
 #
 # The load-bearing property is AGREEMENT (case 7): the roster and attach share
-# one classifier, so `tap team --names --active` lists exactly the seats attach
+# one classifier, so `tap team --names --online --include-crews` lists exactly the seats attach
 # can reach. Two independently-hardcoded expectations would both pass while the
 # two surfaces drifted apart, which is why case 7 compares them to each other
 # instead of to a literal.
@@ -171,25 +171,25 @@ error_class() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])["erro
 # tmux, the crew-window family (4, 4b, 4c), the refusal doors (5), and the
 # resume-offer polarities (6, 6b).
 
-# --- (1) --names is roster-derived; --active narrows to attachable ------------
+# --- (1) --names is roster-derived; --online narrows to attachable ------------
 names="$("$TAP" team --names)"
 [ "$names" = "$(printf 'crew\ncrew-ghost\ncrew-sol\ngone\nlive\npollbot\nrebooted\nrecycled\nstale')" ] \
   || fail "(1) --names should list every rostered handle, one per line" "$names"
-active="$("$TAP" team --names --active)"
+active="$("$TAP" team --names --online --include-crews)"
 [ "$active" = "$(printf 'crew\ncrew-ghost\ncrew-sol\nlive')" ] \
-  || fail "(1) --active should keep only attachable seats" "$active"
+  || fail "(1) --online should keep only attachable seats" "$active"
 # The gone seat MUST stay in the bare list: that is what lets `ta gone` reach
 # attach's resume offer at all (the two features only compose that way).
-grep -qx gone <<<"$names" || fail "(1) gone seat must be listed without --active"
-grep -qx gone <<<"$active" && fail "(1) gone seat must NOT survive --active"
-grep -qx pollbot <<<"$active" && fail "(1) poll member is pane-less and must not be --active"
-echo "attach: (1) --names lists the roster, --active narrows to attachable: ok"
+grep -qx gone <<<"$names" || fail "(1) gone seat must be listed without --online"
+grep -qx gone <<<"$active" && fail "(1) gone seat must NOT survive --online"
+grep -qx pollbot <<<"$active" && fail "(1) poll member is pane-less and must not be --online"
+echo "attach: (1) --names lists the roster, --online narrows to attachable: ok"
 
 # --- (7) THE INVARIANT: the roster and attach cannot disagree ----------------
 # One fixture, one probe outcome, two surfaces compared to EACH OTHER. If the
 # classifier ever forks in two, exactly one of these seats flips and this fails.
 : > "$FAKE_EVENTS"
-attachable="$("$TAP" team --names --active)"
+attachable="$("$TAP" team --names --online --include-crews)"
 checked=0
 while read -r handle; do
   [ -n "$handle" ] || continue
@@ -197,14 +197,14 @@ while read -r handle; do
   env -u TMUX "$TAP" attach "$handle" </dev/null >"$WORK/inv.out" 2>&1; arc=$?
   set -e
   if grep -qx "$handle" <<<"$attachable"; then
-    [ "$arc" = 0 ] || fail "(7) '$handle' is listed --active but attach refused it" "$(cat "$WORK/inv.out")"
+    [ "$arc" = 0 ] || fail "(7) '$handle' is listed --online but attach refused it" "$(cat "$WORK/inv.out")"
   else
-    [ "$arc" = 0 ] && fail "(7) attach reached '$handle', which --active does not list" "$(cat "$WORK/inv.out")"
+    [ "$arc" = 0 ] && fail "(7) attach reached '$handle', which --online does not list" "$(cat "$WORK/inv.out")"
   fi
   checked=$((checked + 1))
 done <<<"$names"
 [ "$checked" = 9 ] || fail "(7) expected 9 rostered seats checked, got $checked"
-echo "attach: (7) every rostered seat's attachability matches tap team --names --active: ok"
+echo "attach: (7) every rostered seat's attachability matches tap team --names --online: ok"
 
 # --- (8) R11 repair: a KNOWN read-transport failure keeps its point-of-use ---
 # --- refusal (session_unobservable / pane_changed), both before any effect ---

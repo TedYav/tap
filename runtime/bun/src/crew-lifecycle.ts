@@ -20,6 +20,7 @@ import { LauncherError } from "./launcher/types";
 import { prepareCodexAutoReceipts } from "./launcher/permissions";
 import { assertCrewOwnerLink, captureCrewProcess, fenceCrewLifetime, stopCrewProcess } from "./crew-lifetime";
 import { crewFamilyHandles, sameCrewSession } from "./crew-ownership";
+import { inWorkdir, stableSpawnCwd } from "./tmux-spawn-cwd";
 
 const HELP = "tap help crew";
 export const OWNER_GRAMMAR = "tap crew shutdown --owner <handle> or --owner <team>/<handle>";
@@ -346,7 +347,7 @@ export async function relaunchCrew(ctx: ResolvedContext, all: Record<string, Row
     opts.signal?.throwIfAborted();
     opts.progress?.(`replacing crew process in pane ${paneId}`);
     respawnAttempted = true;
-    const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", recipe.cwd, recipe.command], process.env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], process.env));
+    const respawn = await launchTmux(["respawn-pane", "-k", "-t", paneId, "-c", stableSpawnCwd(process.env), inWorkdir(recipe.cwd, `exec ${recipe.command}`)], process.env, opts.signal, true, tmuxTimeoutMs(["respawn-pane"], process.env));
     // The new process runs with the overrides once respawn succeeds, so the row records them before an
     // interruption is honored (a bounded, synchronous registry write). A failed save is reported only
     // after verification, which must still happen.

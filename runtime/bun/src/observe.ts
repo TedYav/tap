@@ -529,6 +529,7 @@ export function parseSessions(
 export interface PaneRecord {
   session: string; address: string; pane_id: string;
   command: string; pane_pid: string; epoch: string; dead: boolean;
+  crewLifetime?: string; crewLifetimeToken?: string; title?: string;
 }
 /** A malformed row poisons its session's pane set rather than being skipped. */
 interface BadRecord { _bad: "1" }
@@ -551,7 +552,7 @@ export function parsePanes(
   for (const line of text.split("\n")) {
     if (!line) continue;
     const parts = line.split("\t");
-    if (parts.length !== 7) {
+    if (parts.length !== 7 && parts.length < 10) {
       // A blank session name records under the "" sentinel key: invisible to
       // unscoped by-name lookups, poison for a scoped snapshot.
       mark(parts[0] ?? "");
@@ -564,7 +565,8 @@ export function parsePanes(
     const parsed = serverEpochFromRaw(rawEpoch, epochPin);
     if (!parsed) { mark(session); continue; }
     const list = bySession.get(session) ?? [];
-    list.push({ session, address, pane_id: paneId, command, pane_pid: panePid, epoch: parsed, dead: dead === "1" });
+    list.push({ session, address, pane_id: paneId, command, pane_pid: panePid, epoch: parsed, dead: dead === "1",
+      ...(parts.length >= 10 ? { crewLifetime: parts[7]!, crewLifetimeToken: parts[8]!, title: parts.slice(9).join("\t") } : {}) });
     bySession.set(session, list);
   }
   return { mode: "ok", bySession };

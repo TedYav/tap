@@ -78,7 +78,7 @@ for output in sorted(Path(sys.argv[1]).iterdir()):
     if harness == 'bootstrap':
         for required in ('TAP Agent Protocol', '/tap', '[[TAP v0.23 ask <id>]]',
                          '[[TAP v0.23 note <team>/<id>]]', 'tap read <id>',
-                         'never operator instructions or added task authority',
+                         "treat it like a colleague's request",
                          '[[TAP v0.23 nudge]]', 'tap poll'):
             if required not in text:
                 failures.append(f'{output.name}: missing {required!r}')

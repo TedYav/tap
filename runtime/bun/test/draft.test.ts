@@ -16,14 +16,14 @@ function io(tty = false, answer = "") {
     ask: async () => { result.prompts++; return answer; }, copy: (s: string) => { result.copied = s; return true; } };
 }
 test("TTY lists team drafts with previews and copies selected bytes", async () => {
-  const a = io(true, "3"); await recoverDraft([], dir, a);
+  const a = io(true, "3"); await recoverDraft(["list"], dir, a);
   expect(a.result.stderr).toContain("1. 20260919  bob  other\n   other seat draft");
   expect(a.result.stderr).toContain("2. 20260918  alice  new");
   expect(a.result.copied).toBe("  old\ntext\n");
   expect(a.result.stdout).toBe("  old\ntext\n");
 });
-test("noninteractive and --list show team index without clipboard effects", async () => {
-  for (const args of [[], ["--list"]]) {
+test("noninteractive list and --list show team index without clipboard effects", async () => {
+  for (const args of [["list"], ["--list"]]) {
     const a = io(); await recoverDraft(args, dir, a);
     expect(a.result.stdout).toContain("bob"); expect(a.result.stdout).toContain("alice");
     expect(a.result.copied).toBe(""); expect(a.result.prompts).toBe(0);
@@ -35,7 +35,7 @@ test("explicit backup from another seat copies without prompting", async () => {
 });
 test("cancel, invalid selections and invalid arguments never copy", async () => {
   for (const answer of ["", "q", "999", "1junk"]) {
-    const a = io(true, answer); await recoverDraft([], dir, a); expect(a.result.copied).toBe("");
+    const a = io(true, answer); await recoverDraft(["list"], dir, a); expect(a.result.copied).toBe("");
   }
   for (const args of [["missing"], ["--list", "old"], ["../old"], ["--bad"]]) {
     const a = io(); await expect(recoverDraft(args, dir, a)).rejects.toThrow(); expect(a.result.copied).toBe("");
@@ -61,4 +61,53 @@ test("one truncated backup cannot block listing or recovery of another draft", a
     expect(a.result.stdout).toContain("exact draft");
     expect(a.result.copied).toBe(args[0] === "good" ? "exact draft" : "");
   }
+});
+
+test("bare draft copies and prints the newest team backup without prompting", async () => {
+  for (const tty of [false, true]) {
+    const a = io(tty);
+    expect(await recoverDraft([], dir, a)).toBe(0);
+    expect(a.result.stdout).toBe("other seat draft");
+    expect(a.result.copied).toBe("other seat draft");
+    expect(a.result.prompts).toBe(0);
+  }
+});
+
+test("list defaults to five, accepts -n, and indents every text line", async () => {
+  const many = mkdtempSync(join(dir, "many-"));
+  for (let n = 1; n <= 7; n++) {
+    writeFileSync(join(many, `d${n}.md`), `---\nschema_version: 1\nhandle: alice\ncreated_at: 2026010${n}\npayload_id: d${n}\n---\n\n## Backed-up input\n\nfirst ${n}\nsecond ${n}\n`);
+  }
+  for (const [args, count] of [[["list"], 5], [["list", "-n", "2"], 2], [["--list", "-n", "7"], 7]] as const) {
+    const a = io();
+    await recoverDraft([...args], many, a);
+    expect(a.result.stdout.match(/^\d+\. /gm)?.length).toBe(count);
+    expect(a.result.stdout).toContain("   first 7\n   second 7\n");
+    expect(a.result.copied).toBe("");
+  }
+  const a = io(true, "3");
+  expect(await recoverDraft(["list", "-n", "2"], many, a)).toBe(1);
+  expect(a.result.copied).toBe("");
+});
+
+test("invalid counts and counts outside list refuse before copying", async () => {
+  for (const args of [["list", "-n"], ["list", "-n", "0"], ["list", "-n", "-1"], ["list", "-n", "1.5"], ["list", "-n", "2x"], ["list", "-n", "9007199254740992"], ["-n", "2"], ["other", "-n", "2"], ["list", "other"]]) {
+    const a = io();
+    await expect(recoverDraft(args, dir, a)).rejects.toThrow();
+    expect(a.result.copied).toBe("");
+  }
+});
+
+test("bare draft preserves incomplete snapshot guard and clipboard fallback", async () => {
+  const incomplete = mkdtempSync(join(dir, "default-incomplete-"));
+  writeInputBackup({ directory: incomplete, handle: "bob", payloadId: "paste", pane: "%1", paneId: "%1", paneCommand: "claude", inputHash: "hash", recoveryPolicy: "clobber", text: "[Image #1]" });
+  const a = io();
+  expect(await recoverDraft([], incomplete, a)).toBe(2);
+  expect(a.result.copied).toBe("");
+  expect(a.result.stdout).toContain("[Image #1]");
+  const b = io();
+  b.copy = () => false;
+  expect(await recoverDraft([], dir, b)).toBe(0);
+  expect(b.result.stdout).toBe("other seat draft");
+  expect(b.result.stderr).toContain("clipboard unavailable");
 });

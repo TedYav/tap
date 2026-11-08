@@ -9,7 +9,7 @@ import errno, json, os, pathlib, pty, select, shutil, signal, subprocess, sys, t
 root = pathlib.Path(sys.argv[1])
 with tempfile.TemporaryDirectory(prefix='debug-', dir=os.environ['TMUX_TMPDIR']) as tmp:
     p = pathlib.Path(tmp)
-    env = dict(os.environ, HOME=tmp, TAP_INDEX_HOME=tmp+'/index', BUN_RUNTIME_TRANSPILER_CACHE_PATH=tmp+'/bun-cache')
+    env = dict(os.environ, HOME=tmp, XDG_CONFIG_HOME=tmp+'/config', TAP_INDEX_HOME=tmp+'/index', BUN_RUNTIME_TRANSPILER_CACHE_PATH=tmp+'/bun-cache')
     env.pop('TMUX', None)
     env.pop('TMUX_PANE', None)
     socket = tmp+'/private.sock'
@@ -89,6 +89,7 @@ exec "$REAL_BUN" "$@"
         state = json.loads(tty_command(['bash','-c','exec 9>&2; export TAP_VERBOSE_FD=9; exec "$@"','_',str(root/'bin/tap'),'debug','on','--socket',socket,'--json']))
         assert (p/'fd-record').read_text().splitlines() == ['1110','0000'], 'public Bun inherited a TTY'
         assert state['recording'] and not state['tmux_logging'] and state['mode']=='basic', state
+        assert state['fidelity']=='best-effort' and state['sources']['tmux']['state']=='unmanaged', state
         run = pathlib.Path(state['directory'])
         pid = collector_pid(run)
         descriptors = subprocess.run(['lsof','-a','-p',str(pid),'-Ffn'], capture_output=True, text=True, timeout=3)
@@ -124,10 +125,11 @@ exec "$REAL_BUN" "$@"
         journal = run/'events.jsonl'
         def events(): return [json.loads(line) for line in journal.read_text().splitlines()]
         wait_for(lambda: {e.get('team') for e in events() if e['event']=='tap.registry'} >= set(teams))
-        # New attempt files and bursts beyond the old 200-line tail must all arrive.
+        # Active payload streams and bursts beyond the old 200-line tail must all arrive.
         for name in teams:
             payloads = p/name/'.tap/bus/payloads'
             payloads.mkdir()
+            (payloads/'courier-burst.md').write_text('')
             (payloads/'courier-burst.attempts').write_text(''.join(json.dumps(dict(payload_id='courier-burst', seq=i, detail='gate refused', members=['one','two']))+'\n' for i in range(300)))
         wait_for(lambda: sum(e['event']=='tap.attempt' for e in events()) == 600)
         attempt = p/'alpha/.tap/bus/payloads/courier-burst.attempts'

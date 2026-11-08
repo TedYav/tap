@@ -642,7 +642,8 @@ describe("the sidecar's runtime floor", () => {
       expect(r.stdout).toContain("sidecar started in session 'sess'");
       expect(r.status).toBe(0);
       const command = readFileSync(record, "utf8").trim();
-      expect(command).toBe(`TAP_LOCK_DIR='${lockRoot()}' TAP_HOME='${join(work, "bus")}' exec '${process.execPath}' '${join(realpathSync(join(import.meta.dir, "..", "src")), "watch-run.ts")}' run`);
+      // The window starts in $HOME and cds into the worktree first.
+      expect(command).toBe(`cd '${work}' && TAP_LOCK_DIR='${lockRoot()}' TAP_HOME='${join(work, "bus")}' exec '${process.execPath}' '${join(realpathSync(join(import.meta.dir, "..", "src")), "watch-run.ts")}' run`);
       expect(command).not.toMatch(/exec bun /);
       expect(JSON.parse(readFileSync(join(work, "bus", "watch", "arm.json"), "utf8")).watcher_pid).toBe(4242);
     } finally { rmSync(work, { recursive: true, force: true }); }

@@ -298,7 +298,7 @@ test("codex seat whose lsof reports no fcwd skips with a re-run remediation", ()
   const rollout = join(day, `rollout-2026-09-05T01-00-00-${sid}.jsonl`);
   writeFileSync(rollout, `${JSON.stringify({type:"session_meta", payload:{id:sid, cwd:row.launch_workdir}})}\n`);
   const findings = door({harness_session_id: sid, transcript_path: rollout});
-  expect(findings[0]?.detail).toMatchObject({outcome: "skipped", detail: "session identity observation tools unavailable"});
+  expect(findings[0]?.detail).toMatchObject({outcome: "skipped", detail: "lsof did not report the harness process's working directory"});
   expect(findings[0]?.next).toBe("re-run tap team doctor");
 });
 

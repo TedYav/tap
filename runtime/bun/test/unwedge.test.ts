@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -115,7 +116,10 @@ test("Continue uses the same nudge actuator with one cause-naming message and an
     expect(args).toEqual(["peer", "--message", "Your last turn stopped because the selected model was at capacity. Continue your existing task."]);
     return nudge(args, scripts, families, instance, boundary);
   };
-  expect((await executeUnwedge(request("continue", next.recovery_id), "scripts", new Set(["codex"]), f.deps)).code).toBe(0);
+  const result = await executeUnwedge(request("continue", next.recovery_id), "scripts", new Set(["codex"]), f.deps);
+  expect(result.code).toBe(0);
+  const expected = '[[TAP v0.23 nudge message="If TAP interrupted you, it was not the user; resume unless the user or this message says stop. Your last turn stopped because the selected model was at capacity. Continue your existing task."]]';
+  expect(readRun(result.recovery_id!, f.deps.env).unwedge!.stimulus!.hash).toBe(createHash("sha256").update(expected).digest("hex"));
 });
 
 test("restart preflight refusal returns its claim; a failure after the stop boundary retains uncertainty", async () => {

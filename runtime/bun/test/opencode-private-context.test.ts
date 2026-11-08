@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { shlexQuote as q } from "../src/launcher/invocation";
@@ -34,7 +34,11 @@ sleep 60
         harness: "opencode", pane_id: pane, session: "private/seat", pane: "private/seat:0.0", server_epoch: `srv:${rawEpoch}`,
         harness_session_id: mode === "wrong-session" ? "ses_other" : "ses_expected", launch_id: "new-launch", launch_witness: "old-launch" };
       if (mode === "stale-active") delete row.launch_id;
-      const save = () => writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "private", worktree_root: root }, seats: { seat: row } }));
+      // Replace the registry atomically: the child reads it while the test rewrites it.
+      const save = () => {
+        writeFileSync(`${registry}.tmp`, JSON.stringify({ schema: "0.20", team: { name: "private", worktree_root: root }, seats: { seat: row } }));
+        renameSync(`${registry}.tmp`, registry);
+      };
       save();
       writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
         private: { root, registry_location: registry, state: "registered" },

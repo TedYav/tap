@@ -15,7 +15,7 @@ fi
 # caller's. The no-arg path must take pane id, TTY, session, and generation
 # from ONE tap_calling_pane_observe record.
 #
-# (a) happy: one targeted display-message, matching registry row, returns me
+# (a) happy: one combined inventory observation, matching registry row, returns me
 # (c) WORLD-PER-CALL: first display-message is our world, the second is a
 #     recycled-id stranger. Pre-fix no-arg resolve issued two targeted
 #     observations and would return the stranger. One observation never
@@ -49,15 +49,24 @@ export COUNT_LOG="$WORK/display.log" DISPLAY_SEQ="$WORK/display.seq"
 mkdir -p "$TAP_HOME/payloads" "$TAP_HOME/receipts" "$WORK/.tap" "$WORK/bin"
 
 # LIVE_MAP: pane_id TAB tty TAB session TAB pid:start_time (world A).
-# LIVE_MAP_2: same shape, served from the second targeted display-message.
+# LIVE_MAP_2: same shape, served from the second combined inventory observation.
 # SCAN_MAP: pane_id TAB tty (list-panes inventory).
-# COUNT_LOG: one line per targeted display-message (the discriminator).
+# COUNT_LOG: one line per combined inventory observation (the discriminator).
 cat > "$WORK/bin/tmux" <<'FAKE'
 #!/usr/bin/env bash
 cmd="${1:-}"; shift || true
 case "$cmd" in
   list-panes)
-    printf '%s' "${SCAN_MAP:-}"
+    case "$*" in
+      *session_name*)
+        printf 'identity=inventory\n' >> "$COUNT_LOG"
+        n=$(cat "$DISPLAY_SEQ" 2>/dev/null || echo 0)
+        n=$((n + 1)); printf '%s\n' "$n" > "$DISPLAY_SEQ"
+        if [ -n "${DISPLAY_RAW:-}" ]; then printf '%s' "$DISPLAY_RAW"
+        elif [ "$n" -ge 2 ] && [ -n "${LIVE_MAP_2:-}" ]; then printf '%s' "$LIVE_MAP_2"
+        else printf '%s' "${LIVE_MAP:-}"; fi ;;
+      *) printf '%s' "${SCAN_MAP:-}" ;;
+    esac
     ;;
   display-message)
     target=""; fmt=""
@@ -110,7 +119,10 @@ chmod +x "$WORK/bin/tmux"
 
 cat > "$WORK/bin/ps" <<'FAKEPS'
 #!/usr/bin/env bash
-printf '%s %s\n' "1" "${FAKE_CALLER_TTY:-ttys001}"
+case "$*" in
+  *pid=,ppid=,tty=*) printf '%s 1 %s\n' "$PPID" "${FAKE_CALLER_TTY:-ttys001}" ;;
+  *) printf '1 %s\n' "${FAKE_CALLER_TTY:-ttys001}" ;;
+esac
 FAKEPS
 chmod +x "$WORK/bin/ps"
 export PATH="$WORK/bin:$PATH" FAKE_CALLER_TTY="ttys001"
@@ -128,8 +140,8 @@ json.dump({"schema": "0.20", "teams": {"T": {
     "state": "registered",
 }}}, open(gpath, "w"))
 PY
-ME_ONLY='{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"me":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","server_epoch":"srv:4242:99"}}}'
-ME_AND_STRANGER='{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"me":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","server_epoch":"srv:4242:99"},"stranger":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","server_epoch":"srv:9999:1"}}}'
+ME_ONLY='{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"me":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","session":"T/me","server_epoch":"srv:4242:99"}}}'
+ME_AND_STRANGER='{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"me":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","session":"T/me","server_epoch":"srv:4242:99"},"stranger":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","session":"T/stranger","server_epoch":"srv:9999:1"}}}'
 write_reg "$ME_ONLY"
 
 reset_probe() {
@@ -138,32 +150,32 @@ reset_probe() {
   unset LIVE_MAP_2
 }
 
-targeted_count() {
+identity_count() {
   local n=0
-  [ -s "$COUNT_LOG" ] && n=$(grep -c '^target=' "$COUNT_LOG" || true)
+  [ -s "$COUNT_LOG" ] && n=$(grep -c '^identity=' "$COUNT_LOG" || true)
   printf '%s' "$n"
 }
 
 call_resolve() {
-  bash "$ROOT/bin/tap" whoami 2>/dev/null
+  bash "$ROOT/bin/tap" whoami 2>"$WORK/whoami.err"
 }
 
 # (a) one record, current generation, TTY still ours --------------------------------
-echo "-- (a) no-arg resolve returns the handle from exactly one targeted observation --"
+echo "-- (a) no-arg resolve returns the handle from exactly one combined inventory observation --"
 reset_probe
 export SCAN_MAP=$'%5\t/dev/ttys001\n'
 export LIVE_MAP=$'%5\t/dev/ttys001\tT/me\t4242:99\n'
 GOT="$(call_resolve || true)"
-N="$(targeted_count)"
+N="$(identity_count)"
 if [ "$GOT" = "me" ]; then
   ok "(a) no-arg resolve returned me"
 else
-  bad "(a) got '${GOT:-<empty>}', expected me"
+  bad "(a) got '${GOT:-<empty>}', expected me: $(cat "$WORK/whoami.err")"
 fi
 if [ "$N" = "1" ]; then
-  ok "(a) no-arg resolve issued exactly one targeted display-message"
+  ok "(a) no-arg resolve issued exactly one combined inventory observation"
 else
-  bad "(a) targeted display-message count was $N, expected 1 — this arm must red pre-fix (2)"
+  bad "(a) combined inventory observation count was $N, expected 1 — this arm must red pre-fix (2)"
 fi
 
 # (c) WORLD-PER-CALL: second observation is a recycled-id stranger ----------------
@@ -177,23 +189,23 @@ export SCAN_MAP=$'%5\t/dev/ttys001\n'
 export LIVE_MAP=$'%5\t/dev/ttys001\tT/me\t4242:99\n'
 export LIVE_MAP_2=$'%5\t/dev/ttys999\tT/stranger\t9999:1\n'
 GOT="$(call_resolve || true)"
-N="$(targeted_count)"
+N="$(identity_count)"
 if [ "$GOT" = "me" ]; then
   ok "(c) one observation never mixed in the stranger world"
 else
   bad "(c) got '${GOT:-<empty>}', expected me — mixed-world resolve leaked"
 fi
 if [ "$N" = "1" ]; then
-  ok "(c) still exactly one targeted display-message"
+  ok "(c) still exactly one combined inventory observation"
 else
-  bad "(c) targeted display-message count was $N, expected 1"
+  bad "(c) combined inventory observation count was $N, expected 1"
 fi
 unset LIVE_MAP_2
 write_reg "$ME_ONLY"
 
 # (b) WITNESS: TTY moved AND generation changed in the final record ----------------
 # The scan still binds ttys001 -> %5 (observation 1 of the old split). The
-# targeted display-message now reports a stranger's TTY and a new server
+# combined inventory observation now reports a stranger's TTY and a new server
 # generation. Mixing those two probes would have authorized %5 against the
 # new generation. One record must refuse.
 echo "-- (b) WITNESS: TTY and generation move across the former boundary --"
@@ -213,7 +225,7 @@ fi
 # through tap_is_pane_id; the one-record path must refuse before lookup.
 echo "-- (d) malformed caller pane id does not resolve a matching damaged row --"
 reset_probe
-write_reg '{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"forged":{"status":"active","delivery":"pane","pane":"not-a-pane","pane_id":"not-a-pane","server_epoch":"srv:4242:99"}}}'
+write_reg '{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"forged":{"status":"active","delivery":"pane","pane":"not-a-pane","pane_id":"not-a-pane","session":"T/forged","server_epoch":"srv:4242:99"}}}'
 export SCAN_MAP=$'not-a-pane\t/dev/ttys001\n'
 export LIVE_MAP=$'not-a-pane\t/dev/ttys001\tT/forged\t4242:99\n'
 GOT="$(call_resolve || true)"
@@ -300,7 +312,7 @@ write_reg "$ME_ONLY"
 # is non-empty. Arity must.
 echo "-- (g) three-field observe does not resolve a matching current-generation row --"
 reset_probe
-write_reg '{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"forged":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","server_epoch":"srv:4242:99"}}}'
+write_reg '{"schema": "0.20", "team":{"name":"T","worktree_root":"/tmp/T"},"seats":{"forged":{"status":"active","delivery":"pane","pane":"%5","pane_id":"%5","session":"T/me","server_epoch":"srv:4242:99"}}}'
 export SCAN_MAP=$'%5\t/dev/ttys001\n'
 export DISPLAY_RAW=$'%5\t/dev/ttys001\t4242:99'
 GOT="$(call_resolve || true)"

@@ -18,6 +18,18 @@ import { PYTHON_SPACE } from "./terminal-text";
  */
 export const NUDGE_MESSAGE_MAX_BYTES = 200;
 
+export const DEFAULT_NUDGE_TEXT = "TAP recovery nudge: resume your prior work; check tap poll. If TAP interrupted you, that was not the user: continue unless the user or a message says stop.";
+export const NUDGE_CONTEXT_PREFIX = "If TAP interrupted you, it was not the user; resume unless the user or this message says stop. ";
+export const NUDGE_CUSTOM_MAX_BYTES = NUDGE_MESSAGE_MAX_BYTES - Buffer.byteLength(NUDGE_CONTEXT_PREFIX, "utf8");
+
+/** Compose at the producer; rendering remains a literal, reversible wire operation. */
+export function nudgeDoorbellText(custom = ""): string {
+  const text = custom === "" ? DEFAULT_NUDGE_TEXT : NUDGE_CONTEXT_PREFIX + custom;
+  const refusal = nudgeMessageRefusal(text);
+  if (refusal) throw new Error(`${refusal}; custom nudge context has ${NUDGE_CUSTOM_MAX_BYTES} UTF-8 bytes available after TAP's interruption notice`);
+  return text;
+}
+
 /**
  * Why a `--message` cannot ride the wire, or null when it can. The rule is the
  * inline-body rule every sentinel uses (sentinelBodyInlineable); this only names

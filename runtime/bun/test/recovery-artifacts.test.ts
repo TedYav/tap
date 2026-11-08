@@ -34,7 +34,7 @@ test("streaming artifact publication reports progress before exposing the destin
 
 test("tap debug finds recovery by either id and collector retains frames after release with recording off", async () => {
   const root = mkdtempSync(join(tmpdir(), "tap-recovery-artifacts-"));
-  const env = { ...process.env, TAP_INDEX_HOME: root, TAP_LOCK_DIR: join(root, "locks") };
+  const env = { ...process.env, TAP_INDEX_HOME: root, TAP_LOCK_DIR: join(root, "locks"), XDG_CONFIG_HOME: join(root, "config") };
   try {
     const journal = join(root, "journal"); mkdirSync(journal);
     writeFileSync(join(journal, "session.json"), JSON.stringify({ id: "debug-session", directory: journal }));
@@ -70,9 +70,9 @@ test("tap debug finds recovery by either id and collector retains frames after r
       const invoke = (args: string[]) => spawnSync(door[0]!, [...door.slice(1), "debug", ...args], { cwd: unrelated, env, encoding: "utf8" });
       const status = invoke(["status", "--json"]);
       expect(status.status, status.stderr).toBe(0);
-      expect(JSON.parse(status.stdout)).toEqual({ recording: false, state: "off", mode: "off", directory: null, tmux_logging: false });
+      expect(JSON.parse(status.stdout)).toMatchObject({ recording: false, state: "off", mode: "off", directory: null, tmux_logging: false });
       const config = invoke(["config", "--json"]);
-      expect(config.status, config.stderr).toBe(0); expect(JSON.parse(config.stdout)).toEqual({ max_mb: 1024, retain_mb: 2048 });
+      expect(config.status, config.stderr).toBe(0); expect(JSON.parse(config.stdout)).toMatchObject({ max_mb: 1024, retain_mb: 2048, archive_mb: 10240 });
       for (const args of [["config", "--lifetime-hours", "24", "--json"], ["--json", "config", "--lifetime-hours", "24"]]) {
         const retired = invoke(args);
         expect(retired.status).toBe(1); expect(retired.stderr).toBe("");

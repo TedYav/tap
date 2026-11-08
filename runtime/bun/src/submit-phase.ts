@@ -156,10 +156,11 @@ export function stagedIdleSubmitEligible(home: string, id: string, env: NodeJS.P
   return stagedIdleEvidence(home, id, retry as string | undefined);
 }
 
-/** Effect evidence cannot identify the harness work that a key cancelled. */
-/** tap-1i81h: Claude renders a cancelled tool call as the user's stop order. */
-export const AGENT_INTERRUPT_ATTRIBUTION = "This message may have interrupted you. The user did not interrupt you: "
-  + "this was an automated interruption from another agent that needed your attention.";
+/** SessionStart's decode of the `agent-interrupt` tag: who pressed the key, and what to do next. */
+export const INTERRUPT_SESSION_GUIDANCE = "A sentinel tagged agent-interrupt came from TAP, not the user: read it, then continue your previous work unless it says otherwise.";
+
+/** tap-1i81h: Claude renders a cancelled tool call as the user's stop order, so the notice names the cause. */
+export const AGENT_INTERRUPT_ATTRIBUTION = "This message was marked urgent, so it may have interrupted you; that was TAP, not the user.";
 export function interruptNotice(home: string, id: string): string | null {
   const rows = phaseRows(home, id);
   const intent = rows.findLast(row => row.phase === "interrupt-intent");
@@ -168,10 +169,8 @@ export function interruptNotice(home: string, id: string): string | null {
   const backup = intent.interrupt?.draft_backup;
   const failed = intent.interrupt?.draft_backup_error;
   return `${AGENT_INTERRUPT_ATTRIBUTION} Interrupt ${sent ? "input sent" : "attempt recorded; input acceptance unconfirmed"} for ${id}. `
-    + "The recipient's turn or tool call may have been cancelled and a persistent goal may be paused. "
-    + "TAP cannot identify cancelled work or confirm its completion; inspect in-flight work before continuing. "
-    + (backup ? `Visible draft snapshot: ${backup}. ` : failed ? "Visible draft backup failed. " : "")
-    + "Draft backups cannot restore a cancelled turn or tool call.";
+    + "Check any interrupted tool call, handle this message, then continue your previous work unless it says otherwise."
+    + (backup ? ` Visible draft snapshot: ${backup}.` : failed ? " Visible draft backup failed." : "");
 }
 export function unresolvedInjection(home: string, id: string): string | null {
   if (harnessQueued(home,id)) return "queued in harness; recipient processing unconfirmed";

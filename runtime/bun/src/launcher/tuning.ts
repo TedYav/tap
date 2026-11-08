@@ -60,10 +60,9 @@ export function launchTuning(harness: string, argv: readonly string[], env: Reco
     if (value && !value.startsWith("-")) values.set(key === "-m" ? "--model" : key, value);
   }
   const qualifiers: Record<string, string> = {};
-  if (harness === "codex") for (const { start, end, key } of assignments(argv)) {
+  if (harness === "codex") for (const { key, value: assigned } of assignments(argv)) {
     if (!["model_reasoning_effort", "service_tier", "model_context_window", "model_max_output_tokens"].includes(key)) continue;
-    const token = argv[end - 1]!, raw = end - start === 1 ? token.slice(token.indexOf("=") + 1) : token;
-    const value = raw.slice(raw.indexOf("=") + 1).trim();
+    const value = assigned.trim();
     // Codex accepts bare strings as well as TOML scalars.
     let parsed: unknown = value;
     try { parsed = (Bun.TOML.parse(`value = ${value}`) as Record<string,unknown>).value; } catch { /* bare string */ }

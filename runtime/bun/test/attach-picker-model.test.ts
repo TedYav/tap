@@ -163,3 +163,28 @@ test("an invalid byte in the acting registry is unreadable, never corrupt", () =
   writeFileSync(reg, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"schema":"0.20","team":{"name":"t"},"seats":{}}')]));
   expect(pickerModel(env, inspect).teams[0]!.state).toBe("corrupt");
 });
+
+test("leaders come first with a role suffix, and the seat step keeps that order on ties", async () => {
+  const index = join(root, "lead-index"), repo = join(root, "lead-repo"), bus = join(root, "lead-bus"), bin = join(root, "lead-bin");
+  for (const dir of [index, repo, bus, bin]) mkdirSync(dir, { recursive: true });
+  const reg = join(bus, "registry.json");
+  enroll(index, { t: { root: repo, registry_location: reg, state: "registered" } });
+  writeFileSync(reg, JSON.stringify({ schema: "0.20", team: { name: "t" }, seats: {
+    a: { status: "active", session: "t/a", harness: "claude", role: "reviewer" },
+    z: { status: "active", pane: "t/a:1.0", harness: "codex", role: "leader" },
+    m: { status: "active", pane: "t/a:1.0", harness: "codex", role: "Not A Token" },
+  } }));
+  writeFileSync(join(bin, "tmux"), '#!/bin/sh\nprintf "t/a\\n"\n', { mode: 0o755 });
+  const env = { ...process.env, TAP_INDEX_HOME: index, PATH: `${bin}:${process.env.PATH}` };
+  const model = pickerModel(env, inspect);
+  expect(model.teams[0]!.seats.map(s => [s.handle, s.role ?? ""])).toEqual([["z", "leader"], ["a", "reviewer"], ["m", ""]]);
+  let labels: string[] = [], tiebreak: string | undefined;
+  await chooseAttachSelection(model, async (rows, options) => {
+    labels = rows.map(row => row.label); tiebreak = options.tiebreak;
+    return { kind: "cancelled" };
+  }, { team: "t" });
+  expect(labels[0]).toStartWith("z (leader)  codex");
+  expect(labels[1]).toStartWith("a (reviewer)  claude");
+  expect(labels[2]).toStartWith("m  codex");
+  expect(tiebreak).toBe("index");
+});

@@ -39,7 +39,8 @@ clear-fence or pane refusal), appends one tab-separated line to
 `send-refusals.log` under `$TAP_INDEX_HOME` (default `~/.tap`): UTC time,
 sender, recipient, team, error id, phase (`pre` or `withdrawn`; a five-field
 legacy row is `pre`); `-` is an unresolved field; no body. Count per night, generations included: `cut -c1-10 send-refusals.log* | sort | uniq -c`. Best effort and silent;
-at 1 MiB it rotates to a dated generation, keeping two (3 MiB). A refused
+at 1 MiB it rotates to a dated generation, keeping two (3 MiB),
+under a flock; logging remains best effort. A refused
 ask still leaves no pending item (revisit if a seat loses a refusal). A
 withdrawn send may keep its `.placed`: count `withdrawn` as its own series.
 

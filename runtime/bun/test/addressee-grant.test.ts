@@ -124,6 +124,30 @@ describe("addressee grant — module rows", () => {
     expect(addresseeGrant({ ...base, actor: "ghost", to: "ghost", recipientInstance: "ghost|X" })).toMatchObject({ ok: false, errorClass: "instance_unresolved" });
     expect(addresseeGrant({ ...base, from: "", recipientInstance: "actor|OLD" }).next).toBe("tap cancel ID1");
   });
+
+  test("includeRemedy:false keeps the grant verdict and never reads team-history; the default keeps the full refusal", () => {
+    const root = tmp();
+    const reg = join(root, "team-registry.json"), hist = join(root, "team-history");
+    mkdirSync(hist);
+    writeFileSync(reg, JSON.stringify({ schema: "0.20", team: { name: "flip" }, seats: { actor: { instance: "actor|CUR" } } }));
+    writeFileSync(join(hist, "actor.1.json"), JSON.stringify({ handle: "actor", instance: "actor|OLD" }));
+    const base = { registryPath: reg, marker: "live" as const, team: "flip", historyDir: hist, id: "ID1", from: "bob", actor: "actor", to: "actor", adoptedFrom: "", recipientInstance: "actor|OLD" };
+    const full = addresseeGrant(base);
+    expect(full).toMatchObject({ ok: false, errorClass: "not_addressee", instanceMismatch: true, remedy: { kind: "command", next: "tap team" },
+      next: "tap cancel ID1 --by bob; or clear the binding: tap team" });
+    expect(full.detail).toStartWith("'ID1' is bound to recipient instance 'actor|OLD', not the current 'actor' instance; 'actor|OLD' is still a tombstone");
+    expect(addresseeGrant({ ...base, includeRemedy: true })).toEqual(full);
+    // An unreadable history would turn any remedy lookup into list-history;
+    // the skipped lookup leaves the sentinel and the base refusal instead.
+    chmodSync(hist, 0o000); restoreModes.push(hist);
+    const lean = addresseeGrant({ ...base, includeRemedy: false });
+    expect(lean).toEqual({ ok: false, grant: "", actorInstance: "", errorClass: "not_addressee", instanceMismatch: true,
+      detail: "'ID1' is bound to recipient instance 'actor|OLD', not the current 'actor' instance", next: "tap cancel ID1 --by bob",
+      remedy: { kind: "unknown", next: "", detail: "" } });
+    if (process.getuid?.() !== 0) expect(addresseeGrant(base).remedy.next).toBe("tap in actor --list-history");
+    // Granting paths are unaffected.
+    expect(addresseeGrant({ ...base, recipientInstance: "actor|CUR", includeRemedy: false })).toMatchObject({ ok: true, actorInstance: "actor|CUR" });
+  });
 });
 
 describe("addressee grant — native differential rows", () => {

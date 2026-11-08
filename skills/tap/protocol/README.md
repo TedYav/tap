@@ -16,3 +16,4 @@ Exact CLI grammar lives in `tap help <verb>`. Start task lookup in [`../GUIDE.md
 
 - [Model reference and launch tuning](identity/model-reference.md): absent-ledger guidance and stored launch identity.
 - [Seat observations](identity/calibration.md): explicit calibration reads, local append-only store and render budgets.
+- [Seat roles](identity/roles.md): `tap role`, leader presentation and the removal notice; labels, not permissions.

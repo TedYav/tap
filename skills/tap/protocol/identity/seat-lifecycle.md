@@ -127,14 +127,10 @@ Bus mail and historical evidence are not rewritten by seat retirement.
 Historical team-reset bundles remain on disk for manual inspection; the retired
 checkpoint commands never inspect, restore or delete them.
 
-`tap out --last` (`-` remains an alias) selects the unique latest `exited_at`
-among active pane-backed rows or delivery-marked `suspended/pane_gone` rows
-that the shared refresh classifier proves gone.
-Live, launching, pending, poll, other suspended and foreign-team/socket rows are excluded.
-Missing exit stamps are recorded only after readable observation; ties refuse.
-The selected row and positive absence are revalidated under retirement custody.
+`tap out --last` (alias `-`) and the terminal chooser for a tie or a missed
+name are specified in [seat selection for `tap out`](seat-picker.md).
 
-The shared classifier also reports `gone/pane_absent` when a valid recorded
+The shared refresh classifier, which `--last` also uses, reports `gone/pane_absent` when a valid recorded
 pane ID is missing from a readable global pane inventory in its still-present
 session and its explicit server epoch matches. A session-scoped scan cannot
 exclude a pane moved elsewhere and keeps `unknown/designated_pane_missing`.
@@ -142,9 +138,23 @@ This widens ordinary `team refresh` to
 shared-session exits. Rebound addresses, panes visible in another session, poisoned pane records, launching markers,
 missing or stale epochs, and unreadable pane sets remain conservative; an exited harness in a surviving pane is offline.
 
-For recognized no-server replies, `out --last` and `-` use the positive-empty
-namespace authority shared with `team refresh --hard`. The query pins its physical
-socket; any recorded server socket must match. Other failures and excluded row
-statuses remain refusals. The namespace proof is refreshed under retirement
-custody, so a server that starts meanwhile must pass the normal snapshot checks.
-Plain refresh's no-server polarity stays unchanged.
+## Team history and history restore
+
+`tap team history` reads the `team-history/` tombstones that retirement writes
+(`<handle>.<retired_by>.<ts>.json`, never renamed or rewritten) plus the current
+roster. `<handle>@<n>` counts that handle's departures oldest first from 1, so a
+new retirement takes the next number and no index moves. A history read is one
+directory listing; a named handle filters on the filename prefix before any
+tombstone is parsed. Only history, restore and the [stale pass](./stale-seats.md) read
+the directory; no hot path (poll, send, delivery, roster) gains a reader.
+
+`tap restore <handle>@<n>` re-adds that tombstone's row as
+`status=suspended`, `status_reason=restored_from_archive` (a relaunchable reason),
+keeping its native session id, so `tap session resume <handle>` can resume it. It
+refuses `handle_live` when the handle is on the team, `session_owned` when another
+seat on the team holds the same harness and native id, and `not_resumable` without
+an exact native id. `--as <name>` mints a new instance and canonical session for the
+new handle. The tombstone stays; the restore is appended to the sibling
+`<handle>.restores.jsonl`, which history shows. A restored instance therefore still
+counts as in history: an instance-clearing remedy compares the current instance
+first, so a restored seat on the roster is not offered a second restore.

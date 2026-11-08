@@ -282,7 +282,7 @@ describe("U4: the interrupt class delivers natively", () => {
       { phase: "interrupt-sent" },
     ]);
     expect(v.stderr).toContain("current turn or tool call may be cancelled");
-    expect(interruptNotice(fx.bus, id)).toContain("cannot identify cancelled work");
+    expect(interruptNotice(fx.bus, id)).toContain("Check any interrupted tool call");
     const shown = run(fx, ["show", id], false);
     expect(shown.code).toBe(0);
     expect(shown.stdout).toContain("Interrupt input sent");

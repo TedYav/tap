@@ -12,6 +12,9 @@
 // inbound answer is unreadable, is never listed as stalled: it is reported as
 // unjudged, with the reason, so the silence stays visible.
 
+/** `--stalled`'s default threshold, and the idle age past which `--state active` drops a seat. */
+export const DEFAULT_STALE_AFTER = 600;
+
 export interface StalledRow {
   handle: string;
   agentState: string;

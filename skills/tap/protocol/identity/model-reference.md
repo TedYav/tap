@@ -49,8 +49,35 @@ harnesses stay null. The full field schema and limits are in
 
 The context cell appends a Claude cache estimate when expiry is known: `329k/600k ●58m`. Warm markers carry whole minutes until expiry, rounded up with a minimum of 1m; an elapsed estimate is a bare `●`, and unknown expiry has no marker. The dot and minutes are bright blue (SGR 94) at 15m or more, yellow (33) under 15m and red (31) under 5m; the bare elapsed dot is dark red (38;5;88). Colors require TTY stdout, `NO_COLOR` absent (including an empty value) and `TERM` other than `dumb`. Monochrome keeps the same markers. The estimate is transcript-based, not observed server availability; JSON retains its source, basis and TTL.
 
+**Seat filters.** Every seat list shares one parser and predicate
+(`runtime/bun/src/seat-filter.ts`). `--harness <list>` takes families the way
+`tap nudge --harness` does, plus `daemon`. `--model <list>` is a substring per item,
+tested against the raw observed model, the launch model and the short name.
+`--state <list>` takes any displayed state or the meta state `active`, and refuses
+any other value, naming the valid ones. `active` is every live seat except one idle for
+10 minutes or more by a dated turn end (the same 600 s as the `--stale-after`
+default); an idle seat with no dated age stays active, because it cannot be shown
+stale. Offline, incapable and unbound seats are not active; a daemon's `ready` is.
+Values are comma lists in any case. Items within a flag OR; different flags AND,
+with each other and with `--online`, `--offline` and `--all`. `--stalled` judges only
+the seats the filters keep. JSON, `--names` and human output select identical seats.
+`tap team --online` keeps lifecycle-active seats; `--active` is its migration alias,
+adding one stderr line.
+
+| List | `--harness` | `--model` | `--state` |
+|---|---|---|---|
+| `tap team`, `tap team roster`, `tap team calibration`, `tap crew list` | yes | observed, launch | yes |
+| `tap teams --seats`, `tap teams roster`, `tap team list --seats` | yes | observed, launch | yes; replaces the default active-only scope |
+| `tap admin ps` | yes | observed, launch | its own activity column; refuses states it never lists (offline, incapable, unbound, ready, waiting, unsubmitted) |
+| `tap session list` | yes, supported harnesses only | launch only | refused: records store no observed state |
+
+**Short model names.** Human model columns read names through
+`runtime/bun/src/model-names.ts`: `claude-opus-5-5` shows `opus5.5`, `gpt-6-astra`
+shows `astra6`, `gemini-4-argon-high` shows `argon4`. A launch alias drops `[1m]`
+and gains no version; an unmapped model shows its full id. JSON keeps raw ids.
+
 **Machine-wide seat view.** `tap teams --seats [--all] [--json] [--wide]` (also
-`tap team list --seats`) groups active seats under team headings carrying
+`tap teams roster` and `tap team list --seats`; any seat filter implies it) groups active seats under team headings carrying
 `<active>/<total> seats active` and the root path. One column header aligns the two-space
 indented seat rows with the team roster columns: handle, harness, state, context,
 family, model, preset. Headings are bold cyan (SGR 1;36) on a color terminal;

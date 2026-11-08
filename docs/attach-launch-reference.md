@@ -119,6 +119,20 @@ defaults stay unknown.
 Top-level --effort cannot combine with a harness tail; use the native effort
 flag when a service/context tail is needed.
 
+### Slow login shells
+
+A launch, resume or restart starts the harness through your login shell, which
+can be slow on a loaded machine. TAP waits up to 60 seconds for the harness to
+appear while the pane stays blank or its output keeps changing. Text that sits
+unchanged for five seconds reads as a prompt: the launch fails then, shows the
+pane, and asks you to answer it in a terminal. A shell that runs some other
+program instead of the harness fails at five seconds too. A blank pane at the
+ceiling is reported as a slow shell, with the machine's load.
+
+Set TAP_LAUNCH_START_TIMEOUT_SECONDS to a positive number of seconds to change
+the ceiling; anything else refuses before the launch has any effect. Once the
+harness appears it must still survive five seconds, or signal that it is ready.
+
 ### Tuning and policy
 
 With a preset, model and effort come from the preset and cannot be

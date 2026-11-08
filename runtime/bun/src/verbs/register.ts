@@ -344,6 +344,26 @@ export function ensureTeamBlock(
   return { ok: false, code: 1, detail: "registry team bootstrap failed" };
 }
 
+// --- reserved identities ----------------------------------------------------------
+
+/** The watcher identity and the CLI help keywords: the reservations a derived handle can hit. */
+function keywordReservation(name: string, env: Env = process.env): string | null {
+  if (name === (env.TAP_WATCH_IDENTITY ?? WATCH_IDENTITY_DEFAULT)) return "the reserved watcher identity";
+  for (const reserved of (env.TAP_RESERVED_HANDLES ?? RESERVED_DEFAULT).split(/\s+/)) {
+    if (name === reserved) return "the CLI help keyword (so 'tap <verb> help' is unambiguous for every verb)";
+  }
+  return null;
+}
+
+/** Why registration refuses `name` as a seat handle, or null. The one rule every seat-naming door applies. */
+export function reservedHandleReason(name: string, env: Env = process.env): string | null {
+  const keyword = keywordReservation(name, env);
+  if (keyword !== null) return keyword;
+  if (name === COURIER_IDENTITY) return "the reserved courier digest-envelope identity";
+  if (name === USER_IDENTITY) return "the reserved operator identity (a person nudging from a terminal that is not a seat)";
+  return null;
+}
+
 // --- history (verbatim port of registry_v20.list_handle_history) ------------------
 
 export interface HistoryRow extends JsonMap {}
@@ -1250,25 +1270,12 @@ function cmdRegisterRun(argv: string[]): number {
   if (name !== "" && !TAP_ID_RE.test(name)) {
     fail(2, "usage_error", "tap help register", `handle '${name}' fails charset ${TAP_ID_RE}`);
   }
-  const reservedWhy = (): string | null => {
-    if (name === (env.TAP_WATCH_IDENTITY ?? WATCH_IDENTITY_DEFAULT)) return "the reserved watcher identity";
-    for (const reserved of (env.TAP_RESERVED_HANDLES ?? RESERVED_DEFAULT).split(/\s+/)) {
-      if (name === reserved) return "the CLI help keyword (so 'tap <verb> help' is unambiguous for every verb)";
-    }
-    return null;
-  };
-  const why = name === "" ? null : reservedWhy();
+  const why = name === "" ? null : reservedHandleReason(name, env);
   if (why !== null) {
-    if (derivedNote !== "") {
+    if (derivedNote !== "" && keywordReservation(name, env) !== null) {
       fail(1, "reserved_handle", `tap register <another-handle> --pane ${form.pane}`, `derived handle '${name}' is ${why} and cannot be a seat handle — the tmux session name produced it, so pass an explicit handle`);
     }
     fail(1, "reserved_handle", "tap register <another-handle>", `'${name}' is ${why} and cannot be a seat handle`);
-  }
-  if (name === COURIER_IDENTITY) {
-    fail(1, "reserved_handle", "tap register <another-handle>", "'courier' is the reserved courier digest-envelope identity and cannot be a seat handle");
-  }
-  if (name === USER_IDENTITY) {
-    fail(1, "reserved_handle", "tap register <another-handle>", `'${USER_IDENTITY}' is the reserved operator identity (a person nudging from a terminal that is not a seat) and cannot be a seat handle`);
   }
 
   // Reset fence, then the team block (fresh-bus team-block creation comes

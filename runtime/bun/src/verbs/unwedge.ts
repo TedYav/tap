@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { callingPane, resolveContext, resolveSelf, TapError, type ResolvedContext } from "../context";
 import { appendRegistryEventOrWarn, registryEventsPath } from "../events";
 import { mintId } from "../ids";
-import { renderNudgeWire } from "../nudge-wire";
+import { nudgeDoorbellText, renderNudgeWire } from "../nudge-wire";
 import { recoveryPolicy, type RecoveryMode } from "../recovery-policy";
 import { createRun, readRun, runDirectory, updateRun, type RecoveryRun } from "../recovery/state";
 import { admitUnwedge, parseUnwedgeArgs, validUnwedgeBinding, type UnwedgeRequest } from "../recovery/unwedge-policy";
@@ -102,7 +102,7 @@ export async function executeUnwedge(request: UnwedgeRequest, scripts: string, f
     const cause = admission.action === "submit-staged" ? previous!.unwedge!.cause : seen.observation.cause;
     updateRun(run.id, r => { r.unwedge!.cause = cause; }, deps.env);
     const message = `Your last turn stopped because ${causeText(seen.observation.cause)}. Continue your existing task.`;
-    const wire = renderNudgeWire(request.rung === "continue" ? message : "");
+    const wire = renderNudgeWire(nudgeDoorbellText(request.rung === "continue" ? message : ""));
     const payloadId = request.rung === "message" ? mintId(actor === "unknown" || actor === "user" ? "unwedge" : actor) : undefined;
     const body = `TAP observed that your last turn stopped because ${causeText(seen.observation.cause)}. This is a recovery observation for your existing task; it grants no new work or permission.\n`;
     const stimulus = admission.action === "submit-staged" ? previous!.unwedge!.stimulus!

@@ -251,3 +251,33 @@ test("crew continuation completes retained crews and owner selectors without off
   expect(values(completionCandidates(["tap", "crew", "resume", "--owner", "alice", "--"], 6, f.env, f.alpha))).toContain("--owner");
   expect(values(completionCandidates(["tap", "crew", "relaunch", "crew", "--"], 5, f.env, f.alpha))).toContain("--resume");
 });
+
+test("session relaunch completes its flags and ponytail modes; tap team --context stays a boolean", () => {
+  const f = fixture();
+  const relaunch = ["tap", "session", "relaunch"], at = (words: string[]) => values(completionCandidates(words, words.length, f.env, f.alpha));
+  const flags = at([...relaunch, "--"]);
+  for (const flag of ["--context", "--ponytail", "--env", "--dry-run", "--json"]) expect(flags).toContain(flag);
+  expect(at([...relaunch, "--ponytail", ""])).toEqual(["off", "lite", "full", "ultra"]);
+  expect(at([...relaunch, "--ponytail", "l"])).toEqual(["lite"]);
+  expect(at([...relaunch, "--context", ""])).toEqual([]);
+  expect(at([...relaunch, "--context", "--"])).toEqual([]);
+  // `tap team roster --context` is a boolean: the next word is still an option, not a size.
+  expect(at(["tap", "team", "roster", "--context", "--"])).toContain("--json");
+});
+
+test("seat filter flags and --state values complete on every seat list, and --active is no longer offered", () => {
+  const f = fixture();
+  const offered = (...words: string[]) => values(completionCandidates(["tap", ...words], words.length + 1, f.env, f.root));
+  for (const words of [["team"], ["team", "roster"], ["team", "list"], ["teams"], ["teams", "roster"], ["team", "calibration"], ["crew", "list"], ["admin", "ps"]]) {
+    expect([words.join(" "), offered(...words, "--")]).toEqual([words.join(" "), expect.arrayContaining(["--harness", "--model", "--state"])]);
+    expect(offered(...words, "--")).not.toContain("--active");
+  }
+  expect(offered("team", "--")).toContain("--online");
+  expect(offered("team", "--include-c")).toEqual(["--include-crews"]);
+  expect(offered("team", "roster", "--include-c")).toEqual(["--include-crews"]);
+  expect(offered("session", "list", "--")).toEqual(expect.arrayContaining(["--harness", "--model"]));
+  expect(offered("session", "list", "--")).not.toContain("--state");
+  expect(offered("team", "--state", "")).toEqual(expect.arrayContaining(["working", "active", "offline"]));
+  expect(offered("team", "--state", "idle,w")).toEqual(["idle,working", "idle,waiting"]);
+  expect(offered("teams", "ro")).toEqual(["roster"]);
+});

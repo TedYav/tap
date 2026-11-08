@@ -546,6 +546,50 @@ for (const arm of ["absent", "mismatch", "equal"] as const) {
   });
 }
 
+// Linux lsof 4.95 prints only the fields it is asked for: under `-Fn` the
+// descriptor rows (`fcwd`, `frtd`, `ftxt`, `f3`...) are absent, so the cwd
+// cross-check had nothing to read. macOS lsof volunteers `fcwd` under `-Fn`.
+// The fake answers in each platform's shape (captured on Ubuntu 24.04 and
+// macOS) for whatever field list the observer requests, so the binding must
+// hold on both and must still refuse when the cwd row is missing. Under the
+// requested `-Ffn` the two shapes are byte-identical; that agreement is the fix.
+function lsofAs(platform: "linux" | "darwin", argv: string[], cwd: string, held: string): string {
+  const fields = argv.find((a) => a.startsWith("-F"))?.slice(2) ?? "";
+  const withF = fields.includes("f") || platform === "darwin";
+  const rows: [string, string][] = [["cwd", cwd], ["rtd", "/"], ["txt", "/usr/bin/codex"], ["mem", "/usr/lib/libc.so.6"], ["3", held]];
+  return "p101\n" + rows.map(([fd, n]) => (withF ? `f${fd}\n` : "") + `n${n}\n`).join("");
+}
+
+for (const platform of ["linux", "darwin"] as const) {
+  test(`process tier binds a ${platform}-shaped lsof answer`, () => {
+    const hm = home(), sid = "11111111-1111-4111-8111-111111111111";
+    codex(hm, [["2026", "09", "05", "2026-09-05T01-00-00", sid, WT, 1000]]);
+    const path = rolloutFiles(hm)[0]!;
+    const seen: string[][] = [];
+    const run = (argv: string[]): ProcResult => {
+      if (argv[0] === "ps") return {status:0,stderr:"",stdout:"100 1 Fri Sep  5 01:00:00 2026 /bin/zsh\n101 100 Fri Sep  5 01:00:01 2026 /bin/codex\n"};
+      seen.push(argv);
+      return {status:0,stderr:"",stdout:lsofAs(platform, argv, WT, path)};
+    };
+    const observed = observeProcessStore(run, "codex", WT, hm, "100");
+    expect(seen).toEqual([["lsof", "-a", "-p", "101", "-Ffn"]]);
+    expect(observed.refusal).toBe("");
+    expect(observed.identity?.harness_session_id).toBe(sid);
+  });
+}
+
+test("a Linux -Fn shaped answer (no descriptor rows) still refuses as fcwd_unavailable", () => {
+  const hm = home(), sid = "11111111-1111-4111-8111-111111111111";
+  codex(hm, [["2026", "09", "05", "2026-09-05T01-00-00", sid, WT, 1000]]);
+  const path = rolloutFiles(hm)[0]!;
+  const run = (argv: string[]): ProcResult => ({status:0,stderr:"",stdout:argv[0] === "ps"
+    ? "100 1 Fri Sep  5 01:00:00 2026 /bin/zsh\n101 100 Fri Sep  5 01:00:01 2026 /bin/codex\n"
+    : `p101\nn${WT}\nn/\nn/usr/bin/codex\nn${path}\n`});
+  const observed = observeProcessStore(run, "codex", WT, hm, "100");
+  expect(observed.identity).toBeNull();
+  expect(observed.refusal).toBe("fcwd_unavailable");
+});
+
 function subagentSource(parent: string) {
   return { subagent: { thread_spawn: { parent_thread_id: parent, depth: 1, agent_path: "/root/x", agent_nickname: "Dalton", agent_role: null } } };
 }

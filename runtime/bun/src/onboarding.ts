@@ -10,6 +10,7 @@ import { noTeamMessage } from "./first-run";
 import { teamRegistryFileRefusal } from "./register-authority";
 import { initArgv } from "./courier-argv";
 import { parseRosterOptions } from "./verbs/team";
+import { isSeatFilterFlag } from "./seat-filter";
 import { tapScriptsDir } from "./scripts-dir";
 
 const LOCAL_VERBS = new Set([
@@ -25,7 +26,7 @@ const VALUES = new Set([
   "--model", "--name", "--agent", "--context-threshold", "--probe-timeout", "--chain",
   "--terminal", "--context-exempt", "--evaluator", "--config", "--stale-after",
 ]);
-const FLAGS = new Set(["--names", "--active", "--all", "--quiet", "--json", "--yes", "--force", "--hard", "--kill", "--keep-self", "--ask", "--expect-reply", "--fyi", "--note", "--no-spool", "--urgent", "--wake", "--verbose", "--rearm", "--stalled"]);
+const FLAGS = new Set(["--names", "--online", "--active", "--all", "--quiet", "--json", "--yes", "--force", "--hard", "--kill", "--keep-self", "--ask", "--expect-reply", "--fyi", "--note", "--no-spool", "--urgent", "--wake", "--verbose", "--rearm", "--stalled"]);
 const REGISTER_VALUES = new Set(["--mode", "--include", "--digest-window", "--wake-url", "--restore"]);
 const REGISTER_FLAGS = new Set(["--offline", "--crew", "--unattended", "--include-asks", "--fresh", "--accept-observed-identity"]);
 const AUTHORITY = new Set(["--cwd", "--machine", "--dry-run", "--team", "--payload", "--remote-registry", "--cross-worktree", "--reply-to", "--in-reply-to"]);
@@ -34,7 +35,7 @@ const AUTHORITY = new Set(["--cwd", "--machine", "--dry-run", "--team", "--paylo
 export function localCommand(argv: string[]): { json: boolean; bodyStdin: boolean } | null {
   const verb = argv[0] ?? "";
   if (!LOCAL_VERBS.has(verb)) return null;
-  if (verb === "team" && argv.includes("--offline")) {
+  if (verb === "team" && (argv.includes("--offline") || argv.some(isSeatFilterFlag))) {
     try {
       const options = parseRosterOptions(argv.slice(1));
       return options.team ? null : { json: options.json, bodyStdin: false };

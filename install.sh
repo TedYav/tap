@@ -165,7 +165,8 @@ fi
 # Stop before writes when the prerequisites are incomplete. Keep the current shell.
 missing=()
 TAP_BUN_MIN=1.4.0
-for dep in git bash bun jq tmux tar; do
+# lsof binds each seat to its harness session (state and context); macOS ships it.
+for dep in git bash bun jq tmux tar lsof; do
   if ! { [ "$dep" = bun ] && [ "$ARTIFACT" = 1 ]; } && ! command -v "$dep" >/dev/null 2>&1; then
     echo "install: $dep was not found on PATH" >&2
     missing+=("$dep")
@@ -203,12 +204,17 @@ if [ "${#missing[@]}" -gt 0 ]; then
     eval "$(/usr/local/bin/brew shellenv)"
     /usr/local/bin/brew install git bash jq tmux oven-sh/bun/bun
   Run the commands for your Mac after Homebrew is installed, then rerun ./install.sh.
-  On Linux, install the missing requirements with your package manager and Bun from https://bun.sh.
+  Linux:
+    sudo apt install git bash jq tmux tar lsof     # Debian, Ubuntu
+    sudo dnf install git bash jq tmux tar lsof     # Fedora
+    sudo pacman -S git bash jq tmux tar lsof       # Arch
+    curl -fsSL https://bun.sh/install | bash       # Bun 1.4+; distribution packages lag
+  Open a new terminal after installing Bun, then rerun ./install.sh.
 EOF
   exit 127
 fi
 
-echo "install: requirements OK: bash $(bash -c 'printf %s "$BASH_VERSION"'), bun $bun_version, jq, tmux, git"
+echo "install: requirements OK: bash $(bash -c 'printf %s "$BASH_VERSION"'), bun $bun_version, jq, tmux, git, tar, lsof"
 
 # One source of truth drives both default resolution and the all-targets-
 # redirected exception. Each entry is shell variable:environment variable:default;

@@ -12,7 +12,7 @@ import { addresseeGrant, historyDirForBus } from "./addressee-grant";
 import { envelopeField, validateEnvelope } from "./envelope";
 import { TapError, type Context } from "./context";
 import { markerSelectedIndex, readIndexJson } from "./index-home";
-import { archiveRows, archivedHistoryPayload, type ArchiveRow } from "./bus-archive-index";
+import { archivedHistoryPayload, archivedIdsWithSuffix } from "./bus-archive-index";
 import { digestPlan } from "./digest-items";
 import { digestView, type DigestMember } from "./verbs/digest-view";
 import { tapScriptsDir } from "./scripts-dir";
@@ -150,7 +150,6 @@ function busOfRoot(root: string): string {
 class Resolver {
   private readonly tried: string[] = [];
   private readonly includeSpool: boolean;
-  private readonly archiveCache = new Map<string, Map<string, ArchiveRow>>();
   constructor(
     private readonly localBus: string, private readonly indexPath: string, private readonly mode: ResolveMode,
     private readonly actor: string, private readonly grant?: GrantContext,
@@ -207,11 +206,6 @@ class Resolver {
     }
     return null;
   }
-  private archiveIndex(bus: string): Map<string, ArchiveRow> {
-    let rows = this.archiveCache.get(bus);
-    if (!rows) { rows = archiveRows(bus); this.archiveCache.set(bus, rows); }
-    return rows;
-  }
   private quarantineSiblings(quar: string): string[] {
     const dir = dirname(quar), base = basename(quar), out: string[] = [];
     let names: string[];
@@ -243,8 +237,9 @@ class Resolver {
         if (isFile(queued)) hits.push([realpathLoose(queued), name, "spool"]);
       }
       const active = isFile(live) || isFile(digest) || (this.includeSpool && isFile(queued));
-      const history = active ? undefined : this.archiveIndex(bus).get(ident);
-      if (history) hits.push([archivedHistoryPayload(bus, history), name, "history"]);
+      // By-id month probe, never a manifest read (bus-archive-index.ts layout).
+      const history = active ? "" : archivedHistoryPayload(bus, ident);
+      if (history) hits.push([history, name, "history"]);
       const arch = join(bus, "archive", ident + ".cancelled.md");
       this.tried.push(arch);
       if (isFile(arch)) hits.push([realpathLoose(arch), name, "archive"]);
@@ -336,8 +331,9 @@ class Resolver {
     if (HEX_RE.test(ident)) {
       const suffix = "-" + ident + ".md";
       for (const [name, bus] of search) {
-        for (const [archivedId, history] of this.archiveIndex(bus)) {
-          if (archivedId.endsWith("-" + ident) && MINTED_RE.test(archivedId)) hits.push([archivedHistoryPayload(bus, history), name, "history"]);
+        // Short-suffix addressing searches archived history by name, per month.
+        for (const archivedId of archivedIdsWithSuffix(bus, ident)) {
+          if (MINTED_RE.test(archivedId)) hits.push([archivedHistoryPayload(bus, archivedId), name, "history"]);
         }
         const residencies: Array<[string, string, Residency]> = [
           ["payloads", ".md", "payloads"], [join("spool", "digests"), ".json", "digest"],
@@ -518,6 +514,7 @@ export function spoolAuthorized(payload: string, actor: string, grant: GrantCont
   return addresseeGrant({
     registryPath: grant.registryPath, adoptionRegistryPath: grant.registryPath, marker: grant.marker, team: grant.team, historyDir: grant.historyDir,
     id, from: field("from"), actor, to, adoptedFrom: field("to_adopted_from"), recipientInstance: field("recipient_instance"),
+    includeRemedy: false,
   }).ok;
 }
 
