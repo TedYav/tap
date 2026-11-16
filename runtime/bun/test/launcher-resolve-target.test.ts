@@ -330,3 +330,69 @@ test("unknown implicit names list canonical harnesses and loaded presets on both
   catch (error) { failure = error; }
   expect(failure.detail).toBe(detail);
 });
+
+describe("a known spelling of a harness is refused with its canonical name", () => {
+  const spellings: Array<[typed: string, harness: string, cause: string]> = [
+    ["cursor-agent", "cursor", "TAP's name for that harness is 'cursor'"],
+    ["antigravity", "agy", "TAP's name for that harness is 'agy'"],
+    ["antigravity-cli", "agy", "TAP's name for that harness is 'agy'"],
+    ["claude-code", "claude", "TAP's name for that harness is 'claude'"],
+    ["open-code", "opencode", "TAP's name for that harness is 'opencode'"],
+    ["hermes-agent", "hermes", "TAP's name for that harness is 'hermes'"],
+    ["Antigravity", "agy", "TAP's name for that harness is 'agy'"],
+    ["Claude", "claude", "harness names are lowercase: 'claude'"],
+    ["gemini", "agy", "Google's Gemini CLI is not a supported harness; Google's Antigravity CLI is, as 'agy'"],
+    ["gemini-cli", "agy", "Google's Gemini CLI is not a supported harness; Google's Antigravity CLI is, as 'agy'"],
+  ];
+  const configs: Array<[string, () => string]> = [
+    ["no config", () => join(scratchRoot, "spelling-absent")],
+    ["a catalog", () => freshConfig()],
+  ];
+
+  for (const [typed, harness, cause] of spellings) {
+    for (const [label, config] of configs) {
+      test(`launch '${typed}' with ${label} names '${harness}' and never launches`, () => {
+        const env = { ...process.env, XDG_CONFIG_HOME: config() };
+        let failure: any;
+        let resolved: unknown;
+        try { resolved = resolveLaunchPresetArgs(env, new Notices(), { harness: typed, label: "x" }); }
+        catch (error) { failure = error; }
+        expect(resolved).toBeUndefined();
+        expect(failure.errorClass).toBe("harness_or_preset_not_found");
+        expect(failure.detail).toBe(`'${typed}' is not a known harness or a saved preset; ${cause}`);
+        expect(failure.action).toBe(`tap launch ${harness} newcomer`);
+      });
+    }
+  }
+
+  test("the crew door gives the same cause with its own example and exit", () => {
+    const r = run(["cursor-agent", "x"], freshConfig());
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toBe("tap crew: 'cursor-agent' is not a known harness or a saved preset; TAP's name for that harness is 'cursor'; next: tap crew add cursor newcomer --model <model>\n");
+    const json = run(["gemini", "x"], freshConfig(), { TAP_JSON: "1" });
+    expect(json.status).toBe(2);
+    expect(json.stderr).toBe("");
+    expect(JSON.parse(json.stdout)).toEqual({
+      ok: false,
+      error_class: "harness_or_preset_not_found",
+      action: "tap crew add agy newcomer --model <model>",
+      detail: "'gemini' is not a known harness or a saved preset; Google's Gemini CLI is not a supported harness; Google's Antigravity CLI is, as 'agy'",
+    });
+  });
+
+  test("a saved preset with one of these names still resolves", () => {
+    const xdg = freshConfig('version = 2\n\n[presets.gemini]\nharness = "agy"\n');
+    const resolved = resolveLaunchPresetArgs({ ...process.env, XDG_CONFIG_HOME: xdg }, new Notices(), { harness: "gemini", label: "x" });
+    expect(resolved.harness).toBe("agy");
+    expect(resolved.preset_name).toBe("gemini");
+  });
+
+  test("a word TAP has never heard of keeps the full list", () => {
+    let failure: any;
+    try { resolveLaunchPresetArgs({ ...process.env, XDG_CONFIG_HOME: join(scratchRoot, "spelling-absent") }, new Notices(), { harness: "aider", label: "x" }); }
+    catch (error) { failure = error; }
+    expect(failure.detail).toContain("canonical harnesses: agy, claude, codex, cursor, hermes, opencode");
+    expect(failure.action).toBe("tap presets, or launch a harness directly: tap launch claude newcomer");
+  });
+});

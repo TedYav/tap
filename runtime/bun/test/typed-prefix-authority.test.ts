@@ -96,7 +96,7 @@ test("production peer submit runs as a child under compact's cancellable runner"
     // process.execPath is TAP itself, and its own module dir is virtual.
     expect(calls[0]!.command).toEqual(peerSubmitArgv(request.scriptsDir));
     expect(calls[0]!.command[0]).toBe("bun");
-    expect(existsSync(calls[0]!.command[1]!)).toBe(true);
+    expect(existsSync(calls[0]!.command.at(-1)!)).toBe(true);
     expect(JSON.parse(calls[0]!.input!)).toEqual(request);
     expect(code).toBe(1); // no live pane here; nothing ran in this process
   } finally { removeScratchTree(p.root); }

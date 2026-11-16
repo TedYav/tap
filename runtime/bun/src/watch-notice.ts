@@ -45,6 +45,7 @@ import { courierArgv } from "./courier-argv";
 import { childBusEnv } from "./panelock";
 import { fieldValue, isFile, parseRecord, pyStr, readLoose, set as leaseSet } from "./watch-lease";
 import { courierDisposition } from "./watch-tick";
+import { ownBunFlags } from "./own-bun";
 
 /** The supervisor's reserved sender identity (lib.sh TAP_WATCH_IDENTITY). */
 export const WATCH_IDENTITY = "watcher";
@@ -220,7 +221,7 @@ export function notifyHuman(a: NotifyHumanArgs): number {
   // Escalate transport (CONTRACT §Escalation): best-effort, --from the armer.
   const armer = fieldValue(readLoose(arm), "armed_by");
   if (armer) {
-    spawnSync(process.execPath, [resolve(a.scripts, "../../../runtime/bun/src/verbs/escalate.ts"), "-m", a.reason, "--from", armer],
+    spawnSync(process.execPath, [...ownBunFlags(process.execPath), resolve(a.scripts, "../../../runtime/bun/src/verbs/escalate.ts"), "-m", a.reason, "--from", armer],
       { env: { ...childBusEnv(a.bus, env), BUN_BE_BUN: "1" }, stdio: "ignore" });
   }
   // tap_attention watch attention "<reason> (armed team, chain exhausted)" "tap health"

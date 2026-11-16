@@ -1,0 +1,24 @@
+  - [1mCapture:[0m a queued draft titled "TAP fixture capture
+    draft: safe to discard" will put the card in this pane
+    once I go idle. A background script then captures it,
+    pastes a [38;2;153;204;255m[[probe]][39m line the way the courier does,
+    presses Enter, and captures again. The probe line will
+    arrive in this pane as a message. The draft stays in
+    your queue for you to discard; nothing is sent.
+
+  When the capture finishes I'll build the fix in a
+  worktree: remove the feedback-draft hold at every call
+  site and flip the fixture tests.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCooked for 8m 29s · done 1:43 PM · 1 shell still running
+
+[48;2;55;55;55m❯ [38;2;255;255;255m[[probe]] feedback-card probe: pasted with the card up,[39m
+  [38;2;255;255;255mthen Enter; not a TAP message[39m
+
+[38;2;255;153;51m[49m✻[39m [38;2;255;153;51mA[38;2;255;183;101mrch[38;2;255;153;51mitecting… [38;2;153;153;153m(running UserPromptSubmit hooks… 0/2 · 0s)
+
+[38;2;136;136;136m───────────────────────────────────────── tap/seat-alpha ─
+[38;2;153;153;153m❯ [39m
+[38;2;136;136;136m──────────────────────────────────────────────────────────
+[39m  [36mOpus 5.5 xhigh[38;2;153;153;153m | 14%[32m↯[38;2;153;153;153m 134k/900k [94m●60m[38;2;153;153;153m [32m█░░░░░░░░░[38;2;153;153;153m | 📁 …[39m
+  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m · [38;2;0;204;204m1 shell[38;2;153;153;153m · 1 feedback draft[39m

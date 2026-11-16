@@ -78,7 +78,16 @@ function sessionIdAtInit(args: string[]): string {
 // program; a checkout's native entry runs under bun with its `resolve` mode.
 type Resolver = string[]
 const NATIVE_ENTRY = join("runtime", "bun", "src", "session-start.ts")
-const nativeResolver = (entry: string): Resolver => ["bun", entry, "resolve"]
+// TAP's own Bun config and no env file: the session's directory is not TAP's
+// project (see runtime/bun/tap-bunfig.toml, beside the entry's src/ directory).
+// Bun exits on a config path it cannot read, so a missing file becomes the
+// empty device. This plugin is copied out of the checkout and cannot import
+// the runtime's helper, so it carries the same rule.
+const ownBunArgv = (entry: string): string[] => {
+  const config = join(dirname(dirname(entry)), "tap-bunfig.toml")
+  return ["bun", `--config=${existsSync(config) ? config : "/dev/null"}`, "--no-env-file"]
+}
+const nativeResolver = (entry: string): Resolver => [...ownBunArgv(entry), entry, "resolve"]
 
 function walkUpCheckoutResolver(start: string): Resolver | undefined {
   let dir = start
@@ -154,9 +163,9 @@ function resolveContextEntry(rootResolver: Resolver | undefined): Resolver | und
     // import.meta.url unavailable — fall through
   }
 
-  if (rootResolver && rootResolver.length === 3 && rootResolver[2] === "resolve") {
-    const entry = rootResolver[1]
-    if (entry && entry.endsWith("session-start.ts") && existsSync(entry)) return ["bun", entry]
+  if (rootResolver && rootResolver[0] === "bun" && rootResolver.at(-1) === "resolve") {
+    const entry = rootResolver.at(-2)
+    if (entry && entry.endsWith("session-start.ts") && existsSync(entry)) return [...ownBunArgv(entry), entry]
   }
   return undefined
 }

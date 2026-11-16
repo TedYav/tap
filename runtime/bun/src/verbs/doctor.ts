@@ -39,7 +39,9 @@ import { readRegistry, observe, observedRows } from "./team";
 import { cmdRefresh } from "./refresh";
 import { notificationAvailability } from "../notifications";
 import { injectionFaultOrRefuse } from "./injection-fault";
+import { feedbackCardFault } from "../injection-behavior";
 import { crewLifetimeHealth } from "../crew-lifetime";
+import { noAgentRecovery, recordedWithoutAgent } from "../observe";
 import { observePaneResult, ServerUnresponsive, tmuxReadOnly } from "../tmux";
 import { seatIsRelaunchable } from "../launcher/complete";
 import { HARNESSES, resolveHarnessPolicy } from "../launcher/catalog";
@@ -348,6 +350,15 @@ export function cmdDoctor(argv: string[], scriptsDir: string): number | Promise<
       detail: { error_class: "injection_behavior_invalid", detail: injectionFault },
       problem: `delivery is refused until config.toml is fixed: ${injectionFault}` });
   }
+  // An unusable injection.feedback_card fails safe: the courier holds at a Claude
+  // feedback card instead of dismissing it (tap-89a57).
+  let cardFault: string | null = null;
+  try { cardFault = feedbackCardFault(process.env); } catch { /* unreadable config is the finding above */ }
+  if (cardFault) {
+    findings.push({ severity: "warning", name: "feedback_card",
+      detail: { error_class: "feedback_card_invalid", detail: cardFault },
+      problem: `delivery holds at Claude feedback cards instead of dismissing them until config.toml is fixed: ${cardFault}` });
+  }
 
   // Checkout freshness (tap-3ywn). The checkout under diagnosis is the tap
   // checkout the running verb belongs to; TAP_CHECKOUT_ROOT overrides for
@@ -618,6 +629,9 @@ function seatRecovery(handle: string, seat: unknown, team: unknown, root: string
     }
     return `tap session resume ${shellQuote(handle)}`;
   }
+  // The row names a shell or TAP's own runtime, not an agent: registering it
+  // again from the same place records the same thing.
+  if (isRecord(seat) && recordedWithoutAgent(str(seat.harness))) return noAgentRecovery(handle);
   return `tap register ${shellQuote(handle)} --pane <new-target>`;
 }
 
@@ -822,6 +836,15 @@ function startupTmuxProbes(findings: Finding[], env: NodeJS.ProcessEnv, registry
       detail: { pid, socket, next },
       problem: "tmux exits when its last session closes",
       next,
+    });
+  }
+  if (exitEmpty === "off") {
+    findings.push({
+      severity: "info",
+      name: "tmux_persistent_server",
+      detail: { pid, socket, exit_empty: "off", behavior: "server stays alive after its last session closes", next: "no action needed" },
+      problem: "tmux has exit-empty off: the server stays alive after its last session closes; TAP sets this when starting a server",
+      next: "no action needed",
     });
   }
   if (exitUnattached === "on") {
@@ -1094,6 +1117,11 @@ function cleanRetained(value: unknown, depth = 0, envSecrets: string[] = []): un
   return null;
 }
 
+/** lsof's command name for a tmux server: macOS reports `tmux`; Linux reports the title tmux sets, `tmux: server` (its clients are `tmux: client`). */
+const isTmuxServerCommand = (command: string): boolean => command === "tmux" || command === "tmux: server";
+/** A socket path as lsof names it: Linux appends the socket type (` type=STREAM`) to the path. */
+const lsofSocketPath = (name: string): string => name.replace(/ type=[A-Z]+$/, "");
+
 function scanTmuxServers(registryPath: string, findings: Finding[], env: NodeJS.ProcessEnv, withRegistry: boolean): void {
   const lsof = spawnSync("lsof", ["-nP", "-a", "-c", "tmux", "-U", "-Fpcn"], { encoding: "utf8", timeout: 5000 });
   if (lsof.status !== 0) return;
@@ -1108,10 +1136,10 @@ function scanTmuxServers(registryPath: string, findings: Finding[], env: NodeJS.
       records.set(pid, { command: line.slice(1), sockets: new Set() });
     } else if (line.startsWith("n")) {
       if (!pid || !line.slice(1).startsWith("/")) continue;
-      records.get(pid)?.sockets.add(line.slice(1));
+      records.get(pid)?.sockets.add(lsofSocketPath(line.slice(1)));
     }
   }
-  const live = [...records.entries()].filter(([, r]) => r.command === "tmux").map(([p]) => p);
+  const live = [...records.entries()].filter(([, r]) => isTmuxServerCommand(r.command)).map(([p]) => p);
   const recorded = new Set<string>();
   if (withRegistry) {
     const read = readJsonFile(registryPath);
@@ -1145,7 +1173,7 @@ function scanTmuxServers(registryPath: string, findings: Finding[], env: NodeJS.
   // registry health and do not probe or change another server for the census.
   const sockets: { pid: number; socket: string; age_seconds: number }[] = [];
   for (const [pidNum, rec] of [...records.entries()].sort(([a], [b]) => Number(a) - Number(b))) {
-    if (rec.command !== "tmux") continue;
+    if (!isTmuxServerCommand(rec.command)) continue;
     for (const socket of [...rec.sockets].sort()) {
       const socketReal = lexicalRealpath(socket);
       if (socketReal === defReal) continue;

@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { rosterCache, rosterCacheTtl, type RosterSnapshot } from "../src/roster-cache";
@@ -74,4 +74,14 @@ test("zero disables writes and reads; invalid TTL uses the five-second default",
   expect(rosterCacheTtl({TAP_ROSTER_CACHE_TTL:"0.5"})).toBe(0.5);
   const root = fixture(), cache = rosterCache(root, "full", {}, 0);
   cache.write(snapshot); expect(cache.read()).toBeNull(); expect(readdirSync(root)).toEqual([]);
+});
+
+test("a display-cache write never creates a missing bus, but may cache in an existing bus", () => {
+  const root = fixture(), bus = join(root, "no-bus");
+  const cache = rosterCache(join(bus, "runtime-cache"), "full", {}, 5, 2000);
+  cache.write(snapshot, 1000);
+  expect(existsSync(bus)).toBe(false);
+  mkdirSync(bus);
+  cache.write(snapshot, 1000);
+  expect(cache.read()).toEqual({ snapshot, observedAt: 1000 });
 });

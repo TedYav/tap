@@ -134,7 +134,8 @@ cmp -s "$ROOT/hooks/tap-opencode-tmux-guard.ts" \
 # twin is retired: a fresh install writes no second name.
 cat >"$WORK/want-guard-shim" <<EOF
 #!/usr/bin/env bash
-exec bun "$ROOT/hooks/tap-shell-body-guard.ts" "\$@"
+c="$ROOT/runtime/bun/tap-bunfig.toml"; [ -f "\$c" ] || c=/dev/null
+exec bun --config="\$c" --no-env-file "$ROOT/hooks/tap-shell-body-guard.ts" "\$@"
 EOF
 cmp -s "$WORK/want-guard-shim" "$OPENCODE_HOME/plugins/tap-shell-body-guard"
 test -x "$OPENCODE_HOME/plugins/tap-shell-body-guard"

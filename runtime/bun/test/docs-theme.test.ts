@@ -6,22 +6,26 @@ import { runInNewContext } from "node:vm";
 const docs = resolve(import.meta.dir, "../../../docs");
 const script = readFileSync(resolve(docs, "assets/theme.js"), "utf8");
 
-function page(storage: { getItem(key: string): string | null; setItem(key: string, value: string): void }) {
+function page(storage: { getItem(key: string): string | null; setItem(key: string, value: string): void }, light = false) {
   let ready = () => {};
   let click = () => {};
+  let change = () => {};
+  const preference = { matches: light, addEventListener: (_event: string, callback: () => void) => { change = callback; } };
   const attrs = new Map<string, string>();
   const button = {
     disabled: true,
+    textContent: "",
     setAttribute: (key: string, value: string) => attrs.set(key, value),
     addEventListener: (_event: string, callback: () => void) => { click = callback; },
   };
   const document = {
     documentElement: { dataset: { theme: "dark" } },
     getElementById: () => button,
+    querySelectorAll: () => [],
     addEventListener: (_event: string, callback: () => void) => { ready = callback; },
   };
-  runInNewContext(`${script}\ninitTheme();`, { document, localStorage: storage });
-  return { document, button, attrs, ready: () => ready(), click: () => click() };
+  runInNewContext(`${script}\ninitTheme();`, { document, localStorage: storage, matchMedia: () => preference });
+  return { document, button, attrs, ready: () => ready(), click: () => click(), system: (light: boolean) => { preference.matches = light; change(); } };
 }
 
 test("theme choice applies before DOM ready and persists across guide pages", () => {
@@ -31,31 +35,45 @@ test("theme choice applies before DOM ready and persists across guide pages", ()
   expect(first.document.documentElement.dataset.theme).toBe("dark");
   first.ready();
   expect(first.button.disabled).toBe(false);
-  expect(first.attrs.get("aria-pressed")).toBe("false");
+  expect(first.attrs.get("aria-label")).toBe("Switch to light theme");
   first.click();
   expect(first.document.documentElement.dataset.theme).toBe("light");
-  expect(first.attrs.get("aria-pressed")).toBe("true");
+  expect(first.button.textContent).toBe("Switch to dark theme");
   const next = page(storage);
   expect(next.document.documentElement.dataset.theme).toBe("light");
   next.ready();
-  expect(next.attrs.get("aria-pressed")).toBe("true");
+  expect(next.attrs.get("aria-label")).toBe("Switch to dark theme");
   next.click();
   expect(page(storage).document.documentElement.dataset.theme).toBe("dark");
 });
 
-test("blocked storage and unknown saved values retain a usable dark-default toggle", () => {
+test("blocked storage and unknown saved values follow the system and retain a usable toggle", () => {
   for (const storage of [
     { getItem: () => { throw new Error("storage disabled"); }, setItem: () => { throw new Error("storage disabled"); } },
     { getItem: () => "unknown", setItem: () => {} },
   ]) {
-    const current = page(storage);
-    expect(current.document.documentElement.dataset.theme).toBe("dark");
+    const current = page(storage, true);
+    expect(current.document.documentElement.dataset.theme).toBe("light");
     current.ready();
     current.click();
-    expect(current.document.documentElement.dataset.theme).toBe("light");
-    current.click();
     expect(current.document.documentElement.dataset.theme).toBe("dark");
+    current.click();
+    expect(current.document.documentElement.dataset.theme).toBe("light");
   }
+});
+
+test("system changes apply until the reader chooses, and a saved dark choice beats a light system", () => {
+  const storage = { getItem: () => null, setItem: () => {} };
+  const current = page(storage, true);
+  expect(current.document.documentElement.dataset.theme).toBe("light");
+  current.ready();
+  current.system(false);
+  expect(current.document.documentElement.dataset.theme).toBe("dark");
+  expect(current.button.textContent).toBe("Switch to light theme");
+  current.click();
+  current.system(false);
+  expect(current.document.documentElement.dataset.theme).toBe("light");
+  expect(page({ ...storage, getItem: () => "dark" }, true).document.documentElement.dataset.theme).toBe("dark");
 });
 
 test("all twelve guide pages load the shared theme before content and expose a native toggle", () => {
@@ -67,7 +85,7 @@ test("all twelve guide pages load the shared theme before content and expose a n
     expect(html, name).toContain('<html lang="en" data-theme="dark">');
     expect(head, name).toContain('<script src="assets/theme.js"></script>\n<script>initTheme();</script>');
     expect(head, name).toContain('<link rel="stylesheet" href="assets/theme.css">');
-    expect(html, name).toMatch(/<button[^>]+id="theme-toggle"[^>]+type="button"[^>]+aria-label="Light theme"[^>]+aria-pressed="false"[^>]+disabled>/);
+    expect(html, name).toMatch(/<button[^>]+id="theme-toggle"[^>]+type="button"[^>]+aria-label="Light theme"[^>]+disabled>/);
   }
 });
 

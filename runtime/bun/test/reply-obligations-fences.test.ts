@@ -447,6 +447,9 @@ describe("bound-harness authorization before placement", () => {
     const err = await new Response(send.stderr).text();
     expect(err).toContain("reason=denylist");
     expect(err).toContain("runs 'bash' (not an agent REPL)");
+    // The sender gets a step it can take, not an internal token.
+    expect(err).toContain("; next: run tap in ub from inside an agent, or start one with tap launch <harness> <name>");
+    expect(err).not.toContain("next: escalate");
     writeFileSync(stop, "1\n");
     if (poller.pid) Bun.spawnSync(["pkill", "-KILL", "-P", String(poller.pid)]);
     poller.kill("SIGKILL");

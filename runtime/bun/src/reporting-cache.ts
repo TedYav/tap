@@ -22,7 +22,7 @@ function validCaller(value: unknown): value is Caller {
 export function prepareReportingCache(argv: string[], env: NodeJS.ProcessEnv = process.env) {
   const observedAt = Date.now();
   const verb = argv[0] ?? "";
-  if (!["whoami", "outstanding", "show"].includes(verb) || argv.includes("--pane") || argv.includes("--team")
+  if (!["whoami", "outstanding", "poll", "show"].includes(verb) || argv.includes("--pane") || argv.includes("--team")
     || env.TAP_VERBOSE === "1" || env.TAP_REPORTING_CACHE_TTL === "0" || env.OPENCODE_SESSION_ID !== undefined
     || env.CLAUDE_JOB_DIR || env.TAP_HOME || env.GIT_DIR || env.GIT_WORK_TREE || !env.TMUX || !env.TMUX_PANE) return null;
   try {

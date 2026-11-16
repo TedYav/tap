@@ -1,7 +1,7 @@
 import { acquirePathLock } from "./panelock";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, mkdirSync, writeFileSync, realpathSync, constants, openSync, closeSync, fstatSync, writeSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, statSync, lstatSync, mkdirSync, writeFileSync, realpathSync, constants, openSync, closeSync, fstatSync, writeSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tapRoot } from "./scripts-dir";
 
 export const LAUNCH_TEAM = "tap session launch <harness|preset> <name>";
@@ -12,31 +12,50 @@ export function noTeamMessage(cwd = process.cwd()): string {
 
 const hasBlock = (text: string) => /<!-- tap:begin -->[\s\S]*?<!-- tap:end -->/i.test(text);
 
+function charterAppend(current: Buffer): Buffer | null {
+  const text = current.toString("utf8");
+  if (hasBlock(text)) return null;
+  if (/<!-- tap:(?:begin|end) -->/i.test(text)) throw new Error("incomplete TAP signpost; run tap setup --repo");
+  const section = readFileSync(join(tapRoot(), "skills/tap/templates/repo-charter.md"));
+  const separator = current.length ? (current.at(-1) === 10 ? "\n" : "\n\n") : "";
+  return Buffer.concat([Buffer.from(separator), section]);
+}
+
+/** Inspect the same append as apply without creating a file, notice or lock. */
+export function repoCharterAppend(root: string): Buffer | null {
+  const path = join(root, "AGENTS.md");
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (stat && (!stat.isFile() || stat.nlink !== 1)) throw new Error("AGENTS.md is not an ordinary unshared file");
+  return charterAppend(stat ? readFileSync(path) : Buffer.alloc(0));
+}
+
+export function repoCharterLock(root: string): string {
+  const index = process.env.TAP_INDEX_HOME || join(process.env.HOME!, ".tap");
+  const key = createHash("sha256").update(realpathSync(root)).digest("hex");
+  return join(index, "repo-setup-locks", key);
+}
+
 /** First-team creation adds the TAP signpost without replacing existing instructions. */
-export function ensureRepoCharter(root: string, inGit: boolean): void {
+export function ensureRepoCharter(root: string, inGit: boolean, reportIssue = repoSetupHeadsUp): void {
   const path = join(root, "AGENTS.md");
   try {
-    const index = process.env.TAP_INDEX_HOME || join(process.env.HOME!, ".tap");
-    const locks = join(index,"repo-setup-locks"); mkdirSync(locks,{recursive:true});
-    const key = createHash("sha256").update(realpathSync(root)).digest("hex");
-    const lock = acquirePathLock(join(locks,key));
-    if (!lock) { repoSetupHeadsUp(root); return; }
+    const lockPath = repoCharterLock(root);
+    mkdirSync(dirname(lockPath),{recursive:true});
+    const lock = acquirePathLock(lockPath);
+    if (!lock) { reportIssue(root); return; }
     try {
       const fd = openSync(path, constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o644);
       try {
         const stat = fstatSync(fd);
         if (!stat.isFile() || stat.nlink !== 1) throw new Error("AGENTS.md is not an ordinary unshared file");
         const current = readFileSync(fd);
-        if (hasBlock(current.toString("utf8"))) return;
-        // Partial markers are user work; explicit setup owns their repair.
-        if (/<!-- tap:(?:begin|end) -->/i.test(current.toString("utf8"))) { repoSetupHeadsUp(root); return; }
-        const section = readFileSync(join(tapRoot(), "skills/tap/templates/repo-charter.md"));
-        const separator = current.length ? (current.at(-1) === 10 ? "\n" : "\n\n") : "";
-        writeSync(fd, Buffer.concat([Buffer.from(separator), section]));
+        const append = charterAppend(current);
+        if (append) writeSync(fd, append);
+        else return;
       } finally { closeSync(fd); }
     } finally { lock.release(); }
     process.stderr.write(`tap init: added project TAP signpost to AGENTS.md${inGit ? "" : " in this directory (not a git repository)"}.\n`);
-  } catch { repoSetupHeadsUp(root); }
+  } catch { reportIssue(root); }
 }
 
 /** Advisory only: missing or unreadable instructions never prevent team use. */

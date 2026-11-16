@@ -26,6 +26,7 @@ import { teamRegistryRefusal } from "../register-authority";
 import { LauncherError } from "./types";
 import { actingRegistryPath, NoMachineIndex, nonEmpty, pathIsUnder, payloadRecords, realOrSelf, rootForCwd, sessionHandle, SessionStateError, type SessionRecord } from "./records";
 import { artifactBun, runtimeModule } from "../scripts-dir";
+import { ownBun, ownBunFlags } from "../own-bun";
 
 const USAGE = "usage: tap session repair (<handle|session> | --all) [--dry-run] [--json]\n";
 export const PANE_FACTS_FORMAT = "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}\t#{pane_current_command}\t#{pid}:#{start_time}\t#{pane_dead}\t#{pane_pid}\t#{pane_current_path}";
@@ -195,7 +196,7 @@ function publish(path: string, doc: JsonMap, rows: JsonMap): void {
     const instances = new Map<string, JsonValue>();
     for (const [handle, row] of rows) instances.set(handle, new Map([["instance", isMap(row) ? row.get("instance") ?? null : null]]));
     const door = runtimeModule("src/forwarding.ts");
-    const child = spawnSync(artifactBun() ?? "bun", [door, "supersede"], {
+    const child = spawnSync(ownBun(), [...ownBunFlags(), door, "supersede"], {
       input: dumps(new Map<string, JsonValue>([["seats", instances], ["seat_forwardings", aliases]]), true),
       encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
     });

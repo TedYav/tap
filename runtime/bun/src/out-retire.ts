@@ -1,4 +1,5 @@
 import { captureCrewProcess, fenceCrewLifetime, stopCrewProcess } from "./crew-lifetime";
+import { removePermissionRequest } from "./permission-request";
 // out-retire.ts — the ordinary `tap out|unregister` retirement owner (R3,
 // tap-68lp.2.1): plain, dash (`-`), and `--kill` forms in one place. The
 // router's out|unregister dispatches here for every non-forwarding form, so
@@ -796,6 +797,7 @@ function retireRow(ctx: Ctx, env: NodeJS.ProcessEnv, name: string, required: boo
   try {
     agents.delete(name);
     saveRetirement(ctx, doc, env);
+    removePermissionRequest(ctx.bus.home, name);
   } catch (e) {
     if (tombPath) {
       try { if (env.TAP_TEST_UNREGISTER_UNLINK_FAIL === "1") throw new Error("TAP_TEST_UNREGISTER_UNLINK_FAIL"); unlinkSync(tombPath); }
@@ -863,6 +865,7 @@ export function retireFamilyRows(
         }
         for (const handle of selected) seats.delete(handle);
         saveRetirement(ctx, doc, process.env);
+        for (const handle of selected) removePermissionRequest(ctx.bus.home, handle);
       } catch (error) {
         for (const tomb of tombs) {
           try { unlinkSync(tomb); }
@@ -1057,6 +1060,7 @@ function killTransaction(ctx: Ctx, form: PlainForm, name: string, facts: RowFact
           rows.delete(handle);
         }
         saveRetirement(ctx, doc, env);
+        for (const handle of [name, ...crews]) removePermissionRequest(ctx.bus.home, handle);
       } catch (error) {
         const retained = cleanup();
         throw new TapError(1, retained.length ? "history_cleanup_failed" : "registry_save_failed",

@@ -1,5 +1,5 @@
 import { opencodeShellMode } from "../opencode-composer";
-import { claudeFeedbackOverlay } from "../pane-state";
+import { claudeFeedbackCard } from "../pane-state";
 import { hasInputText } from "../terminal-text";
 /** One policy for immediate delivery, draft warning, and queued-input holds. */
 export type DeliveryBand = "shell-mode" | "feedback-draft" | "bare" | "draft" | "queued" | "staged" | "busy" | "unobservable";
@@ -60,7 +60,11 @@ export function codexQueuedRows(frame: string): string[] {
 
 export function deliveryBand(composer: string | null, harness: string, frame: string): DeliveryBand {
   if (harness.startsWith("opencode") && opencodeShellMode(frame)) return "shell-mode";
-  if (harness.startsWith("claude") && claudeFeedbackOverlay(frame)) return "feedback-draft";
+  if (harness.startsWith("claude")) {
+    // A card over a complete composer is not a hold; a composer it hides is (tap-89a57).
+    const card = claudeFeedbackCard(frame);
+    if (card && card.composer !== "visible") return "feedback-draft";
+  }
   if (composer === null) return "unobservable";
   if (hasInputText(composer)) return composer.trim().startsWith("[[TAP") ? "staged" : "draft";
   return /^codex/.test(harness) && codexQueuedRows(frame).length ? "queued" : "bare";

@@ -90,12 +90,11 @@ _PYTHON="$(command -v "${TAP_PYTHON:-python3}" 2>/dev/null || command -v python3
   && "$_PYTHON" -B "$IGNORED_STATE_TRIPWIRE" snapshot "$ROOT" "$WORK/ignored-state-before.json" \
   || { echo "bun test: could not snapshot ignored checkout state before tests: $ROOT/.tap" >&2; exit 1; }
 _BUN="${TAP_SMOKE_BUN:-bun}"
-# Native process startup varies with macOS background scanning. Explicit test
-# deadlines and operation-level timing assertions retain their own budgets.
-TEST_TIMEOUT_MS=5000
-if [ "$(/usr/bin/uname -s)" = Darwin ]; then
-  TEST_TIMEOUT_MS=30000
-fi
+# Native process startup varies with the host: macOS background scanning, and a
+# loaded Linux container or CI runner, both push process-spawning tests past
+# Bun's 5 s default. One budget for every platform. Explicit test deadlines and
+# operation-level timing assertions retain their own budgets.
+TEST_TIMEOUT_MS=30000
 # Child tests invoke `bun` too. Expose only the selected executable, so a
 # sibling tmux in its installation directory cannot bypass the caller's guard.
 ln -s "$(command -v "$_BUN")" "$WORK/bin/bun"
@@ -179,6 +178,20 @@ plugin({
 // A preload afterAll runs after the last file's own afterAll, so that file is compared too.
 afterAll(() => compare("(end of run)"));
 PRELOAD
+# Match the gate's C locale with UTF-8 character handling. A plain LANG=C
+# makes tmux format output replace tabs with underscores; an inherited LC_ALL
+# would override both LANG and LC_CTYPE, so it is scrubbed below.
+_utf8_locale=""
+for _candidate in en_US.UTF-8 UTF-8 C.UTF-8 C.utf8; do
+  _charmap="$(LC_ALL='' LANG=C LC_CTYPE="$_candidate" /usr/bin/locale charmap 2>/dev/null || true)"
+  case "$_charmap" in
+    [Uu][Tt][Ff]-8|[Uu][Tt][Ff]8) _utf8_locale="$_candidate"; break ;;
+  esac
+done
+[ -n "$_utf8_locale" ] || {
+  echo 'bun test: no UTF-8 locale (tried en_US.UTF-8, UTF-8, C.UTF-8, C.utf8)' >&2
+  exit 1
+}
 # Session identity is fixture input, never the harness that launched the runner.
 # Derived from register.ts directSessionIdentity + transcript/source reads and
 # session-store.ts sessionDerive, plus the launch evidence SessionStart binds
@@ -200,11 +213,17 @@ _unset=(TMUX TMUX_PANE TAP_SELF
   TAP_HARNESS_SESSION_ID TAP_TRANSCRIPT_PATH TAP_SESSION_SOURCE
   TAP_LAUNCH_ROOT TAP_LAUNCH_ID TAP_CLEAR_ID
   CLAUDE_CONFIG_DIR
-  FORCE_COLOR
+  FORCE_COLOR LC_ALL
   TAP_TMUX_SOCKET_PATH TAP_REGISTRY TAP_SERVER_EPOCH)
 _unset_args=()
 for _name in "${_unset[@]}"; do _unset_args+=(-u "$_name"); done
 _pins=(
+  # Match the gate so terminal, language and time-zone-sensitive tests cannot
+  # pass only because the focused run inherited a developer's shell settings.
+  TERM=dumb
+  LANG=C
+  LC_CTYPE="$_utf8_locale"
+  TZ=UTC
   HOME="$WORK/home"
   PATH="$WORK/bin:$PATH"
   TMUX_TMPDIR="$WORK/tmux"

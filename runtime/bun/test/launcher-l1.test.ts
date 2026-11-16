@@ -735,7 +735,7 @@ config = ["service_tier=default", "model_reasoning_effort=low", "features.policy
   expect({ status: result.status, error: result.status ? result.diagnostic : "" }).toEqual({ status: 0, error: "" });
   const argv = readFileSync(join(f.root, "argv"), "utf8").trim().split("\n");
   const recipe = ["--config", "model_reasoning_effort=high", "--config", "service_tier=default", "--config", "features.keep=true", "--verbose"];
-  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra"]);
+  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "-c", "check_for_update_on_startup=false", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra"]);
   const row = JSON.parse(readFileSync(f.registry, "utf8")).seats["delimiter-reviewer"];
   expect(row.passthrough).toEqual(recipe);
   expect(row.model).toBe("gpt-6-astra");
@@ -766,7 +766,7 @@ config = ["service_tier=default", "model_reasoning_effort=low", "features.policy
   expect({ status: result.status, error: result.status ? result.diagnostic : "" }).toEqual({ status: 0, error: "" });
   const argv = readFileSync(join(f.root, "argv"), "utf8").trim().split("\n");
   const recipe = ["--config", "model_reasoning_effort=high", "--config", "service_tier=default", "--config", "features.keep=true", "--verbose"];
-  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra", ...explicit]);
+  expect(argv).toEqual(["--config", "features.policy=true", ...recipe, "--no-daemon", "-c", "check_for_update_on_startup=false", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-6-astra", ...explicit]);
   const row = JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer;
   expect(row.passthrough).toEqual(recipe);
   expect(row.harness_tail).toEqual(explicit);
@@ -1086,6 +1086,28 @@ test.each(["resume", "restart"])("Codex %s dismisses the update in its new vesse
   expect(result.stdout).toContain("dismissed Codex update prompt (0.164.0 -> 0.165.0 available)");
   expect(readFileSync(join(f.root, "keys"), "utf8")).toBe("\x1b\x1b");
 }, 30_000);
+
+test("a Codex launch names a newer release from the seat's own Codex home, and says nothing without one", () => {
+  for (const latest of ["0.167.0", "0.166.0"]) {
+    const f = fixture("codex");
+    mkdirSync(join(f.root, "real"));
+    if (process.platform === "linux") copyFileSync("/bin/sleep", join(f.root, "real/codex"));
+    else symlinkSync("/bin/sleep", join(f.root, "real/codex"));
+    mkdirSync(join(f.root, ".codex"));
+    writeFileSync(join(f.root, ".codex/version.json"), JSON.stringify({ latest_version: latest, dismissed_version: null }));
+    writeFileSync(join(f.root, "bin/codex"), `#!/bin/bash
+printf '%s\\n' "$@" > '${f.root}/argv'
+printf '\\033[2J\\033[H>_ OpenAI Codex (v0.166.0)\\n\\n\\342\\200\\272 \\033[2mAsk Codex to do anything\\033[0m\\n'
+export PATH='${f.root}/real':"$PATH"
+exec '${f.root}/real/codex' 600
+`, { mode: 0o755 });
+    const result = run(f.root, ["codex", "reviewer"], true);
+    expect(result.status, result.diagnostic).toBe(0);
+    expect(readFileSync(join(f.root, "argv"), "utf8").split("\n")).toContain("check_for_update_on_startup=false");
+    if (latest === "0.167.0") expect(result.stdout).toContain("Codex 0.167.0 is available (this seat runs 0.166.0); update Codex when convenient");
+    else expect(result.stdout).not.toContain("is available");
+  }
+}, 40_000);
 
 test("fresh Codex hook dialog reports its frame and retains the seat for manual recovery", () => {
   const f = fixture("codex");

@@ -1,7 +1,7 @@
 import { openCodeServerMode } from "./opencode-mode";
 // Shared value owner for creation, resume and the retained in-pane callers.
 // No registry, fence or process effects belong to invocation construction.
-import { buildHarnessInvocation, hostBootEnv, isolationArgv, withoutNoDaemonForRemote } from "./adapters";
+import { buildHarnessInvocation, hostBootEnv, isolationArgv, withCodexUpdateCheckOff, withoutNoDaemonForRemote } from "./adapters";
 import { resolveHarnessPolicy } from "./catalog";
 import { facadeSecureRead } from "../slices/preset-api";
 import { Notices } from "./catalog-notices";
@@ -35,8 +35,31 @@ export function resolveLoginShell(env: NodeJS.ProcessEnv = process.env): string 
   })[0] ?? "/bin/sh";
 }
 
+/** Login-shell tool selection wins; caller-only CLIs and env-shebang runtimes remain available. */
+export function loginShellExec(command: string[], env: NodeJS.ProcessEnv): string {
+  // Run after rc initialization: keep the first occurrence, including an empty
+  // (current-directory) entry. Quoted case patterns keep wildcard entries literal.
+  const script = env.PATH ? [
+    'tap_rest="${PATH:+$PATH:}$1"; tap_path=; tap_seen=:; tap_sep=',
+    'while :; do case $tap_rest in *:*) tap_entry=${tap_rest%%:*}; tap_rest=${tap_rest#*:}; tap_more=1;; *) tap_entry=$tap_rest; tap_more=;; esac',
+    'case $tap_seen in *:"$tap_entry":*) ;; *) tap_path=$tap_path$tap_sep$tap_entry; tap_sep=:; tap_seen=$tap_seen$tap_entry:;; esac',
+    '[ -n "$tap_more" ] || break',
+    'done',
+    'PATH=$tap_path; export PATH; unset tap_rest tap_path tap_seen tap_sep tap_entry tap_more',
+    'shift; exec "$@"',
+  ].join("; ") : 'exec "$0" "$@"';
+  const args = env.PATH ? ["tap-launch", env.PATH, ...command] : command;
+  return [resolveLoginShell(env), "-lic", script, ...args].map(shlexQuote).join(" ");
+}
+
+export function loginShellSubstitution(env: NodeJS.ProcessEnv): string | null {
+  const requested = env.TAP_LAUNCH_SHELL || env.SHELL;
+  const selected = resolveLoginShell(env);
+  return requested && basename(requested) !== basename(selected)
+    ? `launch shell: ${shlexQuote(selected)} (POSIX substitute for ${shlexQuote(requested)})` : null;
+}
+
 export function invocationShellCommand(invocation: Invocation, env: NodeJS.ProcessEnv = process.env): string {
-  const shell = resolveLoginShell(env);
   const configured = { ...invocation.env };
   for (const key of ["TAP_INDEX_HOME", "TAP_TMUX_SOCKET_PATH", "TAP_TMUX_SOCKET"]) if (env[key]) configured[key] = env[key]!;
   // A real seat must bind even when its caller or tmux server came from ask.
@@ -47,7 +70,7 @@ export function invocationShellCommand(invocation: Invocation, env: NodeJS.Proce
   const unset = [...new Set([...(invocation.unset_env ?? []), "TAP_STATELESS", ...inherited])];
   const command = ["/usr/bin/env", ...unset.flatMap(key => ["-u", key]),
     ...Object.keys(configured).sort().map(key => `${key}=${configured[key]}`), ...invocation.argv];
-  return [shell, "-lic", 'exec "$0" "$@"', ...command].map(shlexQuote).join(" ");
+  return loginShellExec(command, env);
 }
 
 export function pinOpenCodeSession(argv: string[], id: string | null | undefined, mode: "private" | "shared" = "private"): string[] {
@@ -186,7 +209,7 @@ export function composeInvocation(
   argv = spliceTokensIfAbsent(argv, params, { configKeys: harness === "codex" });
   if (observedEffort) argv.splice(1, 0, "--effort", observedEffort);
   argv.push(...replayedTail);
-  argv = withoutNoDaemonForRemote(harness, argv);
+  argv = withCodexUpdateCheckOff(harness, withoutNoDaemonForRemote(harness, argv));
   if (harness === "opencode") argv = pinOpenCodeSession(argv, record.fork_source_session_id || record.harness_session_id, openCodeServerMode(record, env));
   const tuningEnv = { ...configured.env };
   for (const key of configured.unset_env ?? []) delete tuningEnv[key];

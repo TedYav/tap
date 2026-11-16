@@ -299,9 +299,11 @@ const workingFrame = (text: string) => frame(text).replace("  ⏵⏵ bypass perm
 // the band, here under a right-aligned notice, is the running turn (tap-7txco).
 const spinnerFrame = (text: string) => frame(text).replace("previous output",
   `✽ Elucidating… (running PreToolUse hook · 1m 19s · ↓ 5.5k tokens)\n${" ".repeat(78)}✔ Update installed · Restart to update`);
-const modalFrame = (text: string) => frame(text).replace("previous output", ["╭" + "─".repeat(40) + "╮", "│ ✻ Bug report drafted: neutral │", "│ 1 to review · 2 to send · 0 to dismiss │", "╰" + "─".repeat(40) + "╯"].join("\n"));
+// Claude's feedback card above a visible composer: a notice, not a modal (tap-89a57).
+const cardFrame = (text: string) => frame(text).replace("previous output", ["╭" + "─".repeat(40) + "╮", "│ ✻ Bug report drafted: neutral │", "│ 1 to review · 2 to send · 0 to dismiss │", "╰" + "─".repeat(40) + "╯"].join("\n"));
 
 interface ArmWorld {
+  harness?: string;            // the seat's harness (default claude); hermes types its wire behind `/queue `
   band?: string;               // the busy-band text the paneState reader returns
   frames?: () => string[];     // successive escaped captures (default: the band frame, twice)
   registry?: boolean;          // pass a real registry for corroboration
@@ -311,12 +313,13 @@ interface ArmWorld {
 }
 
 function arm(home: string, world: ArmWorld = {}) {
+  const harness = world.harness ?? "claude";
   const band = world.band !== undefined ? world.band : wire(ID);
   const queue = world.frames ? world.frames() : [frame(band)];
   let capture = queue.length > 1 ? queue.shift()! : queue[0]!;
   let enters = 0, injections = 0;
   const fx: PaneEffects = {
-    observePane: () => ({ paneId: "%1", session: "fixture", serverEpoch: "srv:1:1", currentCommand: "claude" } as any),
+    observePane: () => ({ paneId: "%1", session: "fixture", serverEpoch: "srv:1:1", currentCommand: harness } as any),
     harnessEvidence: () => "alive", copyMode: () => ({ status: "normal" }),
     paneState: () => band === "" ? { state: "ready" } : { state: "busy", text: band },
     injectText: () => { injections++; return true; },
@@ -331,8 +334,8 @@ function arm(home: string, world: ArmWorld = {}) {
   const registry = join(home, "registry.json");
   if (world.registry !== false) writeFileSync(registry, JSON.stringify({ schema: "0.20", team: { name: "fixture" }, seats: {
     peer: { status: "active", delivery: "pane", pane: "tap/peer:0.0", pane_id: "%1", session: "fixture",
-      server_epoch: "srv:1:1", boot_id: "", harness: "claude" } } }));
-  const bound = { paneId: "%1", handle: "peer", instance: "", serverEpoch: "srv:1:1", bootId: "", harness: "claude" };
+      server_epoch: "srv:1:1", boot_id: "", harness } } }));
+  const bound = { paneId: "%1", handle: "peer", instance: "", serverEpoch: "srv:1:1", bootId: "", harness };
   const authority: SubmitAuthority = {
     scriptsDir: scripts, agentFamilies: new Set(DEFAULT_AGENT_FAMILIES), busHome: home,
     recipient: "peer", registryPath: world.registry === false ? "" : registry, attemptIds: [ID],
@@ -341,7 +344,7 @@ function arm(home: string, world: ArmWorld = {}) {
     eventContext: { actor: "courier", log: join(home, "registry-events.log"), team: "fixture", verb: "tap" },
     ...world.authority,
   };
-  const result = submitVerifyLocked("tap/peer:0.0", ID, wire(ID), bound, fx, authority);
+  const result = submitVerifyLocked("tap/peer:0.0", ID, harness === "hermes" ? `/queue ${wire(ID)}` : wire(ID), bound, fx, authority);
   return { result, enters, injections, home };
 }
 
@@ -407,6 +410,49 @@ test("a cleared or submitted composer disposes quietly as staged_absent", () => 
   expect(existsSync(join(home, "receipts", `${ID}.idle-submit`))).toBe(false);
 });
 
+// The idle arm's one Enter needs the strict parse of exactly one sentinel that is the
+// whole composer, so text that only ends like a wire, or opens by quoting one, is never keyed.
+for (const draft of ['why does this fail: if [[ -z "$FOO" ]]', "[[TAP v0.23 note x-1]] what does this mean? see [[Release notes]]"])
+test(`the idle arm never keys a human draft that looks like a wire: ${draft}`, () => {
+  const home = scratch();
+  stageHold(home);
+  const run = arm(home, { band: draft });
+  expect(run.result.status).toBe("unverified");
+  expect(run.enters).toBe(0);
+  expect(run.injections).toBe(0);
+  expect(existsSync(join(home, "receipts", `${ID}.idle-submit`))).toBe(false);
+});
+
+test("the scrolled tail of this row's own wire keeps the hold: no keys, and never a quiet staged_absent dispose", () => {
+  const home = scratch();
+  stageHold(home);
+  const tail = wire(ID).slice(-20);
+  expect(tail.includes("[[TAP")).toBe(false);
+  const run = arm(home, { band: tail });
+  expect(run.result).toMatchObject({ status: "unverified", detail: "unparseable TAP input retained; no keys sent" });
+  expect((run.result as { cause?: string }).cause).toBeUndefined();
+  expect(run.enters).toBe(0);
+  expect(run.injections).toBe(0);
+  expect(existsSync(join(home, "receipts", `${ID}.idle-submit`))).toBe(false);
+});
+
+// Hermes types its wire behind `/queue `. A staged wire there is still staged: the arm must
+// keep judging it (and hold it), never dispose it as absent because of the prefix.
+test("a Hermes wire staged behind its queue prefix is not disposed as absent", () => {
+  const home = scratch();
+  stageHold(home);
+  const run = arm(home, { harness: "hermes", band: `/queue ${wire(ID)}` });
+  expect((run.result as { cause?: string }).cause).not.toBe("staged_absent");
+  expect("detail" in run.result ? run.result.detail : "").not.toContain("is not visible in the composer");
+  expect(run.injections).toBe(0);
+  // A person's own queued line is not TAP's text: that hold does end quietly.
+  const other = scratch();
+  stageHold(other);
+  const human = arm(other, { harness: "hermes", band: "/queue fix the parser first" });
+  expect((human.result as { cause?: string }).cause).toBe("staged_absent");
+  expect(human.enters).toBe(0);
+});
+
 test("a concatenated sentinel pair is refused without keys", () => {
   const home = scratch();
   stageHold(home);
@@ -445,12 +491,12 @@ test("a live Claude spinner is not idle: refused without keys or a license (tap-
   expect(existsSync(join(home, "receipts", `${ID}.idle-submit`))).toBe(false);
 });
 
-test("a modal above the composer is refused without keys", () => {
+test("a feedback card above the composer leaves the staged wire's one Enter to the idle path", () => {
   const home = scratch();
   stageHold(home);
-  const run = arm(home, { frames: () => [modalFrame(wire(ID)), modalFrame(wire(ID))] });
-  expect(run.result.status).toBe("unverified");
-  expect(run.enters).toBe(0);
+  const run = arm(home, { frames: () => [cardFrame(wire(ID)), cardFrame(wire(ID))] });
+  expect(run.result.status).not.toBe("band_busy");
+  expect(run.enters).toBe(1);
   expect(run.injections).toBe(0);
 });
 

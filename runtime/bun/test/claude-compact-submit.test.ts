@@ -122,6 +122,24 @@ for (const [label, columns, viewport, focusChars, scrolls] of [["52x40", 52, 15,
   });
 }
 
+// A control's proof is exact: a space deleted after it was typed makes a different command.
+// The frame the courier checks before Enter shows the edit; the earlier typed-text reads did not.
+for (const [label, edit] of [
+  ["a deleted space", (text: string) => text.replace("preserve the", "preservethe")],
+  ["an added space", (text: string) => text.replace("handoff", "hand off")],
+] as const) {
+  test(`a control edited after it was typed never gets Enter: ${label}`, () => {
+    const f = fixture();
+    try {
+      f.fx.submitFrame = (_target, _command, expected, _alive, _sole, scrolledControl) =>
+        classifySubmitFrame(scrolledClaudeFrame(edit(f.buffer), 120, 45), "claude", expected, "120", true, false, scrolledControl);
+      const out = submitQueuedClaude(f.request, f.fx, f.lock);
+      expect(f.keys).not.toContain("Enter");
+      expect(out.result.status).toBe("unverified");
+    } finally { f.close(); }
+  });
+}
+
 test("the scrolled proof is the /compact arm's alone: an ordinary wire in a scrolled composer withholds Enter", () => {
   const f = fixture();
   try {

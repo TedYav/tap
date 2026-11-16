@@ -3,7 +3,14 @@ import { writeDigestIndex } from "../src/digest-index";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderSentinel, parseSentinel } from "../src/sentinel";
+import { renderSentinel as renderUnchecked, assertSentinelWire, parseSentinel } from "../src/sentinel";
+
+// Run every existing constructor case through the delivery gate.
+const renderSentinel: typeof renderUnchecked = fields => {
+  const wire = renderUnchecked(fields);
+  assertSentinelWire(wire);
+  return wire;
+};
 
 const previous = process.env.XDG_CONFIG_HOME;
 const roots: string[] = [];

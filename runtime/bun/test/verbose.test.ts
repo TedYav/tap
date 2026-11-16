@@ -62,6 +62,7 @@ function run(cmd: string[], env: Env, input?: string): { status: number | null; 
 
 const ARGSETS: string[][] = [
   ["help", "read"],
+  ["help", "skill", "tap"],
   ["read"],
   ["session", "--bad-verbose-test-option"],
   ["whoami", "--verbose"],
@@ -86,7 +87,7 @@ test(
       }
     }
   },
-  // Sixteen bin/tap spawns exceed the supported runner's shortest per-test
+  // The public-entry spawns exceed the supported runner's shortest per-test
   // budget on slow hosts; 60s bounds the parity matrix without weakening it.
   { timeout: 60_000 },
 );

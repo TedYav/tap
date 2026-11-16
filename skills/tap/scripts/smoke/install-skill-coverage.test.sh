@@ -146,17 +146,20 @@ export TAP_INSTALL_MANIFEST="$probe_dir/install-manifest.json"
 export XDG_CONFIG_HOME="$probe_dir/config"
 mkdir -p "$XDG_CONFIG_HOME/tap"
 printf '[skills]\nfull_kit = true\n' > "$XDG_CONFIG_HOME/tap/config.toml"
-# link_user_skills runs its Bun step through the installer's one-line tap_bun
-# helper and tallies through the installer's counters and install_detail; take
-# those lines from install.sh too, on the checkout path (ARTIFACT=0, quiet detail).
+# link_user_skills runs its Bun step through the installer's tap_bun helper,
+# which starts Bun under the config path the installer resolves, and tallies
+# through the installer's counters and install_detail; take those definitions
+# from install.sh too, on the checkout path (ARTIFACT=0, quiet detail). The
+# one-line definitions are taken by line, the functions by body.
 ARTIFACT=0
 VERBOSE=0
-for installer_line_prefix in '^tap_bun() ' '^install_detail() ' '^SKILL_LINK_COUNT=' '^SKILL_HOME_COUNT=' '^ABSENT_SKILL_HOMES='; do
+for installer_line_prefix in '^install_detail() ' '^SKILL_LINK_COUNT=' '^SKILL_HOME_COUNT=' '^ABSENT_SKILL_HOMES=' '^TAP_BUN_CONFIG=' '^\[ -f "\$TAP_BUN_CONFIG" \] || TAP_BUN_CONFIG='; do
   installer_line="$(grep -m1 "$installer_line_prefix" "$INSTALL_SH")" || installer_line=""
   [ -n "$installer_line" ] || { echo "install-skill-coverage: missing installer line $installer_line_prefix" >&2; exit 1; }
   eval "$installer_line"
 done
-for function_name in link_user_skills; do
+[ "$TAP_BUN_CONFIG" = "$ROOT/runtime/bun/tap-bunfig.toml" ] || { echo "install-skill-coverage: the installer's Bun config did not resolve inside this checkout: $TAP_BUN_CONFIG" >&2; exit 1; }
+for function_name in tap_bun link_user_skills; do
   function_body="$(sed -n "/^${function_name}()/,/^}/p" "$INSTALL_SH")"
   [ -n "$function_body" ] || { echo "install-skill-coverage: missing installer function $function_name" >&2; exit 1; }
   eval "$function_body"

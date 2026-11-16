@@ -1,5 +1,19 @@
 // Shared harness recognition for delivery and command callers.
 export const AGENT_FAMILIES = new Set(["claude", "codex", "opencode", "cursor", "hermes", "agy"]);
+/**
+ * Product and binary spellings of a supported harness. Screen classification
+ * resolves them; the launcher only names the canonical word in its refusal.
+ * Kept in this import-free module so naming a harness never loads the screen
+ * classifier.
+ */
+export const HARNESS_ALIASES: Readonly<Record<string, "claude" | "codex" | "cursor" | "opencode" | "agy" | "hermes">> = {
+  "claude-code": "claude",
+  "cursor-agent": "cursor",
+  "open-code": "opencode",
+  antigravity: "agy",
+  "antigravity-cli": "agy",
+  "hermes-agent": "hermes",
+};
 /** Families whose CLI forks a stored conversation (`tap session fork`); the rest fork only in-session. */
 export const FORKABLE_HARNESSES: readonly string[] = ["claude", "codex"];
 /** Flags that select a conversation: inherited from the source, they would fight the fork's own. */

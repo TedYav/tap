@@ -63,3 +63,83 @@ pre {
   }
   .theme-toggle { display: none; }
 }
+
+/* Shared reading and interaction rules override the guides' inline layout. */
+body { font-size: 1.0625rem; }
+h1 { font-size: clamp(2.4rem, 6vw, 4rem); }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.2rem; }
+p, li, dd, blockquote { max-width: 72ch; }
+.section { margin-top: 3.5rem; }
+pre { overflow-x: auto; }
+pre code { overflow-wrap: normal; }
+.token, td code, th code, td strong { white-space: nowrap; overflow-wrap: normal; }
+.table-wrap { max-width: 100%; }
+.table-wrap table { min-width: 42rem; }
+.scroll-hint { color: var(--muted); font-size: .9rem; }
+button:focus-visible, pre:focus-visible, .table-wrap:focus-visible {
+  outline: 3px solid var(--orange);
+  outline-offset: 4px;
+}
+.landing header { max-width: 52rem; }
+.landing h1 { margin-bottom: 1.2rem; }
+.landing .eyebrow { padding-top: .4rem; }
+.exchange {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border-left: 3px solid var(--teal);
+  background: var(--card);
+  border-radius: 0 8px 8px 0;
+  max-width: 42rem;
+}
+.exchange figcaption { color: var(--muted); font-size: .8rem; margin-bottom: .8rem; }
+.exchange p { font-size: .95rem; margin-bottom: .8rem; }
+.exchange p:last-child { margin-bottom: 0; }
+.exchange strong, .exchange span { display: block; }
+.exchange strong { color: var(--teal); font-size: .85rem; }
+.disclosure { font-size: .9rem; }
+.hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.primary {
+  display: inline-block;
+  padding: .8rem 1rem;
+  border: 1px solid var(--teal);
+  border-radius: 6px;
+  background: var(--teal);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+[hidden] { display: none !important; }
+#copy-status { flex-basis: 100%; font-size: .9rem; color: var(--muted); }
+#copy-status:empty { display: none; }
+@media (max-width: 700px) {
+  .landing h1 { font-size: 2.2rem; clear: both; }
+  .landing .intro { font-size: 1.0625rem; }
+  .landing .eyebrow { font-size: .7rem; letter-spacing: .06em; }
+  .landing .theme-toggle { font-size: .75rem; margin-left: .5rem; }
+  .landing .exchange { margin: 1rem 0; padding: .8rem 1rem; }
+  .landing .disclosure { font-size: .85rem; }
+}
+@media (min-width: 701px) { .scroll-hint { display: none; } }
+@media print {
+  @page { margin: 14mm; }
+  body { font-size: 10pt; }
+  h1 { font-size: 24pt; }
+  h2 { font-size: 17pt; }
+  h3 { font-size: 13pt; }
+  h1, h2, h3, figcaption { break-after: avoid; }
+  .nav, .level-nav, .hero-actions, .scroll-hint { display: none; }
+  pre, tr, blockquote, .exchange { break-inside: avoid; }
+  .section:has(> .table-wrap) { break-before: page; }
+  section:has(.table-wrap) > p { break-after: avoid; }
+  pre { white-space: pre-wrap; overflow: visible; }
+  pre code, pre .token { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .table-wrap { overflow: visible; }
+  .table-wrap table { min-width: 0; }
+  thead { display: table-header-group; }
+  a[href^="http"]::after { content: " <" attr(href) ">"; font-size: .8em; overflow-wrap: anywhere; }
+  .section { margin-top: 1.2rem; }
+  .footer::after { content: " · tedyav.github.io/tap"; }
+}

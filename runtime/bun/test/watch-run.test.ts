@@ -22,6 +22,7 @@ import { DEFAULT_INTERVAL, parseInterval, QueueUnreadable, realLoopSeams, runLoo
 import { atLeast, BUN_FLOOR, currentReleaseSource, makeRefresh, reexecImage, settledStampOf, SIDECAR_SOURCES, stampOf } from "../src/watch-run";
 import { pidAlive, WATCHER_COMMAND } from "../src/watch-sidecar";
 import { lockRoot } from "../src/panelock";
+import { ownBunFlags } from "../src/own-bun";
 
 interface Oracle {
   captured_from: { head: string; now: string };
@@ -643,7 +644,7 @@ describe("the sidecar's runtime floor", () => {
       expect(r.status).toBe(0);
       const command = readFileSync(record, "utf8").trim();
       // The window starts in $HOME and cds into the worktree first.
-      expect(command).toBe(`cd '${work}' && TAP_LOCK_DIR='${lockRoot()}' TAP_HOME='${join(work, "bus")}' exec '${process.execPath}' '${join(realpathSync(join(import.meta.dir, "..", "src")), "watch-run.ts")}' run`);
+      expect(command).toBe(`cd '${work}' && TAP_LOCK_DIR='${lockRoot()}' TAP_HOME='${join(work, "bus")}' exec '${process.execPath}' ${ownBunFlags(process.execPath).map(flag => `'${flag}'`).join(" ")} '${join(realpathSync(join(import.meta.dir, "..", "src")), "watch-run.ts")}' run`);
       expect(command).not.toMatch(/exec bun /);
       expect(JSON.parse(readFileSync(join(work, "bus", "watch", "arm.json"), "utf8")).watcher_pid).toBe(4242);
     } finally { rmSync(work, { recursive: true, force: true }); }
@@ -711,6 +712,11 @@ test("release refresh maps every loop entry to current and detects a switch befo
     const clone = join(work, "clone/runtime/bun/src");
     expect(currentReleaseSource(clone)).toBe(clone);
     const args = [process.execPath, join(clone, "watch-run.ts"), "run"];
-    expect(reexecImage(clone, args)).toEqual([process.execPath, args]);
+    // Bun consumes its own flags, so the image names them again after argv[0].
+    // The clone ships no tap-bunfig.toml, and Bun exits on a config path it cannot read.
+    expect(reexecImage(clone, args)).toEqual([process.execPath, [args[0]!, "--config=/dev/null", "--no-env-file", ...args.slice(1)]]);
+    // A checkout names its own config, the same flags own-bun.ts gives every other start.
+    const checkout = realpathSync(join(import.meta.dir, "..", "src"));
+    expect(reexecImage(checkout, args)).toEqual([process.execPath, [args[0]!, ...ownBunFlags(process.execPath), ...args.slice(1)]]);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });

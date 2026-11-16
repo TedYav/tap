@@ -49,6 +49,7 @@ import { childBusEnv, lockRoot } from "../panelock";
 import { Notices } from "../launcher/catalog-notices";
 import { tapScriptsDir } from "../scripts-dir";
 import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
+import { ownBunArgv, ownBunFlags } from "../own-bun";
 
 const TAP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const HELP = "tap help goalie";
@@ -190,7 +191,7 @@ function stopOwned(pid: string, session: string): void {
  * (tap-a5j6t). The armer's resolved lock root rides along explicitly.
  */
 export function goalieSidecarCommand(busHome: string, goalieRun: string, env: NodeJS.ProcessEnv = process.env): string {
-  return `TAP_LOCK_DIR=${sq(lockRoot(env))} TAP_HOME=${sq(busHome)} exec ${sq(bunBinary())} ${sq(goalieRun)} run`;
+  return `TAP_LOCK_DIR=${sq(lockRoot(env))} TAP_HOME=${sq(busHome)} exec ${ownBunArgv(bunBinary()).map(sq).join(" ")} ${sq(goalieRun)} run`;
 }
 
 /** `_goalie_send_durable` over Bun's own send entry (courier-argv.ts). The
@@ -631,7 +632,7 @@ function cmdVerdict(ctx: Context, argv: string[], scriptsDir: string, env: NodeJ
     if (!validToken(lead)) {
       process.stderr.write("tap goalie: human notification not attempted: no valid recorded armer\n");
     } else {
-      const notified = spawnSync(process.execPath, [resolve(scriptsDir, "../../../runtime/bun/src/verbs/escalate.ts"), "-m",
+      const notified = spawnSync(process.execPath, [...ownBunFlags(process.execPath), resolve(scriptsDir, "../../../runtime/bun/src/verbs/escalate.ts"), "-m",
         `goalie could not reach lead '${lead}' during an unsure idle-seat judgment`, "--from", lead, "--team", ctx.team],
       { env: { ...childBusEnv(ctx.bus.home, env), TAP_REGISTRY: ctx.registryPath, BUN_BE_BUN: "1" }, stdio: "ignore" });
       if (notified.status !== 0) process.stderr.write(`tap goalie: human notification unconfirmed for recorded armer '${lead}'\n`);
@@ -662,7 +663,7 @@ export function cmdGoalie(argv: string[], scripts?: string, env: NodeJS.ProcessE
     }
     const goalieRun = resolve(scriptsDir, "../../../runtime/bun/src/goalie-run.ts");
     const bun = bunBinary();
-    process.execve(bun, [bun, goalieRun, "run", ...rest],
+    process.execve(bun, [...ownBunArgv(bun), goalieRun, "run", ...rest],
       Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined)) as Record<string, string>);
     return 2;
   }

@@ -38,6 +38,7 @@ import { backlogThresholds, spoolBacklog } from "./spool-backlog";
 import { tintPane, untintPane } from "./pane-tint";
 import { unresolvedInjection } from "./submit-phase";
 import { observePaneResult, serverEpochFromRaw, tmux } from "./tmux";
+import { ownBunFlags } from "./own-bun";
 
 // --- the pane-effect flash ------------------------------------------------------------
 
@@ -300,7 +301,7 @@ export function spawnDeliverer(input: SpawnDelivererInput): boolean {
     mkdirSync(input.home, { recursive: true });
     const log = openSync(join(input.home, "tap-deliver.log"), "a");
     try {
-      const child = spawn(bunBinary(), [join(input.scriptsDir, "../../../runtime/bun/src/spool-waiter.ts"), input.id], {
+      const child = spawn(bunBinary(), [...ownBunFlags(bunBinary()), join(input.scriptsDir, "../../../runtime/bun/src/spool-waiter.ts"), input.id], {
         env, stdio: ["ignore", log, log], detached: true,
       });
       child.on("error", () => { /* surfaced through the spawn result below */ });

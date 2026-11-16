@@ -232,3 +232,14 @@ test('(g) a dropped middle chunk with a landed tail withholds Enter and leaves t
   expect('detail' in result ? result.detail : '').toContain('Enter withheld');
   expect(effects).toEqual([]);
 });
+
+for (const prefix of ["/loop 5m ", "/compact "]) test(`operator control accepts TAP-shaped payload text: ${prefix}`, () => {
+  const pane = claudePane();
+  const text = "[[TAP v0.23 nudge]] carry this as literal context [[sv:control-context]]";
+  const result = submitVerifyLocked("%7", "control-context", text, bound, pane.fx,
+    { registryPath: "", scriptsDir: "", agentFamilies: new Set(["claude"]), typedPrefix: prefix });
+  expect(result.status).toBe("injected");
+  expect(pane.injects[0]).toBe(prefix);
+  expect(pane.injects.slice(1).join("")).toBe(text);
+  expect(pane.effects).toEqual(["Enter"]);
+});

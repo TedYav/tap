@@ -4,7 +4,7 @@
 // omitted, an old store refuses BEFORE any write, and every document is held in
 // the lossless JsonMap representation end to end (never cast to a plain object).
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { atomicWrite } from "./fsatomic";
@@ -641,14 +641,8 @@ export function enrollTeam(root: string, registryLocation: string, env: Env = pr
         };
       }
       const useLoc = match.status === "ok" && storedLoc ? storedLoc : registryLocation;
-      const next = new Map<string, JsonValue>(ent);
-      next.set("root", canonical);
-      next.set("registry_location", useLoc);
-      next.set("state", ent.get("state") ?? "registered");
-      next.set("enrolled_at", ent.get("enrolled_at") ?? nowIso());
-      teams.set(enrollKey, next);
       try {
-        atomicWrite(gpath, `${pyDumpIndent(doc, 0)}\n`);
+        atomicWrite(gpath, enrollmentBytes(doc, teams, enrollKey, canonical, useLoc));
       } catch (e) {
         return { ok: false, kind: "enroll_failed", detail: `could not write ${gpath}: ${(e as Error).message}` };
       }
@@ -659,6 +653,31 @@ export function enrollTeam(root: string, registryLocation: string, env: Env = pr
   } finally {
     indexLock.release();
   }
+}
+
+/** The writer and preview share field defaults and lossless index serialization. */
+function enrollmentBytes(doc: JsonMap, teams: JsonMap, key: string, root: string, registryLocation: string): string {
+  const ent = asEntry(teams.get(key) ?? null);
+  const next = new Map<string, JsonValue>(ent);
+  next.set("root", root);
+  next.set("registry_location", registryLocation);
+  next.set("state", ent.get("state") ?? "registered");
+  next.set("enrolled_at", ent.get("enrolled_at") ?? nowIso());
+  teams.set(key, next);
+  return `${pyDumpIndent(doc, 0)}\n`;
+}
+
+/** Read-only forecast for the re-enrollment that follows registry recovery. */
+export function enrollmentWouldChange(root: string, name: string, registryLocation: string, env: Env = process.env): boolean {
+  const path = globalRegistryPath(envHome(env));
+  const doc = readLossless(path);
+  const teams = doc?.get("teams");
+  if (!doc || !isMap(teams)) throw new Error("cannot preview an unreadable machine index");
+  const canonical = realOrSelf(root), match = enrolledEntryForRoot(doc, canonical);
+  if (match.status === "ambiguous") throw new Error("cannot preview an ambiguous enrollment");
+  const key = match.status === "ok" ? match.name : name;
+  const location = match.status === "ok" && match.storedLoc ? match.storedLoc : registryLocation;
+  return readFileSync(path, "utf8") !== enrollmentBytes(doc, teams, key, canonical, location);
 }
 
 export function teamRegistryPath(teamDir: string): string {
@@ -682,6 +701,47 @@ export function writeEmptyTeamRegistry(path: string, name: string, root: string)
 }
 
 export interface EnrollmentRefusal { errorClass: string; action: string; detail: string }
+
+/** Only for a root with no machine enrollment; existing teams retain their state. */
+export function unownedInitStateRefusal(root: string): EnrollmentRefusal | null {
+  const paths: string[] = [], directory = join(root, ".tap"), bus = join(directory, "bus");
+  const add = (path: string) => { if (paths.length < 8) paths.push(path); };
+  const tap = lstatSync(directory, { throwIfNoEntry: false });
+  if (tap && !tap.isDirectory()) add(directory);
+  else {
+    const ignore = join(directory, ".gitignore"), ignoreStat = lstatSync(ignore, { throwIfNoEntry: false });
+    if (ignoreStat && (!ignoreStat.isFile() || ignoreStat.nlink !== 1)) add(ignore);
+    const registry = teamRegistryPath(root), stat = lstatSync(registry, { throwIfNoEntry: false });
+    if (stat) {
+      if (!stat.isFile() || stat.nlink !== 1) add(registry);
+      else {
+        const seats = readLossless(registry)?.get("seats");
+        if (isMap(seats) && seats.size > 0) add(registry);
+      }
+    }
+    const inspect = (path: string, depth: number): void => {
+      if (paths.length >= 8) return;
+      const stat = lstatSync(path, { throwIfNoEntry: false });
+      if (!stat) return;
+      // A failed first init can leave this empty bootstrap skeleton behind.
+      if (path === join(bus, ".tap-bus-authority") && stat.isFile() && stat.nlink === 1) return;
+      if (!stat.isDirectory() || depth >= 4) { add(path); return; }
+      const entries = readdirSync(path).sort();
+      const skeletonDirectory = path === bus || path === join(bus, "payloads") || path === join(bus, "receipts");
+      if (!entries.length && !skeletonDirectory) add(path);
+      for (const entry of entries) {
+        if (paths.length >= 8) break;
+        inspect(join(path, entry), depth + 1);
+      }
+    };
+    inspect(bus, 0);
+  }
+  return paths.length ? {
+    errorClass: "preexisting_tap_state",
+    action: "inspect the listed paths, then move the pre-existing TAP state aside before rerunning tap init",
+    detail: `this root is not enrolled on this machine; refusing existing TAP state: ${paths.map(path => JSON.stringify(path).replace(/[\u007f-\u009f\u2028\u2029]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`)).join(", ")}`,
+  } : null;
+}
 
 function isSymlink(p: string): boolean {
   try { return lstatSync(p).isSymbolicLink(); } catch { return false; }

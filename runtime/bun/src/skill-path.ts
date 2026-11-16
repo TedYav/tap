@@ -1,14 +1,16 @@
-import { canonicalSkillName } from "./skill-policy";
+import { PUBLIC_SKILLS, canonicalSkillName } from "./skill-policy";
 import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+
+const SHIPPED = `TAP skills: ${PUBLIC_SKILLS.join(", ")}`;
 
 // Resolve one skill through explicit roots, without directory discovery.
 function resolveSkill(argv: string[], skillsRoot: string): number {
   const requested = argv[0];
   const name = requested && canonicalSkillName(requested);
   if (argv.length !== 1 || !name || !/^[A-Za-z0-9]/.test(name) || /[^A-Za-z0-9_-]/.test(name)) {
-    console.error("tap help skill: expected one simple skill name");
+    console.error(`tap help skill: expected one simple skill name; ${SHIPPED}`);
     return 2;
   }
   const home = process.env.HOME === "" ? "/" : homedir();
@@ -26,7 +28,7 @@ function resolveSkill(argv: string[], skillsRoot: string): number {
     console.log(realpathSync(candidate));
     return 0;
   }
-  console.error(`tap help skill: no SKILL.md for ${name} in ${roots.join(", ")}`);
+  console.error(`tap help skill: no SKILL.md for ${name} in ${roots.join(", ")}; ${SHIPPED}`);
   return 1;
 }
 

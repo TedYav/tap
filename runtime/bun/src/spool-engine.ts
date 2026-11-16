@@ -5,18 +5,19 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { artifactBun } from "./scripts-dir";
 import { bunBinary } from "./courier-argv";
+import { ownBunArgv } from "./own-bun";
 
 export function spoolEngineCommand(scriptsDir: string, ...args: string[]): string[] {
   const bun = artifactBun() ?? Bun.which("bun");
   if (!bun) throw new Error("tap: runtime_missing id=- slice=spool-drain: install bun");
-  return [bun, join(scriptsDir, "../../../runtime/bun/src/spool-engine.ts"), scriptsDir, ...args];
+  return [...ownBunArgv(bun), join(scriptsDir, "../../../runtime/bun/src/spool-engine.ts"), scriptsDir, ...args];
 }
 
 export async function superviseSpool(args: string[]): Promise<number> {
   const scratch = mkdtempSync(join(tmpdir(), "tap-spool-engine."));
   const result = join(scratch, "result");
   const parent = process.ppid;
-  const child = Bun.spawn([bunBinary(), process.argv[1]!, "--worker", result, ...args],
+  const child = Bun.spawn([...ownBunArgv(bunBinary()), process.argv[1]!, "--worker", result, ...args],
     { detached: true, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
   const pgid = child.pid;
   if (!Number.isSafeInteger(pgid) || pgid < 2) throw new Error("spool worker has no usable process-group identity");

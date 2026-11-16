@@ -193,6 +193,10 @@ set -e
 [ "$nongit_rc" -ne 0 ] || { echo "install-primary-guard: (5) non-git real-target install unexpectedly succeeded" >&2; exit 1; }
 [[ "$nongit_refusal" == *"not a git checkout"* ]] \
   || { echo "install-primary-guard: (5) non-git refusal did not explain why checkout identity is unverified: $nongit_refusal" >&2; exit 1; }
+[[ "$nongit_refusal" == *"a downloaded ZIP or a copied folder has no .git"* && "$nongit_refusal" == *"next: git clone https://github.com/TedYav/tap.git ~/tap && ~/tap/install.sh"* ]] \
+  || { echo "install-primary-guard: (5) non-git refusal did not name the cause and the clone command: $nongit_refusal" >&2; exit 1; }
+[[ "$nongit_refusal" != *"run there"* && "$nongit_refusal" != *"could not be derived"* ]] \
+  || { echo "install-primary-guard: (5) non-git refusal still points at a place it never names: $nongit_refusal" >&2; exit 1; }
 [ ! -e "$NONGIT_HOME/.local/bin/tap" ] || { echo "install-primary-guard: (5) non-git refusal happened after mutating the binary target" >&2; exit 1; }
 [ ! -e "$NONGIT_HOME/.tap" ] || { echo "install-primary-guard: (5) non-git refusal happened after mutating the index target" >&2; exit 1; }
 echo "install-primary-guard: (5) non-git real targets refuse before mutation: ok"

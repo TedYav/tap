@@ -122,10 +122,16 @@ export PATH="$BIN1:$PATH"
 stage_tmux_shim "$BIN1"; stage_ps_shim "$BIN1"
 cat > "$BIN1/bun" <<ENDSHIM
 #!/usr/bin/env bash
-case "\$1" in
+# Bun's own flags come first; the entry file and its first argument follow them.
+n=1
+while [ "\$n" -le "\$#" ]; do
+  case "\${!n}" in --config=*|--no-env-file) n=\$((n + 1)) ;; *) break ;; esac
+done
+m=\$((n + 1)); entry="\${!n:-}"; mode="\${!m:-}"
+case "\$entry" in
   *seat-adopt.ts)
-    printf '%s\n' "\$2" >> "$BIN1/adopt-calls.log"
-    case "\$2" in
+    printf '%s\n' "\$mode" >> "$BIN1/adopt-calls.log"
+    case "\$mode" in
       caps) exec "$REAL_BUN" "\$@" ;;
       *) exit 1 ;;  # the batch transport fails outright: fail closed, loudly
     esac ;;
@@ -255,9 +261,15 @@ only this one moves
 EOF
 cat > "$BIN3/bun" <<ENDSHIM
 #!/usr/bin/env bash
-case "\$1" in
+# Bun's own flags come first; the entry file and its first argument follow them.
+n=1
+while [ "\$n" -le "\$#" ]; do
+  case "\${!n}" in --config=*|--no-env-file) n=\$((n + 1)) ;; *) break ;; esac
+done
+m=\$((n + 1)); entry="\${!n:-}"; mode="\${!m:-}"
+case "\$entry" in
   *seat-adopt.ts)
-    case "\$2" in
+    case "\$mode" in
       caps) exec "$REAL_BUN" "\$@" ;;
       adopt-batch)
         printf '{"handles":{"fable-2":{"adopted_ids":["mail-a"],"count":1,"remainder":[]}},"skipped":[],"failed":["fable-3"]}\\n'

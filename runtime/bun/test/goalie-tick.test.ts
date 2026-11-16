@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 import { goalieTick, realGoalieDoors, tickEntry, type GoalieDoors } from "../src/goalie-tick";
+import { ownBunArgv } from "../src/own-bun";
 import { envelopeBodyBytes } from "../src/envelope";
 import { courierDisposition } from "../src/watch-tick";
 import { busActivity } from "../src/watch-detectors";
@@ -169,7 +170,9 @@ function materialize(c: OracleCase, extraEnv?: Record<string, string | undefined
     },
     courier(argv) {
       courierArgv.push([...argv]);
-      const to = argv[2] === "send" ? argv[3]! : argv[2]!;
+      // Default door: `bun <own flags> <main.ts> send <to> ...`; stand-in: `bash <script> <to> ...`.
+      const verb = argv[0] === "bun" ? argv.indexOf("send") : -1;
+      const to = verb >= 0 ? argv[verb + 1]! : argv[2]!;
       const canned = w.send[to] ?? w.send["default"] ?? { rc: 0, stdout: "" };
       return { status: canned.rc, stdout: sub(canned.stdout), stderr: "" };
     },
@@ -264,16 +267,18 @@ describe("goalie tick vs pinned Bash incumbent (R6 U2)", () => {
 
   test("ruled: the default courier door is Bun's own `send` entry; the stand-in gets no verb", () => {
     const loop = byName.get("fire-rung1")!.find((c) => c.shape === "loop")!;
-    // Default door: `bun <repo>/runtime/bun/main.ts send <to> ...` -- no Bash hop
+    // Default door: `bun <own flags> <repo>/runtime/bun/main.ts send <to> ...` -- no Bash hop
     const m = materialize(loop);
     const res = m.run();
     expect(res.rc).toBe(loop.result.rc);
     const defArgv = res.courierArgv();
     expect(defArgv.length).toBeGreaterThan(0);
-    expect(defArgv[0]![0]).toBe("bun");
-    expect(defArgv[0]![1]!.endsWith("runtime/bun/main.ts")).toBe(true);
-    expect(defArgv[0]![2]).toBe("send");
-    expect(defArgv[0]![3]).toBe("lieutenant-one");
+    const head = ownBunArgv("bun");
+    expect(head.slice(1)).toEqual([expect.stringMatching(/^--config=.*\/runtime\/bun\/tap-bunfig\.toml$/), "--no-env-file"]);
+    expect(defArgv[0]!.slice(0, head.length)).toEqual(head);
+    expect(defArgv[0]![head.length]!.endsWith("runtime/bun/main.ts")).toBe(true);
+    expect(defArgv[0]![head.length + 1]).toBe("send");
+    expect(defArgv[0]![head.length + 2]).toBe("lieutenant-one");
     // Override door: `bash <script> <to> ...` — no `send`, same wire record.
     const m2 = materialize(loop, { TAP_COURIER_SCRIPT: path.join(os.tmpdir(), "goalie-override-send.sh") });
     const res2 = m2.run();

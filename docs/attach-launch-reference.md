@@ -121,8 +121,18 @@ flag when a service/context tail is needed.
 
 ### Slow login shells
 
-A launch, resume or restart starts the harness through your login shell, which
-can be slow on a loaded machine. TAP waits up to 60 seconds for the harness to
+A launch, resume, restart or crew recipe starts the harness through a supported
+POSIX login shell. TAP tries `TAP_LAUNCH_SHELL`, then `SHELL`; an unsupported shell
+such as fish or nushell falls back to the first available zsh, bash or sh. Startup
+failures name the substitute. Login startup files still run; afterward, TAP
+appends the caller's PATH after the shell's initialized PATH. Login-profile tool
+selection keeps precedence; caller-only harnesses and their env-shebang runtimes
+remain available as fallback. TAP keeps the first occurrence of each entry so
+nested launches do not grow PATH. This does not change the tmux server's PATH.
+Fresh crew creation types only a short file reference; the full invocation is
+read from private storage and unlinked before the harness starts.
+
+The login shell can be slow on a loaded machine. TAP waits up to 60 seconds for the harness to
 appear while the pane stays blank or its output keeps changing. Text that sits
 unchanged for five seconds reads as a prompt: the launch fails then, shows the
 pane, and asks you to answer it in a terminal. A shell that runs some other
@@ -149,6 +159,18 @@ IS re-read on every launch, resume and restart. A missing file applies no
 policy silently. An unreadable, malformed or insecure file degrades to no
 policy with a notice rather than blocking the launch; an invalid value in the
 requested harness's table refuses before launch.
+
+TAP starts every Codex seat and crew with Codex's startup update check off
+(`-c check_for_update_on_startup=false`), because that menu appears a moment
+after the composer and nobody is at an unattended seat to answer it. Your
+Codex `config.toml` is not changed, and Codex started outside TAP still asks.
+When Codex's own record of the newest release (`version.json` in its home
+folder) is ahead of the version the seat runs, launch prints one line such as
+`Codex 0.167.0 is available (this seat runs 0.166.0)`, read from the Codex
+home that seat uses. Codex refreshes that
+record only when it checks for itself, so run `codex` directly now and then,
+or update on your own schedule. To keep the menu on TAP seats, set the key
+yourself: `tap launch codex -- -c check_for_update_on_startup=true`.
 
 ### Resuming a conversation into a new seat
 
@@ -203,3 +225,25 @@ the caller directory. The team identity and bus stay at that root; no new
 team is enrolled. Missing paths, checkout subdirectories and unrelated
 repositories refuse before launch. --cwd is not a TAP launch option; use
 --workdir.
+
+## OpenCode session tabs
+
+TAP defaults OpenCode's `tabs.mode` to `"off"`: OpenCode shares its open-session
+tabs per worktree, so a tab switch can move a seat away from its assigned session.
+TAP deep-merges this default into `OPENCODE_CLI_CONFIG_CONTENT`, preserving other
+inline settings. An explicit tabs setting in the environment or launch recipe
+wins; for example:
+
+```bash
+tap launch opencode reviewer --env 'OPENCODE_CLI_CONFIG_CONTENT={"tabs":{"mode":"on"}}'
+```
+
+To override in TAP's config, set
+`harness.opencode.env.OPENCODE_CLI_CONFIG_CONTENT = '{"tabs":{"mode":"on"}}'`.
+`--unset-env OPENCODE_CLI_CONFIG_CONTENT` removes the entire inline config,
+including TAP's default, leaving OpenCode's file settings in effect.
+The launch notice reports `tabs.mode`; `--dry-run --json` shows the composed env.
+This is a TUI setting; a separate OpenCode server does not isolate it. The Ctrl+P
+settings dialog still writes your real `cli.json`. TAP leaves that file unchanged,
+so your own sessions outside TAP keep your tabs preference. Multiple OpenCode
+TUIs sharing a worktree outside TAP have the same shared-tabs hazard.

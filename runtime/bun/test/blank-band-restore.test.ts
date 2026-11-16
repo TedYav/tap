@@ -160,7 +160,7 @@ for (const harness of Object.keys(frames)) {
 }
 
 /** The courier's retained-file restore after a verified submit (typed-prefix shape). */
-function courierRestore(body: string, extraFields: string[] = []) {
+function courierRestore(body: string, extraFields: string[] = [], clobber?: PaneEffects["clobber"]) {
   const root = mkdtempSync(join(process.env.TAP_HOME!, "lx4z0-courier-"));
   const backup = join(root, "backup.md");
   writeFileSync(backup, ["---", "schema_version: 1", ...extraFields, "---", "", "## Backed-up input", "", body, ""].join("\n"));
@@ -170,7 +170,7 @@ function courierRestore(body: string, extraFields: string[] = []) {
     observePane: () => ({ paneId: "%7", session: "fixture", serverEpoch: "srv:1:1", currentCommand: "codex" } as any),
     harnessEvidence: () => "alive",
     paneState: () => buffer.trim() ? { state: "busy", text: buffer } : { state: "ready" },
-    clobber: () => { buffer = ""; return { kind: "cleared", lines: 1, chip: false, backupPath: backup }; },
+    clobber: clobber ?? (() => { buffer = ""; return { kind: "cleared", lines: 1, chip: false, backupPath: backup }; }),
     restoreInput: (_target, text) => { pasted.push(text); buffer += text; return true; },
     injectText: (_target, text) => { buffer += text; return true; },
     inputHasId: () => false,
@@ -186,7 +186,7 @@ function courierRestore(body: string, extraFields: string[] = []) {
     const result = submitVerifyLocked("%7", "self-restore", "keep the work [[sv:self-restore]]",
       { paneId: "%7", serverEpoch: "srv:1:1", harness: "codex" }, fx,
       { registryPath: "", scriptsDir: "", agentFamilies: new Set(["codex"]), typedPrefix: "/compact ", preserveDraft: false, busHome: root });
-    return { result, sent, pasted, stderr: stderr.join("") };
+    return { result, sent, pasted, buffer, stderr: stderr.join("") };
   } finally {
     process.stderr.write = write;
     removeScratchTree(root);
@@ -198,6 +198,16 @@ test("courier: a real retained draft is typed back (control)", () => {
   expect(got.sent).toBe(true);
   expect(got.pasted.join("")).toBe("  real draft  ");
 });
+
+for (const kind of ["gone", "identity"] as const) {
+  test(`courier: a clobber door that ends ${kind} types nothing and presses nothing`, () => {
+    const got = courierRestore("draft", [], () => ({ kind, detail: `pane is ${kind}` }));
+    expect(got.result.status).toBe("unverified");
+    expect(got.sent).toBe(false);
+    expect(got.buffer).toBe("pre-existing");
+    expect(got.pasted).toEqual([]);
+  });
+}
 
 for (const body of ["   ", "\n  \n", "﻿ "]) {
   test(`courier: a retained backup of only blanks ${JSON.stringify(body)} is nothing to restore`, () => {

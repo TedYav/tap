@@ -31,6 +31,7 @@ import { checkWatchStop, watchChild, watchSleep } from "./watch-child";
 import { SpoolGcCursor } from "./spool-gc";
 import { bunBinary } from "./courier-argv";
 import { maybeStartBusMaintenance } from "./bus-maintenance-trigger";
+import { ownBunArgv } from "./own-bun";
 
 /** `tap_watch_run`'s fallback when the record carries no interval. */
 export const DEFAULT_INTERVAL = 60;
@@ -207,7 +208,7 @@ export function realLoopSeams(a: RealLoopArgs): LoopSeams {
       // tick's stdio inherited, its status ignored (`|| true`).
       let batch;
       try { batch = gc.next(); } catch (error) { stderr(`tap spool cleanup: ${String(error)}`); }
-      await watchChild([bunBinary(), join(a.src, "watch-tick-run.ts"), "tick"],
+      await watchChild([...ownBunArgv(bunBinary()), join(a.src, "watch-tick-run.ts"), "tick"],
         { ...env, TAP_SPOOL_GC_BATCH: JSON.stringify(batch ?? { sidecars: [], digests: [], paneEffects: [] }) }, a.signal, "tick");
     },
     remindersPresent: () => isFile(reminders),

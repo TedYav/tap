@@ -60,6 +60,7 @@ retained pane's identity before removing it.
 - [Cross-worktree relay (Unit 2b) — source part 2 of 2](./cross-worktree-relay-unit-2b-part-02.md) — source bytes 730738–738883
 - [Wake tiers (transport, not progress)](./wake-tiers-transport-not-progress.md) — source bytes 738883–739982
 - [Per-harness submit + verify table (courier-owned, documented here)](./per-harness-submit-verify-table-courier-owned-documented-here.md) — source bytes 739982–741354
+- [Claude feedback-draft card (tap-89a57)](./claude-feedback-card.md) — delivery past the card; its hint row stands in for a hidden composer
 - [Stuck-readiness alarm (tap-bprtg)](./stuck-readiness-alarm.md) — one `DELIVERY STALLED` notice per stuck episode
 - [Parked mail after a seat restart (tap-03rfq)](./restart-rebind.md) — re-bind to the new pane, or terminalize with a notice
 - [Point-of-use pane authority](./point-of-use-pane-authority.md) — source bytes 741354–741900

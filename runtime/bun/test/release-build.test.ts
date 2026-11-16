@@ -1,6 +1,6 @@
 // tap-7r3fn.192: the release build's selection, inventory and archive (runtime/bun/src/release/).
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -58,7 +58,7 @@ test("skill lists parse from skill-policy.ts source exactly as the module export
 test("the selection at HEAD ships the runtime tree an installed tap reads", () => {
   const selected = new Set(selection());
   for (const path of ["bin/tap", "install.sh", "runtime/bun/main.ts", "runtime/bun/src/artifact-bun-preload.ts", "skills/tap/config/config.v3.toml",
-    "skills/tap/scripts/run-shell-logged.sh", "skills/tap/scripts/watch-templates/notice.md", "completions/_tap", "CHANGELOG.md", "skills/tap/VERSION-BRIEF.md",
+    "skills/tap/scripts/run-shell-logged.sh", "skills/tap/scripts/watch-templates/notice.md", "completions/_tap", "completions/tap.bash", "CHANGELOG.md", "skills/tap/VERSION-BRIEF.md",
     "docs/attach-launch-reference.md", "skills/lead/references/ingest/README.md", "vendor/fzf/LICENSE", "vendor/fzf/manifest.json", "runtime/bun/third_party/herdr/LICENSE",
     "hooks/tap-shell-body-guard.ts", "docs/cheatsheet.html", "docs/RELEASE-ARTIFACTS.md", "SECURITY.md", "docs/TAP-LEVELS.md", "docs/COMMUNITY-FEATURES.md",
     "compat/skills/tap-double-check/SKILL.md", "compat/skills/tap-coach/SKILL.md", "compat/skills/tap-abandon-branch/SKILL.md"]) {
@@ -120,6 +120,30 @@ test("two builds of HEAD give one top directory of files and directories, the sa
   const reported = spawnSync("bash", [join(a, "bin/tap"), "--version"], { encoding: "utf8" });
   expect(reported.status, reported.stderr).toBe(0);
   expect(reported.stdout).toBe(`TAP v${first.version}\n`);
+  // The artifact starts in the user's directory, which is not TAP's project: neither the
+  // compiled router nor its Bun shim runs that directory's bunfig.toml preload or loads
+  // its .env. The control shows a bare Bun there does both.
+  const project = dir("tap-release-project-"), mark = join(project, "preload-ran"), probe = join(dir("tap-release-tool-"), "probe.ts");
+  writeFileSync(probe, 'process.stdout.write("probe=" + (process.env.TAP_AUTOLOAD_PROBE ?? "unset"));\n');
+  writeFileSync(join(project, "preload.ts"), `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(mark)}, "x");\n`);
+  // The relative path is assembled: the publish closure scan reads a literal one as a file this test needs.
+  writeFileSync(join(project, "bunfig.toml"), `preload = ["./${"preload.ts"}"]\n`);
+  writeFileSync(join(project, ".env"), "TAP_AUTOLOAD_PROBE=from-project-dotenv\n");
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.TAP_AUTOLOAD_PROBE;
+  const inProject = (cmd: string, args: string[]) => spawnSync(cmd, args, { cwd: project, env: cleanEnv, encoding: "utf8", timeout: 60000 });
+  const bare = inProject(process.execPath, [probe]);
+  expect(bare.stdout, bare.stderr).toBe("probe=from-project-dotenv");
+  expect(existsSync(mark)).toBe(true);
+  rmSync(mark);
+  const routed = inProject("bash", [join(a, "bin/tap"), "--version"]);
+  expect(routed.status, routed.stderr).toBe(0);
+  expect(routed.stdout).toBe(`TAP v${first.version}\n`);
+  expect(existsSync(mark)).toBe(false);
+  const shimmed = inProject(join(a, "libexec/tap/bun"), [probe]);
+  expect(shimmed.status, shimmed.stderr).toBe(0);
+  expect(shimmed.stdout).toBe("probe=unset");
+  expect(existsSync(mark)).toBe(false);
   const tracked = (root: string) => readFileSync(join(root, "INVENTORY"), "utf8").split("\n").filter(line => line && !line.endsWith(" libexec/tap/tap"));
   expect(tracked(a)).toEqual(tracked(b));
   expect(JSON.parse(readFileSync(join(a, "tap-release.json"), "utf8"))).toMatchObject({ schema: 1, version: first.version, commit: first.commit, bun: Bun.version });

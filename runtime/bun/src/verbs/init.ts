@@ -2,16 +2,17 @@ import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { readStdinByte } from "../stdin-byte";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { Bus } from "../bus";
+import { Bus, BUS_AUTHORITY_MARKER } from "../bus";
 import { oldBusRefusal, resolveBus } from "../bushome";
 import { acquireRegistryLock } from "../panelock";
-import { enrollmentAtFromDoc, loadGlobalRegistry } from "../index-home";
-import { ensureRepoCharter } from "../first-run";
-import { ignoreTap } from "../init-ignore";
-import { folderTrustTargets, trustFolder, type FolderTrustResult } from "../folder-trust";
+import { enrollmentAtFromDoc, loadGlobalRegistry, globalRegistryPath } from "../index-home";
+import { ensureRepoCharter, repoCharterAppend, repoCharterLock } from "../first-run";
+import { ignoreTap, tapIgnoreNeeded } from "../init-ignore";
+import { folderTrustTargets, folderTrustPath, folderTrustGrant, prepareFolderTrust, trustFolder, type FolderTrustResult, type FolderTrustTarget } from "../folder-trust";
+import { InitEffects, type InitChange } from "../init-receipt";
 import {
-  bootstrapPostflipEnroll, bornLiveBootstrap, enrollTeam, currentShapedStore, teamRegistryFileRefusal, legacyAgentsAxisStore, oldStoreAction, oldStoreEvidence, oldStoreRefusalText,
-  derivedTeamNotice, newEnrollmentRefusal, probeGitRoot, seatedBusRegistry, teamNameForRoot, teamOverrideRefusal, teamRegistryPath, unenrolledSeatsRefusal, writeEmptyTeamRegistry,
+  bootstrapPostflipEnroll, bornLiveBootstrap, enrollTeam, enrollmentWouldChange, currentShapedStore, teamRegistryFileRefusal, legacyAgentsAxisStore, oldStoreAction, oldStoreEvidence, oldStoreRefusalText,
+  derivedTeamNotice, newEnrollmentRefusal, unownedInitStateRefusal, probeGitRoot, seatedBusRegistry, teamNameForRoot, teamOverrideRefusal, teamRegistryPath, unenrolledSeatsRefusal, writeEmptyTeamRegistry,
 } from "../register-authority";
 
 export class InitRefusal extends Error {
@@ -27,6 +28,8 @@ export interface InitOptions {
   forLaunch: boolean;
   /** Decide every refusal, write nothing. */
   dryRun: boolean;
+  /** Never offer or write the project instructions. */
+  noInstructions?: boolean;
   /** `--team <name>`: the name a new enrollment uses; empty derives it from the folder. */
   team?: string;
 }
@@ -39,6 +42,8 @@ export interface InitOutcome {
   already: boolean;
   /** The folder name a derived team name came from. */
   derivedFrom?: string;
+  /** Recovery writes the stored registry location, without bootstrapping another bus. */
+  recreateRegistry?: string;
 }
 
 function git(cwd: string, ...args: string[]): string | undefined {
@@ -93,22 +98,30 @@ const retryVerb=(opts: InitOptions): string=>opts.forLaunch ? "tap session launc
 
 /** Only successful creation/recreation owns the first-team instruction offer. */
 function completeInitialization(outcome: InitOutcome, opts: InitOptions): InitOutcome {
-  if (opts.dryRun || outcome.already || process.env.TAP_SETUP_REPO_PENDING === "1") return outcome;
+  if (opts.dryRun || opts.noInstructions || outcome.already || process.env.TAP_SETUP_REPO_PENDING === "1") return outcome;
+  try { if (!repoCharterAppend(outcome.root)) return outcome; }
+  catch { signpostHeadsUp(); return outcome; }
   let create = true;
   // --yes answers every question this command would ask, the signpost included.
-  if (!existsSync(join(outcome.root, "AGENTS.md")) && !opts.yes && interactive(opts)) {
-    process.stderr.write("No AGENTS.md here — create one with the TAP signpost? [Y/n] ");
+  if (!opts.yes && interactive(opts)) {
+    process.stderr.write(existsSync(join(outcome.root, "AGENTS.md"))
+      ? "AGENTS.md exists — append the TAP signpost? [Y/n] "
+      : "No AGENTS.md here — create one with the TAP signpost? [Y/n] ");
     const byte = Buffer.alloc(1); let answer = ""; let newline = false;
     while (readStdinByte(byte) > 0) { if (byte[0] === 10) { newline = true; break; } answer += byte.toString(); }
     // The affirmative default belongs to a completed empty line (Enter), never
     // to a terminal that ended mid-prompt: EOF/EIO is absent consent, and
     // applying the default there would write AGENTS.md because the pane died.
-    if (!newline) throw new InitRefusal("confirmation_required", `rerun tap init in ${outcome.root} once the terminal is back`, `the terminal ended before the signpost answer; no AGENTS.md was written`);
+    if (!newline || !/^(y|yes|n|no)?$/i.test(answer.trim())) throw new InitRefusal("confirmation_required", `run tap setup --repo when ready`, `no completed yes/no signpost answer; no AGENTS.md was written`);
     create = !/^(n|no)$/i.test(answer.trim());
   }
-  if (create) ensureRepoCharter(outcome.root, outcome.inGit);
+  if (create) ensureRepoCharter(outcome.root, outcome.inGit, signpostHeadsUp);
   else console.error("tap init: project signpost skipped; run tap setup --repo when ready.");
   return outcome;
+}
+
+function signpostHeadsUp(): void {
+  console.error("tap: AGENTS.md has no readable TAP signpost; run tap setup --repo.");
 }
 
 
@@ -141,7 +154,7 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
         throw new InitRefusal("registry_invalid","tap doctor",`${loc} is not a current {"schema":"0.20","team":{...},"seats":{...}} team registry`);
       }
     }
-    if(enrolled.status==="ok" || opts.dryRun)return {team:enrolled.name,root:enrolled.rootReal,bus:join(enrolled.rootReal,".tap/bus"),inGit,already:true};
+    if(enrolled.status==="ok")return {team:enrolled.name,root:enrolled.rootReal,bus:join(enrolled.rootReal,".tap/bus"),inGit,already:true};
     // Enrolled but its registry is gone: recreate it where the index says, under the enrolled name.
     const loc=enrolled.registryLocation;
     if(!loc)throw new InitRefusal("registry_unreachable","tap doctor",`team '${enrolled.name}' is enrolled without a registry_location`);
@@ -149,6 +162,7 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
     // non-file entry at the stored path is someone's bytes, never overwritten.
     const unreachable=()=>new InitRefusal("registry_unreachable",`fix ${loc} (it exists but is not a readable regular file), then retry`,`the enrolled registry for team '${enrolled.name}' at ${loc} is unreadable`);
     if(existsSync(loc) || isSymlink(loc))throw unreachable();
+    if(opts.dryRun)return {team:enrolled.name,root:enrolled.rootReal,bus:join(enrolled.rootReal,".tap/bus"),inGit,already:false,recreateRegistry:loc};
     try {
       mkdirSync(dirname(loc),{recursive:true});
       const lock=acquireRegistryLock(loc,Infinity);
@@ -184,6 +198,8 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
   const authorization={authorizedInitRoot:root,team:opts.team};
   const refusal=newEnrollmentRefusal(root,env,authorization);
   if(refusal)throw new InitRefusal(refusal.errorClass,refusal.action,refusal.detail);
+  const unowned = unownedInitStateRefusal(root);
+  if(unowned)throw new InitRefusal(unowned.errorClass,unowned.action,unowned.detail);
   // A dry run writes nothing, so the real launch asks for consent itself.
   if(opts.dryRun){
     const chosen=teamNameForRoot(root,opts.team);
@@ -195,7 +211,9 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
     try { ignoreTap(root); }
     catch(error) { throw new InitRefusal("gitignore_failed","fix the repository .gitignore, then rerun tap init",`could not ignore .tap/: ${(error as Error).message}`); }
   }
-  try { new Bus(bus).ensureDirs(); }
+  // Init's receipt covers bootstrap only. A detached maintenance worker would
+  // otherwise create additional paths after the receipt has been printed.
+  try { new Bus(bus).ensureDirs(false); }
   catch(error) {
     const e=error as Error & {tapErrorClass?: string; tapAction?: string};
     throw new InitRefusal(e.tapErrorClass ?? "bus_unwritable",e.tapAction ?? "tap doctor",e.message);
@@ -214,84 +232,187 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
   return completeInitialization({team:created.team,root,bus,inGit,already:false,derivedFrom:created.derivedFrom}, opts);
 }
 
-function failure(json: boolean, error_class: string, action: string, detail: string): void {
-  if(json)console.log(JSON.stringify({ok:false,error_class,action,detail}));
-  else console.error(`${detail}; next: ${action}`);
+function printChanges(changes: InitChange[], undo: string[], dryRun: boolean): void {
+  console.log(dryRun ? "tap init: dry run (no writes)" : "tap init: changes");
+  if (!changes.length) console.log("  no changes");
+  for (const change of changes) console.log(`  ${change.action} ${change.path}`);
+  for (const step of undo) console.log(`  undo: ${step}`);
 }
 
-export function cmdInit(argv: string[]): number {
-  const known=["--json","--yes","--for-launch","--dry-run","--no-trust-folders"];
-  const opts: InitOptions={json:argv.includes("--json"),yes:argv.includes("--yes"),forLaunch:argv.includes("--for-launch"),dryRun:argv.includes("--dry-run"),team:""};
-  const usage="tap init [--json] [--yes] [--no-trust-folders] [--team <name>]";
+function undoSteps(changes: InitChange[], root: string): string[] {
+  const steps: string[] = [];
+  if (changes.some(change => change.path === join(root, "AGENTS.md"))) {
+    steps.push(`remove the block from <!-- tap:begin --> through <!-- tap:end --> (case-insensitive markers) in ${join(root, "AGENTS.md")}; preserve other instructions`);
+  }
+  if (changes.some(change => change.path === join(root, ".gitignore"))) {
+    steps.push(`remove only the .tap/ line added to ${join(root, ".gitignore")}; preserve other ignore rules`);
+  }
+  if (steps.length) steps.push("tap uninstall removes recorded installation artifacts; project instruction and ignore edits require these manual steps");
+  return steps;
+}
+
+type Receipt = { changes: InitChange[]; undo: string[]; dry_run: boolean };
+function failure(json: boolean, error_class: string, action: string, detail: string, receipt?: Receipt & { initialized?: boolean }): void {
+  if(json)console.log(JSON.stringify({ok:false,error_class,action,detail,...receipt}));
+  else {
+    console.error(`${detail}; next: ${action}`);
+    if (receipt) printChanges(receipt.changes, receipt.undo, receipt.dry_run);
+  }
+}
+
+function initializationEffects(outcome: InitOutcome, opts: InitOptions): InitEffects {
+  const effects = new InitEffects();
+  if (outcome.already) return effects;
+  const root = outcome.root, index = dirname(globalRegistryPath());
+  if (!outcome.recreateRegistry) {
+    if (outcome.inGit) {
+      try { if (tapIgnoreNeeded(root)) effects.add(join(root, ".gitignore"), true); }
+      catch (error) { throw new InitRefusal("gitignore_failed", "fix the repository .gitignore, then rerun tap init", `could not ignore .tap/: ${(error as Error).message}`); }
+    }
+    effects.add(join(outcome.bus, "payloads"));
+    effects.add(join(outcome.bus, "receipts"));
+    effects.add(join(root, ".tap/.gitignore"));
+    effects.add(join(outcome.bus, BUS_AUTHORITY_MARKER));
+  }
+  const registry = outcome.recreateRegistry || teamRegistryPath(root);
+  effects.add(registry);
+  effects.add(`${registry}.lock`);
+  effects.add(globalRegistryPath(), !outcome.recreateRegistry || enrollmentWouldChange(root, outcome.team, registry));
+  effects.add(join(index, "teams.json.lock"));
+  effects.add(`${globalRegistryPath()}.lock`);
+  if (!opts.noInstructions && process.env.TAP_SETUP_REPO_PENDING !== "1") {
+    try {
+      if (repoCharterAppend(root)) {
+        effects.add(join(root, "AGENTS.md"), true);
+        effects.add(repoCharterLock(root));
+      }
+    } catch { /* Apply leaves unsafe or partial instructions intact, with an advisory. */ }
+  }
+  return effects;
+}
+
+function trustEffects(effects: InitEffects, folder: string, targets: FolderTrustTarget[]): FolderTrustResult[] {
+  return targets.map(target => {
+    try {
+      const path = folderTrustPath(target);
+      // Apply creates its parent and persistent lock even for an invalid config.
+      effects.add(`${path}.tap-folder-trust.lock`);
+      const prepared = prepareFolderTrust(path, folder, target.format);
+      effects.add(path, prepared.edited !== prepared.source);
+      return { harness: target.harness, status: prepared.edited === prepared.source ? "already_trusted" : "trusted" };
+    } catch (error) {
+      return { harness: target.harness, status: "failed", detail: (error as Error).message };
+    }
+  });
+}
+
+export function cmdInit(argv: string[], initialize: typeof initRoot = initRoot): number {
+  const known=["--json","--yes","--for-launch","--dry-run","--no-trust-folders","--no-instructions"];
+  const opts: InitOptions={json:argv.includes("--json"),yes:argv.includes("--yes"),forLaunch:argv.includes("--for-launch"),dryRun:argv.includes("--dry-run"),noInstructions:argv.includes("--no-instructions"),team:""};
+  const usage="tap init [--json] [--yes] [--dry-run] [--no-instructions] [--no-trust-folders] [--team <name>]";
+  const empty: Receipt = { changes: [], undo: [], dry_run: opts.dryRun };
   const flags: string[]=[];
   for(let i=0;i<argv.length;i++){
     if(argv[i]!=="--team"){flags.push(argv[i]!);continue;}
     const value=argv[++i];
-    if(!value){failure(opts.json,"usage_error",usage,"--team needs a value");return 1;}
+    if(!value){failure(opts.json,"usage_error",usage,"--team needs a value",opts.forLaunch ? undefined : empty);return 1;}
     opts.team=value;
   }
-  if(flags.some(arg=>!known.includes(arg)) || (opts.dryRun && !opts.forLaunch)){failure(opts.json,"usage_error",usage,"Unknown init argument");return 1;}
-  const machine=opts.json || opts.forLaunch;
+  if(flags.some(arg=>!known.includes(arg))){failure(opts.json,"usage_error",usage,"Unknown init argument",opts.forLaunch ? undefined : empty);return 1;}
   const cwd=process.cwd();
-  let outcome: InitOutcome;
-  try { outcome=initRoot(cwd,opts); }
-  catch(error) {
-    if(!(error instanceof InitRefusal))throw error;
-    failure(machine,error.errorClass,error.action,error.detail);
-    return 1;
-  }
-  const notice=!outcome.already && outcome.derivedFrom ? derivedTeamNotice(outcome.team,outcome.derivedFrom) : "";
-  if(opts.forLaunch){
-    if(notice)process.stderr.write(`tap session: ${notice}\n`);
-    // A dry run hands the launcher the name the real launch would enroll, so its preview uses the same session namespace.
-    if(opts.dryRun)console.log(JSON.stringify({ok:true,team:{name:outcome.team,root:outcome.root},already_initialized:outcome.already}));
-    else if(!outcome.already)process.stderr.write(`tap session: initialized team '${outcome.team}' at ${outcome.root}\n`);
-    return 0;
-  }
-  // Only explicit `tap init` owns this offer. Shared/implicit bootstrap must
-  // never turn team enrollment into an unattended harness trust grant.
-  let folderTrust: FolderTrustResult[] = [];
-  if (!argv.includes("--no-trust-folders")) {
+  // Internal launch/bootstrap keeps its existing wire and never grants folder trust.
+  if (opts.forLaunch) {
     try {
-      const folder = realpathSync(cwd);
-      const { targets, failures } = folderTrustTargets(folder);
-      const harnesses = [...targets, ...failures].map(target => target.harness);
-      let accepted = opts.yes;
-      if (harnesses.length && !accepted && interactive(opts)) {
-        process.stderr.write(`Directory: ${folder}\nHarnesses: ${harnesses.join(", ")}\nUses each harness's normal folder trust, including project settings and hooks where applicable. Separate approval dialogs are not accepted.\nTrust current directory in installed harnesses Y/n `);
-        const byte = Buffer.alloc(1); let answer = ""; let newline = false;
-        while (readStdinByte(byte) > 0) { if (byte[0] === 10) { newline = true; break; } answer += byte.toString(); }
-        if (!newline || !/^(y|yes|n|no)?$/i.test(answer.trim())) {
-          throw new Error("no completed yes/no answer; no folder trust was changed");
-        }
-        accepted = !/^(n|no)$/i.test(answer.trim());
-      }
-      if (accepted) folderTrust = [...trustFolder(folder, targets), ...failures];
-      else if (harnesses.length && !opts.json) console.error(interactive(opts)
-        ? "tap init: folder trust skipped. Some harnesses may require manual trust before use here. tap init --yes grants it later."
-        : `tap init: folder trust skipped (no terminal to ask); next: tap init --yes to trust this folder in ${harnesses.join(", ")}.`);
-      const failed = folderTrust.filter(result => result.status === "failed");
-      if (failed.length) {
-        if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: true, folder_trust: folderTrust, action: "fix the reported harness configuration, then rerun tap init --yes" }));
-        else console.error(`tap init: team initialized; ${failed.map(result => `${result.harness}: ${result.detail}`).join("; ")}; next: fix the reported configuration, then rerun tap init`);
-        return 1;
-      }
+      const outcome = initialize(cwd, opts);
+      const notice = !outcome.already && outcome.derivedFrom ? derivedTeamNotice(outcome.team,outcome.derivedFrom) : "";
+      if(notice)process.stderr.write(`tap session: ${notice}\n`);
+      if(opts.dryRun)console.log(JSON.stringify({ok:true,team:{name:outcome.team,root:outcome.root},already_initialized:outcome.already}));
+      else if(!outcome.already)process.stderr.write(`tap session: initialized team '${outcome.team}' at ${outcome.root}\n`);
+      return 0;
     } catch (error) {
-      const detail = `team initialized; ${(error as Error).message}`;
-      if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: true, folder_trust: folderTrust, action: "rerun tap init to retry folder trust", detail }));
-      else failure(false, "folder_trust_failed", "rerun tap init to retry folder trust", detail);
+      if(!(error instanceof InitRefusal))throw error;
+      failure(true,error.errorClass,error.action,error.detail);
       return 1;
     }
   }
-  if(!outcome.already){
-    if(!outcome.inGit)console.error("tap init: not a git repository; skipped .gitignore setup.");
+
+  let outcome: InitOutcome;
+  let effects = new InitEffects();
+  try {
+    // Resolve and validate against the same authority before inventorying paths.
+    outcome = initialize(cwd, { ...opts, dryRun: true });
+    effects = initializationEffects(outcome, opts);
+  } catch (error) {
+    const refusal = error instanceof InitRefusal ? error : new InitRefusal("init_preview_failed", "fix the reported path, then rerun tap init", (error as Error).message);
+    failure(opts.json,refusal.errorClass,refusal.action,refusal.detail,empty);
+    return 1;
   }
-  // JSON stdout stays one object, so the derived-name notice goes to stderr there.
-  if(notice)(opts.json ? console.error : console.log)(notice);
-  if(opts.json)console.log(JSON.stringify({ok:true,team:{name:outcome.team,root:outcome.root},bus:outcome.bus,in_git:outcome.inGit,migrated:false,primary_counts:null,late:false,late_counts:null,already_initialized:outcome.already,folder_trust:folderTrust}));
-  else if(outcome.already)console.log(`already initialized: team ${outcome.team}`);
-  else console.log(`successfully initialized team: ${outcome.team}\nbus: ${outcome.bus}`);
-  if (!opts.json && folderTrust.length) console.log(`folder trusted: ${folderTrust.map(result => result.harness).join(", ")}`);
-  return 0;
+  const receipt = (): Receipt => {
+    const changes = effects.changes(opts.dryRun);
+    return { changes, undo: undoSteps(changes, outcome.root), dry_run: opts.dryRun };
+  };
+  const folder = realpathSync(cwd);
+  const { targets, failures } = argv.includes("--no-trust-folders") ? { targets: [], failures: [] } : folderTrustTargets(folder);
+  const offered = opts.yes || interactive(opts);
+  // Observe these exact paths before apply, including partial trust failures.
+  const projectedTrust = offered ? [...trustEffects(effects, folder, targets), ...failures] : [];
+  let folderTrust: FolderTrustResult[] = [];
+  let accepted = opts.yes;
+  if (!opts.dryRun) {
+    try { outcome = initialize(cwd, opts); }
+    catch (error) {
+      const initialized = currentShapedStore(outcome.recreateRegistry || teamRegistryPath(outcome.root));
+      const r = { ...receipt(), initialized };
+      if (error instanceof InitRefusal) failure(opts.json,error.errorClass,error.action,error.detail,r);
+      else failure(opts.json,"init_failed","tap doctor",`initialization failed: ${(error as Error).message}`,r);
+      return 1;
+    }
+  }
+  try {
+    if (!opts.dryRun && (targets.length || failures.length) && !accepted && interactive(opts)) {
+      process.stderr.write(`Directory: ${folder}\n`);
+      for (const target of targets) {
+        let path = target.path;
+        try { path = folderTrustPath(target); } catch { /* The failed target still needs disclosure. */ }
+        process.stderr.write(`${target.harness}: ${path} — ${folderTrustGrant(target, folder)}\n`);
+      }
+      for (const failed of failures) process.stderr.write(`${failed.harness}: cannot locate trust configuration (${failed.detail})\n`);
+      process.stderr.write("Grants each harness's normal folder trust, including project settings and hooks where applicable. Separate approval dialogs are not accepted.\nTrust current directory in installed harnesses Y/n ");
+      const byte = Buffer.alloc(1); let answer = ""; let newline = false;
+      while (readStdinByte(byte) > 0) { if (byte[0] === 10) { newline = true; break; } answer += byte.toString(); }
+      if (!newline || !/^(y|yes|n|no)?$/i.test(answer.trim())) throw new Error("no completed yes/no answer; no folder trust was changed");
+      accepted = !/^(n|no)$/i.test(answer.trim());
+    }
+    if (opts.dryRun) folderTrust = projectedTrust;
+    else if (accepted) folderTrust = [...trustFolder(folder, targets), ...failures];
+    else if ((targets.length || failures.length) && !opts.json) console.error(interactive(opts)
+      ? "tap init: folder trust skipped. Some harnesses may require manual trust before use here. tap init --yes grants it later."
+      : `tap init: folder trust skipped (no terminal to ask); next: tap init --yes to trust this folder in ${[...targets,...failures].map(target=>target.harness).join(", ")}.`);
+  } catch (error) {
+    const r = receipt();
+    if (opts.json) console.log(JSON.stringify({ ok: false, error_class: "folder_trust_failed", initialized: !opts.dryRun, folder_trust: folderTrust, action: "rerun tap init to retry folder trust", detail: (error as Error).message, ...r }));
+    else failure(false,"folder_trust_failed","rerun tap init to retry folder trust",(error as Error).message,r);
+    return 1;
+  }
+  const grants = targets.flatMap(target => {
+    const result = folderTrust.find(result => result.harness === target.harness);
+    return result && result.status !== "failed" ? [{ harness: target.harness, path: folderTrustPath(target), setting: folderTrustGrant(target, folder), status: opts.dryRun ? "would_grant" : result.status }] : [];
+  });
+  const failed = folderTrust.filter(result=>result.status === "failed");
+  const r = receipt();
+  const previewNote = opts.dryRun ? "Assumes acceptance of terminal offers and any outside-Git consent; --yes accepts them without a terminal. Use --no-instructions or --no-trust-folders to omit them. No locks are acquired; concurrent edits and later write/lock failures cannot be predicted." : undefined;
+  const notice = !outcome.already && outcome.derivedFrom ? derivedTeamNotice(outcome.team,outcome.derivedFrom) : "";
+  if (notice) (opts.json ? console.error : console.log)(notice);
+  const trustReceipt = opts.dryRun ? folderTrust.map(result => result.status === "trusted" ? { ...result, status: "would_trust" } : result) : folderTrust;
+  if (opts.json) console.log(JSON.stringify({ok:!failed.length,...(failed.length ? {error_class:"folder_trust_failed",initialized:!opts.dryRun,action:"fix the reported harness configuration, then rerun tap init --yes"} : {}),team:{name:outcome.team,root:outcome.root},bus:outcome.bus,in_git:outcome.inGit,migrated:false,primary_counts:null,late:false,late_counts:null,already_initialized:outcome.already,folder_trust:trustReceipt,folder_trust_grants:grants,...r,...(previewNote ? {preview_note:previewNote} : {})}));
+  else {
+    if (!opts.dryRun) console.log(outcome.already ? `already initialized: team ${outcome.team}` : `successfully initialized team: ${outcome.team}\nbus: ${outcome.bus}`);
+    printChanges(r.changes,r.undo,opts.dryRun);
+    for (const grant of grants) console.log(`  ${grant.status} ${grant.harness}: ${grant.path} — ${grant.setting}`);
+    if (previewNote) console.log(`  preview: ${previewNote}`);
+    for (const result of failed) console.error(`tap init: ${result.harness}: ${result.detail}; next: fix the reported configuration, then rerun tap init --yes`);
+  }
+  if (!opts.dryRun && !outcome.already && !outcome.inGit) console.error("tap init: not a git repository; skipped .gitignore setup.");
+  return failed.length ? 1 : 0;
 }
 if(import.meta.main)process.exitCode=cmdInit(process.argv.slice(2));

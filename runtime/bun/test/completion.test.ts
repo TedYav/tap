@@ -2,6 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { completionCandidates } from "../src/completion";
+import { HELP_TOMBSTONES } from "../src/help";
+import { NATIVE_VERBS } from "../main";
 import { scanEntries } from "../src/install-manifest";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -164,7 +166,171 @@ test("public zsh form prints a valid adapter without creating an index", () => {
   expect(help.stdout.toString()).toContain("tap completion zsh");
   const unsupported = Bun.spawnSync([join(repo, "bin/tap"), "completion", "fish"], { cwd: f.alpha, env: f.env, stdin: "ignore" });
   expect(unsupported.exitCode).toBe(1);
-  expect(unsupported.stderr.toString()).toContain("supported shell is zsh");
+  expect(unsupported.stdout.toString()).toBe("");
+  expect(unsupported.stderr.toString()).toBe("tap completion: supported shells are zsh and bash; next: tap help completion\n");
+});
+
+// The macOS system Bash is 3.2; a newer one, where installed, comes first on PATH.
+const bashes = [...new Set(["/bin/bash", Bun.which("bash")].filter((path): path is string => !!path && existsSync(path)))];
+const quote = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
+
+/** COMPREPLY from the emitted adapter in one real Bash, with the cursor at the end of word `cword` unless `point` says otherwise. */
+function bashReply(bash: string, f: ReturnType<typeof fixture>, words: string[], cword = words.length - 1, point = words.slice(0, cword + 1).join(" ").length): string[] {
+  const script = [
+    'eval "$(tap completion bash)" || exit 90',
+    '[ "$(complete -p tap)" = "complete -o nospace -F _tap_completion tap" ] || exit 91',
+    `COMP_WORDS=(${words.map(quote).join(" ")})`,
+    `COMP_CWORD=${cword}`,
+    `COMP_LINE=${quote(words.join(" "))}`,
+    `COMP_POINT=${point}`,
+    "_tap_completion || exit 92",
+    `for reply in "\${COMPREPLY[@]}"; do printf '[%s]\\n' "$reply"; done`,
+  ].join("\n");
+  const result = Bun.spawnSync([bash, "--noprofile", "--norc", "-c", script], {
+    cwd: f.alpha, env: { ...f.env, PATH: `${join(repo, "bin")}:${process.env.PATH}` }, stdin: "ignore", timeout: 60_000,
+  });
+  if (result.exitCode !== 0 || result.stderr.length) throw new Error(`${bash} exited ${result.exitCode}: ${result.stderr.toString()}`);
+  return result.stdout.toString().split("\n").filter(Boolean).map(line => line.slice(1, -1));
+}
+
+test("public bash form prints the adapter file, which parses on every Bash here", () => {
+  const f = fixture();
+  const emptyIndex = join(f.root, "no-index");
+  const result = Bun.spawnSync([join(repo, "bin/tap"), "completion", "bash"], {
+    cwd: f.alpha, env: { ...f.env, TAP_INDEX_HOME: emptyIndex, TAP_VERBOSE: "1" }, stdin: "ignore",
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr.toString()).toBe("");
+  expect(result.stdout.toString()).toBe(readFileSync(join(repo, "completions/tap.bash"), "utf8"));
+  expect(existsSync(emptyIndex)).toBe(false);
+  expect(bashes.length).toBeGreaterThan(0);
+  for (const bash of bashes) expect(Bun.spawnSync([bash, "-n"], { stdin: result.stdout }).exitCode, bash).toBe(0);
+  const help = Bun.spawnSync([join(repo, "bin/tap"), "completion", "--help"], { cwd: f.alpha, env: f.env, stdin: "ignore" });
+  expect(help.stdout.toString()).toContain("tap completion bash");
+});
+
+test("real Bash fills COMPREPLY from the producer: commands, flags, handles and body files", () => {
+  const f = fixture();
+  writeFileSync(join(f.alpha, "completion-proof.txt"), "body\n");
+  writeFileSync(join(f.alpha, "completion spaced.txt"), "body\n");
+  mkdirSync(join(f.alpha, "completion-dir"));
+  const produced = (words: string[]) => values(completionCandidates(words, words.length, f.env, f.alpha)).map(value => `${value} `);
+  for (const bash of bashes) {
+    const top = bashReply(bash, f, ["tap", ""]);
+    expect(top, bash).toEqual(produced(["tap", ""]));
+    expect(top, bash).toEqual(expect.arrayContaining(["send ", "team ", "teams "]));
+    expect(bashReply(bash, f, ["tap", "te"]), bash).toEqual(["team ", "teams ", "teardown "]);
+    const flags = bashReply(bash, f, ["tap", "send", "--"]);
+    expect(flags, bash).toEqual(produced(["tap", "send", "--"]));
+    expect(flags, bash).toContain("--team ");
+    expect(bashReply(bash, f, ["tap", "attach", "alpha/al"]), bash).toEqual(["alpha/alice "]);
+    const team = bashReply(bash, f, ["tap", "team", ""]);
+    expect(team, bash).toContain("list ");
+    expect(team, bash).not.toContain("alpha ");
+    // A finished word carries its own space; a directory ends in a slash so the path can continue.
+    expect(bashReply(bash, f, ["tap", "send", "alice", "-f", "completion"]).sort(), bash)
+      .toEqual(["completion-dir/", "completion-proof.txt ", "completion\\ spaced.txt "]);
+    // HOME is the runner's private one. A leading ~/ stays unquoted, and the directory test sees through it.
+    mkdirSync(join(process.env.HOME!, "completion home dir"), { recursive: true });
+    expect(bashReply(bash, f, ["tap", "send", "alice", "-f", "~/completion\\ home"]), bash).toEqual(["~/completion\\ home\\ dir/"]);
+    // The cursor sits after `te` inside `teXYZ`: the text to its left is completed.
+    expect(bashReply(bash, f, ["tap", "teXYZ"], 1, "tap te".length), bash).toEqual(["team ", "teams ", "teardown "]);
+    expect(bashReply(bash, f, ["tap", "attach", "zz"]), bash).toEqual([]);
+  }
+});
+
+/** The last word a real interactive Bash hands to `tap` after each line is typed, completed with TAB and run. */
+async function readlineOperands(bash: string, f: ReturnType<typeof fixture>, cwd: string, lines: string[]): Promise<string[]> {
+  const fake = join(f.root, "readline-bin");
+  mkdirSync(fake, { recursive: true });
+  // Candidates come from the real producer; any other call prints the operand the shell delivered.
+  writeFileSync(join(fake, "tap"), [
+    "#!/bin/bash",
+    `if [ "$1" = completion ]; then exec ${quote(join(repo, "bin/tap"))} "$@"; fi`,
+    "for last; do :; done",
+    `printf 'OPERAND<%s>\\n' "$last"`,
+    "",
+  ].join("\n"), { mode: 0o755 });
+  let screen = "";
+  const proc = Bun.spawn([bash, "--noprofile", "--norc", "-i"], {
+    cwd,
+    env: { ...f.env, PATH: `${fake}:${process.env.PATH}`, TERM: "dumb", BASH_SILENCE_DEPRECATION_WARNING: "1" },
+    terminal: { cols: 200, rows: 24, data(_terminal, data) { screen += Buffer.from(data).toString(); } },
+  });
+  const terminal = proc.terminal!;
+  const seen = async (mark: string, from: number, ms = 30_000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(20)) if (screen.indexOf(mark, from) >= 0) return true;
+    return false;
+  };
+  /** Output started, then stopped: the completion function returned and Readline redrew the line. */
+  const settled = async (ms: number) => {
+    const start = screen.length;
+    for (const end = Date.now() + ms; Date.now() < end && screen.length === start;) await Bun.sleep(20);
+    for (let size = -1; size !== screen.length;) { size = screen.length; await Bun.sleep(300); }
+  };
+  const operands: string[] = [];
+  try {
+    // The quoted pairs keep the typed text from matching the markers it prints.
+    terminal.write(`PS1='RDY>'; bind 'set bell-style none'; eval "$(tap completion bash)"; echo LOAD''ED\n`);
+    if (!await seen("LOADED\r\n", 0)) return [`adapter did not load: ${screen}`];
+    for (const line of lines) {
+      const from = screen.length;
+      terminal.write(line);
+      if (!await seen(line, from)) { operands.push(`no echo: ${screen.slice(from)}`); continue; }
+      terminal.write("\t");
+      await settled(30_000);
+      terminal.write("; echo DO''NE\n");
+      if (await seen("DONE\r\n", from, 15_000)) {
+        operands.push(/OPERAND<([^\r\n]*)>\r?\n/.exec(screen.slice(from))?.[1] ?? `no operand: ${screen.slice(from)}`);
+      } else {
+        operands.push(`line did not run: ${screen.slice(from)}`);
+        terminal.write("\x03");
+        await settled(2_000);
+      }
+    }
+    terminal.write("exit\n");
+    await Promise.race([proc.exited, Bun.sleep(5_000)]);
+  } finally {
+    proc.kill();
+    terminal.close();
+  }
+  return operands;
+}
+
+test("real Readline completes a body file to the same operand unquoted and inside either quote", async () => {
+  const f = fixture();
+  const bodies = join(f.alpha, "bodies");
+  mkdirSync(bodies);
+  writeFileSync(join(bodies, "body one.txt"), "body\n");
+  writeFileSync(join(bodies, "pay$load's.txt"), "body\n");
+  const cases: [string, string][] = [
+    ["tap send alice -f bo", "body one.txt"],
+    ['tap send alice -f "bo', "body one.txt"],
+    ["tap send alice -f 'bo", "body one.txt"],
+    ['tap send alice -f "body o', "body one.txt"],
+    ["tap send alice -f pa", "pay$load's.txt"],
+    ['tap send alice -f "pa', "pay$load's.txt"],
+    // A prefix that already carries a double-quote escape, as a first TAB leaves it.
+    ['tap send alice -f "pay\\$lo', "pay$load's.txt"],
+    ["tap send alice -f 'pa", "pay$load's.txt"],
+  ];
+  for (const bash of bashes) {
+    expect(await readlineOperands(bash, f, bodies, cases.map(([line]) => line)), bash).toEqual(cases.map(([, operand]) => operand));
+  }
+}, 300_000);
+
+test("every routed verb is offered, and neither shell adapter carries a verb list of its own", () => {
+  const f = fixture();
+  const top = values(completionCandidates(["tap", ""], 2, f.env, f.alpha));
+  for (const verb of NATIVE_VERBS) if (!(verb in HELP_TOMBSTONES)) expect(top, verb).toContain(verb);
+  // Shell words the adapters need that are also verb names.
+  const shellWords = new Set(["command", "completion", "read", "done", "in"]);
+  for (const file of ["completions/_tap", "completions/tap.bash"]) {
+    const code = readFileSync(join(repo, file), "utf8").split("\n").filter(line => !line.trimStart().startsWith("#")).join("\n");
+    expect(code, file).toContain("command tap completion candidates --cursor ");
+    const named = (code.match(/[A-Za-z][A-Za-z-]*/g) ?? []).filter(word => NATIVE_VERBS.has(word) && !shellWords.has(word));
+    expect(named, file).toEqual([]);
+  }
 });
 
 test("real zsh listing shows command names and body files without offering teams after bare team", () => {

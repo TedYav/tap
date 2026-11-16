@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { artifactBun, artifactRouter, tapRoot } from "./scripts-dir";
+import { ownBunArgv } from "./own-bun";
 
 /**
  * argv for one out-of-process TAP verb: Bun's own entry, with no Bash shim hop
@@ -15,7 +16,7 @@ export function verbArgv(scriptsDir: string, argv: string[], env: NodeJS.Process
   const standIn = env.TAP_VERB_SCRIPT;
   if (standIn) return ["bash", standIn, ...argv];
   const router = artifactRouter(tapRoot(scriptsDir));
-  return router ? [router, ...argv] : ["bun", resolve(scriptsDir, "../../../runtime/bun/main.ts"), ...argv];
+  return router ? [router, ...argv] : [...ownBunArgv("bun"), resolve(scriptsDir, "../../../runtime/bun/main.ts"), ...argv];
 }
 
 /**
@@ -36,7 +37,7 @@ export function courierArgv(scriptsDir: string, args: string[], env: NodeJS.Proc
  */
 export function initArgv(scriptsDir: string, args: string[], env: NodeJS.ProcessEnv = process.env): string[] {
   const standIn = env.TAP_VERB_SCRIPT;
-  return standIn ? ["bash", standIn, "init", ...args] : [childBun(scriptsDir), resolve(scriptsDir, "../../../runtime/bun/src/verbs/init.ts"), ...args];
+  return standIn ? ["bash", standIn, "init", ...args] : [...ownBunArgv(childBun(scriptsDir)), resolve(scriptsDir, "../../../runtime/bun/src/verbs/init.ts"), ...args];
 }
 
 /**
@@ -45,7 +46,7 @@ export function initArgv(scriptsDir: string, args: string[], env: NodeJS.Process
  * scripts dir, never process.execPath or a compiled module's virtual dir.
  */
 export function peerSubmitArgv(scriptsDir: string): string[] {
-  return [childBun(scriptsDir), resolve(scriptsDir, "../../../runtime/bun/src/verbs/compact-peer-submit.ts")];
+  return [...ownBunArgv(childBun(scriptsDir)), resolve(scriptsDir, "../../../runtime/bun/src/verbs/compact-peer-submit.ts")];
 }
 
 /**
@@ -54,7 +55,7 @@ export function peerSubmitArgv(scriptsDir: string): string[] {
  * dir, never process.execPath or a compiled module's virtual dir.
  */
 export function recoveryCliArgv(scriptsDir: string, args: string[]): string[] {
-  return [childBun(scriptsDir), resolve(scriptsDir, "../../../runtime/bun/src/recovery/cli.ts"), ...args];
+  return [...ownBunArgv(childBun(scriptsDir)), resolve(scriptsDir, "../../../runtime/bun/src/recovery/cli.ts"), ...args];
 }
 
 /** The Bun for a builder's child: the release artifact's shim, else `bun` from PATH. */

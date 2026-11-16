@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, symlinkSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, renameSync, symlinkSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { removeScratchTree } from "./support/scratch";
@@ -413,7 +413,7 @@ test("initialized primary does not prevent a linked worktree from owning its tea
  expect(existsSync(join(linked,".tap","bus"))).toBe(true);
  const files=[join(f.cwd,".gitignore"),join(f.cwd,"AGENTS.md"),join(f.env.TAP_INDEX_HOME,"global-registry.json")].filter(existsSync);
  const mtimes=files.map(path=>statSync(path).mtimeMs);
- const second=f.run(["init"]);expect(files.map(path=>statSync(path).mtimeMs)).toEqual(mtimes);expect(second.stdout.trim()).toBe(`already initialized: team ${JSON.parse(f.run(["init","--json"]).stdout).team.name}`);
+ const second=f.run(["init"]);expect(files.map(path=>statSync(path).mtimeMs)).toEqual(mtimes);expect(second.stdout.trim()).toBe(`already initialized: team ${JSON.parse(f.run(["init","--json"]).stdout).team.name}\ntap init: changes\n  no changes`);
 });
 
 test("live-index nested linked worktree cannot inherit an enrolled primary", () => {
@@ -442,12 +442,13 @@ test("live-index nested linked worktree cannot inherit an enrolled primary", () 
  expect(resolveContext(f.cwd,f.env).root).toBe(f.cwd);
 },30000);
 
-test("init enrolls a copied legacy registry when the machine index is live", () => {
+test("init re-enrolls an empty bootstrap skeleton when its machine entry is missing", () => {
  const f=fixture();expect(f.run(["init"]).status).toBe(0);
+ const registry=join(f.cwd,".tap/team-registry.json"),before=readFileSync(registry,"utf8");
  writeFileSync(join(f.env.TAP_INDEX_HOME,"global-registry.json"),JSON.stringify({schema:"0.20",teams:{}}));
  const r=f.run(["init","--json"]);expect(r.status,r.stdout+r.stderr).toBe(0);
  expect(JSON.parse(r.stdout).already_initialized).toBe(false);
- const roster=f.run(["team","--json"]);expect(roster.status,roster.stdout+roster.stderr).toBe(0);
+ expect(readFileSync(registry,"utf8")).toBe(before);expect(currentTeam(f.cwd)).toBe("repo");
 });
 
 test("init refuses corrupt acting registries instead of reporting already initialized", () => {
@@ -468,7 +469,7 @@ test("init preserves error modes and repeated JSON receipt fields", () => {
  const second=JSON.parse(f.run(["init","--json"]).stdout);
  for(const key of ["migrated","primary_counts","late","late_counts"])expect(second[key]).toEqual(JSON.parse(first.stdout)[key]);
  writeFileSync(join(f.env.TAP_INDEX_HOME,"global-registry.json"),"{broken");
- const human=f.run(["init"]);expect(human.status).not.toBe(0);expect(human.stdout).toBe("");expect(human.stderr).toContain("tap doctor");
+ const human=f.run(["init"]);expect(human.status).not.toBe(0);expect(human.stdout).toBe("tap init: changes\n  no changes\n");expect(human.stderr).toContain("tap doctor");
 });
 
 // --- F1: native init is born live at schema 0.20 -------------------------------
@@ -551,11 +552,11 @@ test("markerless first entry refuses a seated current bus registry through every
     expect(existsSync(join(f.cwd, ".tap", "team-registry.json")), label).toBe(false);
     expect(readFileSync(path, "utf8"), label).toBe(body);
   }
-  // No seats, nothing to orphan: the first entry still enrolls.
+  // Even an empty registry is pre-existing bus state on a new enrollment.
   const f = fixture(); const bus = join(f.cwd, ".tap", "bus"); mkdirSync(bus, { recursive: true });
   writeFileSync(join(bus, "registry.json"), '{"schema":"0.20","team":{"name":"repo"},"seats":{}}');
-  const r = f.run(["init", "--json"]); expect(r.status, r.stdout + r.stderr).toBe(0);
-  expect(JSON.parse(r.stdout).ok).toBe(true);
+  const r = f.run(["init", "--json"]); expect(r.status, r.stdout + r.stderr).toBe(1);
+  expect(JSON.parse(r.stdout)).toMatchObject({error_class:"preexisting_tap_state",changes:[]});
 }, 60000);
 
 test("register on a markerless machine refuses a hybrid team registry before flipping the machine", () => {
@@ -576,10 +577,10 @@ function gitFolder(f: ReturnType<typeof fixture>, name: string): string {
 test("init derives a team name for a project with spaces, and --team overrides it", () => {
   const f = fixture(); const spaced = gitFolder(f, "My Project");
   const r = f.run(["init"], spaced); expect(r.status, r.stderr).toBe(0);
-  expect(r.stdout).toBe(`team name: my-project (derived from folder 'My Project'; override with --team <name>)\nsuccessfully initialized team: my-project\nbus: ${join(spaced, ".tap", "bus")}\n`);
+  expect(r.stdout).toStartWith(`team name: my-project (derived from folder 'My Project'; override with --team <name>)\nsuccessfully initialized team: my-project\nbus: ${join(spaced, ".tap", "bus")}\n`);
   expect(currentTeam(spaced)).toBe("my-project");
   expect(index(f).teams["my-project"].root).toBe(spaced);
-  const again = f.run(["init"], spaced); expect(again.stdout).toBe("already initialized: team my-project\n");
+  const again = f.run(["init"], spaced); expect(again.stdout).toBe("already initialized: team my-project\ntap init: changes\n  no changes\n");
   // Dots count as separators when deriving, so the slug stays launchable.
   const dotted = gitFolder(f, "Other Project.v2");
   const json = f.run(["init", "--json"], dotted); expect(json.status, json.stderr).toBe(0);
@@ -587,14 +588,14 @@ test("init derives a team name for a project with spaces, and --team overrides i
   expect(json.stderr).toContain("team name: other-project-v2 (derived from folder 'Other Project.v2'; override with --team <name>)");
   const named = gitFolder(f, "Third Project");
   const override = f.run(["init", "--team", "mine"], named); expect(override.status, override.stderr).toBe(0);
-  expect(override.stdout).toBe(`successfully initialized team: mine\nbus: ${join(named, ".tap", "bus")}\n`);
+  expect(override.stdout).toStartWith(`successfully initialized team: mine\nbus: ${join(named, ".tap", "bus")}\n`);
   expect(currentTeam(named)).toBe("mine"); expect(index(f).teams.mine.root).toBe(named);
 }, 60000);
 
 test("init keeps a valid folder name byte for byte", () => {
   const f = fixture(); const valid = gitFolder(f, "Tap_Site.v1");
   const r = f.run(["init"], valid); expect(r.status, r.stderr).toBe(0);
-  expect(r.stdout).toBe(`successfully initialized team: Tap_Site.v1\nbus: ${join(valid, ".tap", "bus")}\n`);
+  expect(r.stdout).toStartWith(`successfully initialized team: Tap_Site.v1\nbus: ${join(valid, ".tap", "bus")}\n`);
   expect(currentTeam(valid)).toBe("Tap_Site.v1");
 }, 60000);
 
@@ -620,6 +621,7 @@ test("init on an unenrolled root keeps the team name its current registry declar
   // tap admin retire removes only the index entry; the registry keeps its bytes.
   const path = join(dir, ".tap", "team-registry.json"); const doc = JSON.parse(readFileSync(path, "utf8"));
   doc.team.name = "kept-name"; writeFileSync(path, JSON.stringify(doc));
+  writeFileSync(join(dir,".tap/bus/payloads/retained.md"),"Retained machine-local mail.\n");
   const retire = () => { const idx = index(f); idx.teams = {}; writeFileSync(join(f.env.TAP_INDEX_HOME, "global-registry.json"), JSON.stringify(idx)); };
   retire();
   const conflict = f.run(["init", "--json", "--team", "other"], dir); expect(conflict.status).toBe(1);
@@ -628,10 +630,16 @@ test("init on an unenrolled root keeps the team name its current registry declar
   expect(refusal.detail).toBe(`${path} already declares team 'kept-name', not 'other'`);
   expect(refusal.action).toContain("pass --team kept-name");
   expect(index(f).teams).toEqual({});
+  const blocked = f.run(["init", "--json"], dir); expect(blocked.status).toBe(1);
+  expect(JSON.parse(blocked.stdout).error_class).toBe("preexisting_tap_state");
+  // Operator inspection/recovery preserves evidence outside the new bus.
+  renameSync(join(dir,".tap/bus"),join(f.base,"saved-bus"));
+  expect(readFileSync(join(f.base,"saved-bus/payloads/retained.md"),"utf8")).toBe("Retained machine-local mail.\n");
   const plain = f.run(["init"], dir); expect(plain.status, plain.stderr).toBe(0);
-  expect(plain.stdout).toBe(`successfully initialized team: kept-name\nbus: ${join(dir, ".tap", "bus")}\n`);
+  expect(plain.stdout).toStartWith(`successfully initialized team: kept-name\nbus: ${join(dir, ".tap", "bus")}\n`);
   expect(Object.keys(index(f).teams)).toEqual(["kept-name"]); expect(currentTeam(dir)).toBe("kept-name");
   retire();
+  // The new empty skeleton needs no manual move on a subsequent retry.
   expect(f.run(["init", "--team", "kept-name"], dir).status).toBe(0);
   expect(Object.keys(index(f).teams)).toEqual(["kept-name"]);
 }, 60000);

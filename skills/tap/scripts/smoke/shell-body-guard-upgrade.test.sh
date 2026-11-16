@@ -189,7 +189,8 @@ assert agy["foreign-tool"]["PreToolUse"][0]["hooks"][0]["command"] == "/foreign/
 # retired by the hash-matched cleanup, while unrecorded files survive.
 plugins = pathlib.Path(opencode_s) / "plugins"
 shim = (plugins / "tap-shell-body-guard").read_text()
-assert shim == f'#!/usr/bin/env bash\nexec bun "{new_guard}" "$@"\n', shim
+bun_config = str(repo / "runtime/bun/tap-bunfig.toml")
+assert shim == f'#!/usr/bin/env bash\nc="{bun_config}"; [ -f "$c" ] || c=/dev/null\nexec bun --config="$c" --no-env-file "{new_guard}" "$@"\n', shim
 assert not (plugins / "tap-shell-body-guard.py").exists()
 assert (plugins / "tap-shell-body-guard.py.bak").read_text() == "OLD\n"
 assert (plugins / "tap-opencode-tmux-guard.ts").read_bytes() == (repo / "hooks/tap-opencode-tmux-guard.ts").read_bytes()

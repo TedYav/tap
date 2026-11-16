@@ -273,8 +273,16 @@ test("explicit out selection stays on its team after registry relocation", async
 
 test("plain out: one removal line, one event, reset mark, tombstone under flip", () => {
   const f = fix(); reg(f, { alice: row() });
+  // A retired seat leaves no pending permission-request record. A sibling's stays, and so does
+  // the record of a seat whose handle merely begins with the retired one's.
+  const requests = join(f.cwd, ".tap", "bus", "permission-requests");
+  mkdirSync(requests, { recursive: true });
+  for (const name of ["alice.1794598987319-0a1b2c3d.json", "alice.1794598987400-1b2c3d4e.json", "alice.b.1794598987319-0a1b2c3d.json", "bob.1794598987319-0a1b2c3d.json"]) {
+    writeFileSync(join(requests, name), "{}\n");
+  }
   const r = run(f, ["out", "alice"]);
   expect(r.code).toBe(0);
+  expect(readdirSync(requests).sort()).toEqual(["alice.b.1794598987319-0a1b2c3d.json", "bob.1794598987319-0a1b2c3d.json"]);
   expect(r.out.split("removed from the registry").length - 1).toBe(1);
   expect(seatsOf(f).alice).toBeUndefined();
   expect(events(f).length).toBe(1);

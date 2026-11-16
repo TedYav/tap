@@ -2,8 +2,8 @@ import { constants, openSync, closeSync, fstatSync, readFileSync, writeSync, lst
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-/** Append only: preserve every existing byte and never follow a user symlink. */
-export function ignoreTap(root: string): void {
+/** Read-only half of ignoreTap, shared with init's write preview. */
+export function tapIgnoreNeeded(root: string): boolean {
   const path = join(root, ".gitignore");
   try {
     const st = lstatSync(path);
@@ -12,8 +12,15 @@ export function ignoreTap(root: string): void {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const ignored = spawnSync("git", ["-C", root, "check-ignore", "--no-index", "--quiet", ".tap/"], { encoding: "utf8" });
-  if (ignored.status === 0) return;
+  if (ignored.status === 0) return false;
   if (ignored.status !== 1) throw new Error(`cannot check .tap ignore rule: ${ignored.stderr.trim()}`);
+  return true;
+}
+
+/** Append only: preserve every existing byte and never follow a user symlink. */
+export function ignoreTap(root: string): void {
+  const path = join(root, ".gitignore");
+  if (!tapIgnoreNeeded(root)) return;
   const fd = openSync(path, constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o666);
   try {
     const st = fstatSync(fd);

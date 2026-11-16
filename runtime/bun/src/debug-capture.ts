@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { atomicWrite, ensureAscii, stagingPath } from "./fsatomic";
 import { redact } from "./verbose";
 import { tapScriptsDir, artifactBun } from "./scripts-dir";
+import { ownBun, ownBunFlags } from "./own-bun";
 
 export const JOURNAL_SECRET = /key|token|secret|password|passwd|credential|authorization|^auth/i;
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -272,7 +273,7 @@ export function captureCourierFailure<T extends Outcome>(context: Context, run: 
   function capture(args: string[], input: string): void {
     try {
       const leaf = resolve(context.scriptsDir || tapScriptsDir(), "../../../runtime/bun/src/debug-capture.ts");
-      const result = spawnSync(artifactBun() ?? "bun", [leaf, ...args], {
+      const result = spawnSync(ownBun(), [...ownBunFlags(), leaf, ...args], {
         input, encoding: "utf8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, TAP_LOCK_DIR: lockRoot(), TAP_HOME: context.busHome, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" },
       });

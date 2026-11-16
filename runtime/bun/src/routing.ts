@@ -24,6 +24,7 @@ import { modelCell, prettyModelName } from "./model-names";
 import { displayState, emptySeatFilters, hasSeatFilters, idleSeconds, seatClock, seatMatches, takeSeatFilters, type SeatFacts } from "./seat-filter";
 import { WORKING, latestActivity, recentCount, recentOrder, seatLastActive, takeCount, type LastActive } from "./team/recent";
 import { transcriptActivity } from "./team/stale";
+import { ownBun, ownBunFlags } from "./own-bun";
 
 type Result = { exit: number; stdout: string; stderr: string };
 type Row = Record<"handle" | "model" | "harness" | "family" | "tier" | "speed" | "cost" | "voice" | "one_liner", string>;
@@ -351,7 +352,7 @@ function readObject(path: string): ObjectRow {
 // Keep the native roster as observation authority, bounded independently for each team.
 function observedRoster(team: string, scriptsDir: string): Promise<ObjectRow[] | null> {
   return new Promise(resolveResult => {
-    const child = spawn(artifactBun() ?? "bun", [resolve(scriptsDir, "../../../runtime/bun/src/team-roster-json.ts"), "roster", team, "--json"], {
+    const child = spawn(ownBun(), [...ownBunFlags(), resolve(scriptsDir, "../../../runtime/bun/src/team-roster-json.ts"), "roster", team, "--json"], {
       cwd: resolve(scriptsDir, "../../.."), env: process.env,
       stdio: ["ignore", "pipe", "ignore"], timeout: 10_000, killSignal: "SIGKILL",
     });

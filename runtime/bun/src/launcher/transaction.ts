@@ -24,7 +24,7 @@ import { launcherFenceRefusal, markResetGenerationReused } from "../reset";
 import { startupTrace, startupTransition } from "../startup-trace";
 import { Notices } from "./catalog-notices";
 import { HARNESSES, resolveHarnessPolicy } from "./catalog";
-import { applyInvocationEnv, buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, InvocationError, shlexQuote } from "./invocation";
+import { applyInvocationEnv, buildInvocation, discardReceipts, launchInvocation, invocationShellCommand, resolveLoginShell, loginShellSubstitution, InvocationError, shlexQuote } from "./invocation";
 import { type SessionRecord, type Invocation, type ResumeIdentity, UNBOUND_RESUME_IDENTITY } from "./types";
 import { type PaneFacts, paneFacts, paneHarness, paneTailLines, awaitStableHarness, stripPaneSgr, memoizedStartupObservation, startupBlockerFromScreen, codexComposerIdle, opencodeReadySignal, startStallWatch, START_STALLED, START_STALL_MS, type StartupObservation } from "./readiness";
 import { currentEpoch, hasSession, classifySession, crewPanesIn, entrySession, verifiedSession, entryObservedDead, destructiveTarget, sessionPaneIds } from "./observation";
@@ -34,7 +34,7 @@ import { seatIsRelaunchable } from "./complete";
 import { restartRowMatches } from "../team/up-last";
 import { appendRegistryEvent } from "../events";
 import { inputProtectionHeld } from "../input-protection";
-import { codexUpdateSkipReceipt } from "../codex-update";
+import { codexUpdateNotice, codexUpdateSkipReceipt, launchedCodexHome } from "../codex-update";
 import { rootForCwd } from "./records";
 import { enrolledTeams } from "../index-home";
 import { oldStoreAction, oldStoreRefusalText, teamRegistryRefusal } from "../register-authority";
@@ -45,6 +45,7 @@ import { launchPhase, launchTracked } from "./progress";
 import { tapScriptsDir, artifactBun } from "../scripts-dir";
 import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
 import { restoreSessionPath } from "./session-path";
+import { ownBunArgv } from "../own-bun";
 
 type Row = Record<string, unknown>;
 export type LaunchRecord = SessionRecord & {
@@ -81,7 +82,7 @@ export type Vessel = { server: string; session: string; window: string; pane: st
 export type Backup = { status: "backed-up"; path: string } | { status: "unavailable"; detail: string } | { status: "not-needed" };
 export type FailureEvidence = { selection: Selection; handle: string; token: string; instance: string | null;
   record: LaunchRecord; vessel: Vessel | null; backup: Backup; reason: string; output_path: string;
-  retainStartupDialog?: boolean };
+  retainStartupDialog?: boolean; windowAddress?: string };
 export type TransactionResult = { code: number; record: LaunchRecord; adopted_shell: boolean; backup: Backup };
 export class LaunchInterrupted extends Error {
   constructor(readonly exitCode: number) { super("launcher_interrupted: launch cancelled"); }
@@ -912,7 +913,7 @@ async function reportRespawnResidue(evidence: FailureEvidence, error: Error, rol
   } catch { /* unavailable measurements remain unknown */ }
   const cleanup = rollback ? "owned rollback completed" : "retained or unknown; ownership/cleanup unverified";
   startupTrace("respawn_failure", {session: evidence.record.name, phase: "respawn_pane", cleanup, load1m: load, pty_devices: ptys, pty_limit: limit});
-  process.stderr.write(`tap session: respawn failed: ${error.message}; session/window=${evidence.record.name}:0 (${cleanup}); registry row ${evidence.handle}=${rowState} at ${evidence.selection.registryLocation}; inspect: tap session list\n`);
+  process.stderr.write(`tap session: respawn failed: ${error.message}; session/window=${evidence.windowAddress ?? `${evidence.record.name}:unknown`} (${cleanup}); registry row ${evidence.handle}=${rowState} at ${evidence.selection.registryLocation}; inspect: tap session list\n`);
   if (!rollback) process.stderr.write(`tap session: cleanup unavailable without current claim and vessel ownership; inspect original root ${evidence.selection.rootReal}; next: tap doctor\n`);
   process.stderr.write(`tap session: load1m=${load} cores=${cpus().length || "unknown"} pty-devices=${ptys} pty-limit=${limit}\n`);
 }
@@ -1013,7 +1014,7 @@ async function harnessStartFailure(evidence: FailureEvidence, reason: string | n
   const stalled = reason === START_STALLED;
   let heading: string, hint = "";
   if (reason && !stalled) heading = `harness did not start for ${record.name}: ${reason}`;
-  else if (!facts) return new TransactionError(`harness did not start for ${record.name}`);
+  else if (!facts) heading = `harness did not start for ${record.name}`;
   else if (facts.dead) heading = `harness did not start for ${record.name}: ${record.harness} exited during startup`;
   else {
     const loginShell = resolveLoginShell(env);
@@ -1025,6 +1026,8 @@ async function harnessStartFailure(evidence: FailureEvidence, reason: string | n
     heading = `harness did not start for ${record.name}: ${text.cause}`;
     hint = text.hint;
   }
+  const substitution = loginShellSubstitution(env);
+  if (substitution) heading += `\n${substitution}`;
   if (tail === null) return new TransactionError(hint ? `${heading}\n${hint}` : heading);
   const shown = tail.length ? [`pane ${facts!.pane_id} shows:`, ...tail.map(line => `  ${line}`)] : [`pane ${facts!.pane_id} shows no output`];
   return new TransactionError([heading, ...shown, ...(hint ? [hint] : [])].join("\n"));
@@ -1143,7 +1146,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     const helper = join(scripts, "run-shell-logged.sh");
     const log = join(env.TAP_INDEX_HOME || join(env.HOME || "", ".tap"), "session-helper.log");
     const callbackEnv = ["TAP_INDEX_HOME", "TAP_HOME"].filter(key => env[key]).map(key => `${key}=${env[key]}`);
-    const callback = ["/usr/bin/env", ...callbackEnv, `TMUX=${vessel.socket},0,0`, request.worker_bun!,
+    const callback = ["/usr/bin/env", ...callbackEnv, `TMUX=${vessel.socket},0,0`, ...ownBunArgv(request.worker_bun!),
       resolve(scripts, "../../../runtime/bun/src/launcher/worker.ts"), "failure", jsonDumpBytes(evidence, { item: ",", key: ":" })];
     const logged = (argv: string[]) => ["bash", helper, log, ...argv].map(shlexQuote).join(" ") + " </dev/null >/dev/null 2>&1 || true";
     const configure = async (args: string[]) => {
@@ -1155,6 +1158,8 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     await configure(["set-hook", "-p", "-t", vessel.pane, "pane-died", `run-shell -b -t ${shlexQuote(vessel.pane)} ${shlexQuote(logged(callback))}`]);
     const placeholder = await paneFacts(vessel.pane, env, signal);
     if (!placeholder) throw new TransactionError(`could not inspect placeholder pane for ${record.name}`);
+    // Preserve the observed index before rollback can remove the pane.
+    evidence.windowAddress = placeholder.pane.slice(0, placeholder.pane.lastIndexOf("."));
     await bindTransaction(evidence, placeholder, false, env, signal);
     // Snapshot the bind baseline while the row still shows only the
     // placeholder bind — before the respawn can race a fast hook.
@@ -1214,6 +1219,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
         }
       },
     }) : null;
+    let codexScreen: string | null = null;
     const readySignal = harnessReadySignal(evidence, codexObserved, bindBaseline, env, signal);
     const loginShell = resolveLoginShell(env);
     const startWatch = startStallWatch(record.harness, facts => paneTailLines(facts, env, signal),
@@ -1253,6 +1259,7 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
       blocker: codexObserved
       ? async facts => {
         const { screen, updateSkipFailure } = await codexObserved(facts);
+        codexScreen = screen ?? codexScreen;
         return updateSkipFailure ?? startupBlockerFromScreen(facts, record.harness, screen === null ? null : stripPaneSgr(screen));
       } : undefined });
     if (result.reason?.startsWith("codex-hook-trust:") || result.reason?.startsWith("codex-update-skip:")) {
@@ -1273,6 +1280,11 @@ async function runCreated(evidence: FailureEvidence, invocation: Invocation, req
     await configure(["set-hook", "-p", "-u", "-t", vessel.pane, "pane-died"]);
     launchPhase(`Marking ${evidence.handle} ready on team ${evidence.selection.team}`, true);
     await bindTransaction(evidence, result.facts, true, env, signal);
+    // A dismissed menu already receipted both versions; otherwise repeat what Codex's cache knows.
+    if (record.harness === "codex" && !record.ensure_receipts?.some(line => line.startsWith("dismissed Codex update prompt"))) {
+      const notice = codexUpdateNotice(codexScreen, launchedCodexHome(invocation, env));
+      if (notice) (record.ensure_receipts ??= []).push(notice);
+    }
     // An attach lands on the revived seat, not on whichever crew window was current.
     // Best effort: the seat is already bound, so a lost focus is no rollback.
     if (intoWindow) await ownedEffect(vessel, ["select-window", "-t", vessel.window], env, signal).catch(() => false);

@@ -1,7 +1,7 @@
 ---
 name: self
-description: "When invoking compact, rebrief, goal, loop, or clear on this seat, inject a supported harness control into its pane."
-argument-hint: 'compact|rebrief|clear [--notify <seat>] [--model <name>] [--effort <level>]|goal|loop'
+description: "When invoking compact, rebrief, goal, loop, or clear on this seat, inject a supported harness control into its pane. Free text after compact or rebrief guides the summary and tells the resumed seat where to pick up; it is not work to do first."
+argument-hint: 'compact|rebrief|clear [--notify <seat>] [--model <name>] [--effort <level>] [<what to keep, and what to do after the reset>]|goal|loop'
 allowed-tools: 'Bash, Read, Grep, Glob, Write'
 role: maker
 ---
@@ -12,6 +12,31 @@ The operator supplies intent. You prepare the text and any required brief;
 `tap self` validates mechanics and submits the supported harness control.
 Goal and loop set or strengthen only: no goal clearing/pausing, loop canceling,
 slash injection or weakening language. Never bypass a refusal with raw keystrokes.
+
+## Text after compact or rebrief is for the seat that resumes
+
+`/tap:self compact` and `/tap:self rebrief` accept free text after the verb and
+flags. It does two jobs: it says what the summary and the brief must keep, and
+it tells the resumed seat where to pick up. It is addressed to the seat as it
+will be **after** the reset. It is not a request to you now.
+
+- Do none of that work in this turn: no edits, no commits, no pushes, no
+  messages, no answers acted on, however small or obviously right they look.
+- In this turn you write the brief, run the `tap self` command and end the
+  turn. Nothing else.
+- Put the text verbatim under **Operator words**, and turn its instructions
+  into **Next step** (ordered, with each answer attached to the question it
+  answers), so the resumed seat can act without this conversation.
+- `--model` or `--effort`, or the operator naming the resume model in words,
+  makes this stricter still: the operator chose which model does that work,
+  and it is not the one reading this.
+
+Example. The operator types
+`/tap:self compact --model opus@high` followed by answers to three open
+questions and `Then upon resume, resolve all bot feedback and land the PR.`
+Right: the brief quotes the answers and lists "apply the three answers, resolve
+bot feedback, land the PR" as Next step; you run the compact and stop. Wrong:
+applying the answers, or touching the PR, before the compact.
 
 ## Choose what survives
 
@@ -62,8 +87,9 @@ The brief contains these sections; use explicit `none` for empty state:
   here. The resumed seat reapplies them as guidance without replaying their
   initialization.
 - **Operator words** — text the operator wrote after the verb and flags (for
-  example `rebrief when you come back, rerun the gate`) is an instruction, not
-  plumbing. Carry it verbatim, labeled as the operator's words, and let it shape
+  example `rebrief when you come back, rerun the gate`) is an instruction to
+  the resumed seat, not plumbing and not work for this turn (see the section
+  above). Carry it verbatim, labeled as the operator's words, and let it shape
   Keep scope, emphasis and Next step. If it conflicts with a live hold or
   obligation, say so in the brief; never silently drop either.
 - **Keep scope** — the requester's selected work and boundaries. Narrowing scope
@@ -91,7 +117,8 @@ scratch path, not `/tmp`, `.tap` or a bus directory; the runtime owns the durabl
 copy. A separate nonempty charter may be passed with `--charter FILE` on rebrief.
 
 For compact, compose additive focus that names every live thread and concrete
-anchors the generic summarizer may lose. Do not narrow it with “only on”,
+anchors the generic summarizer may lose, including what the operator's text
+asked to keep and the first action it asked for after the reset. Do not narrow it with “only on”,
 “ignore”, “discard” or similar language. Keep it within 2,000 characters;
 the detail belongs in the brief.
 
@@ -115,6 +142,24 @@ on the one it needs:
 ```bash
 tap self compact --handoff /ABS/tmp/seat/handoff-UTC.md --model fable --effort medium -- 'Preserve: ...'
 ```
+
+`--model NAME@LEVEL` (the preset spelling, such as `opus@high`) is the same as
+`--model NAME --effort LEVEL`; pass it as the operator wrote it.
+
+The operator may name the resume model in words instead of a flag: "model is
+fable for resume", "come back on opus", "TAP will switch to fable". Before the
+reset is armed, each of those means one thing: put `--model` (and `--effort`
+if named) on the command. TAP switches the model only when the flag is on the
+command it runs; nothing else does. Run the reset on the model you are on now.
+The switch happens after it, so never wait to be switched first and never drop
+the flag because the operator said TAP handles it.
+
+Model and effort are fixed when the command is armed. If the operator names or
+changes one after that, the armed reset cannot be amended, and saying "I'll
+pass it" changes nothing. The reset still applies exactly what was on the
+command when it was armed: the model and effort passed then, or the seat's
+current ones if none were. Tell the operator at once which that is, so they
+can run `/model` themselves after the resume.
 
 Each switch is proven from the transcript. An unproven switch never withholds
 the resume; the note then opens with a warning. Tell the operator when you see

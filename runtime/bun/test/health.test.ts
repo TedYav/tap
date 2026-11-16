@@ -613,30 +613,29 @@ esac
   });
 
   test("both entry routes pin the Bun transpiler cache off for health (r4046473763)", () => {
-    // Entry wiring is the behavior: the zero-write promise covers Bun startup
-    // cache, so both doors must export the disable before any Bun work.
-    expect(readFileSync(shippedEntry, "utf8")).toContain("provenance|who|health|doctor|show|admin|models|completion)");
-    // The root scripts/tap.sh door is a shim into bin/tap, so it inherits that pin.
-    expect(readFileSync(join(root, "scripts/tap.sh"), "utf8")).toMatch(/\nexec "[^\n]*\/bin\/tap" "\$@"\n$/);
-    // Behavioral half through the direct Bash door: with a cache root staged,
-    // health must run without materializing it.
-    const fx = fixture(DEAD_TMUX);
-    writeRegistry(fx.worktree, PANE_SEATS);
-    const runEnv = env(fx);
-    const cacheRoot = join(fx.dir, "bun-cache");
-    runEnv.BUN_RUNTIME_TRANSPILER_CACHE_PATH = cacheRoot;
-    // Skip the dispatcher's own onboarding preflight (a separate, unpinned Bun
-    // call before any verb): this isolates the health-door pin, which is what
-    // the smoke's zero-write instrument measures too.
-    runEnv.TAP_ONBOARDING_CHECKED = "1";
-    const run = spawnSync("bash", [join(root, "scripts/tap.sh"), "health", "--json"], {
-      cwd: fx.worktree,
-      env: runEnv,
-      encoding: "utf8",
-    });
-    expect(run.status, run.stderr).toBe(2);
-    JSON.parse(run.stdout) as { status: string };
-    expect(existsSync(cacheRoot)).toBe(false);
+    // Observe the pin before Bun starts, then verify real health leaves no cache.
+    // This remains valid when the wrapper changes how it selects read-only verbs.
+    for (const entry of [shippedEntry, join(root, "scripts/tap.sh")]) {
+      const fx = fixture(DEAD_TMUX);
+      writeRegistry(fx.worktree, PANE_SEATS);
+      const runEnv = env(fx);
+      const cacheRoot = join(fx.dir, "bun-cache"), calls = join(fx.dir, "bun-calls");
+      const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+      writeFileSync(join(fx.bin, "bun"), `#!/bin/sh
+printf '%s\\n' "$BUN_RUNTIME_TRANSPILER_CACHE_PATH" >> ${quote(calls)}
+exec ${quote(process.execPath)} "$@"
+`, { mode: 0o755 });
+      runEnv.BUN_RUNTIME_TRANSPILER_CACHE_PATH = cacheRoot;
+      const run = spawnSync("bash", [entry, "health", "--json"], {
+        cwd: fx.worktree, env: runEnv, encoding: "utf8",
+      });
+      expect(run.status, run.stderr).toBe(2);
+      expect(JSON.parse(run.stdout).status).toBeDefined();
+      const pins = readFileSync(calls, "utf8").trim().split("\n");
+      expect(pins.length).toBeGreaterThan(0);
+      expect(pins.every(pin => pin === "0"), `${entry}: ${pins.join(", ")}`).toBe(true);
+      expect(existsSync(cacheRoot)).toBe(false);
+    }
   });
 
   test("unsettled payloads enumerate lexically regardless of mtime order (r4046473768)", () => {

@@ -174,8 +174,8 @@ the first observed answer, retaining any preference already supplied.
 
 Use `tap presets` for saved recipes and `tap team` for who is seated. A bare
 `tap launch <harness> [name] --model <id> --effort <level>` launches a model your account supports without a preset.
-Use `tap help launch` for legal effort levels; OpenCode and Cursor accept model
-only. Keep service/context/environment qualifications attached to the launch choice.
+Use `tap help launch` for legal effort levels; Cursor accepts model only, and
+OpenCode's `--effort` selects a model variant. Keep service/context/environment qualifications attached to the launch choice.
 
 Presets save a combination you use often. The configuration skill can save a model and
 effort the human already knows they can use. A preset name must differ from a

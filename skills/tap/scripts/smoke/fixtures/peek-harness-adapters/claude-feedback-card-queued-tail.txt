@@ -1,0 +1,45 @@
+
+  Ran 1 shell command 
+
+⏺ Now the live end-to-end run of the dismiss path through the real courier. It needs a fresh card, so I'm queueing
+  fixture draft 3, which you can discard.
+
+  Ran 2 shell commands 
+
+⏺ SendFeedback(TAP fixture capture draft 3: safe to discard)
+
+⏺ that PR  (head 14404dca9) is open with the dismiss design, but it isn't merge-ready yet: CI, peer-reviewer1's review
+  and the local focused checks are all still pending.
+
+  What it does:
+  - A composer the card hides now holds in every reader.
+  - Under injection.feedback_card=dismiss, the default, the courier sends one Escape per card, on its own one-shot
+    license, and then reads the revealed composer the normal way.
+  - Under hold, it sends no key and the message waits with the usual notice.
+
+  Why Escape: a live probe on 2.1.325 chose it. Escape over text changes no bytes. 0 types a byte.
+
+  The draft is kept: after dismissal it stays in /feedback and the footer still counts it.
+
+  Tests: peer-reviewer1's legacy capture is now a test. Under dismiss it gets exactly one Escape and then holds on the
+  revealed text; under hold it gets no key.
+
+  When I go idle, a background script will shrink this pane to 71x22 and send a real note through the branch's bin/tap,
+  which exercises the real dismissal. That needed a third fixture draft, "TAP fixture capture draft 3: safe to
+  discard", which you can discard from /feedback.
+
+✻ Crunched for 16m 56s · done 11:52 PM · 2 shells still running
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✻ Bug report drafted: TAP fixture capture draft 3: safe to discard                                           │
+│ │ - What happened: This draft exists so a TAP seat can check, live on Claude Code 2.1.325, that its courier  │
+│ │ dismisses the feedback-draft card with one Escape …                                                        │
+│ 1 to review · 2 to send · 0 to dismiss · +1 more queued                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────── tap/seat-alpha ─
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 xhigh | 72%↯ 651k/900k ●58m ███████░░░ | 📁 tap | 🌿 main
+  ⏵⏵ bypass permissions on · 2 shells · 2 feedback drafts

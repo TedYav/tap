@@ -4,7 +4,7 @@ TAP = TAP Agent Protocol. The goal: **stupidly easy cross-agent orchestration us
 
 ## The transport is intentionally dumb
 
-One sharp knife in a sheath: TAP moves bytes and wakes a pane. It interprets nothing. No protocol state, no `switch (kind)`, no leases, heartbeats, timers, watchdogs, or daemons in the transport layer — ever. Semantics (convergence, review verdicts, goals, phases) live in skills *above* the transport. If a feature idea adds interpretation to the transport, it belongs one layer up. Core contract: `skills/tap/scripts/CONTRACT.md`; detailed authority: `skills/tap/protocol/`.
+One sharp knife in a sheath: TAP moves bytes and wakes a pane. It does not act on what a message says. Semantics (convergence, review verdicts, goals, phases) live in skills *above* the transport. If a feature idea adds interpretation to the transport, it belongs one layer up. Timers, leases and background processes do exist, in separately named parts: the redelivery waiter that delivers parked mail once its recipient is ready, `tap watch` and the goalie. They decide when to try again or whom to wake, never what a message means. Core contract: `skills/tap/scripts/CONTRACT.md`; detailed authority: `skills/tap/protocol/`.
 
 ## Push, not poll
 
@@ -12,11 +12,11 @@ The sentinel wake model is the whole magic: after sending, continue any useful w
 
 ## Observable state is the only truth
 
-Every liveness question must be answerable from files on the bus: `payloads/`, `receipts/*.done`, `registry.json`, `tap outstanding`, `tap doctor`. No component may claim knowledge that isn't observable. Corollary: fail loud. A guard rejects the unexpected; it never silently copes. A degraded outcome is human-visible, never silent success.
+Every liveness question must be answerable from files on the bus: `payloads/`, `receipts/*.done`, `.tap/team-registry.json`, `tap outstanding`, `tap doctor`. No component may claim knowledge that isn't observable. Corollary: fail loud. A guard rejects the unexpected; it never silently copes. A degraded outcome is human-visible, never silent success.
 
 ## Heterogeneity is the point
 
-Agents in different harnesses have different strengths. If it runs in a tmux pane and accepts typed input, it can join the team — Claude, Codex, OpenCode, Cursor, Gemini, whatever ships next quarter. Adding a harness must stay trivially easy: prompt-glyph detection and a submit/verify shape, not an SDK integration. No harness is privileged in the protocol.
+Agents in different harnesses have different strengths, so a team should be able to mix them. TAP supports six harnesses today: Claude Code, Codex, OpenCode, Cursor, Antigravity (`agy`) and Hermes. The list is closed in the code: launch and delivery refuse any other program, so a new harness is a source change (`tap help skill extend` maps it). The aim is to keep that change small: prompt detection and a submit/verify shape, not an SDK integration. The wire format is the same for every harness, but support is uneven: Claude Code and Codex alone get the full TAP plugin, conversation fork and the resume picker.
 
 This cuts deeper than peer diversity: **the same model will appear through different harnesses as compute economics shift** (API resellers, cheap-compute deals), so even the team-lead role must be harness-portable. No documented flow — driving, reviewing, onboarding — may depend on a capability only one harness has. Where a lead needs harness-specific operational knowledge, that knowledge belongs in written docs the agent can read, not in ambient familiarity with one harness.
 
@@ -43,4 +43,4 @@ Each layer only trusts the observable state of the layer below. The supervisor w
 
 ## Stupidly easy, for humans and agents
 
-The human experience is: open panes, `tap register`, ask the driver in plain English. The agent experience is: one command surface (`tap <verb>`), a one-line sentinel, three obligations (read the payload, reply, settle). A capable model should grok TAP from one screenful of advisory text and immediately orchestrate a heterogeneous swarm with it. Every ergonomic footgun (fence requirements, second-Enter quirks, cwd-dependent paths) is a bug against this principle, even when the underlying contract is sound.
+The human experience is: `tap init`, `tap launch` each agent, ask the driver in plain English. The agent experience is: one command surface (`tap <verb>`), a one-line sentinel, three obligations (read the payload, reply, settle). A capable model should grok TAP from one screenful of advisory text and immediately orchestrate a heterogeneous swarm with it. Every ergonomic footgun (fence requirements, second-Enter quirks, cwd-dependent paths) is a bug against this principle, even when the underlying contract is sound.

@@ -34,6 +34,7 @@ import {
   snapshotLines,
 } from "./goalie-lease";
 import { tapScriptsDir } from "./scripts-dir";
+import { ownBunArgv } from "./own-bun";
 
 /**
  * The production doors: native seat state and bus activity for the reads,
@@ -353,7 +354,7 @@ export function goalieTick(input: GoalieTickInput): { rc: number; stdout: string
       return;
     }
     const args = ["-f", tmp, "--from", handle, "--urgent"];
-    const argv = [process.execPath, escalateLeaf, ...args];
+    const argv = [...ownBunArgv(process.execPath), escalateLeaf, ...args];
     fx.push(["escalate", ...args]);
     let notified = false;
     try { notified = doors.escalate(argv, {}).status === 0; } catch { /* best-effort */ }
@@ -802,7 +803,7 @@ export function goalieTick(input: GoalieTickInput): { rc: number; stdout: string
         continue;
       }
       const args = ["-m", fallback, "--from", lead];
-      const argv = [process.execPath, escalateLeaf, ...args];
+      const argv = [...ownBunArgv(process.execPath), escalateLeaf, ...args];
       fx.push(["escalate", ...args]);
       try {
         if (doors.escalate(argv, {}).status !== 0) stderrOut.push(`tap goalie: human notification unconfirmed for recorded armer '${lead}'\n`);

@@ -1,9 +1,9 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeInputBackup } from "../src/pane/draft";
-import { recoverDraft } from "../src/verbs/draft";
+import { copyDraft, recoverDraft, type DraftCopy } from "../src/verbs/draft";
 
 const dir = mkdtempSync(join(tmpdir(), "draft-verb-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -13,7 +13,7 @@ for (const [id, handle, created, body] of [["old", "alice", "20260101", "  old\n
 function io(tty = false, answer = "") {
   const result = { stdout: "", stderr: "", copied: "", prompts: 0 };
   return { result, tty, out: (s: string) => { result.stdout += s; }, err: (s: string) => { result.stderr += s; },
-    ask: async () => { result.prompts++; return answer; }, copy: (s: string) => { result.copied = s; return true; } };
+    ask: async () => { result.prompts++; return answer; }, copy: (s: string): DraftCopy => { result.copied = s; return { tool: "pbcopy", ok: true }; } };
 }
 test("TTY lists team drafts with previews and copies selected bytes", async () => {
   const a = io(true, "3"); await recoverDraft(["list"], dir, a);
@@ -106,8 +106,74 @@ test("bare draft preserves incomplete snapshot guard and clipboard fallback", as
   expect(a.result.copied).toBe("");
   expect(a.result.stdout).toContain("[Image #1]");
   const b = io();
-  b.copy = () => false;
+  b.copy = () => ({ tool: "osc52", ok: false });
   expect(await recoverDraft([], dir, b)).toBe(0);
   expect(b.result.stdout).toBe("other seat draft");
-  expect(b.result.stderr).toContain("clipboard unavailable");
+  expect(b.result.stderr).toBe("tap draft: clipboard unavailable (no pbcopy, wl-copy or xclip for this session and no terminal for OSC 52); printed draft only\n");
+});
+
+test("the receipt names the tool that took the copy, a tool that failed, and an unconfirmable OSC 52 send", async () => {
+  const named = io(true);
+  named.copy = () => ({ tool: "xclip", ok: true });
+  expect(await recoverDraft(["other"], dir, named)).toBe(0);
+  expect(named.result.stderr).toBe("tap draft: copied to clipboard with xclip\n");
+  const failed = io(true);
+  failed.copy = () => ({ tool: "wl-copy", ok: false });
+  expect(await recoverDraft(["other"], dir, failed)).toBe(0);
+  expect(failed.result.stderr).toBe("tap draft: clipboard unavailable (wl-copy failed); printed draft only\n");
+  expect(failed.result.stdout).toBe("other seat draft");
+  const sent = io(true);
+  sent.copy = () => ({ tool: "osc52", ok: true });
+  expect(await recoverDraft(["other"], dir, sent)).toBe(0);
+  expect(sent.result.stderr).toBe("tap draft: sent to the terminal clipboard with OSC 52 (no pbcopy, wl-copy or xclip for this session)\n");
+});
+
+/** A PATH directory holding empty executables under the given names. */
+function toolDir(...names: string[]): string {
+  const bin = mkdtempSync(join(dir, "tools-"));
+  mkdirSync(bin, { recursive: true });
+  for (const name of names) { writeFileSync(join(bin, name), "#!/bin/sh\n"); chmodSync(join(bin, name), 0o755); }
+  return bin;
+}
+function recorder() {
+  const calls: { argv: string[]; text: string }[] = [], sequences: string[] = [];
+  return { calls, sequences, run: (argv: string[], text: string) => { calls.push({ argv, text }); return true; }, terminal: (sequence: string) => { sequences.push(sequence); } };
+}
+const OSC52_HELLO = `\x1b]52;c;${Buffer.from("héllo").toString("base64")}\x07`;
+
+test("off macOS the copy goes to the session's display tool, else to the terminal as OSC 52", () => {
+  if (process.platform === "darwin") {
+    console.log("SMOKE-SKIP: the display-tool and OSC 52 copy paths are chosen off macOS only; the pbcopy test below covers this platform");
+    return;
+  }
+  const both = toolDir("wl-copy", "xclip");
+  const wayland = recorder();
+  expect(copyDraft("héllo", { PATH: both, WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" }, wayland.run, wayland.terminal)).toEqual({ tool: "wl-copy", ok: true });
+  expect(wayland.calls).toEqual([{ argv: ["wl-copy"], text: "héllo" }]);
+  // A forwarded X display in an SSH session is still this command's clipboard.
+  const x11 = recorder();
+  expect(copyDraft("héllo", { PATH: both, DISPLAY: "localhost:10.0", SSH_CONNECTION: "192.0.2.1 50000 192.0.2.2 22" }, x11.run, x11.terminal)).toEqual({ tool: "xclip", ok: true });
+  expect(x11.calls).toEqual([{ argv: ["xclip", "-in", "-selection", "clipboard"], text: "héllo" }]);
+  expect(x11.sequences).toEqual([]);
+  // A tool without its display is not a clipboard: the terminal takes the copy.
+  const headless = recorder();
+  expect(copyDraft("héllo", { PATH: both }, headless.run, headless.terminal)).toEqual({ tool: "osc52", ok: true });
+  expect(headless.calls).toEqual([]);
+  expect(headless.sequences).toEqual([OSC52_HELLO]);
+  const piped = recorder();
+  expect(copyDraft("héllo", { PATH: toolDir() }, piped.run, null)).toEqual({ tool: "osc52", ok: false });
+  expect(piped.calls).toEqual([]);
+});
+
+test("on macOS the copy stays with pbcopy, in an SSH session too", () => {
+  if (process.platform !== "darwin") {
+    console.log("SMOKE-SKIP: pbcopy is the copy tool on macOS only; the display-tool and OSC 52 test above covers this platform");
+    return;
+  }
+  for (const env of [{ PATH: "/usr/bin" }, { PATH: "/usr/bin", SSH_CONNECTION: "192.0.2.1 50000 192.0.2.2 22" }]) {
+    const mac = recorder();
+    expect(copyDraft("héllo", env, mac.run, mac.terminal)).toEqual({ tool: "pbcopy", ok: true });
+    expect(mac.calls).toEqual([{ argv: ["pbcopy"], text: "héllo" }]);
+    expect(mac.sequences).toEqual([]);
+  }
 });

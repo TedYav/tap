@@ -45,6 +45,7 @@ import { atLeast, BUN_FLOOR } from "./watch-run";
 import { lockRoot } from "./panelock";
 import { artifactBun, runtimeModule } from "./scripts-dir";
 import { inWorkdir, stableSpawnCwd } from "./tmux-spawn-cwd";
+import { ownBunArgv } from "./own-bun";
 
 export const WATCHER_COMMAND = "watch-run.ts run";
 
@@ -193,7 +194,7 @@ export function sq(word: string): string { return `'${word.replace(/'/g, "'\\''"
  * (tap-a5j6t). The armer's resolved lock root rides along explicitly.
  */
 export function sidecarCommand(bus: string, runtimeExecutable: string | undefined, env: NodeJS.ProcessEnv = process.env): string {
-  return `TAP_LOCK_DIR=${sq(lockRoot(env))} TAP_HOME=${sq(bus)} exec ${sq(runtimeExecutable ?? artifactBun() ?? process.execPath)} ${sq(runtimeModule("src/watch-run.ts"))} run`;
+  return `TAP_LOCK_DIR=${sq(lockRoot(env))} TAP_HOME=${sq(bus)} exec ${ownBunArgv(runtimeExecutable ?? artifactBun() ?? process.execPath).map(sq).join(" ")} ${sq(runtimeModule("src/watch-run.ts"))} run`;
 }
 
 /**

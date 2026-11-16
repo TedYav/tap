@@ -7,6 +7,7 @@ import { bunBinary } from "./courier-argv";
 import { childBusEnv } from "./panelock";
 import { runtimeModule } from "./scripts-dir";
 import { maintenanceReport } from "./bus-archive-index";
+import { ownBunFlags } from "./own-bun";
 
 export const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const MAINTENANCE_RETRY_MS = 60 * 60 * 1000;
@@ -58,7 +59,7 @@ export function maybeStartBusMaintenance(home: string, env = process.env, oncePe
 }
 
 function spawnMaintenance(home: string, env: NodeJS.ProcessEnv): void {
-  const child = spawn(bunBinary(), [runtimeModule("src/bus-maintenance.ts"), home], {
+  const child = spawn(bunBinary(), [...ownBunFlags(bunBinary()), runtimeModule("src/bus-maintenance.ts"), home], {
       env: { ...childBusEnv(home, env), TAP_BUS_MAINTENANCE_WORKER: "1" },
       detached: true, stdio: "ignore",
   });

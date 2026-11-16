@@ -122,7 +122,7 @@ export function lockParkBody(id: string, target: string, detail: string): string
  * the incumbent's adapter printed that body with `console.log`, and the extra
  * newline is part of the bytes every live lock-park notice carries.
  */
-/** The feedback-draft notice's first line, also its deduplication witness. */
+/** The feedback-draft notice's first line, also its deduplication witness; unchanged since tap-89a57 so held rows keep it. */
 export const FEEDBACK_DRAFT_HELD = (id: string, target: string): string =>
   `DELIVERY HELD: ${id} to ${target} is blocked by the Claude feedback-draft panel.`;
 
@@ -140,8 +140,8 @@ export function noticeBody(mode: NoticeMode, id: string, target: string, canon: 
     + `Inspect the recipient's composer and exit shell mode to restore chat delivery.\n`
     + `Inspect this delivery with tap show ${id}.\n`;
   if (mode === "feedback-draft") return `${FEEDBACK_DRAFT_HELD(id, target)}\n\n`
-    + `The payload remains queued. The courier will not send, review, or dismiss the draft, and types nothing into that pane.\n`
-    + `A human, or ${target}'s leader, dismisses the panel (read it, then press 0 in ${target}'s pane); delivery resumes on its own.\n`
+    + `The card hides ${target}'s composer, so the courier types nothing into that pane. It sends at most one Escape per card, and only under injection.feedback_card=dismiss.\n`
+    + `A human, or ${target}'s leader, dismisses the card (Esc on an empty composer) or submits or clears any text under it; delivery resumes on its own.\n`
     + `Inspect this delivery with tap show ${id}.\n`;
   if (mode === "stuck-readiness") return `${STUCK_READINESS_HELD(id, target)}\n\n`
     + `${detail}\n`

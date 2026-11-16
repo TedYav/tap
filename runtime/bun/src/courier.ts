@@ -34,14 +34,14 @@ import { join } from "node:path";
 import type { Bus } from "./bus";
 import { stampEnvelope, stampEnvelopeBytes, validateEnvelope, type Routing } from "./envelope";
 import { atomicWrite, jsonObj, stagingPath } from "./fsatomic";
-import { renderSentinel } from "./sentinel";
+import { assertSentinelWire, injectSentinel, InvalidSentinelWire, renderSentinel } from "./sentinel";
 import { acquireObligationLock, acquirePaneLock } from "./panelock";
 import { nativeClaudeCommand, observeProcessHarness, readProcessTable } from "./observe";
-import { APPROVAL_PROMPT_REASON, CLAUDE_FEEDBACK_DRAFT_REASON, CLAUDE_SCROLLED_DRAFT_REASON, observeCopyMode, observeInputId, paneState, claudeFeedbackOverlay, isPasteCollapse, type CopyModeObservation, type InputObservation, type PaneBand } from "./pane-state";
+import { APPROVAL_PROMPT_REASON, CLAUDE_FEEDBACK_DRAFT_REASON, CLAUDE_SCROLLED_DRAFT_REASON, observeCopyMode, observeInputId, paneState, claudeFeedbackCard, isPasteCollapse, type CopyModeObservation, type InputObservation, type PaneBand } from "./pane-state";
 import { repaintPane, type RepaintGate, type RepaintResult } from "./pane/repaint";
 import { overprintRepaintGate, overprintRetryDue, readOverprintRecord, retireOverprintRecord } from "./overprint-marker";
 import { approvalPrompt, codexHookTrust, CODEX_HOOK_TRUST_REASON } from "./agent-state";
-import { queuePrefix } from "./stuck-sentinel";
+import { afterQueuePrefix } from "./stuck-sentinel";
 import { bootId, bootIdsMatch, capturePane, injectText, inputHasId, normalizeInputMatch, observePaneResult, pressEnter, pressKeys, ServerUnresponsive, settle, tmuxReadOnly, type PaneObservation } from "./tmux";
 import { controlChunkLanded, controlPayloadChunks, controlTailReady } from "./slices/control-payload";
 import { captureInputFrame, pendingInputRegionText, pendingInputText, realPaneIo, type PendingInput } from "./pane/reader";
@@ -49,12 +49,15 @@ import { composerHoldsExactly, observeSubmitFrame, agyPermissionOverlay, agyRepr
 import { agentAtRest, detectAgentState, type AgentState } from "./agent-state";
 import { stagedIdleSubmitEligible } from "./submit-phase";
 import { beginIdleSubmit } from "./delivery-attempt";
-import { closedSentinelInput, sentinelShapedInput } from "./sentinel-tail";
+import { anchoredSentinelInput, matchSentinelSuffix, typedWireTail } from "./sentinel-tail";
+import { forgetTypedWires, recordTypedWire, submittedWire, typedWires } from "./typed-wire";
+import { parseNudgeWire } from "./nudge-wire";
 import { CLOBBER_BLINK, flashPaneLocked, notifyDraftBackedUp } from "./spool-park-report";
 import { emitWaitCue } from "./wait-cues";
 import type { ClobberBackupReq, ClobberVerdict } from "./deliver";
 import { updateInputProtection, inputProtectionHeld, protectionUntil, protectionDetail, claimStartClear, completeStartClear, composerControlWord, type InputProtection } from "./input-protection";
-import { injectionBehavior } from "./injection-behavior";
+import { feedbackCardBehaviorOrHold, injectionBehavior } from "./injection-behavior";
+import { beginCardDismiss } from "./feedback-card-dismiss";
 import { hasInputText } from "./terminal-text";
 import { BLANK_DRAFT_NOTICE, inputBackupBody, inputBackupIncomplete, restorePlainDraft, INCOMPLETE_DRAFT_NOTICE } from "./input-backup";
 import { utcStamp } from "./ids";
@@ -133,6 +136,7 @@ export function writePlaced(bus: Bus, id: string): void {
 
 export type SubmitResult = (
   | { status: "injected" }
+  | { status: "invalid_wire"; errorClass: "invalid_sentinel_wire"; detail: string }
   | { status: "harness_queued" }
   /** A recovery effect was ready, but its required attempt receipt could not be admitted. */
   | { status: "attempt_evidence_unwritable"; detail: string }
@@ -734,14 +738,24 @@ function copyModePreEffect(obs: CopyModeObservation | undefined, pane: string): 
 }
 
 /**
- * A band holding a TAP sentinel, after any harness queue prefix (hermes
- * `/queue `): anchored on `[[TAP`, or the scrolled tail of one (tap-1ncs6).
- * The shared shape rule in `sentinel-tail.ts` decides by class, not identity.
+ * A band holding TAP's own text, after any harness queue prefix (hermes
+ * `/queue `): anchored on `[[TAP`, or the scrolled tail of a wire the courier
+ * recorded typing into this pane (tap-1ncs6). Everything else is a human
+ * draft; the evidence rule lives in `sentinel-tail.ts`.
  */
-export function stagedSentinel(text: string, command: string): boolean {
-  const band = text.trimStart();
-  const prefix = queuePrefix(command);
-  return sentinelShapedInput(prefix && band.startsWith(prefix) ? band.slice(prefix.length).trimStart() : band);
+export function stagedSentinel(text: string, command: string, typed: readonly { id: string; wire: string }[]): boolean {
+  const input = afterQueuePrefix(text, command);
+  return anchoredSentinelInput(input) || typedWireTail(input, typed);
+}
+
+/**
+ * The delivery wire inside what a submit types, or null for a control or a
+ * doorbell. Hermes rides its queue prefix in front of the wire; the record and
+ * the tail proof are about the wire itself, byte for byte.
+ */
+export function typedDeliveryWire(sentinel: string): string | null {
+  const wire = sentinel.startsWith("/queue ") ? sentinel.slice(7) : sentinel;
+  return isOrdinarySentinel(wire) ? wire : null;
 }
 
 function bandBlocksSubmit(band: PaneBand, pane: string): SubmitResult | null {
@@ -823,8 +837,31 @@ const NO_SPOOL_ATTEMPTS_ON: ReadonlySet<string> = new Set([
   "no recognized Antigravity composer",
 ]);
 
+/**
+ * A submit judged verified ends the typed-wire evidence for what it submitted:
+ * the wire has left the composer, so its tail there later is someone's draft.
+ * Called from the two functions that make that judgement, the staged-submit
+ * loop and the completion Enter, so every route passes through it: a
+ * delivery's own wire, an older wire submitted ahead of it, the idle Enter and
+ * `tap nudge`. An unverified result keeps the evidence.
+ */
+function endTypedEvidence(result: SubmitResult, target: string, submitted: { id?: string; text?: string }, env?: NodeJS.ProcessEnv): SubmitResult {
+  if (result.status === "injected" || result.status === "harness_queued") forgetTypedWires(target, submittedWire(submitted), env);
+  return result;
+}
+
 /** One final key in this submit attempt, never a new delivery or a retype. */
 export function completionEnter(
+  pane: string, sentinel: string, result: SubmitResult,
+  facts: { textAttempted: boolean; pretypeDraft: boolean },
+  bound: BoundRecipient | undefined, fx: PaneEffects, authority: SubmitAuthority | undefined,
+  phase: (name: SubmitPhase) => void, nextOrdinal: () => void, entered: () => void,
+): SubmitResult {
+  return endTypedEvidence(completionEnterJudged(pane, sentinel, result, facts, bound, fx, authority, phase, nextOrdinal, entered),
+    bound?.paneId || pane, { text: typedDeliveryWire(sentinel) ?? "" }, authority?.env);
+}
+
+function completionEnterJudged(
   pane: string, sentinel: string, result: SubmitResult,
   facts: { textAttempted: boolean; pretypeDraft: boolean },
   bound: BoundRecipient | undefined, fx: PaneEffects, authority: SubmitAuthority | undefined,
@@ -889,6 +926,13 @@ export function submitVerifyLocked(
   fx: PaneEffects = REAL_EFFECTS,
   authority?: SubmitAuthority,
 ): SubmitResult {
+  const deliveryWire = authority?.typedPrefix === undefined
+    && (authority?.deliveryFacts !== undefined || sentinel.startsWith("[[TAP") || sentinel.startsWith("/queue [[TAP"));
+  if (deliveryWire) try { assertSentinelWire(sentinel.startsWith("/queue ") ? sentinel.slice(7) : sentinel); }
+  catch (error) {
+    if (!(error instanceof InvalidSentinelWire)) throw error;
+    return { status: "invalid_wire", errorClass: error.errorClass, detail: error.message };
+  }
   const attempt = authority?.attemptUuid ?? randomUUID();
   let enterCount = 0, ordinal = 0;
   let phasesRecorded = !!authority?.busHome;
@@ -916,14 +960,15 @@ export function submitVerifyLocked(
   const observed: PaneEffects = { ...fx,
     paneState: (...args) => {
       const band = fx.paneState(...args);
-      // A sentinel already in the band — anchored or its scrolled tail
-      // (tap-1ncs6) — is not a human draft; the shared shape rule decides.
+      // A sentinel already in the band — anchored, or the proven tail of a
+      // wire typed into this pane (tap-1ncs6) — is not a human draft.
       if (!facts.textAttempted && band.state === "busy" && !("queued" in band && band.queued)
-        && !stagedSentinel(band.text, args[2])) facts.pretypeDraft = true;
+        && !stagedSentinel(band.text, args[2], typedWires(args[0],
+          { epoch: bound?.serverEpoch ?? "", bus: authority?.busHome ?? "" }, authority?.env))) facts.pretypeDraft = true;
       return band;
     },
     injectText: (...args) => {
-      const accepted = fx.injectText(...args);
+      const accepted = !deliveryWire ? fx.injectText(...args) : injectSentinel(fx.injectText, ...args);
       facts.textAttempted = accepted === true;
       return accepted;
     },
@@ -970,6 +1015,12 @@ export interface StagedContext {
    * (tap-ho6pk).
    */
   initialBusy?: boolean;
+  /**
+   * This submit pasted its wire onto a composer read positively empty just
+   * before the paste. Only then may a Claude feedback card's `text` hint stand
+   * in for the hidden composer as the wire's landing evidence (tap-89a57).
+   */
+  cardWitness?: boolean;
 }
 
 export interface StagedHooks {
@@ -989,6 +1040,12 @@ export interface StagedHooks {
  * recorded recovery effect per key for nudge. Never re-types the wire.
  */
 export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expected: string, fullTextLanded: boolean,
+  hooks: StagedHooks): SubmitResult {
+  return endTypedEvidence(stagedSubmitLoop(ctx, verifiedId, expected, fullTextLanded, hooks),
+    ctx.target, { id: verifiedId, text: expected }, ctx.authority?.env);
+}
+
+function stagedSubmitLoop(ctx: StagedContext, verifiedId: string, expected: string, fullTextLanded: boolean,
   hooks: StagedHooks): SubmitResult {
   const { pane, target, bound, fx, authority, auto, urgent } = ctx;
   const { record, admit, bumpOrdinal } = hooks;
@@ -1029,9 +1086,6 @@ export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expec
       // arm, and every family without busy evidence keep today's label.
       const relabel = frame.inferred === true && ctx.initialBusy === false;
       if (frame.state === "queued") { queued = !relabel; cleared = true; break; }
-      // A feedback-draft panel that appeared after the paste refuses Enter under
-      // every authority, queue-prefix included; the wire may already be typed.
-      if (frame.held === "feedback-draft") return { status: "unverified", cause: "feedback-draft", detail: CLAUDE_FEEDBACK_DRAFT_REASON };
       // Default-deny (tap-rlebf.1): an approval prompt or trust dialog refuses
       // Enter under every authority, the queue-prefix bypass included; Enter
       // would answer it with its highlighted choice.
@@ -1040,9 +1094,16 @@ export function submitStagedLocked(ctx: StagedContext, verifiedId: string, expec
       // the wire staged; this attempt's frame then shows it gone. That is
       // acceptance, not drift (tap-csrls: delivered sends exited 5 on "empty").
       if (enters > 0 && left(frame)) { cleared = true; break; }
+      // tap-89a57: a feedback card hides the composer and its hint row reads
+      // typed text. That text is this wire only when the paste went onto a
+      // positively empty composer. The maintainer accepted the cost (2026-11-14): input a
+      // human types into the hidden composer before Enter rides with the wire.
+      // One Enter only: after it, the frame must show the wire gone.
+      const cardStaged = enters === 0 && ctx.cardWitness === true && frame.state === "unobservable" && frame.card === "text";
+      if (cardStaged && !textConfirmed) process.stderr.write(`tap: wire staged behind the Claude feedback card in '${pane}': the composer is out of view and the card reads typed text\n`);
       // The queue-prefix landing was the gate (lib.sh:11507); its glyph-less
       // band never classifies staged, so no_prompt_ok proceeds to Enter.
-      if (frame.state !== "staged" && !authority?.noPromptOk) {
+      if (frame.state !== "staged" && !cardStaged && !authority?.noPromptOk) {
         // AGY may repaint after the full wire landed but before the first
         // Enter. The existing owner can re-observe and submit that exact wire
         // in place; it must never repeat the injection or an earlier Enter.
@@ -1229,6 +1290,10 @@ function submitVerifyLockedBody(
 
   const readerCommand = (obs: PaneObservation) => bound?.harness || obs.currentCommand;
   let command = readerCommand(authorized.observation);
+  // The typed-wire evidence this submit may read or write: bound to the server
+  // generation just observed and to this courier's own bus.
+  const typedBinding = { epoch: authorized.observation.serverEpoch ?? "", bus: authority?.busHome ?? "" };
+  const typedHere = () => typedWires(target, typedBinding, authority?.env);
   // The seat's busy state at this submit's EARLIEST frame read. The staged
   // loop's own first frame can already be the queued one, whose busy is true
   // by construction, so seeding from the landing sample is what makes the
@@ -1283,6 +1348,9 @@ function submitVerifyLockedBody(
   if (band.state === "unobservable" && band.cause === "pane_dead") return {
     status: attemptAdmitted ? "unverified" : "band_busy", cause: "pane_dead", detail: band.reason,
   };
+  // An empty composer holds no stuck wire: whatever was typed here before was
+  // submitted or cleared by someone, so no earlier wire is evidence any longer.
+  if (band.state === "ready") forgetTypedWires(target, () => true, authority?.env);
   let updateSkipped = false;
   if (command === "codex" && band.state === "unobservable" && fx.captureEscaped) {
     const frame = fx.captureEscaped(target, command);
@@ -1335,13 +1403,74 @@ function submitVerifyLockedBody(
       } catch (error) { return unverified(`possible Escape effect; ${error instanceof Error ? error.message : String(error)}`); }
     }
   }
+  // tap-89a57: Claude's feedback-draft card hides the composer. Under
+  // injection.feedback_card=dismiss (the default) one Escape, under its own
+  // one-shot license per card observation, dismisses it, and the composer is
+  // then read the normal way: a draft there holds as any draft does. Escape
+  // dismisses only from an empty composer and changes no bytes when the
+  // composer holds text (live probe, Claude Code 2.1.325); 0 would type a
+  // byte. Card still up, anything unrecognized, a spent license, or the hold
+  // setting: the feedback-draft hold below. The dismissed draft stays in
+  // Claude's /feedback queue.
+  let cardDismissed = false;
+  if (familyOf(command, authority?.agentFamilies ?? new Set<string>()) === "claude" && band.state === "unobservable"
+      && band.cause === "feedback-draft" && fx.captureEscaped && fx.pressKeys
+      && feedbackCardBehaviorOrHold(authority?.env ?? process.env) === "dismiss") {
+    const observe = () => { const frame = fx.captureEscaped!(target, command); return frame.ok ? claudeFeedbackCard(frame.frame) : null; };
+    const first = observe();
+    if (first?.composer === "hidden") {
+      // Claude ignores Escape for 600 ms after the card mounts: the same card twice, 0.7 s apart.
+      fx.settle(0.7);
+      const second = observe();
+      const before = authorize(pane, bound, fx, authority);
+      if (before.status !== "ok") return before;
+      const panePid = before.observation.panePid ?? "";
+      if (second?.composer === "hidden" && second.card === first.card && panePid) {
+        const fence = paneEffectFence(authority) ?? copyModePreEffect(fx.copyMode?.(target), pane);
+        if (fence) return fence;
+        const observation = { paneId: before.observation.paneId, panePid, card: second.card };
+        if (beginCardDismiss(observation, { pane: target, id }, authority?.env ?? process.env) === "created") {
+          // The mint can block, so the licensed observation is checked again
+          // after it, immediately before the key: the same pane process and the
+          // same card, still hiding the composer. A refused recheck spends the
+          // license with no key, which is the safe direction.
+          const atKey = authorize(pane, bound, fx, authority);
+          if (atKey.status !== "ok") return atKey;
+          if (atKey.observation.panePid !== panePid) return { status: "identity_mismatch", detail: "pane process changed before the feedback-card Escape; no key sent" };
+          const atKeyFence = paneEffectFence(authority) ?? copyModePreEffect(fx.copyMode?.(target), pane);
+          if (atKeyFence) return atKeyFence;
+          const atKeyCard = observe();
+          if (atKeyCard?.composer !== "hidden" || atKeyCard.card !== observation.card) {
+            process.stderr.write(`tap send: the Claude feedback-draft card on '${pane}' changed before its Escape; no key sent, holding\n`);
+          } else {
+            const pressed = fx.pressKeys(target, ["Escape"]);
+            if (pressed === "rate_limited") return { status: "rate_limited", detail: "tmux client budget exhausted before the feedback-card Escape" };
+            fx.settle(0.4);
+            const after = observe();
+            const current = authorize(pane, bound, fx, authority);
+            if (current.status !== "ok") return unverifiedRefusal(current);
+            if (current.observation.panePid !== panePid) return { status: "unverified", detail: "pane process changed after the feedback-card Escape; attach and inspect before retrying" };
+            if (pressed === true && after === null) {
+              cardDismissed = true;
+              process.stderr.write(`tap send: dismissed the Claude feedback-draft card on '${pane}' with one Escape; the draft stays in that seat's /feedback queue\n`);
+              band = fx.paneState(target, bound?.harness ?? "", command);
+            } else {
+              process.stderr.write(`tap send: the Claude feedback-draft card on '${pane}' is still up after its one Escape; holding\n`);
+            }
+          }
+        }
+      }
+    }
+  }
   // The staged-submit loop lives at module level so a caller that owns its own
   // locking (nudge's recorded recovery effects) runs the same loop; the body's
   // `command` follows the loop's per-attempt reread.
+  // Set once, at the last read before this submit's own paste (tap-89a57).
+  let cardWitness = false;
   const verifyStaged = (verifiedId: string, expected: string, fullTextLanded: boolean,
     record: typeof phase = phase, admit: () => SubmitResult | null = () => null,
     bumpOrdinal = nextOrdinal, bumpEnter = entered, unsentEnter?: () => void): SubmitResult => {
-    const ctx: StagedContext = { pane, target, bound, fx, authority, command, auto, urgent, interruptDetails, initialBusy: preBusy };
+    const ctx: StagedContext = { pane, target, bound, fx, authority, command, auto, urgent, interruptDetails, initialBusy: preBusy, cardWitness };
     try { return submitStagedLocked(ctx, verifiedId, expected, fullTextLanded, { record, admit, bumpOrdinal, bumpEnter, unsentEnter }); }
     finally { command = ctx.command; preBusy = ctx.initialBusy; }
   };
@@ -1412,8 +1541,8 @@ function submitVerifyLockedBody(
     if (bound?.paneId && reread.state !== "unobservable") retireOverprintRecord(bound.paneId);
     band = reread;
   }
-  // A named human-owned surface (OpenCode shell, Claude feedback draft) parks
-  // with its own reason and never takes a key, whatever the delivery authority.
+  // A named human-owned surface (OpenCode shell, text a Claude feedback card
+  // hides) parks with its own reason and never takes a key, whatever the delivery authority.
   const surfaceHold = (cause: "shell-mode" | "feedback-draft"): SubmitResult => ({
     status: "band_busy", bandState: "unobservable", cause,
     detail: cause === "shell-mode" ? OPENCODE_SHELL_MODE_REASON : CLAUDE_FEEDBACK_DRAFT_REASON,
@@ -1549,9 +1678,13 @@ function submitVerifyLockedBody(
     const codexFamily = /^codex(?:-|$)/.test(command);
     if (codexFamily && !fx.paneTitle) return refuse("idle staged submit needs the pane title read; no keys sent");
     const text = effectiveBand.state === "busy" ? effectiveBand.text : "";
-    // A readable band with no sentinel-shaped input at all is a quiet dispose:
-    // a human submitted or cleared the composer. The manual path owns nothing.
-    if (!text || !sentinelShapedInput(text)) {
+    // A readable band holding none of TAP's own text is a quiet dispose: a
+    // human submitted or cleared the composer. The manual path owns nothing.
+    // This row's own wire is evidence here too: its scrolled tail, with or
+    // without a pane record, is still the staged wire and keeps the hold. It
+    // never gains the Enter; the strict parse below needs the opener.
+    if (!text || !(stagedSentinel(text, command, typedHere())
+      || matchSentinelSuffix(text, sentinel) === "tail")) {
       return refuse(`staged sentinel is not visible in the composer of '${pane}'; no keys sent`, "staged_absent");
     }
     const parsed = parseStuckSentinel(text, command);
@@ -1732,11 +1865,11 @@ function submitVerifyLockedBody(
     // possible-effect evidence minted (the FIRST interrupt key is a delivery
     // effect — never retried, held by receipts/<id>.attempted); then, and only
     // then, the interrupt keys fall.
-    if (urgent && !updateSkipped) {
+    if (urgent && !updateSkipped && !cardDismissed) {
       // tap-rdy9n: the clear below never touches a [[TAP-anchored band, so a
       // sentinel already in the composer parks now, before an interrupt that
       // could not lead to delivery.
-      if (band.state === "busy" && !("queued" in band && band.queued) && stagedSentinel(band.text, command)) {
+      if (band.state === "busy" && !("queued" in band && band.queued) && stagedSentinel(band.text, command, typedHere())) {
         return bandBlocksSubmit(band, pane)!;
       }
       // Escape or C-c could erase a scrolled draft whose hidden rows no backup holds.
@@ -1756,6 +1889,10 @@ function submitVerifyLockedBody(
       }
       const fam = familyOf(command, authority?.agentFamilies ?? new Set<string>());
       const modalCapture = (escaped: boolean) => capturePane(pane, escaped, true);
+      // Claude draws its feedback card only on an idle seat, so this last read
+      // before the key decides: no turn to interrupt, and Escape on an empty
+      // composer would dismiss the card (tap-89a57).
+      let cardUp = false;
       // Default-deny (tap-rlebf.1): an unreadable band on a screen no rule
       // classifies may be a prompt TAP cannot see. When that read would hold
       // the delivery anyway, hold before the interrupt key too, rather than
@@ -1783,7 +1920,9 @@ function submitVerifyLockedBody(
         if (approvalPrompt(command, r.stdout)) {
           return { status: "band_busy", bandState: "unobservable", detail: codexHookTrust(command, r.stdout) ? CODEX_HOOK_TRUST_REASON : "approval prompt blocks urgent delivery; nothing submitted or cleared" };
         }
-        if (fam === "claude" && claudeFeedbackOverlay(r.stdout)) return surfaceHold("feedback-draft");
+        const card = fam === "claude" ? claudeFeedbackCard(r.stdout) : null;
+        if (card?.composer === "text") return surfaceHold("feedback-draft");
+        cardUp = card !== null;
         const unread = unreadHold(r.stdout);
         if (unread) return unread;
       }
@@ -1791,7 +1930,9 @@ function submitVerifyLockedBody(
         // Lead time before the interrupt key: a visible double blink while this submit holds the lock.
         flashPaneLocked({ home: authority?.busHome ?? "", pane, paneId: target, ownerId: id, style: `bg=${decision.cue.initialStyle}`, count: CLOBBER_BLINK.count }, CLOBBER_BLINK);
       }
-      const interruptKeys = interruptKeysForFamily(fam);
+      const familyKeys = interruptKeysForFamily(fam);
+      const interruptKeys = cardUp ? { ...familyKeys, keys: [] } : familyKeys;
+      if (cardUp) process.stderr.write("tap send: Claude feedback card is up, so the seat is idle; urgent delivery sends no interrupt key\n");
       interruptDetails = { pane: target, harness: fam, method: interruptKeys.method,
         keys: interruptKeys.keys, cancellation: "unknown", tmux_confirmed: false };
       // Escape can erase the visible draft before the post-interrupt clear path
@@ -1849,7 +1990,7 @@ function submitVerifyLockedBody(
       if (!draftNoticeSent && !deferredDraft && interruptDetails.draft_backup && effectiveBand.state === "ready") {
         deferredDraft = { backup: interruptDetails.draft_backup, owner: beforeInterrupt.observation };
       }
-      if (effectiveBand.state === "busy" && !stagedSentinel(effectiveBand.text, command) && !("queued" in effectiveBand && effectiveBand.queued)) {
+      if (effectiveBand.state === "busy" && !stagedSentinel(effectiveBand.text, command, typedHere()) && !("queued" in effectiveBand && effectiveBand.queued)) {
         const beforeClear = authorize(pane, bound, fx, authority);
         if (beforeClear.status !== "ok") return unverifiedRefusal(beforeClear);
         const clearFence = paneEffectFence(authority);
@@ -1880,12 +2021,16 @@ function submitVerifyLockedBody(
       const parsed = text ? parseStuckSentinel(text, command) : null;
       const stuck = parsed?.ok ? parsed.fields : null;
       // tap-1ncs6: a wire whose head scrolled out of the composer has no opener
-      // to parse and no id to corroborate. Its shape alone says it is safe to
-      // submit: Enter on a stale or different sentinel is harmless (the
-      // recipient's tap read handles or refuses it), and nothing is re-injected.
-      // The wire is recognized by its END: an anchored opener that never closes
-      // (a cut paste) stays parked below, as before.
-      const scrolledTail = !stuck && !!text && !authority.reprobeOnly && stagedSentinel(text, command) && closedSentinelInput(text);
+      // to parse. It gets Enter only on evidence: the band is the tail of a wire
+      // this bus's courier recorded typing into this pane in this server
+      // generation, id fragment included.
+      // Enter on that stale sentinel is harmless (the recipient's tap read
+      // handles or refuses it), and nothing is re-injected. A staged nudge
+      // doorbell carries no id for the parser and is recognized whole.
+      // Appearance is never evidence: text that merely ends like a wire, and an
+      // anchored band the strict parser rejects, never take this arm.
+      const scrolledTail = !stuck && !!text && !authority.reprobeOnly
+        && (typedWireTail(text, typedHere()) || parseNudgeWire(text) !== null);
       const stuckId = stuck?.id.slice(stuck.id.lastIndexOf("/") + 1);
       if (authority.reprobeOnly && (!authority.busHome || !pendingReprobe(authority.busHome, id)
         || stuckId !== id || !agyReprobeInputMatches(text, sentinel))) {
@@ -1925,7 +2070,7 @@ function submitVerifyLockedBody(
       } else if (scrolledTail) {
         const check = authorize(pane, bound, fx, authority);
         if (check.status !== "ok") return check;
-        process.stderr.write(`tap: composer of '${pane}' holds the scrolled tail of a TAP wire; submitting it before this delivery (recognized by shape, not identity)\n`);
+        process.stderr.write(`tap: composer of '${pane}' holds the scrolled tail of a TAP wire the courier typed, or a nudge doorbell; submitting it before this delivery\n`);
         // The tail is its own expected text: every recheck compares the visible
         // band to it whole, and Enter is verified by the band clearing. No id is
         // known, so no phase evidence is filed for it; ours is restored below.
@@ -1935,7 +2080,7 @@ function submitVerifyLockedBody(
         if ((existing.status === "unverified" || existing.status === "band_busy") && existing.cause === "pane_dead") return unverifiedRefusal(existing);
         if (existing.status !== "injected" && existing.status !== "harness_queued") return { status: "unverified", detail: "scrolled sentinel tail did not submit; input retained" };
         effectiveBand = fx.paneState(target, bound?.harness ?? "", command);
-      } else if (sentinelShapedInput(text)) {
+      } else if (anchoredSentinelInput(afterQueuePrefix(text, command))) {
         // A read-only refusal keeps spool custody retryable; prior effects still forbid replay.
         return { status: attemptAdmitted ? "unverified" : "band_busy", detail: "unparseable TAP input retained; no keys sent" };
       } else if (effectiveBand.state === "busy" && !("queued" in effectiveBand && effectiveBand.queued)) {
@@ -1982,8 +2127,8 @@ function submitVerifyLockedBody(
     // the one direct attempt; every positive hold keeps refusing. The precondition
     // is POSITIVE: `toPaneBand` collapses eight classifications into
     // `unobservable` (pane-state.ts:171-180), and three of them are a human's
-    // pending decision (a Claude/Codex approval prompt, the Claude feedback
-    // dialog, the Antigravity permission overlay — lib.sh's rc 4, never typed
+    // pending decision or unreadable input (a Claude/Codex approval prompt, text
+    // a Claude feedback card hides, the Antigravity permission overlay — lib.sh's rc 4, never typed
     // over), so "unobservable" alone would inject into an approval prompt. Only
     // the geometry-unreadable reasons qualify; an unlisted reason holds. The
     // coupling to pane-state.ts's reason strings is deliberate and FAILS CLOSED:
@@ -2033,8 +2178,9 @@ function submitVerifyLockedBody(
     if (finalBand.state === "unobservable" && finalBand.cause === "pane_dead") {
       return { status: attemptAdmitted ? "unverified" : "band_busy", cause: "pane_dead", detail: finalBand.reason };
     }
-    // Shell input and a feedback draft are never chat delivery targets, even after an authorized interrupt.
+    // Shell input and text a feedback card hides are never chat delivery targets, even after an authorized interrupt.
     if (finalBand.state === "unobservable" && (finalBand.cause === "shell-mode" || finalBand.cause === "feedback-draft")) return surfaceHold(finalBand.cause);
+    cardWitness = finalBand.state === "ready";
     if (auto && finalBand.state !== "ready") {
       return { status: "band_busy", detail: "auto seat band changed before paste" };
     }
@@ -2080,6 +2226,18 @@ function submitVerifyLockedBody(
       pasteRefusal = permitted.status === "ok" ? paneEffectFence(authority) : permitted;
       return pasteRefusal === null;
     };
+    // The evidence a later reader needs to call this wire's scrolled tail TAP's
+    // own, recorded once the paste is admitted and before its first byte: here
+    // for the plain paste (admitted above), inside the admission hook for the
+    // bracketed one. Delivery wires only; controls and doorbells are never recorded.
+    let typedRecorded = false;
+    const recordTyped = () => {
+      const wire = typedDeliveryWire(sentinel);
+      if (typedRecorded || wire === null) return;
+      typedRecorded = true;
+      recordTypedWire(target, { epoch: beforePaste.observation.serverEpoch ?? "", bus: authority?.busHome ?? "" }, id, wire, authority?.env);
+    };
+    if (!bracketed) recordTyped();
     const injected = fx.injectText(target, sentinel, bracketed,
       () => authorizePaste() ? true : pasteRefusal?.status === "rate_limited" ? "rate_limited" : false,
       () => {
@@ -2087,6 +2245,7 @@ function submitVerifyLockedBody(
         if (refused) pasteRefusal = refused;
         if (pasteRefusal) return false;
         pasteEffectPossible = true;
+        recordTyped();
         return true;
       });
     if (pasteRefusal && !pasteEffectPossible) return pasteRefusal;
@@ -2106,6 +2265,9 @@ function submitVerifyLockedBody(
         fullTextLanded = true;
         return { state: "present", text: sentinel };
       }
+      // A feedback card hides the composer and now reads typed text: the paste
+      // went onto a positively empty composer, so that text is this wire.
+      if (cardWitness && landingFrame?.state === "unobservable" && landingFrame.card === "text") return { state: "present", text: sentinel };
       // tap-dl3 / lib.sh:11507-11521: a queue-prefix harness renders its band
       // WITHOUT a prompt glyph, so the glyph-anchored reader false-negatives the
       // landed '/queue <sentinel>' line; no_prompt_ok re-checks glyph-less and a

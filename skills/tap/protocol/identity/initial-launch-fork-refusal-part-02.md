@@ -16,7 +16,8 @@ bytes. Init creates the bus, publishes the born-live marker, writes
 enrolls the root. Lost registries are recreated at their stored `registry_location`
 and name; non-current enrolled registries refuse. Fresh init prints
 `successfully initialized team: <team>` then `bus: <path>`; usable existing
-teams print only `already initialized: team <team>` with no setup writes.
+teams print `already initialized: team <team>` plus a no-changes receipt,
+with no setup writes; harness trust remains a separate offer.
 
 **Team name (tap-rt1h2, `teamNameForRoot`):** a current registry keeps its name;
 a different `--team` refuses `team_name_conflict`. Otherwise: `--team` (a token
@@ -30,12 +31,16 @@ own separate teams and buses; discovery stops at their Git root, never inherits
 primary enrollment, and retains explicit-selector precedence.
 
 Shared init completes instructions after successful registry creation or
-recreation, including direct launch. Missing `AGENTS.md` prompts
-`No AGENTS.md here — create one with the TAP signpost? [Y/n]` on a terminal;
-noninteractive/JSON creates without prompting. Existing instructions get an
-appended signpost; complete blocks stay intact. Dry runs, refusals and usable
-teams neither offer nor write instructions. `TAP_SETUP_REPO_PENDING=1` leaves
-both to setup. Declining names `tap setup --repo`; write failures remain advisory.
+recreation, including direct launch. A terminal asks before creating missing
+`AGENTS.md` or appending a missing TAP signpost to an existing file, default `[Y/n]`.
+`--yes` accepts; noninteractive/JSON writes without prompting. Complete blocks
+stay intact; partial blocks and unsafe files remain advisory. `--no-instructions`
+skips the file entirely. Dry runs, refusals and usable teams neither offer nor
+write instructions. `TAP_SETUP_REPO_PENDING=1` leaves both to setup. Declining
+names `tap setup --repo`; EOF or an incomplete/invalid answer never accepts.
+
+Explicit init receipts, previews and harness trust are specified in
+[Project initialization](./project-initialization.md).
 
 **Non-git roots and first launch (2026-09-23):** outside Git, init asks
 `<root> is not a git repository — initialize TAP here anyway? [y/N]`. Scripts
@@ -90,6 +95,11 @@ socket-keyed machine lock. Existing servers are never replaced or reconfigured.
 `[tmux] bootstrap = false` disables this behavior. `tap init`, setup and dry runs
 never bootstrap. Daemon startup strips harness, TAP and Git identity variables
 and uses a stable system PATH. Unknown socket state refuses with `tap doctor`.
+Seat recipes load a POSIX login shell, then append caller PATH as fallback,
+keeping first occurrences. Login-selected CLIs win; caller-only CLIs and
+env-shebang runtimes remain. The server environment is unchanged. Fresh crew add
+types a short private-file reference; the invocation unlinks itself before exec.
+Unsupported shells fall back to zsh, bash or sh, named in startup failures.
 
 Team startup and restart cohort recovery are specified in [team up](./team-up-last.md).
 

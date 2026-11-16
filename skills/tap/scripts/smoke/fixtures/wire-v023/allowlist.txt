@@ -48,10 +48,8 @@ skills/tap/scripts/smoke/sentinel-pointer.test.sh	hand-built path-less v0.20 sen
 skills/tap/scripts/regress/nudge-submit-verify.test.sh	seeds sentinels ACROSS VERSIONS into the band — the version spread is the test
 skills/tap/scripts/regress/nudge-cross-team.test.sh	seeds a v0.6 sentinel; cross-team recovery must survive an old band
 skills/tap/scripts/regress/communication-identity-full.test.sh	hand-built v0.6 sentinels feeding nudge's identity path
-runtime/bun/test/deliver-effect.test.ts	pendingSentinel's pre-0.23 branch — the old bytes are its input
 runtime/bun/test/existing-sentinel.test.ts	:154 feeds a literal v=0.22 shape through the real submit/verify adapter to assert its own handling — the old bytes are the input, not an accident
 #
 # --- prose describing the retired shape ---------------------------------------
 skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-truncated.ansi	Historical tap-vvmth capture; the truncated legacy wire is retained verbatim as incident evidence.
 skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-truncated.txt	Historical tap-vvmth capture; the truncated legacy wire is retained verbatim as incident evidence.
-runtime/bun/test/pane-submit-lock-physics.test.ts	The physics pin submits real retired-wire sentinel bytes through submitVerify; the [[TAP literal is the fixture under test.

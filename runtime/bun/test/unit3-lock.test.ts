@@ -23,6 +23,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { removeScratchTree } from "./support/scratch";
+import { renderSentinel } from "../src/sentinel";
 import { join, resolve } from "node:path";
 
 import { observeHarnessPid, evaluateHarnessEvidence, submitVerifyLocked } from "../src/courier";
@@ -30,6 +31,9 @@ import { envelopeField } from "../src/envelope";
 import { acquireFlock, flockFailureRetryable } from "../src/remind-lock";
 import { acquireObligationLock, acquirePaneLock, acquirePathLock, acquirePathLockAsync, lockRoot, kernelLockAvailable, KERNEL_LOCK, kernelLockArgs, paneLockPath } from "../src/panelock";
 import { AGENT_FAMILIES } from "../src/verbs/team";
+
+const deliveryWire = (id: string) => renderSentinel({ from: "probe", to: "peer", id,
+  kind: "discuss", reply: "expected", path: "/fixture/payload.md" });
 
 const NATIVE_SEND = join(import.meta.dir, "support", "native-send-entry.ts");
 const NATIVE_REPLY = join(import.meta.dir, "support", "native-reply-entry.ts");
@@ -611,7 +615,10 @@ describe("re-authorization before every pane effect — blocker 3", () => {
           paneId: livePaneId, session: "s", serverEpoch: liveEpoch,
           panePid: "4242", currentCommand: "claude",
         }),
-        paneState: () => ({ state: "ready" as const }),
+        // After acceptance the harness is mid-turn, with no visible composer.
+        paneState: () => enters > 0
+          ? { state: "unobservable" as const, reason: "no input prompt is visible (harness mid-turn)" }
+          : { state: "ready" as const },
         injectText: (t: string, text: string) => {
           if (liveEpoch === bound.serverEpoch) record(t, `inject:${text.slice(0, 12)}`);
           else replacementReceived.push(text);
@@ -646,7 +653,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
         };
       },
     };
-    const r = submitVerifyLocked("sess:0.0", "id-2", "[[TAP …]]", bound, fx);
+    const r = submitVerifyLocked("sess:0.0", "id-2", deliveryWire("id-2"), bound, fx);
     expect(r.status).toBe("identity_mismatch");
     expect(f.received["%99"]).toBeUndefined();
   });
@@ -661,7 +668,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
       },
     };
 
-    const r = submitVerifyLocked("sess:0.0", "id-preinject", "[[TAP preinject]]", bound, fx);
+    const r = submitVerifyLocked("sess:0.0", "id-preinject", deliveryWire("id-preinject"), bound, fx);
 
     expect(r.status).toBe("identity_mismatch");
     expect(f.replacementReceived).toEqual([]);
@@ -669,7 +676,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
 
   test("rate exhaustion before injection is typed and has no pane effect", () => {
     const f = fakeEffects(99);
-    const r = submitVerifyLocked("sess:0.0", "id-rate-pre", "[[TAP rate]]", bound, {
+    const r = submitVerifyLocked("sess:0.0", "id-rate-pre", deliveryWire("id-rate-pre"), bound, {
       ...f.fx,
       paneState: () => ({ state: "rate_limited" as const, reason: "tmux client budget exhausted" }),
     });
@@ -682,14 +689,17 @@ describe("re-authorization before every pane effect — blocker 3", () => {
   test("rate exhaustion after injection is unverified, never pane-gone", () => {
     const f = fakeEffects(99);
     let pressCalls = 0;
-    const r = submitVerifyLocked("sess:0.0", "id-rate-post", "[[TAP rate]]", bound, {
+    const r = submitVerifyLocked("sess:0.0", "id-rate-post", deliveryWire("id-rate-post"), bound, {
       ...f.fx,
       pressEnter: () => { pressCalls++; return "rate_limited" as const; },
+      paneState: () => pressCalls > 0
+        ? { state: "rate_limited" as const, reason: "tmux client budget exhausted" }
+        : { state: "ready" as const },
     });
 
     expect(r.status).toBe("unverified");
     expect(r.status).not.toBe("pane_gone");
-    expect(f.received["%7"]).toEqual(["inject:[[TAP rate]]"]);
+    expect(f.received["%7"]).toEqual([`inject:${deliveryWire("id-rate-post").slice(0, 12)}`]);
     expect(pressCalls).toBe(1);
   });
 
@@ -697,7 +707,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
     // The positive control. Without it, a courier that refused everything —
     // or targeted nothing at all — would satisfy both tests above.
     const f = fakeEffects(99);
-    const r = submitVerifyLocked("sess:0.0", "id-3", "[[TAP …]]", bound, f.fx);
+    const r = submitVerifyLocked("sess:0.0", "id-3", deliveryWire("id-3"), bound, f.fx);
 
     expect(r.status).toBe("injected");
     // Addressed by pane id, not by the positional "sess:0.0".
@@ -727,10 +737,10 @@ describe("re-authorization before every pane effect — blocker 3", () => {
           // Read 1 is the pre-disposition band; read 2 is the final sample
           // immediately before the paste boundary.
           if (rebind && bandReads === 2) writeFileSync(registry, rowFor("%8"));
-          return { state: "ready" as const };
+          return f.fx.paneState();
         },
       };
-      const r = submitVerifyLocked("s:0.0", "id-final-rebind", "[[TAP final]]",
+      const r = submitVerifyLocked("s:0.0", "id-final-rebind", deliveryWire("id-final-rebind"),
         { ...bound, handle: "peer", instance: "peer|A" }, fx, {
           scriptsDir: resolve(import.meta.dir, "../../../skills/tap/scripts"), agentFamilies: AGENT_FAMILIES,
           busHome: dir, recipient: "peer", registryPath: registry,
@@ -744,7 +754,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
         expect(existsSync(join(dir, "receipts", "id-final-rebind.attempted"))).toBe(false);
       } else {
         expect(r.status).toBe("injected");
-        expect(f.received["%7"]).toEqual(["inject:[[TAP final]", "enter"]);
+        expect(f.received["%7"]).toEqual([`inject:${deliveryWire("id-final-rebind").slice(0, 12)}`, "enter"]);
         expect(existsSync(join(dir, "receipts", "id-final-rebind.attempted"))).toBe(true);
       }
     });
@@ -752,7 +762,7 @@ describe("re-authorization before every pane effect — blocker 3", () => {
 
   test("a pane replaced after Enter with an absent clear sample is unverified, not injected", () => {
     const f = fakeEffects(1);
-    const r = submitVerifyLocked("sess:0.0", "id-post-enter", "[[TAP post]]", bound, f.fx);
+    const r = submitVerifyLocked("sess:0.0", "id-post-enter", deliveryWire("id-post-enter"), bound, f.fx);
     expect(r.status).toBe("unverified");
     expect(r.status).not.toBe("injected");
     expect(r.status).not.toBe("identity_mismatch");
@@ -803,7 +813,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
       }),
       harnessEvidence: () => "mismatch" as const,
     });
-    const r = submitVerifyLocked("sess:0.0", "id-mm", "[[TAP mm]]", bound, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-mm", deliveryWire("id-mm"), bound, fx as never);
     expect(r.status).toBe("identity_mismatch");
     expect(received["%7"]).toBeUndefined();
   });
@@ -817,7 +827,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
       harnessEvidence: () => "exited" as const,
       paneState: () => ({ state: "busy" as const, text: "HUMAN-DRAFT" }),
     });
-    const r = submitVerifyLocked("sess:0.0", "id-shell", "[[TAP shell]]", bound, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-shell", deliveryWire("id-shell"), bound, fx as never);
     expect(r.status).toBe("identity_mismatch");
     expect(received["%7"]).toBeUndefined();
   });
@@ -835,7 +845,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
         return n.length === 1;
       },
     });
-    const r = submitVerifyLocked("sess:0.0", "id-node", "[[TAP node]]", { ...bound, harness: "cursor" }, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-node", deliveryWire("id-node"), { ...bound, harness: "cursor" }, fx as never);
     expect(r.status).toBe("injected");
     expect(received["%7"]?.some((x) => x.startsWith("inject:"))).toBe(true);
   });
@@ -853,7 +863,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
         return n.length === 1;
       },
     });
-    const r = submitVerifyLocked("sess:0.0", "id-ver", "[[TAP ver]]", bound, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-ver", deliveryWire("id-ver"), bound, fx as never);
     expect(r.status).toBe("injected");
     expect(received["%7"]?.some((x) => x.startsWith("inject:"))).toBe(true);
   });
@@ -862,7 +872,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
     const { fx, received } = baseFx({
       harnessEvidence: () => "unobservable" as const,
     });
-    const r = submitVerifyLocked("sess:0.0", "id-unobs", "[[TAP unobs]]", bound, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-unobs", deliveryWire("id-unobs"), bound, fx as never);
     expect(r.status).toBe("identity_mismatch");
     expect(received["%7"]).toBeUndefined();
   });
@@ -876,7 +886,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
         return lands === 1;
       },
     });
-    const r = submitVerifyLocked("sess:0.0", "id-custody", "[[TAP custody]]", bound, fx as never);
+    const r = submitVerifyLocked("sess:0.0", "id-custody", deliveryWire("id-custody"), bound, fx as never);
     expect(paneCmdCalls()).toBe(0);
     expect(received.bandCmd).toEqual(["claude", "claude"]);
     expect(r.status).toBe("injected");
@@ -887,7 +897,7 @@ describe("Unit I — positive harness reauthorization (dgbNN)", () => {
     const { fx, received } = baseFx();
     delete (fx as { harnessEvidence?: unknown }).harnessEvidence;
     const r = submitVerifyLocked(
-      "sess:0.0", "id-unattested", "[[TAP unattested]]",
+      "sess:0.0", "id-unattested", deliveryWire("id-unattested"),
       { ...bound, harness: "" }, fx as never,
       { registryPath: "", scriptsDir: "/unused", agentFamilies: AGENT_FAMILIES },
     );
@@ -958,7 +968,7 @@ exit 0
         settle: () => {},
       };
       const r = submitVerifyLocked(
-        "sess:0.0", "id-bridge", "[[TAP bridge]]",
+        "sess:0.0", "id-bridge", deliveryWire("id-bridge"),
         { paneId: "%7", serverEpoch: "srv:1:2", harness: "cursor" },
         fx as never,
         { registryPath: "", scriptsDir, agentFamilies: AGENT_FAMILIES },

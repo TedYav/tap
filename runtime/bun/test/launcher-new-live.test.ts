@@ -204,3 +204,30 @@ test("explicit linked workdir keeps the root team through launch, registration a
   expect(readFileSync(join(f.root,"cwd"),"utf8").trim().split("\n")).toEqual([lane,lane]);
 
 }, 120_000);
+
+test("a live launch retains caller PATH after a login profile resets it", () => {
+  const f = fixture();
+  writeFileSync(join(f.root, ".bash_profile"), "export PATH=/usr/bin:/bin\n");
+  const result = spawnSync(native[0]!, [...native.slice(1), "testseat", "reviewer"], {
+    cwd: f.root, env: f.env, encoding: "utf8", timeout: 40_000,
+  });
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(f.registry, "utf8")).seats.reviewer.status).toBe("active");
+  expect(readFileSync(join(f.root, "cwd"), "utf8").trim()).toBe(f.root);
+}, 45000);
+
+test("respawn failure reports the configured window index", () => {
+  const f = fixture();
+  writeFileSync(join(f.root, ".tmux.conf"), "set -g base-index 7\n");
+  writeFileSync(join(f.root, "bin/tmux"), `#!/bin/sh
+for arg do
+  case "$arg" in respawn-pane*) echo 'fixture respawn refused' >&2; exit 1;; esac
+done
+exec '${realTmux}' "$@"
+`, { mode: 0o755 });
+  const result = spawnSync(native[0]!, [...native.slice(1), "testseat", "reviewer"], {
+    cwd: f.root, env: f.env, encoding: "utf8", timeout: 40_000,
+  });
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("session/window=fixture/reviewer:7");
+}, 45000);

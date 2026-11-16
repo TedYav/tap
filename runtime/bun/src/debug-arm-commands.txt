@@ -1,0 +1,63 @@
+send
+assign
+reply
+in
+register
+out
+unregister
+shutdown
+resend
+withdraw
+cancel
+clear
+compact
+command compact
+nudge
+operate
+unwedge
+refresh
+up
+down
+incapable
+escalate
+teardown
+restore
+launch
+session launch
+session resume
+session restart
+session fork
+session relaunch
+session repair
+team refresh
+team up
+team down
+team shutdown
+team out
+team reset
+crew add
+crew remove
+watch on
+watch off
+watch pause
+watch resume
+watch ack
+goalie on
+goalie off
+remind
+config set
+keybinding install
+keybinding remove
+tmux-defaults install
+tmux-defaults remove
+role
+calibrate
+bus archive
+spool cancel
+self compact
+self goal
+self loop
+crew shutdown
+crew resume
+crew relaunch
+crew rearm

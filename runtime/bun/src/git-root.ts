@@ -40,6 +40,23 @@ function gitRootKey(dir: string): string {
   return [real, env.PATH ?? "", env.GIT_DIR ?? "", env.GIT_WORK_TREE ?? "", env.GIT_INDEX_FILE ?? ""].join("\u0000");
 }
 
+let probeBoundMs = 0;
+/**
+ * Bound every later git probe in this process. Off by default: a verb waits for
+ * git, because a probe cut short reads as "unobservable" and would refuse work.
+ * The session-start hook turns it on, since a wedged git must not hold a host
+ * agent's session start.
+ */
+export function boundGitRootProbes(ms: number): void { probeBoundMs = ms; }
+
+let probesCutShort = 0;
+/**
+ * How many probes the bound has cut short in this process. A cut-short probe
+ * says nothing about the checkout boundary, so a caller that must not act on an
+ * unknown boundary compares this count around its resolution.
+ */
+export function gitRootProbesCutShort(): number { return probesCutShort; }
+
 export function probeGitRoot(dir: string): GitRootProbe {
   // Scoped and opt-in: only a `withInvocationMemo` scope (the register verb's
   // own body) may reuse an answer. Anyone else — `tap init` probing around its
@@ -50,7 +67,10 @@ export function probeGitRoot(dir: string): GitRootProbe {
     const hit = gitRootMemo.get(key);
     if (hit) return hit;
   }
-  const git = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } });
+  const git = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" },
+    ...(probeBoundMs > 0 ? { timeout: probeBoundMs, killSignal: "SIGKILL" as const } : {}) });
+  // Bounded and ended without an exit status, other than "no git to run".
+  if (probeBoundMs > 0 && git.status === null && (git.error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") probesCutShort += 1;
   const top = (git.stdout ?? "").trim();
   let probe: GitRootProbe;
   if (git.status === 0 && top) probe = { kind: "repo", top };

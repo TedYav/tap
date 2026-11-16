@@ -64,12 +64,14 @@ test("Codex startup braille overdraw remains a parseable visible sentinel", () =
   expect(sentinelSubmitDecision(`› ${expectedBraille.replace("⠋", "⣿")}`, "codex", expectedBraille)).toEqual({ action: "withhold", reason: "not-visible" });
 });
 
-test("AGY blockers defer to liveness; Codex approval and the Claude feedback draft stay held", () => {
+test("AGY blockers defer to liveness; Codex approval stays held; a Claude feedback card is no dialog", () => {
   const feedback = readFileSync(new URL("../../../skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-empty-constructed.ansi", import.meta.url), "utf8");
   const claude = feedback.replace(/([❯›])[^\n]*/, `$1 ${wire}`);
   const agy = `${rule}\n> ${wire}\n${rule}\nRequesting permission for: command\nDo you want to proceed?\nTab amend`;
   const codex = `› ${wire}\nPress enter to confirm or esc to cancel`;
-  for (const [harness, capture] of [["claude", claude], ["agy", agy], ["codex", codex]]) {
+  // tap-89a57: the card is a notice above a readable composer.
+  for (const alive of [false, true]) expect(sentinelSubmitDecision(claude, "claude", wire, alive)).toEqual({ action: "submit" });
+  for (const [harness, capture] of [["agy", agy], ["codex", codex]]) {
     expect(sentinelSubmitDecision(capture!, harness!, wire)).toEqual({ action: "withhold", reason: "dialog" });
     expect(sentinelSubmitDecision(capture!, harness!, wire, true)).toEqual(harness === "agy" ? { action: "submit" } : { action: "withhold", reason: "dialog" });
     expect(sentinelSubmitDecision(capture!.replace(wire, "[Pasted text #1 +4 lines]"), harness!, wire, true).action).toBe("withhold");

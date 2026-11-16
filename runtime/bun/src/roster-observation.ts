@@ -6,6 +6,7 @@ import { detectAgentState, type AgentStateResult } from "./agent-state";
 import { harnessEvidence } from "./readiness-stall";
 import { computeFor, rosterActivity, type ComputeJob, type RosterAgentState, type WaitingOn } from "./roster-activity";
 import { readOverprintRecord } from "./overprint-marker";
+import { pendingPermissionRequest, type PendingPermissionRequest } from "./permission-request";
 import { serverEpochFromRaw, tmuxReadOnly } from "./tmux";
 import { REGISTRY_MAX_BUFFER } from "./spawn";
 import { harnessModelFamily } from "./launcher/catalog-metadata";
@@ -56,6 +57,8 @@ export interface ObservedRow {
   tokenSample?: TokenSample;
   contextUsedPercent?: number | null;
   contextSampledAt?: string | null;
+  /** Claude only: the approval or question the seat is waiting on, while Claude's own session file says it is waiting. Never cached. */
+  permissionRequest?: PendingPermissionRequest | null;
 }
 
 /** Explicit preset lineage wins; otherwise only what the seat's own harness implies, and the source says which. */
@@ -230,3 +233,19 @@ export function withAgentStates(rows: ObservedRow[], options: AgentStateOptions 
   });
 }
 
+/**
+ * Attach each Claude seat's open permission request. This is a fact read for
+ * every request and never part of a cached observation: the detail must not
+ * outlive its record in a second file, and a cached row must not show a request
+ * that has since closed. `readOnly` is a named read of another team's bus.
+ */
+export function withPermissionRequests(rows: ObservedRow[], bus: string, readOnly: boolean): ObservedRow[] {
+  return rows.map((row) => {
+    const applies = bus && /^claude(?:-|$)/.test(row.harness) && row.delivery === "pane" && row.status === "active"
+      && row.observedPaneId && row.harnessSessionId;
+    return { ...row, permissionRequest: applies
+      ? pendingPermissionRequest(bus, row.handle,
+        { sessionId: row.harnessSessionId!, paneId: row.observedPaneId, serverEpoch: row.observedServerEpoch }, { remove: !readOnly })
+      : null };
+  });
+}

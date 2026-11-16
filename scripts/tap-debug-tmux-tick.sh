@@ -5,7 +5,22 @@
 export TZ=UTC
 # launchd starts the tick with no locale; a tmux client outside $TMUX then
 # sanitizes the tab separators in -F output to '_'. UTF-8 ctype keeps the tabs.
-[[ -n ${LC_ALL:-} ]] || export LC_CTYPE=${LC_CTYPE:-UTF-8}
+# The bare name "UTF-8" is a locale only on macOS. Elsewhere take the first
+# UTF-8 ctype the host provides, checked in-process (a two-byte character
+# counts as one) so the tick spawns nothing and Bash prints no locale warning.
+if [[ -z ${LC_ALL:-} ]]; then
+  if [[ -z ${LC_CTYPE:-} && $OSTYPE != darwin* ]]; then
+    utf8_probe=$'\xc3\xa9'
+    for utf8_ctype in C.UTF-8 en_US.UTF-8 UTF-8; do
+      { LC_CTYPE=$utf8_ctype; } 2>/dev/null
+      (( ${#utf8_probe} == 1 )) && break
+    done
+    export LC_CTYPE
+    unset utf8_probe utf8_ctype
+  else
+    export LC_CTYPE=${LC_CTYPE:-UTF-8}
+  fi
+fi
 umask 077
 FLIGHT_DIR=${TMUX_FLIGHT_DIR:-$HOME/Library/Logs/tmux-flight}
 LOG_DIR=${TMUX_FLIGHT_LOG_DIR:-$FLIGHT_DIR/server-logs}

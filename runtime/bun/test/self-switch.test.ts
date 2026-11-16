@@ -25,6 +25,15 @@ test("compact and rebrief accept --model and --effort; other verbs and bad value
   expect(code(() => parseSelf(["compact", "--handoff", "h.md", "--model", "fable sonnet", "--", "x"]))).toBe(1);
   expect(code(() => parseSelf(["compact", "--handoff", "h.md", "--model", "-x", "--", "x"]))).toBe(1);
   expect(() => parseSelf(["compact", "--handoff", "h.md", "--model", "a", "--model", "b", "--", "x"])).toThrow("may be passed once");
+  // The preset spelling `name@level` carries the effort; an operator typed
+  // `--model opus@high` and the seat dropped the suffix to get past the refusal.
+  expect(parseSelf(["compact", "--handoff", "h.md", "--model", "opus@high", "--", "x"])).toMatchObject({ model: "opus", effort: "high" });
+  expect(parseSelf(["compact", "--handoff", "h.md", "--model", "opus@high", "--effort", "high", "--", "x"])).toMatchObject({ model: "opus", effort: "high" });
+  expect(() => parseSelf(["compact", "--handoff", "h.md", "--model", "opus@high", "--effort", "low", "--", "x"])).toThrow("pass one");
+  expect(code(() => parseSelf(["compact", "--handoff", "h.md", "--model", "opus@turbo", "--", "x"]))).toBe(1);
+  expect(code(() => parseSelf(["compact", "--handoff", "h.md", "--model", "@high", "--", "x"]))).toBe(1);
+  expect(parseOptions(["rebrief", "--handoff", "h.md", "--model", "fable@xhigh"]))
+    .toEqual({ verb: "rebrief", handoff: "h.md", switches: { model: "fable", effort: "xhigh" } });
 
   expect(parseOptions(["rebrief", "--handoff", "h.md", "--model", "opus", "--effort", "xhigh"]))
     .toEqual({ verb: "rebrief", handoff: "h.md", switches: { model: "opus", effort: "xhigh" } });

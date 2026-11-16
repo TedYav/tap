@@ -296,12 +296,12 @@ function replyLocked(ref: string, message: string | null, bodyFile: string, acto
   // a problem-report reply still sends outbound and does not write a second .done.
   const courierAutoSettled = receiptVia(inboundCtx.bus.donePath(ref)) === "courier-auto";
   if (!courierAutoSettled) {
-    // The incumbent's already_settled names `tap send` as the next step
-    // (tap-reply.sh:181 — the answer goes out as a fresh send); the shared
-    // detail sentence is the same computation on the payload's bus.
+    // already_settled names the follow-up's shape: nothing is owed, so anything
+    // further goes out as a fresh send. The shared detail sentence is the same
+    // computation on the payload's bus.
     try { assertUnsettled(inboundCtx, ref, me); }
     catch (error) {
-      if (error instanceof TapError && error.errorClass === "already_settled") throw new TapError(1, "already_settled", "tap send", error.detail);
+      if (error instanceof TapError && error.errorClass === "already_settled") throw new TapError(1, "already_settled", "tap send <sender> -f <file>", error.detail);
       throw error;
     }
   }

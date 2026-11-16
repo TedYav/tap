@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { resolveCatalog } from "./catalog";
 import { permissionArgv, refuseAmbientCodexSockets, type PermissionMode } from "./permissions";
 import { bootId } from "../tmux";
+import { assignments } from "./config-args";
 // Dark argv planner. Port of launcher.build_harness_invocation.
 // Environment composition is applyLaunchEnv in plan.ts. This file originates none.
 
@@ -34,6 +35,25 @@ export {
  */
 export function isolationArgv(harness: string): string[] {
   return harness === "codex" ? ["--no-daemon"] : [];
+}
+
+/** Codex's config key for the update check it runs at startup; `false` means no update menu is offered. */
+export const CODEX_UPDATE_CHECK_KEY = "check_for_update_on_startup";
+
+/**
+ * Codex paints its composer first and its update menu afterwards, by a delay that varies per start, and
+ * Enter on that menu runs an installer. A seat nobody is watching starts with the check off instead of
+ * racing the menu. Decided on the whole composed argv, so a key set by the preset, the harness policy or
+ * the `--` tail is kept as written. It rides beside the launcher's own `--no-daemon`, ahead of any
+ * subcommand, or leads the options when a remote launch dropped that flag. Argv only: the user's
+ * config.toml is never edited.
+ */
+export function withCodexUpdateCheckOff(harness: string, argv: string[]): string[] {
+  if (harness !== "codex" || !argv.length || assignments(argv.slice(1)).some(({ key }) => key === CODEX_UPDATE_CHECK_KEY)) return argv;
+  const end = argv.indexOf("--") < 0 ? argv.length : argv.indexOf("--");
+  const own = argv.slice(0, end).indexOf("--no-daemon");
+  const at = own < 0 ? 1 : own + 1;
+  return [...argv.slice(0, at), "-c", `${CODEX_UPDATE_CHECK_KEY}=false`, ...argv.slice(at)];
 }
 
 /**

@@ -38,6 +38,7 @@ import { join, resolve } from "node:path";
 import { observeCallerPaneChain, observeCallingPane, type CallingPaneObservation } from "./context";
 import { LAUNCH_ID_ENV, LAUNCH_ROOT_ENV, launchedRowForPane, launchTokenMatches } from "./launch-evidence";
 import { nearestEnrollment } from "./selector";
+import { boundGitRootProbes, gitRootProbesCutShort } from "./git-root";
 import { loadGlobalRegistry } from "./index-home";
 import { previewsEnabled } from "./sentinel-preview";
 import { teamRegistryRefusal } from "./register-authority";
@@ -46,8 +47,15 @@ import { versionBriefing } from "./version-briefing";
 import { startupTrace, withStartupTrace } from "./startup-trace";
 import { observeSessionStartAncestry, readProcessTableMemoized } from "./observe";
 import { parentPid } from "./process-ancestry";
+import { removePermissionRequest } from "./permission-request";
 
 const REPO = resolve(import.meta.dir, "../../..");
+// This process is a host agent's hook, so the two children that had no limit
+// are bounded here. The bind outlasts both designed 10 s registration waits.
+// The git bound is far above a loaded machine's slowest probe; a probe cut
+// short silences the hook (walkUpSessionRoot), it never widens the walk.
+const BIND_TIMEOUT_MS = 25_000;
+const GIT_PROBE_TIMEOUT_MS = 10_000;
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -109,6 +117,28 @@ export function resolveSessionAuthority(root: string, indexHome?: string): Sessi
   return { bus: busHome(root), registry: location, team: name };
 }
 
+/**
+ * Every enrolled, non-historical team root on this machine. A hook that fires
+ * after launch cannot rely on its working directory to name its team: a crew or
+ * worktree seat runs outside the team root. A caller that takes a root from
+ * this list must still prove its own row there; the list grants nothing.
+ */
+export function enrolledSessionRoots(indexHome?: string): string[] {
+  const snapshot = loadGlobalRegistry(indexHome);
+  if (snapshot.marker !== "live") return [];
+  let doc: unknown;
+  try { doc = readJson(snapshot.path); } catch { return []; }
+  const teams = isObj(doc) ? doc.teams : null;
+  if (!isObj(teams)) return [];
+  const roots: string[] = [];
+  for (const entry of Object.values(teams)) {
+    if (!isObj(entry) || (str(entry.state) || "registered") === "historical") continue;
+    const root = str(entry.root);
+    if (root && !roots.includes(root)) roots.push(root);
+  }
+  return roots;
+}
+
 /** Stage 0 owns the cwd walk, including the checkout boundary. Hooks require
  * local enrollment: neither TAP_HOME nor a pane anchor grants session-root
  * authority to an unenrolled checkout. Selection refusals keep hooks silent. */
@@ -117,7 +147,12 @@ export function walkUpSessionRoot(start: string, indexHome?: string): string {
   try {
     // Discover enrollment without validating the acting registry format here:
     // sessionContext owns the model-facing old_store warning for that root.
-    return nearestEnrollment(start, indexHome)?.rootReal ?? "";
+    const cutShortBefore = gitRootProbesCutShort();
+    const root = nearestEnrollment(start, indexHome)?.rootReal ?? "";
+    // The hook bounds its git probe. A probe cut short leaves the checkout
+    // boundary unknown, and without that boundary the walk could reach an
+    // enrolled parent above an unenrolled nested checkout: stay silent.
+    return gitRootProbesCutShort() === cutShortBefore ? root : "";
   } catch { return ""; }
 }
 
@@ -311,6 +346,9 @@ function sessionContextTraced(root: string, input: string, env: NodeJS.ProcessEn
       // another enrolled root.
       ...(launch ? { cwd: launch.root } : {}),
       stdio: ["ignore", "pipe", "pipe"],
+      // Longer than both designed 10 s registration waits. A killed bind
+      // reads as a failed one below.
+      timeout: BIND_TIMEOUT_MS, killSignal: "SIGKILL",
       env: { ...childBusEnv(authority.bus, env), TAP_REGISTER_LOCK_TIMEOUT: "10", TAP_SKIP_VERSION_BRIEFING: "1",
         TAP_HARNESS_SESSION_ID: sessionId, TAP_TRANSCRIPT_PATH: transcript, TAP_SESSION_SOURCE: source },
     });
@@ -363,6 +401,8 @@ function sessionContextTraced(root: string, input: string, env: NodeJS.ProcessEn
   }
 
   if (handle) {
+    // A session that is starting has no approval or question open: drop what an earlier one left.
+    removePermissionRequest(authority.bus, handle);
     versionBriefing(REPO, authority.team, handle, { ...env, TAP_VERSION_RECORD_ONLY: "1" });
     out.push(registeredContextLine(handle, authority.team));
     // tap-iee3x: the bind's parked-mail line is meant for the model. Only this
@@ -424,7 +464,7 @@ const CODEX_SKILLS = "TAP skills: `tap help skill <name>` resolves canonical ins
 
 /** Claude's cwd rule, consulted only when launch evidence does not validate:
  * CLAUDE_PROJECT_DIR, when set, is AUTHORITATIVE (a root there or silence); else walk up from PWD. */
-function claudeRoot(env: NodeJS.ProcessEnv): string {
+export function claudeRoot(env: NodeJS.ProcessEnv): string {
   const project = env.CLAUDE_PROJECT_DIR ?? "";
   if (project) return resolveSessionAuthority(project, env.TAP_INDEX_HOME) ? project : "";
   return walkUpSessionRoot(process.cwd(), env.TAP_INDEX_HOME);
@@ -451,6 +491,7 @@ function cursorRoot(input: string, env: NodeJS.ProcessEnv): string {
 }
 
 async function main(argv: string[]): Promise<number> {
+  boundGitRootProbes(GIT_PROBE_TIMEOUT_MS);
   if (process.env.TAP_STATELESS === "1") return 0;
   const [mode, a, b] = argv;
   if (mode === "context-private") {

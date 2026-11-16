@@ -12,6 +12,7 @@ import { observeSubmitFrame } from "../src/submit-frame";
 import { observeInputRegion, promptLineRe } from "../src/tmux";
 import { acquirePathLock } from "../src/panelock";
 import { removeScratchTree } from "./support/scratch";
+import { renderSentinel } from "../src/sentinel";
 
 const TXT = join(
   import.meta.dir,
@@ -37,7 +38,20 @@ const OPENCODE_WELCOME = join(import.meta.dir, "fixtures", "opencode-capture", "
 const OPENCODE_WELCOME_DRAFT = join(import.meta.dir, "fixtures", "opencode-capture", "welcome-draft-124.ansi");
 // Live Claude Code 2.1.286 capture, 100x40 (tap-zo67f): a draft scrolled so every visible composer row is blank.
 const SCROLLED_BLANK = join(CORPUS, "claude", "20261001-v2.1.286-scrolled-blank-tail-h40");
+// Band and footer rows of a live Antigravity CLI 1.5.7 capture: the mode hint an
+// empty composer shows at start, then the same band with typed text (which
+// hides the `? for shortcuts` cue). The hint differs from typed text by paint.
+const AGY_RULE = `\x1b[38;2;65;72;104m${"─".repeat(60)}`;
+const AGY_FOOTER = "\x1b[38;2;255;158;100mauto\x1b[38;2;154;165;206m · Gemini 4 Hydrogen · high";
+const AGY_MODE_HINT = ["\x1b[39m  earlier transcript", AGY_RULE,
+  "\x1b[38;2;122;162;247m>\x1b[39m \x1b[38;2;154;165;206mAuto mode: edits & safe commands auto-approved (shift+tab to cycle)",
+  AGY_RULE, `\x1b[38;2;154;165;206m? for shortcuts\x1b[39m          ${AGY_FOOTER}`, ""].join("\n");
+const AGY_MODE_HINT_DRAFT = ["\x1b[39m  earlier transcript", AGY_RULE,
+  "\x1b[38;2;122;162;247m>\x1b[39m what is the tech stack here",
+  AGY_RULE, `\x1b[39m                         ${AGY_FOOTER}`, ""].join("\n");
 const SENTINEL_ID = "sol-test-20260830T000000Z-u2landid01";
+const SENTINEL = renderSentinel({ from: "probe", to: "peer", id: SENTINEL_ID,
+  kind: "discuss", reply: "expected", path: "/fixture/payload.md" });
 const corpus = (name: string) => readFileSync(join(CORPUS, name), "utf8");
 
 // Reference implementation of the RETIRED generic prompt-row reader: it
@@ -102,6 +116,10 @@ beforeAll(() => {
     writeFileSync(join(root, `opencode-${name}.txt`), stripAnsi(escaped));
   }
   writeFileSync(tryPlainFixture, stripAnsi(tryEscaped));
+  for (const [name, escaped] of [["hint", AGY_MODE_HINT], ["hint-draft", AGY_MODE_HINT_DRAFT]] as const) {
+    writeFileSync(join(root, `agy-mode-${name}.ansi`), escaped);
+    writeFileSync(join(root, `agy-mode-${name}.txt`), stripAnsi(escaped));
+  }
   writeFileSync(fixture, bytes);
   writeFileSync(draftFixture, draftBytes);
   writeFileSync(obibmFixture, obibmBytes);
@@ -172,7 +190,7 @@ if [ "$cap" = 1 ] && [ "$p" = 1 ]; then
     scrolled-blank) if [ "$e" = 1 ]; then cat "${SCROLLED_BLANK}.ansi"; else cat "${SCROLLED_BLANK}.txt"; fi ;;
     obibm) cat "${obibmFixture}" ;;
     claude-try-empty) if [ "$e" = 1 ]; then cat "${tryFixture}"; else cat "${tryPlainFixture}"; fi ;;
-    opencode-welcome|opencode-welcome-draft)
+    opencode-welcome|opencode-welcome-draft|agy-mode-hint|agy-mode-hint-draft)
       if [ "$e" = 1 ]; then cat "${root}/\${TAP_PANE_STATE_CAPTURE}.ansi"; else cat "${root}/\${TAP_PANE_STATE_CAPTURE}.txt"; fi ;;
     opencode-all-wrapped)
       if [ "$j" = 1 ]; then cat "${opencodeJoinedFixture}"
@@ -261,6 +279,22 @@ test("a fresh OpenCode welcome screen is ready; a typed draft there is not (tap-
     expect(paneState("%0", "opencode", "opencode")).toEqual({ state: "ready" });
     process.env.TAP_PANE_STATE_CAPTURE = "opencode-welcome-draft";
     expect(observePaneKind("%0", "opencode", "opencode"))
+      .toEqual({ kind: "draft", text: "what is the tech stack here" });
+  } finally {
+    delete process.env.TAP_PANE_STATE_CAPTURE;
+  }
+});
+
+test("an Antigravity mode hint is ready; a typed draft there is not", () => {
+  // Paint is the only difference, which is why the live observer captures with -e.
+  expect(classifyPane(AGY_MODE_HINT, "agy", false)).toEqual({ kind: "ready" });
+  expect(classifyPane(stripAnsi(AGY_MODE_HINT), "agy", false).kind).toBe("draft");
+  try {
+    process.env.TAP_PANE_STATE_CAPTURE = "agy-mode-hint";
+    expect(observePaneKind("%0", "agy", "agy")).toEqual({ kind: "ready" });
+    expect(paneState("%0", "agy", "agy")).toEqual({ state: "ready" });
+    process.env.TAP_PANE_STATE_CAPTURE = "agy-mode-hint-draft";
+    expect(observePaneKind("%0", "agy", "agy"))
       .toEqual({ kind: "draft", text: "what is the tech stack here" });
   } finally {
     delete process.env.TAP_PANE_STATE_CAPTURE;
@@ -451,7 +485,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
     process.env.TAP_PANE_STATE_CAPTURE = "idle";
     let injected = 0;
     try {
-      const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState,
         copyMode: observeCopyMode,
         injectText: () => {
@@ -469,7 +503,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
     const ready = paneState("%0", "claude", "claude");
     expect(ready.state).toBe("ready");
     expect(observePaneKind("%0", "claude", "claude").kind).toBe("ready");
-    const landed = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const landed = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       paneState,
       copyMode: observeCopyMode,
       injectText: () => {
@@ -497,7 +531,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
       expect(observeCopyMode("%0").status).toBe("unobservable");
       expect(observePaneKind("%0", "claude", "claude").kind).toBe("no-band");
       expect(paneState("%0", "claude", "claude").state).toBe("unobservable");
-      const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState,
         copyMode: observeCopyMode,
         injectText: () => {
@@ -517,7 +551,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("copyMode unobservable refuses even when a later peek is normal and paneState is ready", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1
@@ -539,7 +573,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("normal then unobservable recheck refuses even when paneState is ready", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1
@@ -561,7 +595,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("normal then mid unobservable preserves pane_gone", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1
@@ -584,7 +618,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("normal then copy-mode after paneState unobservable is copy_mode with zero injection", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1 ? { status: "normal" as const } : { status: "copy-mode" as const };
@@ -603,7 +637,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("normal then copy-mode recheck is copy_mode with zero injection", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1 ? { status: "normal" as const } : { status: "copy-mode" as const };
@@ -621,7 +655,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
 
   test("initial copy-mode gone is pane_gone not band_busy", () => {
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => ({ status: "gone" as const }),
       paneState: () => ({ state: "ready" }),
       injectText: () => {
@@ -636,7 +670,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
 
   test("initial copy-mode rate-limited is rate_limited not band_busy", () => {
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => ({ status: "rate-limited" as const, reason: "tmux client budget exhausted before copy-mode could be inspected" }),
       paneState: () => ({ state: "ready" }),
       injectText: () => {
@@ -652,7 +686,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("mid copy-mode gone replaces band_busy", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1 ? { status: "normal" as const } : { status: "gone" as const };
@@ -672,7 +706,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("mid copy-mode rate-limited replaces band_busy", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1
@@ -694,7 +728,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("final copy-mode gone is pane_gone with zero injection", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1 ? { status: "normal" as const } : { status: "gone" as const };
@@ -713,7 +747,7 @@ describe("B1 pinned corpus (six-state classifyPane)", () => {
   test("final copy-mode rate-limited is rate_limited with zero injection", () => {
     let peeks = 0;
     let injected = 0;
-    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const blocked = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       copyMode: () => {
         peeks++;
         return peeks === 1
@@ -1066,12 +1100,13 @@ describe("submitVerify typed land/clear", () => {
     const home = join(root, `hermes-admission-${stop}`);
     const marker = join(home, "receipts", `${SENTINEL_ID}.attempted`);
     let delayed = false, injections = 0, keys = 0;
-    const result = submitVerifyLocked("sess:0.0", SENTINEL_ID, "wire", { ...bound, harness: "hermes" }, landFx({
+    const result = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, { ...bound, harness: "hermes" }, landFx({
       observePane: () => stop && delayed ? "unobservable" : {
         paneId: "%7", session: "s", serverEpoch: "srv:1:2", panePid: "4242", currentCommand: "hermes",
       },
       settle: (seconds) => {
-        if (seconds === 0.15) { expect(existsSync(marker)).toBe(false); delayed = true; }
+        // The admission delay precedes injection; a completion Enter may wait again later.
+        if (seconds === 0.15 && !delayed) { expect(existsSync(marker)).toBe(false); delayed = true; }
       },
       pressKeys: () => { keys++; return true; },
       injectText: () => { expect(existsSync(marker)).toBe(true); injections++; return true; },
@@ -1089,7 +1124,7 @@ describe("submitVerify typed land/clear", () => {
     mkdirSync(join(home, "receipts"), { recursive: true });
     if (!writable) mkdirSync(join(home, "receipts", `${SENTINEL_ID}.submit-phases.jsonl`));
     let frames = 0, enters = 0, injections = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP v0.23 ask ${SENTINEL_ID}]]`,
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL,
       { ...bound, harness: "agy" }, landFx({
         observePane: () => ({ paneId: "%7", session: "s", serverEpoch: "srv:1:2", panePid: "4242", currentCommand: "agy" }),
         submitFrame: () => ({ state: ++frames === 1 ? "staged" : "changed", mode: "idle", width: "80" }),
@@ -1119,7 +1154,7 @@ describe("submitVerify typed land/clear", () => {
     // staged; the first read after the first Enter still shows it staged; every later read shows `late`.
     // empty-first lands staged (the landing check's one read), then reads empty before any Enter.
     let pressed = 0, readsAfterEnter = 0, reads = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP v0.23 ask ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       submitFrame: () => {
         if (late === "empty-first") return { state: ++reads === 1 ? "staged" : "empty", mode: "idle", width: "80" };
         if (pressed === 0 || ++readsAfterEnter === 1) return { state: "staged", mode: "idle", width: "80" };
@@ -1138,7 +1173,7 @@ describe("submitVerify typed land/clear", () => {
     mkdirSync(join(home, "receipts"), { recursive: true });
     writeFileSync(join(home, "receipts", `${SENTINEL_ID}.attempted`), "{}");
     let injections = 0;
-    const result = submitVerifyLocked("sess:0.0", SENTINEL_ID, "wire", bound,
+    const result = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound,
       landFx({ injectText: () => { injections++; return true; } }), {
         busHome: home, recipient: "peer", registryPath: "", scriptsDir: "", agentFamilies: new Set(["claude"]),
         deliveryFacts: { urgent: false, noSpool: false, recipientBound: true, harness: "claude" },
@@ -1149,7 +1184,7 @@ describe("submitVerify typed land/clear", () => {
 
   test("empty through ten incumbent land reads then present on the extra phase is not lost", () => {
     let n = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         n++;
         if (n <= 10) return { state: "absent" };
@@ -1167,7 +1202,7 @@ describe("submitVerify typed land/clear", () => {
     process.env.TAP_BOOT_ID = "bootuuid:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     try {
       let injected = 0;
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, {
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, {
         ...bound,
         bootId: "bootuuid:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       }, landFx({
@@ -1188,7 +1223,7 @@ describe("submitVerify typed land/clear", () => {
   test("failed capture after Enter is unverified, not injected", () => {
     let typed = 0;
     let collapsed = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         typed++;
         if (typed === 1) return { state: "present", text: SENTINEL_ID };
@@ -1204,7 +1239,7 @@ describe("submitVerify typed land/clear", () => {
   });
 
   test("rate-limited land sample is unverified, no classification guessed", () => {
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => ({ state: "rate_limited", reason: "tmux client budget exhausted" }),
     }));
     expect(r.status).toBe("unverified");
@@ -1214,7 +1249,7 @@ describe("submitVerify typed land/clear", () => {
   test("positive pane absence after inject is not injected", () => {
     let typed = 0;
     let collapsed = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         typed++;
         if (typed === 1) return { state: "present", text: SENTINEL_ID };
@@ -1229,7 +1264,7 @@ describe("submitVerify typed land/clear", () => {
   });
 
   test("production paneState ready wins over leftover bandState busy", () => {
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       paneState: () => ({ state: "ready" }),
       observeInput: (() => {
         let n = 0;
@@ -1249,7 +1284,7 @@ describe("submitVerify typed land/clear", () => {
       const got = paneState("%0", "claude", "claude");
       expect(got.state).toBe("busy");
       expect(got.state === "busy" ? got.text : "").toContain("HUMAN-DRAFT");
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState,
         injectText: () => {
           injected++;
@@ -1267,7 +1302,7 @@ describe("submitVerify typed land/clear", () => {
     process.env.TAP_PANE_STATE_CAPTURE = "prompt-no-box";
     let injected = 0;
     try {
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState,
         injectText: () => {
           injected++;
@@ -1285,7 +1320,7 @@ describe("submitVerify typed land/clear", () => {
     process.env.TAP_PANE_STATE_CAPTURE = "gone";
     let injected = 0;
     try {
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState,
         injectText: () => {
           injected++;
@@ -1302,7 +1337,7 @@ describe("submitVerify typed land/clear", () => {
   test("production observeInputId gone after inject is not injected", () => {
     process.env.TAP_PANE_STATE_CAPTURE = "with-id";
     try {
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         paneState: () => ({ state: "ready" }),
         observeInput: observeInputId,
         injectText: () => {
@@ -1319,13 +1354,17 @@ describe("submitVerify typed land/clear", () => {
   test("swallowed first Enter: exact id remaining after the beat delivers with two Enters", () => {
     let enters = 0;
     let n = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         n++;
         if (n <= 2) return { state: "present" as const, text: SENTINEL_ID };
         return { state: "absent" as const };
       },
       pressEnter: () => { enters++; return true; },
+      // Acceptance removes the composer while the harness starts its turn.
+      paneState: () => n > 2
+        ? { state: "unobservable", reason: "no input prompt is visible (harness mid-turn)" }
+        : { state: "ready" },
     }));
     expect(r.status).toBe("injected");
     expect(enters).toBe(2);
@@ -1334,13 +1373,16 @@ describe("submitVerify typed land/clear", () => {
   test("first Enter that clears the exact id presses no second Enter", () => {
     let enters = 0;
     let n = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         n++;
         if (n === 1) return { state: "present" as const, text: SENTINEL_ID };
         return { state: "absent" as const };
       },
       pressEnter: () => { enters++; return true; },
+      paneState: () => n > 1
+        ? { state: "unobservable", reason: "no input prompt is visible (harness mid-turn)" }
+        : { state: "ready" },
     }));
     expect(r.status).toBe("injected");
     expect(enters).toBe(1);
@@ -1349,13 +1391,16 @@ describe("submitVerify typed land/clear", () => {
   test("a paste chip after a landed id is unverified and presses no second Enter", () => {
     let enters = 0;
     let n = 0;
-    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+    const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
       observeInput: () => {
         n++;
         if (n === 1) return { state: "present" as const, text: SENTINEL_ID };
         return { state: "chip" as const, text: "[Pasted text #1]" };
       },
       pressEnter: () => { enters++; return true; },
+      paneState: () => n > 1
+        ? { state: "busy", text: "[Pasted text #1]" }
+        : { state: "ready" },
     }));
     expect(r.status).toBe("unverified");
     expect(r.status).not.toBe("injected");
@@ -1371,7 +1416,7 @@ describe("submitVerify typed land/clear", () => {
     try {
       const waits: number[] = [];
       let n = 0;
-      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, `[[TAP ${SENTINEL_ID}]]`, bound, landFx({
+      const r = submitVerifyLocked("sess:0.0", SENTINEL_ID, SENTINEL, bound, landFx({
         observeInput: () => {
           n++;
           if (n === 1) return { state: "present" as const, text: SENTINEL_ID };

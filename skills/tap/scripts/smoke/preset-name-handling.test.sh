@@ -31,10 +31,8 @@ fail() { echo "preset-name-handling: $*" >&2; exit 1; }
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 REPO="$WORK/repo"
-mkdir -p "$REPO/.tap/bus" "$WORK/cfg/tap"
+mkdir -p "$REPO" "$WORK/cfg/tap"
 git init -q "$REPO"
-printf '{"schema": "0.20", "team":{"name":"repo","worktree_root":"%s"},"seats":{}}\n' "$REPO" \
-  > "$REPO/.tap/bus/registry.json"
 cat > "$WORK/cfg/tap/config.toml" <<'TOML'
 version = 2
 
@@ -92,6 +90,12 @@ chmod +x "$FAKE_BIN/tmux"
 export PATH="$FAKE_BIN:$PATH"
 unset TMUX
 cd "$REPO"
+
+# Start with machine-owned enrollment, not unowned state inside a fresh checkout.
+if ! bash "$TAP" init --yes --no-instructions --no-trust-folders > "$WORK/init.out" 2>&1; then
+  cat "$WORK/init.out" >&2
+  fail "fixture init failed"
+fi
 
 launched_name() {  # <positional> [label] -> the seat name the launcher would create
   local out

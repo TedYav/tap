@@ -99,7 +99,9 @@ export function buildArtifact(options: { repo: string; commit: string; out: stri
     run("tar", ["-x", "-C", tree], { input: git(repo, ["archive", "--format=tar", git(repo, ["write-tree"], { env }).toString().trim()], { env }) });
 
     const router = join(scratch, "tap");
-    run(bunBinary(), ["build", "--compile", join(tree, "runtime/bun/main.ts"), "--outfile", router], { cwd: scratch });
+    // A standalone executable autoloads $PWD/.env and $PWD/bunfig.toml by default; the
+    // router starts in the user's project directory, which is not TAP's project.
+    run(bunBinary(), ["build", "--compile", "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig", join(tree, "runtime/bun/main.ts"), "--outfile", router], { cwd: scratch });
     const routerBytes = readFileSync(router);
     const marker = `${JSON.stringify({ schema: 1, version, commit, platform, bun: Bun.version }, null, 2)}\n`;
     const generated = [

@@ -260,6 +260,17 @@
   {
     "topic": [
       "completion",
+      "bash"
+    ],
+    "key": "completion bash",
+    "exit": 0,
+    "page": "completion",
+    "dedicated": false,
+    "tombstone": false
+  },
+  {
+    "topic": [
+      "completion",
       "zsh"
     ],
     "key": "completion zsh",

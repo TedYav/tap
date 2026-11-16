@@ -2,7 +2,7 @@ export type DeliveryAction = "repark" | "cancel" | "unconfirmed" | "harness-queu
 export type DeliveryEffect = "none" | "possible";
 
 export type DeliveryResult =
-  | { action: "repark"; effect: "none"; cause: "config" | "draft" | "no-band" | "copy-mode" | "lock_busy" | "recovery" | "rate_limited" | "identity_unobservable" | "pane_dead" | "overprint" | "shell-mode" | "feedback-draft"; detail: string }
+  | { action: "repark"; effect: "none"; cause: "invalid_wire" | "config" | "draft" | "no-band" | "copy-mode" | "lock_busy" | "recovery" | "rate_limited" | "identity_unobservable" | "pane_dead" | "overprint" | "shell-mode" | "feedback-draft"; detail: string }
   | { action: "cancel"; effect: "none"; cause: "pane_gone" | "identity_mismatch"; receipt_reason: "pane_gone"; notice: "failed"; detail: string }
   | { action: "cancel"; effect: "possible"; cause: "pane_gone"; receipt_reason: "pane_gone"; notice: "failed"; detail: string }
   | { action: "unconfirmed"; effect: "possible"; cause: "identity_mismatch" | "identity_unobservable" | "pane_dead" | "rate_limited" | "submit_unverified" | "mid_pipeline_failure" | "overprint" | "shell-mode" | "feedback-draft"; notice: "unconfirmed"; detail: string }

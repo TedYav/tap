@@ -25,7 +25,7 @@ export function queueExplanation(home: string, id: string, now = Date.now() / 10
     "codex-hook-trust": CODEX_HOOK_TRUST_REASON,
     "pending-input": "occupied composer (queued input or a draft)", "copy-mode": "recipient pane is in copy mode",
     "shell-mode": "OpenCode shell mode blocks chat delivery; a sender alert is published on detection",
-    "feedback-draft": "Claude feedback-draft panel blocks delivery; a human or the seat's leader dismisses it (sender and supervising leader are alerted on detection)",
+    "feedback-draft": "Claude feedback-draft card hides the composer and is not dismissed; a human or the seat's leader clears it (sender and supervising leader are alerted on detection)",
     "no-prompt": "recipient has no readable input prompt", "no-input-prompt": "recipient has no readable input prompt",
     clearing: "recipient context reset is in progress", polite: "polite delivery window",
     "auto-settle": "waiting to group messages into a digest", busy: "recipient is busy",

@@ -12,6 +12,13 @@
 
 One line identifying a payload, with optional display hints. It carries no authority; the recipient reads the payload before acting. The courier injects this into the recipient's pane. **Slots 1–3 are fixed, positional, and always present:** the version (`v0.23`, no `=`), the obligation (`ask` or `note`, never omitted — the one word every reader must see), and the full minted id. Everything after slot 3 is order-free and present only when true.
 
+**Delivery admission.** Before admission and typing, the courier validates one
+v0.23 sentinel; controls, newlines, malformed hints or extra text refuse with
+`invalid_sentinel_wire`. Hermes wraps it in `/queue `. Operator controls use a
+separate path. Replay validates routing tokens, reply, urgency and stored preview
+encoding before reconstruction; corrupt headers stay parked. Sender sanitization
+still drops unsafe hints before placement and continues delivery.
+
 **The one id-less form is the nudge doorbell** (tap-xe42x): `[[TAP v0.23 nudge]]` or `[[TAP v0.23 nudge message="<json string>"]]`, typed only by `tap nudge` ([nudge](./nudge.md)). It identifies no payload, so slot 3 is absent; the payload parser refuses it (`a nudge doorbell names no payload id`) and `runtime/bun/src/nudge-wire.ts` owns its strict grammar. It carries no sender, reply or task: the seat continues its work and checks `tap poll`.
 
 **Optional previews (2026-09-08; amends the protocol-diet ruling).**

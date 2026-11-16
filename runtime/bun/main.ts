@@ -21,7 +21,7 @@ import { withInvocationMemo, withReportingMemo } from "./src/invocation-memo";
 import { recordRefusalBeforeSend, recordSendRefusal, refusalErrorId } from "./src/send-refusal-log";
 import { AGENT_FAMILIES } from "./src/harness-families";
 import { warnOverdueInbound } from "./src/overdue";
-import { armAlwaysOn } from "./src/debug-arm";
+import { deferAlwaysOn } from "./src/debug-arm";
 import { initArgv } from "./src/courier-argv";
 
 export type Handler = (argv: string[], env?: NodeJS.ProcessEnv, stdin?: Buffer) => number | Promise<number>;
@@ -394,10 +394,7 @@ export function composeReplyAlias(argv: string[]): string[] | null {
 }
 
 function reserved(argv: string[]): boolean {
-  // Doctor now accepts a seat named help; keep the router's shortcut aligned
-  // with isHelpForm's data-bearing exception.
-  if (argv.length === 2 && argv[0] === "doctor" && argv[1] === "help") return false;
-  return RESERVED.has(argv[0] ?? "") || (argv.length === 2 && HELP.has(argv[1] ?? ""));
+  return RESERVED.has(argv[0] ?? "") || (argv.length === 2 && ["-h", "--help"].includes(argv[1] ?? ""));
 }
 
 /**
@@ -544,12 +541,13 @@ if (import.meta.main) {
     process.once("beforeExit", async code => { await (await import("./src/launcher/prompt")).exitKeepingTerminal(code); });
   }
   const argv = process.argv.slice(2);
-  // Recognize launch help before debug journaling as well as onboarding.
+  // Recognize help before debug journaling, refusal logging or onboarding.
   const helpInput = [...argv];
   while (helpInput[0] === "-v" || helpInput[0] === "--verbose") helpInput.shift();
   let help: typeof import("./src/help") | undefined;
-  const launchHelpRequested = helpInput.some(arg => HELP.has(arg))
-    && (help ??= await import("./src/help")).isLaunchHelp(helpInput);
+  const staticHelpRequested = helpInput.some(arg => HELP.has(arg))
+    && ((help ??= await import("./src/help")).isHelpForm(helpInput)
+      || (helpInput.length === 2 && HELP.has(helpInput[0]!) && helpInput[1] === "ask"));
 
   const stateless = process.env.TAP_STATELESS === "1" ? statelessRefusal(helpInput, help ??= await import("./src/help")) : null;
 
@@ -557,10 +555,23 @@ if (import.meta.main) {
   // settings. It must return before public journaling and onboarding.
   if (stateless !== null) {
     process.exitCode = stateless;
+  } else if (helpInput[0] === "help" && helpInput[1] === "skill") {
+    if (helpInput.length !== argv.length) process.env.TAP_VERBOSE = "1";
+    verbose("dispatch", { verb: helpInput[0], cwd: process.cwd() });
+    process.exitCode = (await import("./src/skill-path")).cmdHelpSkill(helpInput.slice(2), tapScriptsDir());
+  } else if (staticHelpRequested) {
+    if (helpInput.length !== argv.length) process.env.TAP_VERBOSE = "1";
+    verbose("dispatch", { verb: helpInput[0] ?? "", cwd: process.cwd() });
+    const result = help!.helpArgv(helpInput);
+    trace(process.env.TAP_BUN_ROUTE_TRACE, "native", "help");
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    process.exitCode = result.exit;
   } else if (argv[0] === "completion" && !argv.slice(1).some(arg => HELP.has(arg))) {
     process.env.TAP_VERBOSE = "0";
     process.exitCode = (await import("./src/completion")).cmdCompletion(argv.slice(1));
   } else {
+  let armAfterSuccess: (() => void) | undefined;
   // The machine journal records every public command in-process: bin/tap
   // marks its exec so tap.sh re-entries never journal twice, and this pid is
   // the caller's. Doctor and launch help are exempt: their zero-write promise
@@ -577,7 +588,9 @@ if (import.meta.main) {
     if (process.env.TAP_STATELESS !== "1") {
       try { recording = statSync(marker).isFile(); } catch { /* absent or unreadable: not recording */ }
     }
-    if (!launchHelpRequested && verb !== "doctor" && verb !== "completion" && verb !== "version" && verb !== "--version" && process.env.TAP_STATELESS !== "1") {
+    // Init owns a complete write receipt and a no-write preview; diagnostic
+    // recording must not create unreported state before that boundary.
+    if (verb !== "init" && verb !== "doctor" && verb !== "completion" && verb !== "version" && verb !== "--version" && process.env.TAP_STATELESS !== "1") {
       // A capture whose recorder stopped writing status.json gets no row; with
       // [debug] always_on set, the command arms a replacement in the background.
       let live = false;
@@ -585,7 +598,7 @@ if (import.meta.main) {
         try { live = (await import("./src/debug-capture")).recordCommand(argv, process.env, process.pid); }
         catch (error) { live = true; console.error("tap debug: journal write failed: " + (error as Error).message); }
       }
-      if (!live) armAlwaysOn(argv, process.env);
+      if (!live) armAfterSuccess = deferAlwaysOn(argv, process.env);
     }
   }
   while (argv[0] === "-v" || argv[0] === "--verbose") {
@@ -625,7 +638,7 @@ if (import.meta.main) {
     } else {
       const fallback = routerFallback(tapScriptsDir());
       const verb = argv[0] ?? "";
-      const reporting = ["whoami", "outstanding", "show"].includes(verb)
+      const reporting = ["whoami", "outstanding", "poll", "show"].includes(verb)
         && !reserved(argv) && !(verb === "whoami" && argv.includes("--pane"));
       const reportCache = reporting ? (await import("./src/reporting-cache")).prepareReportingCache(argv) : null;
       const handlers: Record<string, NativeHandler> = {};
@@ -668,5 +681,7 @@ if (import.meta.main) {
       process.exitCode = status;
     }
   }
+  // A refusal must never create the always-on cache, claim or background child.
+  if ((process.exitCode ?? 0) === 0) armAfterSuccess?.();
   }
 }

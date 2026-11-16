@@ -25,8 +25,25 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:-]*(\[[A-Za-z0-9]+\])?$/;
 const TRANSIENT: ReadonlySet<SubmitResult["status"]> = new Set(["band_busy", "recovery_held", "copy_mode", "rate_limited"]);
 export const SWITCH_TIMEOUT_MS = 15000;
 
+/**
+ * `--model opus@high` is the preset spelling operators already use for a model
+ * and its effort. Split it here, in place, so every caller sees two plain
+ * values; an `--effort` that disagrees with the suffix refuses.
+ */
+function splitModelEffort(switches: SeatSwitches): void {
+  const at = switches.model?.lastIndexOf("@") ?? -1;
+  if (at <= 0) return;
+  const level = switches.model!.slice(at + 1);
+  if (switches.effort !== undefined && switches.effort !== level) {
+    throw new TapError(1, "usage_error", "tap help self", `--model ${switches.model} names effort '${level}' but --effort says '${switches.effort}'; pass one`, "tap self");
+  }
+  switches.model = switches.model!.slice(0, at);
+  switches.effort = level;
+}
+
 /** Value checks only: the transcript proof, not a name list, establishes that Claude Code accepted the model. */
 export function checkSwitches(switches: SeatSwitches): void {
+  splitModelEffort(switches);
   const { model, effort } = switches;
   if (model !== undefined && (model.length > 80 || !MODEL.test(model))) {
     throw new TapError(1, "usage_error", "tap help self", `--model must be one model name or alias, such as fable, sonnet or claude-opus-5-5[1m]; got '${model}'`, "tap self");

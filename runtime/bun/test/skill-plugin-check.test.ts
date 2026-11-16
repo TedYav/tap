@@ -64,3 +64,21 @@ test("a hand-written Codex manifest on a model-invocable skill is reported", () 
   writeFileSync(join(root, "plugins/tap/skills", name, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
   expect(generateSkillPlugin(root, true)).toEqual([`stale plugin agents/openai.yaml: ${name}`]);
 });
+
+// A seat that received `/tap:self compact --model <other>` with answers and
+// "then land the PR" did the work at once and never compacted: the wrapper
+// let the trailing text read as a request of its own.
+test("every wrapper puts the skill first and makes trailing text its input", () => {
+  const repo = join(import.meta.dir, "../../..");
+  for (const name of ["self", "context", "send"]) {
+    const wrapper = readFileSync(join(repo, "plugins/tap/skills", name, "SKILL.md"), "utf8");
+    expect(wrapper).toContain(`Before anything else, run \`tap help skill ${name}\``);
+    expect(wrapper).toContain("do not act on any of it until its instructions say how and when");
+  }
+  const self = readFileSync(join(repo, "skills/self/SKILL.md"), "utf8");
+  expect(self).toContain("## Text after compact or rebrief is for the seat that resumes");
+  expect(self.indexOf("## Text after compact or rebrief")).toBeLessThan(self.indexOf("## Choose what survives"));
+  // A second seat was told "model is fable for resume", then "TAP will switch
+  // automatically", and ran the rebrief with no --model at all.
+  expect(self).toContain("TAP switches the model only when the flag is on the");
+});

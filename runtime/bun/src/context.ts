@@ -1,3 +1,4 @@
+import { IDENTITY_PROBE_TIMEOUT_MS } from "./spawn";
 import { verbose } from "./verbose";
 // Resolving "where am I and who am I" — the preamble every verb runs.
 //
@@ -25,7 +26,7 @@ import {
 import { enrolledNameForRootFromDoc, flipMarkerState, loadGlobalRegistry } from "./index-home";
 import { NO_SERVER_ON, physicalSocketPath, serverEpochFromRaw, seedServerIdentity, socketFingerprint, tmux, tmuxReadOnly } from "./tmux";
 import { isFile } from "./watch-lease";
-import { pidHasAncestor, processRow } from "./process-ancestry";
+import { ancestryState, pidHasAncestor, processRow } from "./process-ancestry";
 import { DEFAULT_AGENT_FAMILIES, classifyHolderCommand, readProcessTableMemoized } from "./observe";
 import { isOldStoreRefusal } from "./register-authority";
 import { nativeOpenCodeCaller, readOpenCodeAncestry } from "./opencode-service";
@@ -375,7 +376,7 @@ function probeGitCommonDir(dir: string, env: NodeJS.ProcessEnv): string | null {
     if (key.startsWith("GIT_")) delete probeEnv[key];
   }
   const probe = spawnSync("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    encoding: "utf8", env: probeEnv,
+    encoding: "utf8", env: probeEnv, timeout: IDENTITY_PROBE_TIMEOUT_MS, killSignal: "SIGKILL",
   });
   if (probe.status !== 0 || !(probe.stdout ?? "").trim()) return null;
   try {
@@ -859,11 +860,13 @@ function climbHeldTerminal(first: number, firstTty: string, inventoryStdout: str
   let holderTty = "";
   for (let hops = 0; hops < 64 && !holder; hops++) {
     const row = processRow(current, env);
+    if (row === undefined) return { state: "unobservable", refusal: `process probe timed out for pid '${current}'` };
     if (!row) return outside(`process observation unavailable for pid '${current}' on terminal '${firstTty}'`);
     if (!/^[0-9]+$/.test(row.ppid)) return outside(`process observation returned invalid parent pid '${row.ppid}'`);
     const parent = Number(row.ppid);
     if (parent <= 1 || parent === current) return outside(`process ancestry ended on terminal '${firstTty}' without reaching a pane`);
     const parentRow = processRow(parent, env);
+    if (parentRow === undefined) return { state: "unobservable", refusal: `process probe timed out for pid '${parent}'` };
     if (!parentRow) return outside(`process observation unavailable for pid '${parent}'`);
     if (["", "?", "??", "-"].includes(parentRow.tty)) {
       return outside(`terminal '${firstTty}' is held by pid ${parent}, which has no controlling terminal`);
@@ -890,12 +893,15 @@ function climbHeldTerminal(first: number, firstTty: string, inventoryStdout: str
   }
   const panePid = pidRead.code === 0 ? (pidRead.stdout.split("\n", 1)[0] ?? "") : "";
   if (!/^[0-9]+$/.test(panePid)) return outside(`pane ${found} reports no usable pane_pid for terminal holder pid ${holder}`);
-  if (!pidHasAncestor(holder, panePid, env)) {
+  const ancestry = ancestryState(holder, panePid, env);
+  if (ancestry === "unobservable") return { state: "unobservable", refusal: `process ancestry unavailable for terminal holder pid ${holder}` };
+  if (ancestry !== "descendant") {
     return outside(`terminal '${firstTty}' is held by pid ${holder}, which is not under pane ${found}'s pane_pid ${panePid}`);
   }
   // 4. The holder is a harness process, by the registry's own classifier.
   const { table, ok } = readProcessTableMemoized(env);
-  const holderRow = ok && table ? table.get(String(holder)) : undefined;
+  if (!ok) return { state: "unobservable", refusal: `process table unavailable for terminal holder pid ${holder}` };
+  const holderRow = table?.get(String(holder));
   if (!holderRow) return outside(`process table has no row for terminal holder pid ${holder}`);
   const family = classifyHolderCommand(holderRow[2], holderRow[3], DEFAULT_AGENT_FAMILIES);
   if (!family) {

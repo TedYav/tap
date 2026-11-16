@@ -357,7 +357,7 @@ test("crew launch removes the inherited stateless marker before the harness", ()
   const f = fixture();
   const executable = join(f.cwd,"codex");
   writeFileSync(executable, "#!/bin/sh\nprintf '%s' \"${TAP_STATELESS-absent}\"\n", {mode:0o755});
-  const command = success(f).replace(/\bcodex\b/, executable);
+  const command = success(f).replace(/ codex(?= |$)/, ` ${executable}`);
   const child = spawnSync("/bin/sh", ["-c",command], {env:{...f.env,TAP_STATELESS:"1"},encoding:"utf8"});
   expect(child.status,child.stderr).toBe(0);
   expect(child.stdout).toBe("absent");
@@ -368,7 +368,7 @@ test("crew launch strips inherited harness identity env before the harness, keep
   const keys = [...INHERITED_IDENTITY_ENV, "TMUX", "TMUX_PANE"];
   const executable = join(f.cwd, "codex");
   writeFileSync(executable, `#!/bin/sh\n${keys.map(key => `printf '%s=%s\\n' ${key} "\${${key}-absent}"`).join("\n")}\n`, { mode: 0o755 });
-  const command = success(f).replace(/\bcodex\b/, executable);
+  const command = success(f).replace(/ codex(?= |$)/, ` ${executable}`);
   expect(command).toContain("-u TAP_HARNESS_SESSION_ID");
   const decoy = Object.fromEntries([...INHERITED_IDENTITY_ENV].map(key => [key, `foreign-${key}`]));
   const child = spawnSync("/bin/sh", ["-c", command], { env: { ...f.env, ...decoy, TMUX: "/tmp/sock,1,0", TMUX_PANE: "%3" }, encoding: "utf8" });
@@ -413,7 +413,7 @@ test("a preset composes typed env, unset keys and a literal harness tail", () =>
   expect(command).toContain("-u CREW_DROP");
   const executable = echoHarness(f, "codex", ["CREW_VALUE", "CREW_DROP"]);
   // An ambient value is masked too: env -u runs after login startup.
-  const child = spawnSync("/bin/sh", ["-c", command.replace(/\bcodex\b/, executable)], { env: { ...f.env, CREW_DROP: "ambient" }, encoding: "utf8" });
+  const child = spawnSync("/bin/sh", ["-c", command.replace(/ codex(?= |$)/, ` ${executable}`)], { env: { ...f.env, CREW_DROP: "ambient" }, encoding: "utf8" });
   expect(child.status, child.stderr).toBe(0);
   const lines = child.stdout.trim().split("\n");
   expect(lines.slice(0, 2)).toEqual(["CREW_VALUE=typed", "CREW_DROP=absent"]);
@@ -475,4 +475,19 @@ test("relaunch overrides fold into a crew recipe: unset then set again, typed ke
   const reset = crewRecipeWithOverrides(unset, { env: ["TYPED=new"] })!;
   expect(reset).toEqual({ harness_env: { KEEP: "k", TYPED: "new" }, harness_unset_env: [], harness_tail: ["--a", "--b"], harness_env_set: ["TYPED"] });
   expect(crewRecipeWithOverrides({ ...base, harness_tail: "bad" }, { env: ["X=1"] })).toBeNull();
+});
+
+test("crew rendering carries caller PATH through a substituted login shell", async () => {
+  const f = fixture();
+  const bin = join(f.cwd, "caller bin");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "fish"), "#!/bin/sh\nexit 99\n", { mode: 0o755 });
+  writeFileSync(join(bin, "bash"), '#!/bin/sh\nshift\nscript=$1\nshift\nPATH=/usr/bin:/bin exec /bin/sh -c "$script" "$@"\n', { mode: 0o755 });
+  writeFileSync(join(bin, "codex"), '#!/usr/bin/env fixture-runtime\n', { mode: 0o755 });
+  writeFileSync(join(bin, "fixture-runtime"), '#!/bin/sh\nprintf "crew-started\\n"\n', { mode: 0o755 });
+  const env = { ...f.env, TAP_LAUNCH_SHELL: "", SHELL: join(bin, "fish"), PATH: bin };
+  const { command } = await crewRecipeInvocation("fixture", "crew", { harness: "codex", cwd: f.cwd, model: "model-x", permissions: "auto", harness_env: {}, passthrough: [] }, env);
+  const result = spawnSync("/bin/sh", ["-c", command], { env: { PATH: "/usr/bin:/bin" }, encoding: "utf8" });
+  expect(result.status).toBe(0);
+  expect(result.stdout.trim()).toBe("crew-started");
 });

@@ -48,10 +48,10 @@ import { listHandleHistory } from "./register";
 import { writeCancelledReceipt } from "../cancelled-receipt";
 import { loadRegistry, seatMap, type RegistryDoc } from "../registry";
 import { registryWriteRefusal, isOldStoreRefusal } from "../register-authority";
-import { DENYLIST } from "../observe";
+import { DENYLIST, noAgentRecovery } from "../observe";
 import { loadGlobalRegistry, flipMarkerState } from "../index-home";
 import { atomicWrite, ensureAscii, jsonObj } from "../fsatomic";
-import { renderSentinel } from "../sentinel";
+import { InvalidSentinelWire, renderSentinel } from "../sentinel";
 import { parseStuckSentinel } from "../stuck-sentinel";
 import { sentinelPayloadRecipient } from "../existing-sentinel";
 import { cancelCopyMode, observePaneResult, paneAddress, ServerUnresponsive, serverEpochFromRaw, tmuxReadOnly } from "../tmux";
@@ -525,7 +525,7 @@ function cmdSendOutcomeBody(
           // as work through the relay.
           const orderRoute = `tap assign ${originalTo} -f <path>${args.pane ? ` --cross-worktree --pane ${args.pane}` : ""}`;
           throw new TapError(2, "order_shaped_note", orderRoute,
-            `this body reads like a work order (a bead id plus a work-order marker) but is being sent as a note, which mints no reply obligation and is how five dispatches went unanswered on 2026-09-03. Send it as work with: ${orderRoute}. If it really is a note, say so with: tap send ${originalTo} --note -f <path>`);
+            `this body reads like a work order (an issue id plus a work-order marker) but is being sent as a note, which mints no reply obligation. Send it as work with: ${orderRoute}. If it really is a note, say so with: tap send ${originalTo} --note -f <path>`);
         }
       }
 
@@ -866,7 +866,7 @@ function cmdSendOutcomeBody(
             `'${to}' was registered under server generation ${boundEpoch}, but the pane now reports ${obs.serverEpoch}`);
         }
         if (DENYLIST.includes(manualRelayFamily(obs.currentCommand, agentFamilies))) {
-          throw new TapError(1, "unsafe_target", "escalate",
+          throw new TapError(1, "unsafe_target", noAgentRecovery(to),
             `reason=denylist; pane '${pane}' runs '${obs.currentCommand}' (not an agent REPL)`, "tap send");
         }
         authorizedPaneId = boundPaneId || obs.paneId;
@@ -1380,12 +1380,16 @@ function cmdSendOutcomeBody(
   // team does not resolve through the index (lib.sh:822-838). The manual
   // relay is the unindexed shape: the sender's team on the from, a bare
   // handle on the to, no sender-index question — so `path=` always rides.
-  const sentinel = renderSentinel({
+  let sentinel: string;
+  try { sentinel = renderSentinel({
     from: remote ? `${ctx.team}/${from}` : manualRelay ? `${relayTeamName}/${from}` : from, to: remote ? `${remote.team}/${to}` : to,
     id, kind, reply: replyExpect, path: canonPath,
     urgency: urgent ? "urgent" : undefined, interrupt: urgent,
     senderIndex: remote ? senderIndexEvidence(ctx.team, process.env.TAP_INDEX_HOME) : undefined,
-  });
+  }); } catch (error) {
+    if (!(error instanceof InvalidSentinelWire)) throw error;
+    return retract(() => new TapError(1, error.errorClass, "repair the payload routing, then resend", error.message, "tap send"));
+  }
   // The incumbent's post-placement sequence, in its order (tap-send.sh:1617
   // render → :1632 recovery guard → :1639 clear-fence inspection → :1661
   // polite park → :1666 submit): the render first, so an index that turns
@@ -1493,6 +1497,8 @@ function cmdSendOutcomeBody(
     }));
   }
 
+  if (result.status === "invalid_wire") return retract(() => new TapError(1, result.errorClass,
+    "repair the payload routing, then resend", result.detail, "tap send"));
   if (result.status === "band_busy" && result.cause === "pane_dead") return placedNotDelivered("pane_dead", result.detail, result.interrupt);
   if (result.status === "team_reset_fenced") {
     // The courier refused before any keystroke because a reset fence appeared

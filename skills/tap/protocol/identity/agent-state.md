@@ -27,7 +27,9 @@ The menu outranks a stale spinning pane title. It is not an approval request:
 approval-timeout has no deny key for it. Diagnosis and roster display do not
 dismiss it or install an update. Launcher readiness and licensed courier
 delivery may [choose Skip once](../delivery/default-deny.md#codex-update-skip)
-and continue only after proving an empty composer on the same pane.
+and continue only after proving an empty composer on the same pane. Seats TAP
+starts turn the startup check off, so the menu is expected only on panes
+started another way.
 
 A harness that has never been signed in is `blocked/sign_in`: Codex's
 "Choose how you want to use Codex." menu with its closing key hint, Claude

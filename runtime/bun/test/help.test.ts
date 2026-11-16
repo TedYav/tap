@@ -211,6 +211,8 @@ function dispatcherRows(): Set<string> {
   if (!completion.includes('argv.length === 1 && argv[0] === "zsh"')) throw new Error("completion.ts lost its zsh arm");
   rows.add("completion");
   rows.add("completion zsh");
+  if (!completion.includes('argv.length === 1 && argv[0] === "bash"')) throw new Error("completion.ts lost its bash arm");
+  rows.add("completion bash");
 
   return rows;
 }
@@ -221,7 +223,7 @@ describe("help is native on every door", () => {
     try {
       const forms: [string[], string[]][] = [
         [["help"], []], [["--help"], []], [["help", "team", "refresh"], ["team", "refresh"]],
-        [["send", "help"], ["send"]], [["team", "up", "-h"], ["team", "up"]], [["help", "advisory"], ["advisory"]],
+        [["send", "--help"], ["send"]], [["team", "up", "-h"], ["team", "up"]], [["help", "advisory"], ["advisory"]],
         [["help", "notaverb"], ["notaverb"]], [["help", "team", "notasub"], ["team", "notasub"]],
         [["help", "ask"], ["ask"]], [["-h", "ask"], ["ask"]], [["--help", "ask"], ["ask"]],
       ];
@@ -257,7 +259,7 @@ describe("help is native on every door", () => {
     expect(isHelpForm(["help", "skill", "tap"])).toBe(false);
     expect(isHelpForm(["help", "ask"])).toBe(false);
     expect(isHelpForm(["help", "ask", "x"])).toBe(true);
-    expect(isHelpForm(["send", "help"])).toBe(true);
+    expect(isHelpForm(["send", "help"])).toBe(false);
   });
 
   test("every trailing help spelling on the done tombstone is the same help request", () => {
@@ -364,7 +366,9 @@ describe("accepted rows come from accepting cases", () => {
     expect(init).toContain("Scope: this project.");
     expect(init).toContain("Optional folder trust records this current directory");
     expect(init).toContain("tap setup --machine");
-    expect(init).toContain("it prompts when AGENTS.md is absent, you pass neither --yes nor --json, and stdin/stderr are terminals");
+    expect(init).toContain("it asks before creating AGENTS.md or appending a missing TAP block [Y/n]");
+    expect(init).toContain("--no-instructions");
+    expect(init).toContain("--dry-run resolves the same project");
     for (const mode of ["tap setup --machine ", "tap setup --machine --answers <file|->", "tap setup [--yes] [--team <name>]", "tap setup --repo [--check]"]) {
       expect(setup).toContain(`\n  ${mode}`);
     }
@@ -539,8 +543,8 @@ describe("76m7 composite routing", () => {
     expect(result.stderr).toContain("For subcommand details, see: tap help team");
   });
 
-  test("bus archive, teams refresh and completion zsh are help rows, not refusals", () => {
-    for (const topic of [["bus", "archive"], ["teams", "refresh"], ["completion", "zsh"]]) {
+  test("bus archive, teams refresh and the completion shells are help rows, not refusals", () => {
+    for (const topic of [["bus", "archive"], ["teams", "refresh"], ["completion", "zsh"], ["completion", "bash"]]) {
       const result = lookupHelp(topic);
       expect(result.exit, topic.join(" ")).toBe(0);
       expect(result.key).toBe(topic.join(" "));
@@ -549,6 +553,7 @@ describe("76m7 composite routing", () => {
     }
     expect(lookupHelp(["bus", "archive"]).stdout).toBe(lookupHelp(["bus"]).stdout);
     expect(lookupHelp(["completion", "zsh"]).stdout).toBe(lookupHelp(["completion"]).stdout);
+    expect(lookupHelp(["completion", "bash"]).stdout).toBe(lookupHelp(["completion"]).stdout);
     // teams refresh is the machine alias of admin refresh, not the team-roster page.
     expect(lookupHelp(["teams", "refresh"]).stdout).toContain("tap admin refresh");
     expect(lookupHelp(["teams", "refresh"]).stdout).not.toBe(lookupHelp(["teams"]).stdout);
@@ -848,7 +853,7 @@ describe("causal fixtures: dropped subcommand, wrong-scoped help, routing gap", 
     // 97 with the team history page and the teams roster page (the machine seat view alias).
     expect(index.filter((row) => row.dedicated)).toHaveLength(97);
     expect(index.filter((row) => row.tombstone)).toHaveLength(3);
-    expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(47);
+    expect(index.filter((row) => !row.dedicated && !row.tombstone && row.topic.length >= 2)).toHaveLength(48);
 
     for (const row of index) {
       const live = lookupHelp(row.topic);
@@ -1014,7 +1019,7 @@ test("admin ps trailing help routes to its dedicated page", () => {
     expect(isHelpForm(["admin", "ps", spelling])).toBe(true);
     expect(helpArgv(["admin", "ps", spelling])).toEqual(lookupHelp(["admin", "ps"]));
   }
-  expect(isHelpForm(["admin", "ps", "--help", "extra"])).toBe(false);
+  expect(isHelpForm(["admin", "ps", "--help", "extra"])).toBe(true);
 });
 
 
@@ -1121,7 +1126,7 @@ describe("launch help is a public no-effect operation", () => {
       expect(isHelpForm([...prefix, "codex", "--model=available", "--help"])).toBe(true);
       expect(helpArgv([...prefix, "codex", "reviewer", "-h"]).stdout).toBe(lookupHelp(["launch"]).stdout);
     }
-    expect(isHelpForm(["send", "peer", "-m", "--help"])).toBe(false);
+    expect(isHelpForm(["send", "peer", "-m", "--help"])).toBe(true);
   });
 
   test("overview is short and launch aliases share a sectioned useful page", () => {

@@ -470,8 +470,10 @@ test("the observed band is the shipped policy's, over REAL captured frames", () 
   // A working codex pane has no typeable band: `unobservable` holds as busy:noprompt.
   const working = observedBand(band({ frame: fixture("codex-working.ansi"), harness: "codex" }));
   expect(paneReady(facts({ harnessCmd: "codex", band: working }), deps())).toBe(working === "bare" ? "ready" : "busy:noprompt");
-  // The claude feedback overlay is a named hold of its own, never a bare band.
-  expect(observedBand(band({ frame: fixture("claude-feedback-empty-constructed.ansi"), harness: "claude" }))).toBe("feedback-draft");
+  // tap-89a57: a composer the feedback card hides is a named hold; a complete one below it is read as usual.
+  expect(observedBand(band({ frame: fixture("claude-feedback-card-empty-hidden.ansi"), harness: "claude" }))).toBe("feedback-draft");
+  expect(observedBand(band({ frame: fixture("claude-feedback-card-visible.ansi"), harness: "claude" }))).toBe("bare");
+  expect(observedBand(band({ frame: fixture("claude-feedback-card-text-hidden.ansi"), harness: "claude" }))).toBe("feedback-draft");
 });
 
 // --- display state -----------------------------------------------------------------

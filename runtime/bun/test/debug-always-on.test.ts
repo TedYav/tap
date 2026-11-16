@@ -19,9 +19,14 @@ function fixture() {
   for (const path of [index, join(xdg, "tap"), join(root, "home")]) mkdirSync(path, { recursive: true });
   writeFileSync(join(index, "global-registry.json"), '{"schema":"0.20","teams":{}}\n');
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: xdg, TAP_INDEX_HOME: index,
-    TAP_TMUX_SOCKET_PATH: join(root, "no-server.sock"), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
+    TAP_HOME: join(root, "bus"), TAP_TMUX_SOCKET_PATH: join(root, "no-server.sock"), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
   delete env[ARM_CHILD];
   const setConfig = (text: string) => writeFileSync(config, text, { mode: 0o600 });
+  // Use an already initialized effectful command for arming: read-only reports never arm.
+  const initialized = tap(["init", "--yes", "--no-trust-folders"], env, root);
+  expect(initialized.code, initialized.stderr).toBe(0);
+  const offline = tap(["in", "arm-fixture", "--offline"], env, root);
+  expect(offline.code, offline.stderr).toBe(0);
   return { root, index, debug, xdg, config, env, setConfig };
 }
 const claims = (debug: string) => existsSync(debug) ? readdirSync(debug).filter(name => /^arm\.attempt\.\d+$/.test(name)).sort() : [];
@@ -105,8 +110,8 @@ test("the arm bit is parsed once per config edit and cached; a refused config is
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
-// bin/tap pins the Bun cache off for the verbs that promise no state creation; arming must honor the same list.
-const zeroStateVerbs = (/^\s*([a-z|]+)\) export BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ;;$/m.exec(readFileSync(entry, "utf8"))?.[1] ?? "").split("|");
+// Read-only public commands never start a recorder.
+const zeroStateVerbs = ["ask", "provenance", "who", "health", "doctor", "show", "admin", "models", "completion", "whoami", "outstanding", "poll", "presets", "setup"];
 
 test("one claim per window starts one child; help, zero-state verbs, debug and the arm child never arm; no lock or process", () => {
   const f = fixture();
@@ -120,10 +125,10 @@ test("one claim per window starts one child; help, zero-state verbs, debug and t
     const quiet = [["debug", "status"], ["-v", "debug", "off"], ["help", "send"], ["send", "--help"], ["team", "-h"], [], ["version"], ["--version"],
       ["session"], ["session", "list"], ["session", "complete"], ["session", "--json"], ...zeroStateVerbs.map(verb => [verb, "x"])];
     for (const args of quiet) armAlwaysOn(args, f.env, start);
-    armAlwaysOn(["whoami"], { ...f.env, [ARM_CHILD]: "1" }, start);
+    armAlwaysOn(["send"], { ...f.env, [ARM_CHILD]: "1" }, start);
     expect(started).toHaveLength(0);
     expect(claims(f.debug)).toEqual([]);
-    for (let i = 0; i < 5; i++) armAlwaysOn(["whoami"], f.env, start);
+    for (let i = 0; i < 5; i++) armAlwaysOn(["send"], f.env, start);
     expect(started).toHaveLength(1);
     const window = started[0]!.window;
     expect(claims(f.debug)).toEqual([`arm.attempt.${window}`]);
@@ -135,14 +140,14 @@ test("one claim per window starts one child; help, zero-state verbs, debug and t
     // The foreground took no lock and ran nothing: the only files are the cache and the claim.
     expect(readdirSync(f.debug).sort()).toEqual(["always-on.cache", `arm.attempt.${window}`]);
     Date.now = () => (window + 1) * ARM_WINDOW_MS + 1;
-    armAlwaysOn(["whoami"], f.env, start);
+    armAlwaysOn(["send"], f.env, start);
     expect(started.map(s => s.window)).toEqual([window, window + 1]);
     pruneArmClaims(f.debug, Date.now());
     expect(claims(f.debug)).toEqual([`arm.attempt.${window + 1}`]);
     // always_on with a tmux-only capture: no spawn, no claim, in a fresh window.
     f.setConfig('[debug]\nalways_on = true\ncapture = ["tmux"]\n');
     Date.now = () => (window + 2) * ARM_WINDOW_MS + 1;
-    armAlwaysOn(["whoami"], f.env, start);
+    armAlwaysOn(["send"], f.env, start);
     expect(started).toHaveLength(2);
     expect(claims(f.debug)).toEqual([`arm.attempt.${window + 1}`]);
   } finally { Date.now = realNow; rmSync(f.root, { recursive: true, force: true }); }
@@ -173,11 +178,11 @@ test("pinned TAP state over the real user's config never arms, however that conf
     expect(readsRealConfig({ ...base, XDG_CONFIG_HOME: "relative" }, realHome)).toBe(true); // unresolvable: stand down
     let started = 0;
     const start = () => { started++; };
-    for (const env of real) for (const pin of STATE_PINS) armAlwaysOn(["whoami"], { ...env, [pin]: index }, start, realHome);
+    for (const env of real) for (const pin of STATE_PINS) armAlwaysOn(["send"], { ...env, [pin]: index }, start, realHome);
     expect(started).toBe(0);
     expect(armFiles(root)).toEqual([]);
     // The same pin with a config that is not the real user's arms: the guard is not blanket.
-    armAlwaysOn(["whoami"], { ...base, TAP_INDEX_HOME: index, XDG_CONFIG_HOME: sandbox }, start, realHome);
+    armAlwaysOn(["send"], { ...base, TAP_INDEX_HOME: index, XDG_CONFIG_HOME: sandbox }, start, realHome);
     expect(started).toBe(1);
     expect(claims(join(index, "debug"))).toHaveLength(1);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -188,10 +193,10 @@ test("a FIFO at the cache or arm.log never blocks a command: the cache misses an
   const tmux = privateTmux(f.root);
   const env = { ...f.env, TAP_TMUX_SOCKET_PATH: tmux.socket };
   const fifo = (path: string) => expect(Bun.spawnSync(["mkfifo", path]).exitCode).toBe(0);
-  const timed = () => { const t = Date.now(); const result = tap(["whoami"], env, f.root); return { result, ms: Date.now() - t }; };
+  const timed = () => { const t = Date.now(); const result = tap(["in", "arm-fixture", "--offline"], env, f.root); return { result, ms: Date.now() - t }; };
   try {
     f.setConfig("[debug]\nalways_on = false\n");
-    const baseline = tap(["whoami"], env, f.root);
+    const baseline = tap(["in", "arm-fixture", "--offline"], env, f.root);
     rmSync(join(f.debug, "always-on.cache"));
     fifo(join(f.debug, "always-on.cache"));
     const cached = timed();
@@ -226,10 +231,10 @@ test("parallel public commands arm exactly once per window, print nothing extra,
   const before = existsSync(runnerDebug) ? readdirSync(runnerDebug).sort() : null;
   try {
     f.setConfig("[debug]\nalways_on = false\n");
-    const baseline = tap(["whoami"], f.env, f.root);
+    const baseline = tap(["in", "arm-fixture", "--offline"], f.env, f.root);
     expect(claims(f.debug)).toEqual([]);
     f.setConfig("[debug]\nalways_on = true\n");
-    const children = Array.from({ length: 8 }, () => Bun.spawn([entry, "whoami"], { env: f.env, cwd: f.root, stdin: "ignore", stdout: "pipe", stderr: "pipe" }));
+    const children = Array.from({ length: 8 }, () => Bun.spawn([entry, "in", "arm-fixture", "--offline"], { env: f.env, cwd: f.root, stdin: "ignore", stdout: "pipe", stderr: "pipe" }));
     const results = await Promise.all(children.map(async child => ({ code: await child.exited,
       stdout: await new Response(child.stdout).text(), stderr: await new Response(child.stderr).text() })));
     for (const result of results) expect(result).toEqual(baseline);
@@ -285,7 +290,7 @@ test("an enabled capture that excludes tap-events journals nothing and never cou
     const none = seedCapture(f.debug, "20261103T000000Z-0000none", deadPid(), 60, []);
     expect(recordCommand(["whoami"], f.env, process.pid)).toBe(true);
     // The public entry over that stale capture: no row, no claim, no child, and the capture stays enabled.
-    expect(tap(["whoami"], f.env, f.root).stderr).not.toContain("tap debug");
+    expect(tap(["in", "arm-fixture", "--offline"], f.env, f.root).stderr).not.toContain("tap debug");
     expect(read(join(f.debug, "enabled.json")).id).toBe(none.run.id);
     for (const seeded of [stale, none]) expect(readFileSync(join(seeded.directory, "events.jsonl"), "utf8")).toBe(seeded.events);
     expect(claims(f.debug)).toEqual([]);
@@ -306,7 +311,7 @@ test("always_on flags parse as a config-only pair and round-trip through config.
     const set = await capture(() => main(["config", "--always-on"], f.env));
     expect(set.value).toBe(0);
     expect(set.out).toContain('"always_on":true');
-    expect(set.out).toContain('"applies":"next tap command"');
+    expect(set.out).toContain('"applies":"next successful effectful command"');
     expect(readFileSync(f.config, "utf8")).toStartWith("# kept\n[presets]\n");
     expect(Bun.TOML.parse(readFileSync(f.config, "utf8"))).toMatchObject({ debug: { always_on: true } });
     const shown = await capture(() => main(["config", "--json"], f.env));
@@ -402,11 +407,11 @@ test("an ordinary command over a dead capture returns at once; the background ar
   const env = { ...f.env, TAP_TMUX_SOCKET_PATH: tmux.socket };
   try {
     f.setConfig("[debug]\nalways_on = false\n");
-    const baseline = tap(["whoami"], env, f.root);
+    const baseline = tap(["in", "arm-fixture", "--offline"], env, f.root);
     f.setConfig("[debug]\nalways_on = true\n");
     mkdirSync(f.debug, { recursive: true });
     const dead = seedCapture(f.debug, "20261103T000000Z-0000dead", deadPid(), 60);
-    const result = tap(["whoami"], env, f.root);
+    const result = tap(["in", "arm-fixture", "--offline"], env, f.root);
     expect(result).toEqual(baseline);
     // The foreground appended no row to the dead capture; the arm child may already have marked it stopped.
     const after = readFileSync(join(dead.directory, "events.jsonl"), "utf8");

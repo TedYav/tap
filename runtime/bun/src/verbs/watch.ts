@@ -41,6 +41,7 @@ import { armPath, noticeOrNotify, notifyPath } from "../watch-notice";
 import { clearTints, dispatcherLiveness, ensureSidecar, existingWatchWindow, remindersEntry } from "../watch-sidecar";
 import { main as tickMain } from "../watch-tick-run";
 import { tapScriptsDir, artifactBun, runtimeModule } from "../scripts-dir";
+import { ownBunArgv } from "../own-bun";
 
 const TAP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const TAP_ID_RE_TEXT = "^[A-Za-z0-9][A-Za-z0-9._-]*$";
@@ -535,7 +536,7 @@ export function cmdWatch(argv: string[], scripts?: string, env: NodeJS.ProcessEn
     if (!bun) fail(1, "runtime_missing", "install bun", "the sidecar loop needs the companion Bun runtime");
     const execve = process.execve;
     if (typeof execve !== "function") fail(1, "runtime_missing", "tap health", `the sidecar loop needs a bun with process.execve; this is ${Bun.version}`);
-    execve(bun, [bun, entry, "run", ...rest], env);
+    execve(bun, [...ownBunArgv(bun), entry, "run", ...rest], env);
     throw new Error("re-exec into watch-run.ts returned");   // execve does not return on success
   }
   if (!["reminders", "on", "pause", "resume", "off", "status", "ack"].includes(sub)) {

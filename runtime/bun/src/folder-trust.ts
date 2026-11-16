@@ -13,6 +13,29 @@ const object = (value: unknown): value is Doc => table(value) && !rawJson.isRawJ
 export type FolderTrustTarget = { harness: string; path: string; format: "codex" | "claude" | "agy" | "cursor" };
 export type FolderTrustResult = { harness: string; status: "trusted" | "already_trusted" | "failed"; detail?: string };
 
+export function folderTrustPath(target: FolderTrustTarget): string {
+  // A dangling link is existing operator state, not an absent config.
+  return lstatSync(target.path, { throwIfNoEntry: false }) ? realpathSync(target.path) : target.path;
+}
+
+/** The concrete native setting the operator is consenting to. */
+export function folderTrustGrant(target: FolderTrustTarget, folder: string): string {
+  const key = JSON.stringify(folder);
+  switch (target.format) {
+    case "codex": return `projects[${key}].trust_level = "trusted"`;
+    case "claude": return `projects[${key}].hasTrustDialogAccepted = true`;
+    case "agy": return `trustedWorkspaces includes ${key}`;
+    case "cursor": return `.workspace-trusted with workspacePath = ${key}, trustMethod = "cli-flag"`;
+  }
+}
+
+/** Read-only preparation, also used under apply's lock. */
+export function prepareFolderTrust(path: string, folder: string, format: FolderTrustTarget["format"]) {
+  const before = existsSync(path) ? readSecureBytes(path).bytes : null;
+  const source = before ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(before) : "";
+  return { before, source, edited: editFolderTrust(source, folder, format) };
+}
+
 function absolute(value: string, name: string): string {
   if (!isAbsolute(value)) throw new Error(`${name} must be an absolute path`);
   return value;
@@ -93,16 +116,12 @@ export function trustFolder(folder: string, targets: FolderTrustTarget[]): Folde
   const canonical = realpathSync(folder);
   return targets.map((target): FolderTrustResult => {
     try {
-      // A dangling link is existing operator state, not an absent config.
-      const present = lstatSync(target.path, { throwIfNoEntry: false });
-      const path = present ? realpathSync(target.path) : target.path;
+      const path = folderTrustPath(target);
       mkdirSync(dirname(path), { recursive: true });
       const lock = acquireNoFollowLock(`${path}.tap-folder-trust.lock`, 2500);
       if (!lock) throw new Error("folder-trust update is busy; retry");
       try {
-        const before = existsSync(path) ? readSecureBytes(path).bytes : null;
-        const source = before ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(before) : "";
-        const edited = editFolderTrust(source, canonical, target.format);
+        const { before, source, edited } = prepareFolderTrust(path, canonical, target.format);
         if (edited === source) return { harness: target.harness, status: "already_trusted" };
         // Native harnesses do not share TAP's lock: refuse observed concurrent edits.
         if (before ? !readFileSync(path).equals(before) : existsSync(path)) throw new Error("configuration changed while preparing the update; retry");

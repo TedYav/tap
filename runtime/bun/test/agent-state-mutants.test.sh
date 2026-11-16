@@ -8,7 +8,27 @@ trap 'rm -rf "$WORK"' EXIT
 # A mutant's nonzero exit is evidence only after these same copied inputs pass.
 CONTROL="$WORK/control"
 mkdir -p "$CONTROL/runtime/bun/src" "$CONTROL/runtime/bun/test"
-cp "$ROOT/runtime/bun/src/agent-state.ts" "$ROOT/runtime/bun/src/terminal-text.ts" "$ROOT/runtime/bun/src/opencode-composer.ts" "$CONTROL/runtime/bun/src/"
+# The control holds agent-state.ts and every sibling module it imports, read
+# from the import lines themselves: a hand-kept list goes stale the day the
+# module gains an import, and the control then fails for a reason unrelated to
+# any mutant.
+python3 -B - "$ROOT/runtime/bun/src" "$CONTROL/runtime/bun/src" agent-state.ts <<'PY'
+import pathlib, re, shutil, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+todo, seen = [sys.argv[3]], set()
+while todo:
+    name = todo.pop()
+    if name in seen:
+        continue
+    seen.add(name)
+    text = (src / name).read_text()
+    outside = re.findall(r'(?:from|import)\s+"(\.\.?/[^"]*/[^"]*|\.\./[^"]*)"', text)
+    if outside:
+        raise SystemExit(f"agent-state-mutants: {name} imports outside its directory ({outside[0]}); extend the control copy")
+    shutil.copy2(src / name, dst / name)
+    todo += [f"{module}.ts" for module in re.findall(r'(?:from|import)\s+"\./([^"/]+)"', text)]
+print("agent-state-mutants: control sources:", " ".join(sorted(seen)))
+PY
 cp "$ROOT/runtime/bun/test/agent-state.test.ts" "$CONTROL/runtime/bun/test/agent-state.test.ts"
 cp -R "$ROOT/runtime/bun/test/fixtures" "$CONTROL/runtime/bun/test/fixtures"
 mkdir -p "$CONTROL/skills/tap/scripts/smoke/fixtures"

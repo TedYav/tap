@@ -105,7 +105,8 @@ function both(key: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}, at 
   // the recorded --json argv so every other byte stays pinned and a candidate without it, or with
   // it elsewhere, still fails. The plain-text rows never print argv.
   if (key.endsWith(" --json") && expected.status === 0 && expected.stdout.includes('"argv":["codex",') && !expected.stdout.includes("--remote")) {
-    expected.stdout = expected.stdout.replace('"--dangerously-bypass-approvals-and-sandbox"', '"--no-daemon","--dangerously-bypass-approvals-and-sandbox"');
+    // Beside it rides the startup update-check override, spliced the same way.
+    expected.stdout = expected.stdout.replace('"--dangerously-bypass-approvals-and-sandbox"', '"--no-daemon","-c","check_for_update_on_startup=false","--dangerously-bypass-approvals-and-sandbox"');
   }
   if (baseKey === "collision: a seated gone row refuses without a terminal") {
     expected.stderr = "tap session: fixture/scout has a retained seat record but no live tmux session; --fresh reclaims the record and launches the seat; next: tap session launch claude scout --fresh\n";

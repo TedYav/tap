@@ -22,7 +22,8 @@ export function compiledRouter(): string {
   symlinkSync(join(repo, "skills"), join(root, "skills")); symlinkSync(join(repo, "runtime"), join(root, "runtime"));
   mkdirSync(join(root, "bin/tap"), { recursive: true });
   const binary = join(root, "bin/tap/router");
-  const build = spawnSync("bun", ["build", "--compile", resolve(import.meta.dir, "../main.ts"), "--outfile", binary], { cwd: root, encoding: "utf8" });
+  // The release build's flags (src/release/build.ts): the router does not load the working directory's .env or bunfig.toml.
+  const build = spawnSync("bun", ["build", "--compile", "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig", resolve(import.meta.dir, "../main.ts"), "--outfile", binary], { cwd: root, encoding: "utf8" });
   compiled = { root, binary };
   expect(build.status, build.stderr).toBe(0);
   return binary;
@@ -66,7 +67,7 @@ export function compiledArtifact(kind: "real" | "recording" = "real"): Artifact 
   copyFileSync(join(repo, "runtime/bun/main.ts"), join(root, "runtime/bun/main.ts"));
   for (const dir of ["skills", "completions", "hooks", "vendor"]) symlinkSync(join(repo, dir), join(root, dir));
   if (kind === "real") {
-    const build = spawnSync("bun", ["build", "--compile", join(root, "runtime/bun/main.ts"), "--outfile", router], { cwd: root, encoding: "utf8" });
+    const build = spawnSync("bun", ["build", "--compile", "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig", join(root, "runtime/bun/main.ts"), "--outfile", router], { cwd: root, encoding: "utf8" });
     expect(build.status, build.stderr).toBe(0);
     copyFileSync(join(repo, "scripts/release/libexec-bun.sh"), shim);
   } else {

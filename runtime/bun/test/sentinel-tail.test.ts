@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeBox } from "../src/pane-state";
 import { classifySubmitFrame, sentinelSubmitDecision } from "../src/submit-frame";
-import { closedSentinelInput, matchSentinelSuffix, sentinelShapedInput } from "../src/sentinel-tail";
+import { anchoredSentinelInput, matchSentinelSuffix, typedWireTail } from "../src/sentinel-tail";
+import { normalizeInputMatch } from "../src/terminal-text";
 import { advanceProtection } from "../src/input-protection";
 import { stagedSentinel } from "../src/courier";
 
@@ -48,10 +49,19 @@ test("the captured 38-column frames are strict tails of their wires and stage as
     expect(matchSentinelSuffix(box.typed, expected)).toBe("tail");
     expect(classifySubmitFrame(frame, "claude", expected, "38")).toMatchObject({ state: "staged", scrolled: true });
     expect(sentinelSubmitDecision(frame, "claude", expected)).toEqual({ action: "submit" });
-    // The same rule at every reader that decides draft-versus-sentinel.
-    expect(sentinelShapedInput(box.typed)).toBe(true);
-    expect(stagedSentinel(box.typed, "claude")).toBe(true);
-    expect(advanceProtection(null, { paneId: "%1", serverEpoch: "s", currentCommand: "claude" }, { state: "busy", text: box.typed }, 0)).toBeNull();
+    // The same rule at every reader that decides draft-versus-sentinel: with a
+    // record that the courier typed this wire, the tail is TAP's own exactly when
+    // it reaches back through the id fragment. Without the record it is a draft.
+    const id = /(?:ask|note) (\S+)/.exec(expected)![1]!;
+    const typed = [{ id, wire: expected, at: 0 }];
+    const idVisible = normalizeInputMatch(box.typed).includes(id.slice(-12));
+    const obs = { paneId: "%1", serverEpoch: "s", currentCommand: "claude" };
+    expect(typedWireTail(box.typed, typed)).toBe(idVisible);
+    expect(stagedSentinel(box.typed, "claude", typed)).toBe(idVisible);
+    expect(advanceProtection(null, obs, { state: "busy", text: box.typed }, 0, false, "", false, typed) === null).toBe(idVisible);
+    expect(typedWireTail(box.typed, [])).toBe(false);
+    expect(stagedSentinel(box.typed, "claude", [])).toBe(false);
+    expect(advanceProtection(null, obs, { state: "busy", text: box.typed }, 0)).toMatchObject({ graceUntil: 30_000 });
   }
 });
 
@@ -64,7 +74,7 @@ test("a width where the whole wire fits keeps the full-match path, without the s
   expect(read.scrolled).toBeUndefined();
 });
 
-test("suffix: a sentinel-shaped strict suffix is the tail; foreign bytes or an open tail are not", () => {
+test("suffix: a strict suffix of the wire a delivery typed is its tail; foreign bytes, an open tail or a few characters are not", () => {
   const id = "sender-20260101T010101Z-0123456789ab";
   const bare = `[[TAP v0.23 note ${id}]]`;
   const withPreview = `[[TAP v0.23 note ${id} preview="Thanks for the review pass and the landed wire"]]`;
@@ -79,29 +89,91 @@ test("suffix: a sentinel-shaped strict suffix is the tail; foreign bytes or an o
   expect(matchSentinelSuffix("my draft 0123456789ab]]", bare)).toBeNull();
   expect(matchSentinelSuffix(`x${bare}`, bare)).toBeNull();
   expect(matchSentinelSuffix("]]", bare)).toBeNull();
+  // A few trailing characters of the wire are not a tail, even though they are a suffix.
+  expect(matchSentinelSuffix('wire"]]', withPreview)).toBeNull();
+  expect(matchSentinelSuffix("123456789ab]]", bare)).toBeNull();
   expect(matchSentinelSuffix(bare, bare)).toBe("full");
   expect(matchSentinelSuffix("", bare)).toBeNull();
 });
 
-test("shape: sentinel grammar closes with ]] and carries a field, id fragment or closing quote; prose does not", () => {
-  expect(sentinelShapedInput("[[TAP v0.23 note x-1]]")).toBe(true);
-  expect(sentinelShapedInput("[[TAP v0.23 note x-1 preview=\"cut")).toBe(true);
-  expect(sentinelShapedInput("0123456789ab]]")).toBe(true);
-  expect(sentinelShapedInput("0123456789a]]")).toBe(false);
-  expect(sentinelShapedInput("20260101T010101Z-0123456789ab]]")).toBe(true);
-  expect(sentinelShapedInput("lines\"]]")).toBe(true);
-  expect(sentinelShapedInput('note x preview="a\n  b"]]')).toBe(true);
-  expect(sentinelShapedInput("Z-0123456789ab path=/tmp/x.md]]")).toBe(true);
-  expect(sentinelShapedInput("]]")).toBe(false);
-  // A human draft: wiki links, prose, an inline-body cut with no grammar mark.
-  expect(sentinelShapedInput("see the wiki page [[Release notes]]")).toBe(false);
-  expect(sentinelShapedInput("and rerun the tests]]")).toBe(false);
-  expect(sentinelShapedInput("fix the parser and rerun")).toBe(false);
-  expect(sentinelShapedInput("")).toBe(false);
-  expect(sentinelShapedInput("   ")).toBe(false);
-  // The Enter-on-tail paths additionally require the closing brackets.
-  expect(closedSentinelInput("[[TAP v0.23 note x-1 preview=\"cut")).toBe(false);
-  expect(closedSentinelInput("[[TAP v0.23 note truncated")).toBe(false);
-  expect(closedSentinelInput("[[TAP v0.23 note x-1]]")).toBe(true);
-  expect(closedSentinelInput("lines\"]]")).toBe(true);
+const TYPED_ID = "sender-20260101T010101Z-0123456789ab";
+const TYPED_WIRE = `[[TAP v0.23 note ${TYPED_ID} preview="Thanks for the review pass and the landed wire"]]`;
+const TYPED = [{ id: TYPED_ID, wire: TYPED_WIRE, at: 0 }];
+
+test("a human draft that merely ends like a wire is a draft at every reader, and its WAIT is read", () => {
+  const obs = { paneId: "%1", serverEpoch: "s", currentCommand: "claude" };
+  for (const draft of [
+    'why does this fail: if [[ -z "$FOO" ]]',
+    "set path=/usr/local/bin first, then see [[Install notes]]",
+    'the fixture is [["a", "b"], ["c", "d"]]',
+    "- [docs](https://example.test/?path=/x)\n- [[Roadmap]]",
+    'preview="draft" is the field name, as in [[Wire grammar]]',
+    "what happened to sender-20260101T010101Z-0123456789ab]]",
+    // The last words of a wire the courier did type, without its id fragment.
+    'the landed wire"]]',
+  ]) {
+    // Neither an opener nor the tail of a typed wire, with or without a record for the pane.
+    expect(anchoredSentinelInput(draft)).toBe(false);
+    expect(typedWireTail(draft, TYPED)).toBe(false);
+    expect(stagedSentinel(draft, "claude", TYPED)).toBe(false);
+    // Draft protection engages: a grace record, and WAIT typed beside the text snoozes.
+    expect(advanceProtection(null, obs, { state: "busy", text: draft }, 0, false, "", false, TYPED)).toMatchObject({ graceUntil: 30_000, consumed: false });
+    expect(advanceProtection(null, obs, { state: "busy", text: `WAIT ${draft}` }, 0, false, "", false, TYPED)).toMatchObject({ consumed: true, snoozeUntil: 120_000 });
+  }
+});
+
+// A typed control (`/compact … [[sv:<id>]]`) closes with `]]` too. Whitespace and a
+// scrolled-off head are layout for a wire and content for a control, so the wire rule
+// must never vouch for one: not whole, not with a space deleted, not by its tail.
+test("the suffix rule vouches only for TAP wire text: a typed control never matches", () => {
+  const control = "/compact preserve the handoff and never mark read [[sv:self-worker_dot-1]]";
+  expect(matchSentinelSuffix(control, control)).toBeNull();
+  expect(matchSentinelSuffix("/compact preservethe handoff and never mark read [[sv:self-worker_dot-1]]", control)).toBeNull();
+  expect(matchSentinelSuffix("and never mark read [[sv:self-worker_dot-1]]", control)).toBeNull();
+  expect(matchSentinelSuffix("[[sv:self-worker_dot-1]]", control)).toBeNull();
+  for (const other of ["/goal ship the fix [[sv:goal-1]]", "/loop 5m check the queue [[sv:loop-1]]", "/compact [[sv:peer-1]]", "prose that ends in a [[wiki link]]"]) {
+    expect(matchSentinelSuffix(other, other)).toBeNull();
+  }
+});
+
+test("an opener-less expected text is already a tail: the visible text must be it exactly, and it holds no [[", () => {
+  const tail = '0123456789ab preview="Thanks for the review pass and the landed wire"]]';
+  expect(matchSentinelSuffix(tail, tail)).toBe("full");
+  expect(matchSentinelSuffix('0123456789ab\n  preview="Thanks for the review\n  pass and the landed wire"]]', tail)).toBe("full");
+  // A shorter suffix of a tail proves nothing: only a whole wire can vouch for a suffix.
+  expect(matchSentinelSuffix('pass and the landed wire"]]', tail)).toBeNull();
+  // A wire whose preview holds a `[[`: the delivery that typed it still proves its landing
+  // against the whole wire, but the opener-less tail alone is unproven, at every reader.
+  const id = "sender-20260101T010101Z-0123456789ab";
+  const wire = `[[TAP v0.23 note ${id} preview="see the [[wiki page for the rest"]]`;
+  const itsTail = '0123456789ab preview="see the [[wiki page for the rest"]]';
+  expect(matchSentinelSuffix(itsTail, wire)).toBe("tail");
+  expect(matchSentinelSuffix(itsTail, itsTail)).toBeNull();
+  expect(typedWireTail(itsTail, [{ id, wire }])).toBe(false);
+  expect(stagedSentinel(itsTail, "claude", [{ id, wire }])).toBe(false);
+});
+
+test("evidence: an opener is anchored; an opener-less tail is TAP's own only as a typed wire's suffix through its id fragment", () => {
+  // Anchored: whole, truncated or broken, never prose to back up and clear.
+  expect(anchoredSentinelInput("[[TAP v0.23 note x-1]]")).toBe(true);
+  expect(anchoredSentinelInput("  [[TAP v0.23 note x-1 preview=\"cut")).toBe(true);
+  expect(anchoredSentinelInput("notes before [[TAP v0.23 note x-1]]")).toBe(false);
+  expect(anchoredSentinelInput("]]")).toBe(false);
+  expect(anchoredSentinelInput("")).toBe(false);
+  // The tail of a typed wire, from the id fragment to the close, wrapped or not.
+  expect(typedWireTail('0123456789ab preview="Thanks for the review pass and the landed wire"]]', TYPED)).toBe(true);
+  expect(typedWireTail('010101Z-0123456789ab\n  preview="Thanks for the review\n  pass and the landed wire"]]', TYPED)).toBe(true);
+  expect(typedWireTail(`note ${TYPED_ID} preview="Thanks for the review pass and the landed wire"]]`, TYPED)).toBe(true);
+  // One character short of the id fragment, or cut inside the preview: unproven.
+  expect(typedWireTail('123456789ab preview="Thanks for the review pass and the landed wire"]]', TYPED)).toBe(false);
+  expect(typedWireTail('preview="Thanks for the review pass and the landed wire"]]', TYPED)).toBe(false);
+  // Human text in front of the tail breaks the suffix.
+  expect(typedWireTail('my draft 0123456789ab preview="Thanks for the review pass and the landed wire"]]', TYPED)).toBe(false);
+  // No record for the pane, or a record of some other wire: unproven.
+  expect(typedWireTail('0123456789ab preview="Thanks for the review pass and the landed wire"]]', [])).toBe(false);
+  expect(typedWireTail("0123456789ab]]", TYPED)).toBe(false);
+  expect(typedWireTail("0123456789ab]]", [{ id: TYPED_ID, wire: `[[TAP v0.23 note ${TYPED_ID}]]` }])).toBe(true);
+  // A whole anchored wire is the parser's question, not a tail.
+  expect(typedWireTail(TYPED_WIRE, TYPED)).toBe(false);
+  expect(typedWireTail("", TYPED)).toBe(false);
 });

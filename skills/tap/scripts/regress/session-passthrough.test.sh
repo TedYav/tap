@@ -51,8 +51,9 @@ printf 'version = 3\n[harness.codex]\npermissions = "bypass"\n' > "$CONFIG_DIR/c
 out="$("$TAP" session launch codex worker --dry-run --json -c reasoning_effort=high 2>/dev/null | tail -1)"
 # A fresh launch puts the saved permission mode first;
 # resume (4) below still splices passthrough right after codex.
-# Every local Codex launch also passes --no-daemon first (tap-21bdj).
-[[ "$out" == *'"codex","--no-daemon","--dangerously-bypass-approvals-and-sandbox","-c","reasoning_effort=high"'* ]] || { echo "session-passthrough: (1) -c not spliced harness-global: $out" >&2; exit 1; }
+# Every local Codex launch also passes --no-daemon first (tap-21bdj), with the
+# startup update check turned off beside it.
+[[ "$out" == *'"codex","--no-daemon","-c","check_for_update_on_startup=false","--dangerously-bypass-approvals-and-sandbox","-c","reasoning_effort=high"'* ]] || { echo "session-passthrough: (1) -c not spliced harness-global: $out" >&2; exit 1; }
 echo "session-passthrough: (1) unknown flag forwards verbatim, harness-global: ok"
 
 # (2) own-flags-before-passthrough: --dry-run stays tap's (a real launch would not

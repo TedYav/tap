@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { calibrationView, compactAge, latestObservation, teamsView, teamStatus } from "../src/routing";
 import { NO_MACHINE_INDEX } from "../src/selector";
+import { ownBunFlags } from "../src/own-bun";
 import golden from "./fixtures/routing/ledger.json";
 import teamsCli from "./fixtures/routing/teams-cli.json";
 import { removeScratchTree } from "./support/scratch";
@@ -157,8 +158,9 @@ function fleet(stub = true) {
     process.env.PATH = `${bin}:${process.env.PATH}`;
     writeFileSync(join(bin,"bun"), `#!${process.execPath}
 const fs = require("node:fs"), path = require("node:path");
-const dir = process.env.TEST_ROSTER_RESPONSES, team = process.argv[4];
-const log = event => fs.appendFileSync(path.join(dir,"calls"), JSON.stringify({event,team,pid:process.pid,cwd:process.cwd(),argv:process.argv.slice(2),pin:process.env.TAP_HOME})+"\\n");
+// argv: Bun's own flags, then the entry file, "roster", the team, "--json".
+const verb = process.argv.indexOf("roster"), dir = process.env.TEST_ROSTER_RESPONSES, team = process.argv[verb + 1];
+const log = event => fs.appendFileSync(path.join(dir,"calls"), JSON.stringify({event,team,pid:process.pid,cwd:process.cwd(),flags:process.argv.slice(2,verb-1),argv:process.argv.slice(verb-1),pin:process.env.TAP_HOME})+"\\n");
 log("start");
 const spec = JSON.parse(fs.readFileSync(path.join(dir,team),"utf8"));
 process.on("SIGTERM",()=>{});
@@ -224,6 +226,8 @@ test("fleet honors acting authority, roster fallback, lifecycle counts and warni
   expect(details).not.toContain("historical");
   const calls = readFileSync(join(fx.responses,"calls"),"utf8").trim().split("\n").map(line => JSON.parse(line));
   expect(calls.every(c => c.cwd === root && c.argv[0] === join(root,"runtime/bun/src/team-roster-json.ts") && c.argv[1] === "roster" && c.argv[3] === "--json")).toBe(true);
+  // Each child names TAP's own Bun config and no env file: the team's root is its cwd, not its project.
+  expect(calls.every(c => JSON.stringify(c.flags) === JSON.stringify(ownBunFlags("bun")))).toBe(true);
   expect(calls.every(c => c.pin === process.env.TAP_HOME)).toBe(true);
   expect(calls.some(c => ["bare","ghost","historical"].includes(c.team))).toBe(false);
 });

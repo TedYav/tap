@@ -160,3 +160,20 @@ test("a new batch after STOP expiry receives its ordinary draft grace", () => {
   expect(fresh.stopUntil).toBe(601000);
   expect(protectionUntil(fresh)).toBe(632000);
 });
+
+// Hermes rides `/queue ` in front of the wire the courier types, so TAP's own staged
+// text opens with the prefix there. It is not a human draft: no grace, no WAIT cues.
+test("TAP's own text behind the Hermes queue prefix is not a human draft", () => {
+  const wire = "[[TAP v0.23 note sender-20260101T010101Z-0123456789ab]]";
+  const hermes = { paneId: "%1", serverEpoch: "epoch1", currentCommand: "hermes" };
+  expect(advanceProtection(null, hermes, busy(`/queue ${wire}`), 0)).toBeNull();
+  expect(advanceProtection(null, hermes, busy("  /queue   [[TAP v0.23 note truncated"), 0)).toBeNull();
+  // The seat's harness decides the prefix, not the pane's foreground command.
+  const wrapped = { paneId: "%1", serverEpoch: "epoch1", currentCommand: "python3" };
+  expect(advanceProtection(null, wrapped, busy(`/queue ${wire}`), 0, false, "", false, [], "hermes")).toBeNull();
+  // A person's own queued line is still a draft, and its WAIT is still read.
+  expect(advanceProtection(null, hermes, busy("/queue fix the parser first"), 0)).toMatchObject({ graceUntil: 30_000, consumed: false });
+  expect(advanceProtection(null, hermes, busy("/queue WAIT fix the parser first"), 0)).toMatchObject({ consumed: true, snoozeUntil: 120_000 });
+  // On a harness with no queue prefix, the same text is somebody's draft.
+  expect(advanceProtection(null, obs, busy(`/queue ${wire}`), 0)).toMatchObject({ graceUntil: 30_000 });
+});

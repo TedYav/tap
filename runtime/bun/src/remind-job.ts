@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { bunBinary } from "./courier-argv";
 import { tapScriptsDir } from "./scripts-dir";
 import { publish, read, withLock } from "./watch-lease";
+import { ownBunFlags } from "./own-bun";
 
 export interface CommandJob {
   command: string;
@@ -100,7 +101,7 @@ export function commandWake(job: CommandJob, bus: string, at: number): { target?
 }
 
 export function launchCommand(state: string, id: string, env: NodeJS.ProcessEnv): void {
-  const child = spawn(bunBinary(), [join(tapScriptsDir(), "../../../runtime/bun/src/remind-job.ts"), state, id], {
+  const child = spawn(bunBinary(), [...ownBunFlags(bunBinary()), join(tapScriptsDir(), "../../../runtime/bun/src/remind-job.ts"), state, id], {
     detached: true, stdio: "ignore", env,
   });
   child.on("error", error => {

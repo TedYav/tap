@@ -794,16 +794,91 @@ export function agyIdentityHook(path: string, hookCmd: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// claude-permission — settings.json PermissionRequest observer
+// ---------------------------------------------------------------------------
+
+const PERMISSION_ADAPTER = "/hooks/tap-claude-permission.sh";
+/**
+ * Seconds Claude Code waits for the observer before it cancels it and carries
+ * on with the prompt. Per-command `timeout` predates the event itself (Claude
+ * Code 1.0.41), so every Claude that knows the event knows the key.
+ */
+export const PERMISSION_HOOK_TIMEOUT_SECONDS = 10n;
+
+/**
+ * `wire` leaves exactly one PermissionRequest entry running hookCmd under the
+ * time bound above; `unwire` removes TAP's entry and nothing else. install.sh chooses by Claude Code's
+ * version on every run: a Claude older than the event stops each start on a
+ * settings warning for a hook event it does not know, so the entry must not
+ * outlive a downgrade. An entry left by a checkout at another path is TAP's too.
+ */
+export function claudePermissionHook(path: string, hookCmd: string, mode: string): number {
+  if (mode !== "wire" && mode !== "unwire") {
+    process.stderr.write("usage: install-hooks.ts claude-permission <settings.json> <hook> wire|unwire\n");
+    return 2;
+  }
+  try {
+    if (!existsSync(path) && mode === "unwire") return 0;
+    const parsed = existsSync(path) ? loads(readStrict(path)) : new Map<string, JsonValue>();
+    if (!isMap(parsed)) throw new SyntaxError("claude settings must be a JSON object");
+    let hooks = parsed.get("hooks");
+    if (hooks === undefined) {
+      if (mode === "unwire") return 0;
+      hooks = new Map<string, JsonValue>();
+      parsed.set("hooks", hooks);
+    }
+    if (!isMap(hooks)) throw new SyntaxError("claude settings hooks must be a JSON object");
+    const rows = hooks.get("PermissionRequest") ?? [];
+    if (!Array.isArray(rows)) throw new SyntaxError("claude settings PermissionRequest must be a JSON array");
+    const commandOf = (leaf: JsonValue): string => isMap(leaf) && typeof leaf.get("command") === "string" ? leaf.get("command") as string : "";
+    const managed: JsonMap = new Map<string, JsonValue>([["type", "command"], ["command", hookCmd], ["timeout", PERMISSION_HOOK_TIMEOUT_SECONDS]]);
+    let wired = false, changed = false;
+    const kept: JsonValue[] = [];
+    for (const row of rows) {
+      const leaves = isMap(row) ? row.get("hooks") : undefined;
+      if (!isMap(row) || !Array.isArray(leaves)) { kept.push(row); continue; }
+      const keptLeaves = leaves.filter((leaf) => {
+        const command = commandOf(leaf);
+        if (command !== hookCmd && !command.endsWith(PERMISSION_ADAPTER)) return true;
+        // An entry at this path in any other shape (an earlier TAP's, without the bound) is replaced.
+        if (mode === "wire" && !wired && deepEq(leaf, managed)) { wired = true; return true; }
+        changed = true;
+        return false;
+      });
+      if (keptLeaves.length !== leaves.length) row.set("hooks", keptLeaves);
+      // A row TAP emptied goes with its entry; a row that was already empty is the user's.
+      if (keptLeaves.length > 0 || leaves.length === 0) kept.push(row);
+    }
+    if (mode === "wire" && !wired) {
+      kept.push(new Map<string, JsonValue>([["hooks", [managed]]]));
+      changed = true;
+    }
+    if (!changed) return 0;
+    if (kept.length > 0) hooks.set("PermissionRequest", kept); else hooks.delete("PermissionRequest");
+    // A user's settings file may be symlinked into their configuration repo.
+    const target = lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ? realpathSync(path) : path;
+    atomicReplace(dirname(target) || ".", `${basename(target)}.tap-tmp.`, jsonDump(parsed), target);
+    process.stdout.write(mode === "wire"
+      ? `install: wired PermissionRequest observer into ${path}\n`
+      : `install: removed PermissionRequest observer from ${path}\n`);
+  } catch (error) {
+    warn(`install: WARNING: skipped Claude PermissionRequest observer — ${path}: ${errText(error)}; next: repair the settings file and rerun ./install.sh`);
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 export function cli(argv: string[]): number {
   const [sub, ...rest] = argv;
   const need = (n: number): void => {
-    if (rest.length < n) { process.stderr.write("usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n"); process.exit(2); }
+    if (rest.length < n) { process.stderr.write("usage: install-hooks.ts claude|claude-permission|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n"); process.exit(2); }
   };
   switch (sub) {
     case "claude": need(3); return claudeHooks(rest[0]!, rest[1]!, rest[2]!);
+    case "claude-permission": need(3); return claudePermissionHook(rest[0]!, rest[1]!, rest[2]!);
     case "agents": need(1); return agentsSection(rest[0]!);
     case "codex-config": need(3); return codexConfig(rest[0]!, rest[1]!, rest[2]!);
     case "codex-legacy": need(1); return codexLegacy(rest[0]!);
@@ -811,7 +886,7 @@ export function cli(argv: string[]): number {
     case "gemini": need(2); return geminiGuard(rest[0]!, rest[1]!);
     case "agy-identity": need(2); return agyIdentityHook(rest[0]!, rest[1]!);
     default:
-      process.stderr.write(`usage: install-hooks.ts claude|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n`);
+      process.stderr.write(`usage: install-hooks.ts claude|claude-permission|agents|codex-config|codex-legacy|cursor|gemini|agy-identity <paths…>\n`);
       return 2;
   }
 }

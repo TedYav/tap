@@ -1,0 +1,22 @@
+⏺ The live probe runs once I go idle. With the card up, it types into
+  my composer and presses keys:
+
+  - A1: text in the composer, then 0.
+  - A2: text in the composer, then Escape.
+  - B: empty composer, then Escape.
+
+  It clears its probe text with C-u between cases and resizes this
+  window between 71x22 and 119x45 for about 25 seconds. Case B
+  dismisses this session's fixture card for good. Draft 2 should stay
+  in your /feedback queue, and the probe records whether it does.
+
+✻ Worked for 1m 45s · done 11:35 PM · 1 shell still running
+
+Turn off Claude-drafted feedback? 0 to turn off · Esc to keep
+
+
+────────────────────────────────────────────────────── tap/seat-alpha ─
+❯ 
+───────────────────────────────────────────────────────────────────────
+  Opus 5.5 xhigh | 62%↯ 563k/900k ●60m ██████░░░░ | 📁 tap | 🌿 main
+  ⏵⏵ bypass permissions on · 1 shell · 1 feedback draft

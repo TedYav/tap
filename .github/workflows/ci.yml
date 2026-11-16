@@ -1,30 +1,40 @@
 name: ci
-# Fork-safe CI: a GitHub-hosted runner, read-only permissions, no secrets.
+# Fork-safe CI: a GitHub-hosted runner, a read-only token, no secrets. It
+# triggers on `pull_request` (never `pull_request_target`), so a fork's pull
+# request runs the fork's code with a read-only token and no repository secret.
 # Sanity runs the harness-free smoke subset under a sandbox HOME/TMPDIR/tmux;
-# the install smoke runs ./install.sh against a sandbox HOME and asserts the
-# installed `tap help` exits zero.
+# typecheck covers the Bun runtime; the Bun test step runs the files known to
+# pass on Linux; the install smoke runs ./install.sh against a sandbox HOME and
+# asserts the installed `tap help` exits zero.
 on:
   pull_request:
   push:
     branches: [main]
-permissions:
-  contents: read
+# Actions are pinned by full commit sha; the trailing comment names the release
+# that sha is. To update one, resolve the new tag with
+#   git ls-remote https://github.com/<owner>/<action> 'refs/tags/<tag>' 'refs/tags/<tag>^{}'
+# Use the `^{}` line when one is printed (an annotated tag: the other line is
+# the tag object, not a commit). Change the sha and the comment together.
+# No token permission by default; the job names what it needs.
+permissions: {}
 env:
   LANG: en_US.UTF-8
   LC_ALL: en_US.UTF-8
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
-      - name: Install tmux and jq
-        run: sudo apt-get update && sudo apt-get install -y tmux jq
+      - name: Install tmux, jq and lsof
+        run: sudo apt-get update && sudo apt-get install -y tmux jq lsof
       - name: CI sanity (parse sweeps and fast smokes, sandboxed)
         run: |
           git config --local user.email ci@tap.local
@@ -41,6 +51,26 @@ jobs:
             bash scripts/ci-sanity.sh
       - name: Typecheck
         run: (cd runtime/bun && bun install --frozen-lockfile && bun run typecheck)
+      # The suite is developed on macOS and is not all green on Linux yet. This
+      # step runs the files that are, so a Linux regression in them fails CI.
+      # To extend the list: run a file on Linux through the same runner,
+      #   bash runtime/bun/test/run.sh runtime/bun/test/<name>.test.ts
+      # and add it here once it passes more than once. Keep one file per line,
+      # sorted. Do not list a file that fails or times out on Linux.
+      - name: Bun tests (Linux subset)
+        run: |
+          bash runtime/bun/test/run.sh \
+            runtime/bun/test/boot-session-oracle.test.ts \
+            runtime/bun/test/context-window.test.ts \
+            runtime/bun/test/digest-window-linux-helper.test.ts \
+            runtime/bun/test/doctor-tmux-clients.test.ts \
+            runtime/bun/test/draft.test.ts \
+            runtime/bun/test/lock-attribution.test.ts \
+            runtime/bun/test/notifications.test.ts \
+            runtime/bun/test/observe.test.ts \
+            runtime/bun/test/opencode-service.test.ts \
+            runtime/bun/test/proc-row.test.ts \
+            runtime/bun/test/tmux-bootstrap.test.ts
       - name: Install smoke (sandbox HOME)
         run: |
           install_scratch=$(mktemp -d "$RUNNER_TEMP/tap-install.XXXXXX")

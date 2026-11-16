@@ -258,7 +258,7 @@ for suffix in '' ' human draft' truncated; do
 done
 unset FAKE_CODEX_FIXTURE
 
-# Claude feedback panels hold nudge even with a visible input band.
+# Claude feedback cards (tap-89a57): neither September frame shows nudge a complete wire, so neither gets a key.
 python3 - "$TAP_HOME/registry.json" <<'PYCLAUDE'
 import json, sys
 p=sys.argv[1]; d=json.load(open(p)); d["seats"]["codex"]["harness"]="claude"

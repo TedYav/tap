@@ -1,6 +1,6 @@
 // The internal preparation child of `tap crew add`: fresh argv and row-bound tuning.
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { atomicWrite } from "../fsatomic";
@@ -10,7 +10,7 @@ import { facadeSecureRead } from "../slices/preset-api";
 import { INHERITED_IDENTITY_ENV } from "../session-store";
 import { verbose } from "../verbose";
 import { dumps, isMap, loads, pyTruthy, type JsonMap, type JsonValue } from "../watch-detect";
-import { buildHarnessInvocation, withoutNoDaemonForRemote } from "./adapters";
+import { buildHarnessInvocation, withCodexUpdateCheckOff, withoutNoDaemonForRemote } from "./adapters";
 import { paramsToArgv, spliceTokensIfAbsent, spliceVerbatimParams } from "./argv-splice";
 import { configDirectory, environment, HARNESSES, isRegularFile, refuse, resolveHarnessPolicy } from "./catalog";
 import { loadPresetCatalog, requirePreset } from "./catalog-listing";
@@ -20,7 +20,7 @@ import { applyOverrides, parseEnvAssignments, type Overrides } from "./overrides
 import { defaultPermissions, enforcePermissions, PERMISSION_HARNESSES, prepareCodexAutoReceipts, type PermissionMode } from "./permissions";
 import { applyLaunchEnv } from "./plan";
 import { LauncherError, type SessionRecord } from "./types";
-import { pinOpenCodeSession } from "./invocation";
+import { pinOpenCodeSession, loginShellExec } from "./invocation";
 import { launchTuning } from "./tuning";
 import { stripTuningAxes } from "./resume-tuning";
 import { prepareOpenCodeSession } from "./opencode-prepare";
@@ -31,8 +31,7 @@ import { artifactBun, runtimeModule } from "../scripts-dir";
 import { assertCrewResumeIdentity, assertCrewResumeUnheld } from "../crew-resume-identity";
 import { NATIVE_CONVERSATION_ID } from "../native-conversation";
 import { restoredAxes } from "./resume-tuning";
-
-const quote = (s: string): string => /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'"'"'`)}'`;
+import { ownBun, ownBunFlags } from "../own-bun";
 
 function realpathLenient(path: string): string {
   const suffix: string[] = [];
@@ -47,19 +46,6 @@ function realpathLenient(path: string): string {
   }
 }
 
-function loginShell(env: NodeJS.ProcessEnv): string {
-  for (const candidate of [env.TAP_LAUNCH_SHELL, env.SHELL, "zsh", "bash", "sh", "/bin/sh"]) {
-    if (!candidate) continue;
-    let found: string | null = null;
-    if (isAbsolute(candidate)) {
-      try { accessSync(candidate, constants.X_OK); found = candidate; } catch { /* try PATH */ }
-    }
-    found ??= Bun.which(candidate, { PATH: env.PATH });
-    if (found && ["sh", "bash", "zsh", "dash", "ksh", "ash"].includes(basename(found).replace(/\.exe$/, ""))) return found;
-  }
-  return "/bin/sh";
-}
-
 class ChildFailure extends Error {
   constructor(readonly status: number, detail: string) { super(detail); }
 }
@@ -71,7 +57,7 @@ function supersede(doc: JsonMap, seats: JsonMap, env: NodeJS.ProcessEnv): void {
   const instances = new Map<string, JsonValue>();
   for (const [handle, row] of seats) instances.set(handle, new Map([["instance", isMap(row) ? row.get("instance") ?? null : null]]));
   const door = runtimeModule("src/forwarding.ts");
-  const child = spawnSync(artifactBun() ?? "bun", [door, "supersede"], {
+  const child = spawnSync(ownBun(), [...ownBunFlags(), door, "supersede"], {
     input: dumps(new Map<string, JsonValue>([["seats", instances], ["seat_forwardings", forwardings]]), true),
     env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
   });
@@ -128,7 +114,7 @@ async function renderArgv(harness: string, name: string, cwd: string, model: str
   }
   for (const source of [passthrough, paramsToArgv(params), argv.slice(1), overrides.tail]) enforcePermissions(harness, permissions, source, env, defaulted);
   // Typed harness arguments append last, as tap session launch's `--` tail does.
-  argv = withoutNoDaemonForRemote(harness, [...spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }), ...overrides.tail]);
+  argv = withCodexUpdateCheckOff(harness, withoutNoDaemonForRemote(harness, [...spliceVerbatimParams(argv, params, { configKeys: harness === "codex" }), ...overrides.tail]));
   // Apply the same environment to preparation and to the eventual TUI.
   const launchEnv = { ...invocation.env };
   for (const key of overrides.unset) delete launchEnv[key];
@@ -313,7 +299,7 @@ function shellCommand(argv: string[], launchEnv: Record<string, string>, env: No
   const inherited = INHERITED_IDENTITY_ENV.filter(key => !(key in effectiveEnv));
   const command = ["/usr/bin/env", ...[...new Set([...unset, "TAP_STATELESS", ...inherited])].flatMap(key => ["-u", key]),
     ...Object.keys(effectiveEnv).sort().map(key => `${key}=${effectiveEnv[key]}`), ...argv];
-  return [loginShell(env), "-lic", 'exec "$0" "$@"', ...command].map(quote).join(" ");
+  return loginShellExec(command, env);
 }
 
 export async function crewInvocationCli(args: string[]): Promise<number> {

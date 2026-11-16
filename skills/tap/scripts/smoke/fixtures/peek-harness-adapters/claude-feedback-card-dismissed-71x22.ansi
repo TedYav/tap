@@ -1,0 +1,22 @@
+[38;2;255;255;255m⏺[39m The live probe runs once I go idle. With the card up, it types into
+  my composer and presses keys:
+
+  - [1mA1:[0m text in the composer, then [38;2;153;204;255m0[39m.
+  - [1mA2:[0m text in the composer, then Escape.
+  - [1mB:[0m empty composer, then Escape.
+
+  It clears its probe text with C-u between cases and resizes this
+  window between 71x22 and 119x45 for about 25 seconds. Case B
+  dismisses this session's fixture card for good. Draft 2 should stay
+  in your [38;2;153;204;255m/feedback[39m queue, and the probe records whether it does.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mWorked for 1m 45s · done 11:35 PM · 1 shell still running[39m
+
+Turn off Claude-drafted feedback? [38;2;153;153;153m0 to turn off · Esc to keep[39m
+
+
+[38;2;136;136;136m────────────────────────────────────────────────────── tap/seat-alpha ─
+[39m❯ 
+[38;2;136;136;136m───────────────────────────────────────────────────────────────────────
+[39m  [36mOpus 5.5 xhigh[38;2;153;153;153m | 62%[32m↯[38;2;153;153;153m 563k/900k [94m●60m[38;2;153;153;153m [32m██████░░░░[38;2;153;153;153m | 📁 tap | 🌿 main[39m
+  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m · [38;2;0;204;204m1 shell[38;2;153;153;153m · 1 feedback draft[39m

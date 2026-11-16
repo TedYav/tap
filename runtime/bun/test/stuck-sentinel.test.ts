@@ -220,12 +220,15 @@ test("classifier composer text is already CSI-free and NFC, so the native verdic
 
 // tap-rdy9n: urgent never clears a staged sentinel, including hermes's queued one.
 test("stagedSentinel sees a sentinel behind the harness queue prefix", () => {
-  expect(stagedSentinel("[[TAP v0.23 ask A/old]]", "claude")).toBe(true);
-  expect(stagedSentinel("  [[TAP v0.23 ask truncated", "codex")).toBe(true);
-  expect(stagedSentinel("/queue [[TAP v0.23 ask A/old]]", "hermes")).toBe(true);
-  expect(stagedSentinel("/queue [[TAP v0.23 ask A/old]]", "claude")).toBe(false);
-  expect(stagedSentinel("/queue human draft", "hermes")).toBe(false);
-  expect(stagedSentinel("human draft", "claude")).toBe(false);
-  // tap-1ncs6: a scrolled tail has no opener; the shared shape rule still sees the wire.
-  expect(stagedSentinel("010101Z-0123456789ab preview=\"the scrolled tail\"]]", "claude")).toBe(true);
+  expect(stagedSentinel("[[TAP v0.23 ask A/old]]", "claude", [])).toBe(true);
+  expect(stagedSentinel("  [[TAP v0.23 ask truncated", "codex", [])).toBe(true);
+  expect(stagedSentinel("/queue [[TAP v0.23 ask A/old]]", "hermes", [])).toBe(true);
+  expect(stagedSentinel("/queue [[TAP v0.23 ask A/old]]", "claude", [])).toBe(false);
+  expect(stagedSentinel("/queue human draft", "hermes", [])).toBe(false);
+  expect(stagedSentinel("human draft", "claude", [])).toBe(false);
+  // tap-1ncs6: a scrolled tail has no opener; it is TAP's own only as the tail of a wire typed into the pane.
+  const id = "sender-20260101T010101Z-0123456789ab";
+  const typed = [{ id, wire: `[[TAP v0.23 note ${id} preview="the scrolled tail"]]`, at: 0 }];
+  expect(stagedSentinel("010101Z-0123456789ab preview=\"the scrolled tail\"]]", "claude", typed)).toBe(true);
+  expect(stagedSentinel("010101Z-0123456789ab preview=\"the scrolled tail\"]]", "claude", [])).toBe(false);
 });

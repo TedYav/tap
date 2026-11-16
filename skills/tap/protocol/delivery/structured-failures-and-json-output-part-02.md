@@ -13,7 +13,7 @@
 | `preset_not_found` | `session launch --preset` | Explicit preset intent named no loaded entry; choose one of the listed presets or edit the catalog. |
 | `preset_config_retired` | Bun `session launch` with a requested preset | The catalog uses retired version 1; migrate it to version 2 or 3. |
 | `preset_config_unrepresentable` | Any catalog read | An integer field is outside ±(2^53−1); change it to a value the reader represents exactly. |
-| `harness_or_preset_not_found` | `session launch <unknown>` | The first positional could have meant either namespace; choose one of the named canonical harnesses or loaded presets. |
+| `harness_or_preset_not_found` | `session launch <unknown>` | The first positional could have meant either namespace; choose one of the named canonical harnesses or loaded presets. A product or binary spelling of a harness (`cursor-agent`, `antigravity`, `gemini`) is refused the same way and named its one canonical harness instead of the lists; it never launches. |
 | `preset_harness_mismatch` | `session launch <harness> ... --preset` | The compatibility-form harness disagrees with the preset's harness; remove the redundant harness or make them match. |
 | `preset_env_forbidden` | `session launch` with preset intent | A named environment key crosses the identity, transport, process, or policy fence; remove that exact key. |
 | `preset_unsupported` | `session launch` with preset intent | A strict field has no mapping for its harness; remove the field or choose a supported harness. |

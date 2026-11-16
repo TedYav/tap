@@ -81,7 +81,7 @@ describe("the foreign payload file", () => {
     const v = run(fx, ["reply", fx.payload, "-m", "answer", "--by", "ua"]);
     expect({ code: v.code, route: v.route, stdout: v.stdout, stderr: v.stderr, alpha: outbounds(fx.alpha.bus).length }).toEqual({
       code: 1, route: "native reply", stdout: "",
-      stderr: `tap reply: id ${INBOUND_ID} already settled at 2026-09-16T11:00:00Z; you have 0 open: none; next: tap send\n`,
+      stderr: `tap reply: id ${INBOUND_ID} already settled at 2026-09-16T11:00:00Z; you have 0 open: none; next: tap send <sender> -f <file>\n`,
       alpha: 0,
     });
   }, 120_000);

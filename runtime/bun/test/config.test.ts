@@ -88,15 +88,17 @@ test("leaf help bypasses config resolution and parsing without effects", () => {
       for (const flag of ["--help", "-h"]) {
         const result = run([leaf, flag], dir);
         expect(result.exitCode).toBe(0);
-        expect(result.stdout.toString()).toBe("");
-        expect(result.stderr.toString()).toContain(`tap config ${leaf}`);
+        expect(result.stdout.toString()).toBe(lookupHelp(["config", leaf]).stdout);
+        expect(result.stdout.toString()).toContain(`tap config ${leaf}`);
+        expect(result.stderr.toString()).toBe("");
         expect(existsSync(pathOf(dir))).toBe(text !== undefined);
         if (text !== undefined) expect(readFileSync(pathOf(dir), "utf8")).toBe(text);
         expect(existsSync(`${pathOf(dir)}.lock`)).toBe(false);
       }
       const invalidPath = run([leaf, "--help"], "relative", { HOME: "relative" });
       expect(invalidPath.exitCode).toBe(0);
-      expect(invalidPath.stderr.toString()).toContain(`tap config ${leaf}`);
+      expect(invalidPath.stdout.toString()).toBe(lookupHelp(["config", leaf]).stdout);
+      expect(invalidPath.stderr.toString()).toBe("");
     }
   }
 });

@@ -33,6 +33,20 @@ if [ "${1:-}" = -S ]; then [ "$2" = "$SOCKET" ] || exit 99; shift 2; fi
 if [ "${1:-}" = new-window ]; then printf "new-window\n" >> "$CREW_WINDOWS"; fi
 if [ "${1:-}" = send-keys ]; then
   printf '%s\n' "$*" >> "$CREW_CAPTURE"
+  # Inspect the file before a real submit can consume it. Keep command-value
+  # assertions separate from the short terminal wire.
+  python3 - "$CREW_CAPTURE.payload" "$@" <<'PY_PAYLOAD' || exit 1
+import pathlib, shlex, sys
+args = sys.argv[2:]
+if "--" in args:
+    command = shlex.split(args[args.index("--") + 1])
+    assert command[:2] == ["exec", "/bin/sh"] and len(command) == 3, command
+    assert len(args[args.index("--") + 1].encode()) < 1024, command
+    script = pathlib.Path(command[2]).read_text()
+    launch = next(line for line in script.splitlines() if line.startswith("exec env "))
+    with open(sys.argv[1], "a") as output:
+        output.write(launch + "\n")
+PY_PAYLOAD
   if [ -f "$CREW_CAPTURE.timeout" ]; then exec sleep 2; fi
   if [ "${CREW_REAL_SUBMIT:-}" = 1 ]; then exec "$REAL_TMUX" -S "$SOCKET" "$@"; fi
   exit 0
@@ -48,7 +62,13 @@ CREW_REAL_BUN="$(command -v bun)"
 export CREW_REAL_BUN CREW_HELPER_FDS="$WORK/helper-fds"
 cat > "$WORK/bin/bun" <<'BUN'
 #!/usr/bin/env bash
-case "${1:-}" in
+# Bun's own flags come first; the entry file and its first argument follow them.
+n=1
+while [ "$n" -le "$#" ]; do
+  case "${!n}" in --config=*|--no-env-file) n=$((n + 1)) ;; *) break ;; esac
+done
+m=$((n + 1)); entry="${!n:-}"; mode="${!m:-}"
+case "$entry" in
   */launcher/crew-invocation.ts)
     for fd in 0 1 2; do
       if [ -t "$fd" ]; then printf 'tty:%s\n' "$fd" >> "$CREW_HELPER_FDS"; fi
@@ -205,7 +225,7 @@ pane=row['pane_id']
 observed=subprocess.check_output([os.environ['REAL_TMUX'],'-S',os.environ['SOCKET'],'display-message','-p','-t',pane,'#{session_name}\t#{pane_current_path}'],text=True).strip()
 expected=w/'CrewRegistry'; expected=expected/'nested' if cwd=='nested' else expected
 assert observed==f'CrewRegistry/driver\t{expected}',observed
-assert harness in (w/'submission').read_text()
+assert harness in (w/'submission.payload').read_text()
 assert not (w/'CrewRegistry/.tap/bus/registry.json').exists()
 PY
   done
@@ -297,18 +317,19 @@ u4_refuse u4-adhoc TAP_JSON=1 crew add codex no-model
 u4_refuse u4-preset crew add naked no-model-preset
 # The receipt and the registry row are claims; the captured child launch
 # command is what the seat will actually run. Snapshot the capture, run the
-# add, then isolate the new exec line (the `send-keys -l -- exec env ...`
-# invocation, never the trailing Enter). Codex carries the exact model token;
+# add, then inspect the new file payload, never the trailing Enter or file path.
+# Codex carries the exact model token;
 # OpenCode 2 carries the session whose native model was prepared before launch.
 u4_launch() { # label model-token args...
   local label="$1" model_token="$2"; shift 2
-  local before_lines exec_line
+  local before_lines before_payload exec_line
   before_lines="$(wc -l < "$CREW_CAPTURE" 2>/dev/null || echo 0)"
+  before_payload="$(wc -l < "$CREW_CAPTURE.payload" 2>/dev/null || echo 0)"
   rc=0
   bash "$ROOT/scripts/tap.sh" "$@" >"$WORK/$label.log" 2>&1 || rc=$?
   [ "$rc" = 0 ] || { echo "u4: $label add failed"; cat "$WORK/$label.log"; exit 1; }
   [ "$(wc -l < "$CREW_CAPTURE")" -eq "$((before_lines + 2))" ] || { echo 'crew launch must send one literal line and one Enter'; exit 1; }
-  exec_line="$(tail -n +"$((before_lines + 1))" "$CREW_CAPTURE" | grep 'exec env' || true)"
+  exec_line="$(tail -n +"$((before_payload + 1))" "$CREW_CAPTURE.payload" | grep 'exec env' || true)"
   [ "$(printf '%s\n' "$exec_line" | grep -c 'exec env')" = 1 ] || { echo "u4: $label did not produce exactly one captured launch line"; tail -n +"$((before_lines + 1))" "$CREW_CAPTURE"; exit 1; }
   if [ "$label" = u4-preset ]; then
     python3 - "$exec_line" "$TAP_TEST_OPENCODE_LOG" "$model_token" <<'PY_MODEL'

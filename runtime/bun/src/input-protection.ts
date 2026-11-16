@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { atomicWrite } from "./fsatomic";
 import { normalizeInputMatch, physicalSocketPath, observePaneResult, tmux, type PaneObservation } from "./tmux";
-import { sentinelShapedInput } from "./sentinel-tail";
+import { anchoredSentinelInput, typedWireTail } from "./sentinel-tail";
+import { typedWires } from "./typed-wire";
+import { afterQueuePrefix } from "./stuck-sentinel";
 import { paneState, type PaneBand } from "./pane-state";
 import { hasDeliveryReceipt } from "./delivery-custody";
 import { acquirePathLock, acquirePaneLock } from "./panelock";
@@ -41,9 +43,16 @@ export function composerControlWord(band: PaneBand): "STOP" | "START" | null {
   return text === "STOP" || text === "START" ? text : null;
 }
 
-/** One draft owns one deadline. Callers serialize updates with the pane submit lock. */
+/**
+ * One draft owns one deadline. Callers serialize updates with the pane submit lock.
+ * `typed` is the evidence for an opener-less band: the wires the courier recorded
+ * typing into this pane. Without it every such band is a human draft.
+ * `harness` names the seat's harness when the pane's foreground command does
+ * not: TAP's own text sits behind that harness's queue prefix, if it has one.
+ */
 export function advanceProtection(previous: InputProtection | null, obs: Pick<PaneObservation, "paneId" | "serverEpoch" | "currentCommand">,
-  band: PaneBand, now: number, urgent = false, sender = "", newBatch = false): InputProtection | null {
+  band: PaneBand, now: number, urgent = false, sender = "", newBatch = false, typed: readonly { id: string; wire: string }[] = [],
+  harness: string = obs.currentCommand): InputProtection | null {
   let state = previous?.pane === obs.paneId && previous.epoch === obs.serverEpoch ? { ...previous, senders: [...previous.senders] } : null;
   // STOP belongs to the pane, not to the currently visible draft or TUI view.
   if (state && (state.stopUntil ?? 0) > now) {
@@ -61,8 +70,11 @@ export function advanceProtection(previous: InputProtection | null, obs: Pick<Pa
     if (state.bareSince !== null && now - state.bareSince >= 250) return null;
     return { ...state, bareSince: state.bareSince ?? now };
   }
-  // A sentinel in the band — anchored, or its scrolled tail (tap-1ncs6) — is never a human draft.
-  const draft = band.state === "busy" && !("queued" in band && band.queued) && !sentinelShapedInput(band.text);
+  // TAP's own text in the band — anchored, or the proven tail of a wire typed into
+  // this pane (tap-1ncs6) — is not a human draft. Text that only ends like a wire is one.
+  const own = band.state === "busy" ? afterQueuePrefix(band.text, harness) : "";
+  const draft = band.state === "busy" && !("queued" in band && band.queued)
+    && !(anchoredSentinelInput(own) || typedWireTail(own, typed));
   if (!draft && !state) return null;
   const deadline = now + (urgent ? 10_000 : 30_000);
   if (state && newBatch) { state.graceUntil = deadline; if (state.snoozeUntil <= now) state.snoozeUntil = 0; }
@@ -138,7 +150,13 @@ export function updateInputProtection(obs: PaneObservation, band: PaneBand, opti
   // it; typing STOP while no courier is watching never creates a new hold.
   const advanceBand = !pending.length && band.state === "busy" && band.text.trim() === "STOP" && !old?.stopUntil
     ? { state: "unobservable" as const, reason: "no-pending-mail" } : band;
-  const state = advanceProtection(old, obs, advanceBand, now, options.urgent, options.sender, newBatch);
+  // Evidence comes only from the buses with mail pending for this pane, in the observed
+  // server generation. Read on the wall clock: the record's age is real time, whatever
+  // `now` a caller simulates.
+  const typed = advanceBand.state === "busy"
+    ? [...new Set(pending.map(m => m.home))].flatMap(home => typedWires(obs.paneId, { epoch: obs.serverEpoch, bus: home }, env)) : [];
+  const state = advanceProtection(old, obs, advanceBand, now, options.urgent, options.sender, newBatch, typed,
+    options.harness ?? old?.harness ?? obs.currentCommand);
   if (state) {
     state.pending = pending;
     state.senders = [...new Set(pending.map(m => m.sender).filter(Boolean))];

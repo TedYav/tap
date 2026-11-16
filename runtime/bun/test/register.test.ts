@@ -14,7 +14,8 @@ const ROOT = join(import.meta.dir, "../../..");
 // register|in route) against a sandboxed live-marker world with a fixture
 // tmux on PATH. The mock answers the caller-pane identity record, the
 // chooser's list-panes/list-sessions gather, and the per-pane extras.
-function fixture(opts: { sessions?: boolean; panes?: boolean } = {}) {
+function fixture(opts: { sessions?: boolean; panes?: boolean; command?: string } = {}) {
+  const command = opts.command ?? "zsh";
   const root = join(tmpdir(), `tap-register-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const index = join(root, "index");
   const home = join(root, "home");
@@ -46,15 +47,15 @@ case "\$cmd" in
     elif [ -n "\${TAP_TMUX_SOCKET:-}" ]; then sock="\${TMUX_TMPDIR:-/tmp}/tmux-\$(id -u)/\$TAP_TMUX_SOCKET"
     else sock="\${TMUX:-/fake/socket}"; fi
     case "\$fmt" in
-      *pane_tty*pane_pid*socket_path*) printf '%%2\\t/dev/t\\trepo/seat\\t900:100\\trepo/seat:0.0\\t4242\\tzsh\\t%s\\t${repo}\\n' "\$sock" ;;
-      *pane_id*session_name*pane_pid*pane_current_command*) printf '%%2\\trepo/seat\\t4242\\tzsh\\t0\\n' ;;
+      *pane_tty*pane_pid*socket_path*) printf '%%2\\t/dev/t\\trepo/seat\\t900:100\\trepo/seat:0.0\\t4242\\t${command}\\t%s\\t${repo}\\n' "\$sock" ;;
+      *pane_id*session_name*pane_pid*pane_current_command*) printf '%%2\\trepo/seat\\t4242\\t${command}\\t0\\n' ;;
       *pid*start_time*) printf '900:100\\n' ;;
       *pane_id*session_name*pid*start_time*socket_path*) printf '%%2\\trepo/seat\\t900:100\\t%s\\n' "\$sock" ;;
       *pane_id*session_name*pid*start_time*) printf '%%2\\trepo/seat\\t900:100\\n' ;;
       *pane_id*session_name*) printf '%%2\\trepo/seat\\n' ;;
       *pane_id*) printf '%%2\\n' ;;
       *pane_pid*) printf '4242\\n' ;;
-      *pane_current_command*) printf 'zsh\\n' ;;
+      *pane_current_command*) printf '${command}\\n' ;;
       *pane_current_path*) printf '${repo}\\n' ;;
       *socket_path*)
         if [ -n "\${TAP_TMUX_SOCKET_PATH:-}" ]; then printf '%s\\n' "\$TAP_TMUX_SOCKET_PATH"
@@ -67,7 +68,7 @@ case "\$cmd" in
   list-sessions)
 ${opts.sessions === false ? "    exit 1 ;;" : `    printf 'repo/seat\\t900:100\\t1\\n' ;;`}
   list-panes)
-${opts.panes === false ? "    exit 1 ;;" : `    printf 'repo/seat\\trepo/seat:0.0\\t%%2\\tzsh\\t4242\\t900:100\\t0\\n' ;;`}
+${opts.panes === false ? "    exit 1 ;;" : `    printf 'repo/seat\\trepo/seat:0.0\\t%%2\\t${command}\\t4242\\t900:100\\t0\\n' ;;`}
   *) exit 0 ;;
 esac
 `;
@@ -156,11 +157,37 @@ test("pane registration: defaults, seats-only store, primer bytes, env identity,
     expect(d.err).toContain("tap register primer: answer: tap reply <id> -f <file>");
     expect(d.err).toContain("tap register primer: settle-only/FYI: tap read <id>");
     expect(d.err).not.toContain("tap done");
+    // The fixture pane runs zsh: the registration stands (exit 0, active row),
+    // and one line says nothing can be delivered there and what to do.
+    expect(scout["harness"]).toBe("zsh");
+    expect(d.err.split("\n").filter(line => line.includes("runs a shell"))).toEqual([
+      "tap register: scout's pane runs a shell, not an agent, so messages sent to scout cannot be delivered; next: run tap in scout from inside an agent, or start one with tap launch <harness> <name>",
+    ]);
     // lineage: the fresh instance appends the pane-session lineage line
     const lineage = join(f.repo, ".tap", "team-history", "scout.lineage.jsonl");
     expect(existsSync(lineage)).toBe(true);
     const line = JSON.parse(readFileSync(lineage, "utf8").trim()) as Record<string, string>;
     expect(line["note"]).toBe("fresh");
+    // JSON mode keeps stderr free of prose. Last, because registering again appends lineage.
+    const json = f.door(["scout", "--pane", f.addr, "--json"], { TAP_HARNESS_SESSION_ID: "sess-env-1", TAP_SESSION_SOURCE: "resume" });
+    expect(json.code, json.out + json.err).toBe(0);
+    expect(json.err).not.toContain("runs a shell");
+  } finally { removeScratchTree(f.root); }
+}, 60000);
+
+test("a runtime name with no process evidence is reported as unknown, never as a shell", () => {
+  // The pane reports TAP's own runtime and its pid is in no process table, so
+  // nothing shows whether an agent runs under it.
+  const f = fixture({ command: "bun" });
+  try {
+    const d = f.door(["scout", "--pane", f.addr]);
+    expect(d.code, d.out + d.err).toBe(0);
+    expect(f.seats().scout!["harness"]).toBe("bun");
+    expect(f.seats().scout!["status"]).toBe("active");
+    expect(d.err).not.toContain("runs a shell");
+    expect(d.err.split("\n").filter(line => line.includes("could not tell"))).toEqual([
+      "tap register: could not tell whether scout's pane holds a supported agent (its foreground program is 'bun' and process inspection did not settle it), so messages sent to scout may be refused; next: tap team",
+    ]);
   } finally { removeScratchTree(f.root); }
 }, 60000);
 
@@ -1462,7 +1489,7 @@ test("death after adoption starts still publishes the matching successor row", (
     writeFileSync(join(f.bin, "bun"), `#!/bin/bash
 "$TEST_REAL_BUN" "$@"
 code=$?
-case "$1:$2" in */seat-adopt.ts:adopt-batch) printf 1 > "$TEST_PANE_EXITED" ;; esac
+case " $* " in *"/seat-adopt.ts adopt-batch "*) printf 1 > "$TEST_PANE_EXITED" ;; esac
 exit "$code"
 `, { mode: 0o755 });
     f.writeRegistry({ schema: "0.20", team: { name: "repo", worktree_root: f.repo }, seats: {

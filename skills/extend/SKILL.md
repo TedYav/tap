@@ -103,13 +103,15 @@ TAP state and tmux server.
 test fails until the handler table, the help catalog and the
 `runtime/bun/test/fixtures/help/catalog-index.json` fixture agree.
 
-**Add a harness.** TAP must start it, recognize a ready composer, and submit
-typed text; anything that runs in a tmux pane and accepts typed input can join.
+**Add a harness.** TAP supports a closed list of harnesses and refuses any
+other program at launch and at delivery, so a new one is a source change. TAP
+must start it, recognize a ready composer, and submit typed text.
 Add the name to both root lists, `HARNESSES` in
 `runtime/bun/src/launcher/catalog.ts` and `AGENT_FAMILIES` in
 `runtime/bun/src/harness-families.ts`. Then follow a recent harness:
-`grep -rn '"agy"' runtime/bun/src hooks install.sh` lists the places that
-name a harness. These include the launch arguments in `launcher/adapters.ts`,
+`grep -rn '"agy"' runtime/bun/src hooks install.sh` lists most of the places
+that name a harness; a few lists spell the same harness `antigravity` or
+`gemini`, so search for those too. These include the launch arguments in `launcher/adapters.ts`,
 prompt detection in `agent-state.ts`, executable detection in
 `verbs/machine.ts`, and session-start wiring in `hooks/`. Typecheck catches
 the typed tables; the rest are plain lists. Resume, fork and permission

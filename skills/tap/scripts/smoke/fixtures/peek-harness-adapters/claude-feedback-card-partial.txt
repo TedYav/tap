@@ -1,0 +1,24 @@
+
+⏺ The first live run passed: with the card up at 119x45 and the composer visible
+  below it, tap send through the fixed courier delivered.
+
+  I'm going idle so the card comes back. The background script waits for the
+  card's boxed hint row, then captures it at 145x50, 100x30, 80x24, 71x22 and
+  58x24. At the first size where the card hides the composer, it sends one more
+  real note to this seat, which covers the hidden-composer path through the
+  courier. It restores the window size when it exits. Your pane will resize a
+  few times for about 10 seconds.
+
+✻ Worked for 53s · done 10:42 PM · 3 shells still running
+
+╭────────────────────────────────────────────────────────────────────────────╮
+│ ✻ Bug report drafted: TAP fixture capture draft 2: safe to discard         │
+│ │ - What happened: This draft exists so a TAP seat can capture the         │
+│ │ feedback-draft card at several pane sizes and run a live delivery check  │
+│ │ while the card is u…                                                     │
+│ 1 to review · 2 to send · 0 to dismiss                                     │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+
+─────────────────────────────────────────────────────────────── tap/seat-alpha ─
+❯ 

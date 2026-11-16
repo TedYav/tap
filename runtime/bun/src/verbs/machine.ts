@@ -1,5 +1,6 @@
 import { keybindingInstalled, uninstallKeybinding } from "./keybinding";
 import { defaultsInstalled, uninstallDefaults } from "./tmux-defaults";
+import { permissionRequestDir, removePermissionRequestDir } from "../permission-request";
 import { closeSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -748,6 +749,26 @@ export function removeEntry(entry: Entry, plan?: Plan): string {
   }
   return "preserved unknown manifest kind";
 }
+/** Each enrolled team's permission-request directory that exists, from the history roots. */
+function permissionRequestDirs(history: string[]): string[] {
+  return history.filter(path => basename(path) === ".tap").map(path => permissionRequestDir(join(path, "bus"))).filter(path => existsSync(path));
+}
+/**
+ * Pending permission-request records are live state, not history, so every
+ * uninstall path removes them, whatever the history choice and whether or not
+ * the manifest still lists a hook: a hook already running can finish writing
+ * after its settings entry is gone. `history` is absent on the paths that have
+ * not read it; an unreadable index is theirs to report.
+ */
+function sweepPermissionRequests(dryRun: boolean, history?: string[]): void {
+  let roots: string[];
+  try { roots = history ?? historyPaths(); } catch { return; }
+  for (const directory of permissionRequestDirs(roots)) {
+    if (dryRun) { console.log(`would remove: ${directory}`); continue; }
+    const removed = removePermissionRequestDir(dirname(directory));
+    console.log(removed ? `removed: ${removed}` : `preserved (not TAP's to remove): ${directory}`);
+  }
+}
 export function historyPaths(): string[] {
   const paths = [index(),configDir()];
   const registry = join(index(),"global-registry.json");
@@ -878,7 +899,7 @@ function uninstallDefaultsPreservedNote(): string {
 export async function uninstallMachine(ask: Prompt, options: UninstallOptions = {}, tmuxIO?: TmuxControlIO): Promise<number> {
   const manifest = readManifest();
   console.log("Uninstall removes TAP integration; agent sessions keep running. To stop them first, run tap down <team/seat> for each session before uninstalling.");
-  if (!existsSync(manifestPath())) { console.log("Nothing to uninstall: no install manifest. History, dependencies, and plugins are preserved."); return await uninstallKeybindingOnly(ask, options); }
+  if (!existsSync(manifestPath())) { console.log("Nothing to uninstall: no install manifest. History, dependencies, and plugins are preserved."); sweepPermissionRequests(!!options.dryRun); return await uninstallKeybindingOnly(ask, options); }
   // Detect an omitted record without deleting an artifact on inferred ownership.
   if (manifest.targets) {
     let found: Entry[];
@@ -888,7 +909,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
       if (!manifest.entries.some(e=>e.path===foundEntry.path && e.kind===foundEntry.kind && e.event===foundEntry.event && e.key===foundEntry.key && (e.kind!=="hook" || e.value?.command===foundEntry.value?.command))) console.log(`Unrecorded TAP artifact (preserved): ${foundEntry.path}; next: rerun ./install.sh to reconcile the manifest`);
     }
   }
-  if (!manifest.entries.length && !manifest.historyPending) { console.log("Nothing to uninstall: all recorded artifacts already removed. History, dependencies, and plugins are preserved."); return await uninstallKeybindingOnly(ask, options); }
+  if (!manifest.entries.length && !manifest.historyPending) { console.log("Nothing to uninstall: all recorded artifacts already removed. History, dependencies, and plugins are preserved."); sweepPermissionRequests(!!options.dryRun); return await uninstallKeybindingOnly(ask, options); }
   const history = historyPaths(); // Capture enrolled roots before removing anything.
   if (options.dryRun) {
     const plan: Plan = new Map();
@@ -898,6 +919,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     for (const line of leftovers(gone, false)) console.log(line);
     for (const line of uninstallKeybinding(false).lines) console.log(line);
     for (const line of uninstallDefaults(false).lines) console.log(line);
+    sweepPermissionRequests(true, history);
     const choice = options.history ?? "keep";
     console.log(`History (${choice}${options.history ? "" : ", the default"}):\n${history.map(p=>`  ${p}`).join("\n")}`);
     console.log(`next: tap uninstall --yes${options.history ? ` --history ${choice}` : ""}`);
@@ -935,6 +957,7 @@ export async function uninstallMachine(ask: Prompt, options: UninstallOptions = 
     if (outcome.startsWith("preserved")) remaining.push(entry);
     else if (outcome === "removed" || outcome.endsWith("deleted the file TAP created")) gone.add(entry.path);
   }
+  sweepPermissionRequests(false, history);
   manifest.entries = remaining;
   manifest.historyPending = true;
   saveManifest(manifest);

@@ -19,16 +19,15 @@ test("the three-way contract: text, unknown geometry, blocked", () => {
   // because the obvious reading — "there is a prompt, so there is a band" — is
   // what the generic branch does and the claude branch must not.
   expect(composerInput(`❯ ${WIRE}\n`, "claude-code")).toEqual({ state: "unknown" });
-  // rc4: a modal is asking this seat's human a question. The bound may push
-  // through rc3 and may never type over rc4 (CONTRACT.md, modal/startup holds).
-  // A REAL captured overlay, not a hand-made one — my first version of this arm
-  // invented an approval frame that the production predicate does not recognize,
-  // so it asserted `blocked` against a frame no harness ever draws.
-  const overlay = readFileSync(root + "skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-empty-constructed.ansi", "utf8");
+  // rc4: input the courier may never type over. The bound may push through rc3
+  // and never rc4 (CONTRACT.md, modal/startup holds). A REAL capture, not a
+  // hand-made one: Claude's feedback card hiding a composer that holds text
+  // (tap-89a57; the card over an EMPTY composer reads as an empty band).
+  const overlay = readFileSync(root + "skills/tap/scripts/smoke/fixtures/peek-harness-adapters/claude-feedback-card-text-hidden.ansi", "utf8");
   expect(composerInput(overlay, "claude")).toEqual({ state: "blocked" });
-  // The claude feedback overlay is a CLAUDE predicate: the same bytes under
-  // another harness take that harness's branch and are ordinary text.
-  expect(composerInput(overlay, "codex").state).toBe("text");
+  // The feedback card is a CLAUDE predicate: the same bytes under
+  // another harness take that harness's branch, which never reports it blocked.
+  expect(composerInput(overlay, "codex").state).not.toBe("blocked");
 });
 
 test("the claude reader returns claudeBox().raw, not .typed", () => {

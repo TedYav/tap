@@ -16,6 +16,7 @@ import { bootId, ServerUnresponsive, tmuxReadOnly, type Run } from "../tmux";
 import { pythonStr } from "../watch-lease";
 import { isOldStoreRefusal } from "../register-authority";
 import { tapScriptsDir, artifactBun } from "../scripts-dir";
+import { ownBun, ownBunFlags } from "../own-bun";
 
 const scripts = tapScriptsDir();
 const subst = (value: string) => value.replace(/\n+$/, "");
@@ -81,7 +82,7 @@ function paneReadResult(pane: string, harness: string, handle: string, env: Node
 /** A watcher supplies an environment, not permission to replace its own process globals.
  * Keep the old subprocess boundary; only the command owner on its far side changes. */
 export function peekResult(handle: string, scriptsDir: string, env: NodeJS.ProcessEnv): Result {
-  const r = spawnSync(artifactBun() ?? "bun", [resolve(scriptsDir, "../../../runtime/bun/src/verbs/peek.ts"), handle], {
+  const r = spawnSync(ownBun(), [...ownBunFlags(), resolve(scriptsDir, "../../../runtime/bun/src/verbs/peek.ts"), handle], {
     encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"],
   });
   return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };

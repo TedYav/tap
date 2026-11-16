@@ -38,6 +38,15 @@
 #   TAP_INSTALL_SYNC_LOCK_WAIT  seconds a --sync waits for another's lock (default: 60)
 set -euo pipefail
 
+# The requirement is Bash 5, and it applies to the interpreter running this file,
+# not only to the first `bash` on PATH. `/bin/bash install.sh` on macOS starts Bash
+# 3.2; when a Bash 5 is first on PATH, continue under it. With none, the requirement
+# check below refuses and names both versions.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 5 ] && [ -z "${TAP_INSTALL_BASH_REEXEC:-}" ] \
+  && command -v bash >/dev/null 2>&1 && bash -c 'test "${BASH_VERSINFO[0]}" -ge 5' 2>/dev/null; then
+  TAP_INSTALL_BASH_REEXEC=1 exec bash "${BASH_SOURCE[0]}" ${1+"$@"}
+fi
+
 SYNC=0
 SETUP=0
 VERBOSE=0
@@ -56,10 +65,13 @@ Usage: ./install.sh [--sync] [--setup] [--verbose] [--report]
              The install manifest also records owned artifacts.
 
   --report   Read-only: print what this install would do for each harness
-             (Claude, Codex, Cursor, OpenCode, Antigravity, Hermes), then
-             exit without writing anything. Example: ./install.sh --report
-             Every install prints the same report before it writes any harness
-             home or link (a --sync prints it after updating the checkout).
+             (Claude, Codex, Cursor, OpenCode, Antigravity, Hermes) and
+             everything else a real run does or asks (the tap link, PATH,
+             zsh completion, TAP's state directory, the fzf download, shell
+             startup edits and the two tmux questions with their defaults),
+             then exit without writing anything. Example: ./install.sh --report
+             Every install prints the harness lines before it writes any harness
+             home or link (a --sync prints them after updating the checkout).
              A harness home is wired only when its command is on PATH
              or its hooks file already exists. Per harness the report says
              one of: will wire, already wired, present but not wired (with the
@@ -113,8 +125,21 @@ skill links. Disabled plugins are not refreshed. Codex refresh uses native add,
 which enables the plugin: keep its enabled setting unchanged during this command.
 
 This is not a deploy system. It does not auto-pull or fetch on every tap.
+
+Keep this clone. The tap command, every hook wired into an agent's config and
+the uninstaller all run from it; deleting or moving it first leaves those
+hooks pointing at missing files. To remove TAP:
+  tap uninstall --dry-run   # preview what would be removed
+  tap uninstall             # remove it
+Delete this clone only after tap uninstall's last line says it is safe to
+delete. If the uninstall was cancelled, refused, or kept files you had changed,
+keep the clone: TAP still runs from it.
 EOF
       exit 0
+      ;;
+    --uninstall)
+      echo "install: this installer does not remove TAP. Run: tap uninstall --dry-run (preview), then tap uninstall. Delete this clone only after tap uninstall's last line says it is safe to delete: the uninstaller runs from it." >&2
+      exit 1
       ;;
     --*)
       echo "install: unknown option '$1' (try --help)" >&2
@@ -149,13 +174,33 @@ if [ -f "$(dirname "${BASH_SOURCE[0]}")/tap-release.json" ]; then
   REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 TAP_SHELL_BODY_GUARD="$REPO/hooks/tap-shell-body-guard.ts"
-TAP_HOOK_BUN=bun
+# A Bun started in a project directory reads that directory's bunfig.toml (its preload
+# scripts run before the entry file) and its .env. The generated shims run wherever an
+# agent works, and this installer runs wherever it is called from, so a checkout's Bun
+# gets TAP's own config and no env file. A missing config file must neither stop Bun nor
+# reopen the door, so the empty device stands in for it. The release Bun is left as is.
+TAP_BUN_CONFIG="$REPO/runtime/bun/tap-bunfig.toml"
+TAP_HOOK_BUN='bun --config="$c" --no-env-file'
+TAP_SHIM_PRELUDE="c=\"$TAP_BUN_CONFIG\"; [ -f \"\$c\" ] || c=/dev/null"$'\n'
 if [ "$ARTIFACT" = 1 ]; then
   TAP_SHELL_BODY_GUARD="$REPO/hooks/tap-shell-body-guard.sh"
   TAP_HOOK_BUN="\"$REPO/libexec/tap/bun\""
+  TAP_SHIM_PRELUDE=""
 fi
+[ -f "$TAP_BUN_CONFIG" ] || TAP_BUN_CONFIG=/dev/null
 # Every Bun step below: `bun` from PATH in a checkout, the artifact's own Bun in a release.
-tap_bun() { if [ "$ARTIFACT" = 1 ]; then "$REPO/libexec/tap/bun" "$@"; else bun "$@"; fi; }
+# The cache pin keeps Bun's startup transpiler cache out of the caller's home, so the
+# installer writes only what it names and --report writes nothing at all.
+tap_bun() {
+  if [ "$ARTIFACT" = 1 ]; then
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 "$REPO/libexec/tap/bun" "$@"
+  elif [ "${1:-}" = --version ]; then
+    # Asked before the version floor is known; an older Bun may not accept the flags.
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --version
+  else
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --config="$TAP_BUN_CONFIG" --no-env-file "$@"
+  fi
+}
 if [ "$ARTIFACT" = 1 ] && [ "$SYNC" = 1 ]; then
   echo "install: REFUSED --sync — [artifact] $REPO is a release install, not a git checkout; --sync updates a checkout" >&2
   echo "install: next: rerun tap-bootstrap.sh with a newer archive and its --sha256" >&2
@@ -170,8 +215,8 @@ for dep in git bash bun jq tmux tar lsof; do
   if ! { [ "$dep" = bun ] && [ "$ARTIFACT" = 1 ]; } && ! command -v "$dep" >/dev/null 2>&1; then
     echo "install: $dep was not found on PATH" >&2
     missing+=("$dep")
-  elif [ "$dep" = bash ] && ! bash -c 'test "${BASH_VERSINFO[0]}" -ge 5'; then
-    echo "install: Bash 5 or newer is required" >&2
+  elif [ "$dep" = bash ] && { [ "${BASH_VERSINFO[0]:-0}" -lt 5 ] || ! bash -c 'test "${BASH_VERSINFO[0]}" -ge 5'; }; then
+    echo "install: Bash 5 or newer is required (this run is under Bash ${BASH_VERSION:-unknown}; bash on PATH is $(bash -c 'printf %s "$BASH_VERSION"' 2>/dev/null || echo unknown))" >&2
     missing+=(bash)
   elif [ "$dep" = bun ]; then
     bun_version=''
@@ -193,28 +238,122 @@ for dep in git bash bun jq tmux tar lsof; do
     fi
   fi
 done
+# The remedy names only what is missing, for the platform this run is on. $OSTYPE and
+# $HOSTTYPE are Bash's own, so this works when PATH holds nothing at all.
+tap_install_requirement_remedy() {
+  local dep need_bun=0 pkgs="" system="" brew="" manager=""
+  for dep in "${missing[@]}"; do
+    case "$dep" in
+      bun) need_bun=1 ;;
+      *) case " $pkgs " in *" $dep "*) ;; *) pkgs="${pkgs:+$pkgs }$dep" ;; esac ;;
+    esac
+  done
+  echo "install: install what is missing, then rerun ./install.sh:" >&2
+  case "${OSTYPE:-}" in
+    darwin*)
+      # lsof and tar ship with macOS; a missing one means PATH lacks the system directories.
+      for dep in lsof tar; do
+        case " $pkgs " in *" $dep "*)
+          system="${system:+$system, }$dep"
+          pkgs=" $pkgs "; pkgs="${pkgs/ $dep / }"; pkgs="${pkgs# }"; pkgs="${pkgs% }" ;;
+        esac
+      done
+      [ "$need_bun" != 1 ] || pkgs="${pkgs:+$pkgs }oven-sh/bun/bun"
+      if [ -n "$pkgs" ]; then
+        if command -v brew >/dev/null 2>&1; then
+          echo "  brew install $pkgs" >&2
+        else
+          case "${HOSTTYPE:-}" in arm64|aarch64) brew=/opt/homebrew/bin/brew ;; *) brew=/usr/local/bin/brew ;; esac
+          echo "  Install Homebrew if needed: https://brew.sh" >&2
+          echo "  eval \"\$($brew shellenv)\"" >&2
+          echo "  $brew install $pkgs" >&2
+        fi
+      fi
+      [ -z "$system" ] || echo "  macOS already includes $system: add /usr/bin and /usr/sbin to PATH" >&2
+      ;;
+    linux*)
+      if [ -n "$pkgs" ]; then
+        for dep in apt-get dnf pacman; do
+          if command -v "$dep" >/dev/null 2>&1; then manager="$dep"; break; fi
+        done
+        case "$manager" in
+          apt-get) echo "  sudo apt install $pkgs" >&2 ;;
+          dnf) echo "  sudo dnf install $pkgs" >&2 ;;
+          pacman) echo "  sudo pacman -S $pkgs" >&2 ;;
+          *)
+            echo "  sudo apt install $pkgs     # Debian, Ubuntu" >&2
+            echo "  sudo dnf install $pkgs     # Fedora" >&2
+            echo "  sudo pacman -S $pkgs       # Arch" >&2 ;;
+        esac
+      fi
+      if [ "$need_bun" = 1 ]; then
+        echo "  curl -fsSL https://bun.sh/install | bash       # Bun $TAP_BUN_MIN+; distribution packages lag" >&2
+        echo "  Open a new terminal after installing Bun." >&2
+      fi
+      ;;
+    *)
+      [ -z "$pkgs" ] || echo "  $pkgs (use your system's package manager)" >&2
+      [ "$need_bun" != 1 ] || echo "  Bun $TAP_BUN_MIN or newer: https://bun.sh" >&2
+      ;;
+  esac
+}
 if [ "${#missing[@]}" -gt 0 ]; then
-  echo "install: install the missing requirements, then rerun ./install.sh:" >&2
-  while IFS= read -r hint; do printf '%s\n' "$hint" >&2; done <<'EOF'
-  Install Homebrew if needed: https://brew.sh
-  Apple Silicon Macs:
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-    /opt/homebrew/bin/brew install git bash jq tmux oven-sh/bun/bun
-  Intel Macs:
-    eval "$(/usr/local/bin/brew shellenv)"
-    /usr/local/bin/brew install git bash jq tmux oven-sh/bun/bun
-  Run the commands for your Mac after Homebrew is installed, then rerun ./install.sh.
-  Linux:
-    sudo apt install git bash jq tmux tar lsof     # Debian, Ubuntu
-    sudo dnf install git bash jq tmux tar lsof     # Fedora
-    sudo pacman -S git bash jq tmux tar lsof       # Arch
-    curl -fsSL https://bun.sh/install | bash       # Bun 1.4+; distribution packages lag
-  Open a new terminal after installing Bun, then rerun ./install.sh.
-EOF
+  tap_install_requirement_remedy
   exit 127
 fi
 
-echo "install: requirements OK: bash $(bash -c 'printf %s "$BASH_VERSION"'), bun $bun_version, jq, tmux, git, tar, lsof"
+# tmux 3.2 is the floor for the lookup key (display-popup) and the tmux defaults; both
+# verbs refuse below it, so the installer does not offer them on a tmux it has read as
+# older. A version it cannot read (a wrapper, a development build) is not evidence of
+# an old tmux: the offers stay, and the two verbs make their own check.
+TMUX_FLOOR=3.2
+tmux_version="$(tmux -V 2>/dev/null || true)"
+tmux_version="${tmux_version#tmux }"
+TMUX_FLOOR_OK=1
+if [[ "$tmux_version" =~ ([0-9]+)\.([0-9]+) ]]; then
+  if [ "${BASH_REMATCH[1]}" -lt 3 ] || { [ "${BASH_REMATCH[1]}" -eq 3 ] && [ "${BASH_REMATCH[2]}" -lt 2 ]; }; then TMUX_FLOOR_OK=0; fi
+  tmux_label="$tmux_version"
+else
+  tmux_label="(version unreadable)"
+fi
+
+echo "install: requirements OK: bash $(bash -c 'printf %s "$BASH_VERSION"'), bun $bun_version, jq, tmux $tmux_label, git, tar, lsof"
+if [ "$TMUX_FLOOR_OK" != 1 ]; then
+  echo "install: note: tmux $tmux_version is older than $TMUX_FLOOR; the lookup key (tap keybinding) and tmux defaults (tap tmux-defaults) need $TMUX_FLOOR, so the installer does not offer them"
+elif [ "$tmux_label" != "$tmux_version" ]; then
+  echo "install: note: could not read a version from 'tmux -V'; the lookup key (tap keybinding) and tmux defaults (tap tmux-defaults) need tmux $TMUX_FLOOR or newer and check it themselves"
+fi
+
+# Claude Code added the PermissionRequest hook event in 2.0.45. An older Claude stops
+# every start on a settings warning for a hook event it does not know, so TAP's
+# permission-request observer is wired only for a version that reads as new enough,
+# and an entry an earlier run wrote is removed when the version no longer does.
+CLAUDE_PERMISSION_FLOOR=2.0.45
+# Returns 0 new enough, 1 older, 2 unreadable; claude_version holds what was read.
+tap_claude_permission_floor() {
+  local raw
+  claude_version=""
+  raw="$(claude --version </dev/null 2>/dev/null | head -n 1 || true)"
+  [[ "$raw" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]] || return 2
+  claude_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+  if [ "${BASH_REMATCH[1]}" -gt 2 ] \
+    || { [ "${BASH_REMATCH[1]}" -eq 2 ] && [ "${BASH_REMATCH[2]}" -gt 0 ]; } \
+    || { [ "${BASH_REMATCH[1]}" -eq 2 ] && [ "${BASH_REMATCH[2]}" -eq 0 ] && [ "${BASH_REMATCH[3]}" -ge 45 ]; }; then
+    return 0
+  fi
+  return 1
+}
+# One sentence for both the report and the real run: what the gate decides and why.
+tap_claude_permission_outcome() {
+  local rc=0
+  tap_claude_permission_floor || rc=$?
+  case "$rc" in
+    0) echo "wired for Claude Code $claude_version" ;;
+    1) echo "not wired: Claude Code $claude_version is older than $CLAUDE_PERMISSION_FLOOR, which added the PermissionRequest hook; after updating Claude Code, ./install.sh --sync adds it" ;;
+    *) echo "not wired: could not read a version from 'claude --version'; ./install.sh --sync adds it once the version reads $CLAUDE_PERMISSION_FLOOR or newer" ;;
+  esac
+  return "$rc"
+}
 
 # One source of truth drives both default resolution and the all-targets-
 # redirected exception. Each entry is shell variable:environment variable:default;
@@ -306,14 +445,78 @@ tap_install_harness_report() {
             opencode) text="$text; session plugin wiring skipped (TAP_INSTALL_HOOK=0); skill links still managed" ;;
             gemini) text="$text; hook wiring skipped (TAP_INSTALL_HOOK=0); skill links still managed" ;;
           esac
+        elif [ "$key" = claude ]; then
+          text="$text; permission-request observer $(tap_claude_permission_outcome || true)"
         fi ;;
     esac
     echo "install:   ${HARNESS_LABELS[$i]}: $text"
   done
 }
 
+# The two first-run tmux questions. The report quotes the same strings the prompts
+# print, so the preview and the questions cannot drift apart.
+TMUX_KEYBINDING_QUESTION='Install the TAP agent lookup keybinding (prefix C-g)?'
+TMUX_DEFAULTS_QUESTION='Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard; plus a status bar if you have no tmux config yet)?'
+
+# The line every finished install and the report end on: all installed links and
+# hooks point into this directory, and so does the uninstaller.
+tap_install_keep_note() {
+  if [ "$ARTIFACT" = 1 ]; then
+    echo "install: keep $REPO: the tap command, hooks and uninstaller run from it. To remove TAP: tap uninstall --dry-run, then tap uninstall; its last line names what is then safe to delete."
+  else
+    echo "install: keep this clone ($REPO): the tap command, hooks and uninstaller run from it. To remove TAP: tap uninstall --dry-run, then tap uninstall; delete the clone only after its last line says it is safe to delete."
+  fi
+}
+
+# Everything a real run does or asks beyond the per-harness lines, for the consent
+# preview. Paths are the resolved install targets; nothing here writes.
+tap_install_report_actions() {
+  local completion_dir config startup startup_parts
+  completion_dir="$(dirname "$BIN_DIR")/share/zsh/site-functions"
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/tap/config.toml"
+  echo "install: a real run also does this (the report itself writes nothing):"
+  echo "install:   wired harnesses: for each harness marked \"will wire\", adds TAP's hooks or session plugins to its config and installs TAP's skills there; Codex also gets one marked TAP section in its AGENTS.md. Your other entries in those files are kept"
+  echo "install:   tap command: links $BIN_DIR/tap -> $REPO/bin/tap"
+  case ":${PATH}:" in
+    *":$BIN_DIR:"*) echo "install:   PATH: $BIN_DIR is already on PATH; nothing to change" ;;
+    *) echo "install:   PATH: $BIN_DIR is not on PATH; the installer prints the export line to add and edits no shell file itself" ;;
+  esac
+  echo "install:   zsh completion: links $completion_dir/_tap -> $REPO/completions/_tap"
+  echo "install:   TAP state: creates $INDEX_HOME with install-manifest.json (the list tap uninstall works from) and ingest/README.md (a link into this directory); $HOME/.tap/install.lock exists only while the installer runs"
+  echo "install:   fzf: installs TAP's own pinned fzf under $INDEX_HOME/tools/fzf; the first install downloads it from github.com/junegunn/fzf and verifies its checksum, later installs reuse it; your own fzf is untouched"
+  if [ -d "$AGENTS_HOME" ]; then
+    echo "install:   shared skills: links TAP's skills into $AGENTS_HOME"
+  else
+    echo "install:   shared skills: $AGENTS_HOME does not exist, so no shared skill links are made"
+  fi
+  if [ -e "$config" ]; then
+    echo "install:   machine setup: $config exists, so a plain run asks nothing; ./install.sh --setup asks the questions below again"
+  else
+    echo "install:   machine setup: on a terminal, the first run (no $config yet) asks the questions below; without a terminal it asks nothing, edits no shell or tmux file and prints the commands to run later"
+  fi
+  echo "install:     tap setup --machine: asks how new projects enroll, how messages reach you while you type, launch presets and permission mode per harness, the notifier, and an optional skill kit and plugins (default no), then writes $config"
+  case "${SHELL:-/bin/zsh}" in
+    bash|*/bash) startup="$HOME/.bashrc"; startup_parts="PATH if missing, the tap_launch helper" ;;
+    zsh|*/zsh) startup="$HOME/.zshrc"; startup_parts="PATH if missing, zsh completion, the tap_launch helper" ;;
+    *) startup="" ;;
+  esac
+  if [ -n "$startup" ]; then
+    echo "install:     shell integration (asked by setup, default yes): adds one marked TAP block to $startup with $startup_parts and an alias per chosen preset"
+  else
+    echo "install:     shell integration: not offered for ${SHELL##*/} (Bash and Zsh only); no shell startup file is edited"
+  fi
+  if [ "$TMUX_FLOOR_OK" = 1 ]; then
+    echo "install:     tmux question 1 (default yes): \"$TMUX_KEYBINDING_QUESTION\" Yes writes TAP's own key file (${config%/*}/tmux.conf) and adds one source line for it to your tmux config; undo: tap keybinding remove"
+    echo "install:     tmux question 2 (default yes): \"$TMUX_DEFAULTS_QUESTION\" Yes adds a TAP-managed defaults file and one source line ahead of your own tmux settings, so yours win; undo: tap tmux-defaults remove"
+  else
+    echo "install:     tmux questions: not asked, because tmux $tmux_version is older than $TMUX_FLOOR; no tmux file is edited"
+  fi
+  tap_install_keep_note
+}
+
 if [ "$REPORT" = 1 ]; then
   tap_install_harness_report
+  tap_install_report_actions
   exit 0
 fi
 
@@ -662,8 +865,9 @@ tap_install_sync_primary() {
       fi
     done <<< "$dirty_paths"
     if [ -n "$not_regen" ]; then
-      echo "install: REFUSED --sync — [in-flight] shared primary has in-flight files ($not_regen)" >&2
-      echo "install: next: wait; ask the bus who owns those files before touching them (tap-hl8i)" >&2
+      printf -v quoted_primary '%q' "$primary"
+      echo "install: REFUSED --sync — [in-flight] this clone has uncommitted changes ($not_regen), and --sync only updates a clean clone" >&2
+      echo "install: next: set them aside, update, and bring them back: git -C $quoted_primary stash -u && bash $quoted_primary/install.sh --sync && git -C $quoted_primary stash pop. If other people or agents work in this checkout, the files may be theirs: ask them first." >&2
       exit 1
     fi
     if [ -n "$regen_dirty" ]; then
@@ -742,7 +946,7 @@ tap_install_sync_primary() {
     if [ "$(git -C "$primary" rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
       echo "install: next: this checkout is SHALLOW and a truncated history has no merge base — git -C $primary fetch --unshallow, then bash $primary/install.sh --sync" >&2
     else
-      echo "install: next: git -C $primary fetch origin main, then bash $primary/install.sh --sync; if the histories are genuinely unrelated, do NOT reset — ask the bus who owns this checkout (tap-hl8i)" >&2
+      echo "install: next: git -C $primary fetch origin main, then bash $primary/install.sh --sync; if the histories are genuinely unrelated, do not reset: make a fresh clone beside this one instead, and if others work in this checkout, ask them first" >&2
     fi
     exit 1
   fi
@@ -754,9 +958,9 @@ tap_install_sync_primary() {
       tap_install_listed "$regenerable" "$path" || not_regen="${not_regen:+$not_regen, }$path"
     done <<< "$unique_paths"
     if [ -n "$not_regen" ]; then
-      echo "install: REFUSED --sync — [stranded-commits] primary has unique commits that touch paths that are not regenerable ($not_regen); that is stranded work, not a fast-forward" >&2
+      echo "install: REFUSED --sync — [stranded-commits] this clone has commits of its own that origin/main lacks (they touch $not_regen), so it cannot fast-forward" >&2
       printf -v quoted_primary '%q' "$primary"
-      echo "install: next: if these commits are your own customizations, update with: git -C $quoted_primary fetch origin && git -C $quoted_primary rebase origin/main && bash $quoted_primary/install.sh (tap help skill extend); otherwise ask the bus who owns them before resetting or pulling (tap-hl8i); do not git reset" >&2
+      echo "install: next: keep your commits on top of the update: git -C $quoted_primary fetch origin && git -C $quoted_primary rebase origin/main && bash $quoted_primary/install.sh (tap help skill extend). If other people or agents work in this checkout, the commits may be theirs: ask them first. Do not git reset." >&2
       exit 1
     fi
   fi
@@ -885,11 +1089,11 @@ elif [ "$ARTIFACT" = 0 ] && { [ -z "$primary_root" ] || [ "$REPO" != "$primary_r
     if [ -n "$primary_root" ]; then
       echo "install: REFUSED real-target install from non-primary checkout: $REPO" >&2
       echo "install: persistent primary checkout: $primary_root" >&2
+      echo "install: next: run $primary_root/install.sh instead; for a test install redirect every TAP_* install target to scratch, or set TAP_INSTALL_FORCE_NONPRIMARY=1" >&2
     else
-      echo "install: REFUSED real-target install from unverified checkout: $REPO (not a git checkout)" >&2
-      echo "install: persistent primary checkout could not be derived" >&2
+      echo "install: REFUSED — $REPO is not a git checkout (a downloaded ZIP or a copied folder has no .git), and TAP updates and removes itself through its clone" >&2
+      echo "install: next: git clone https://github.com/TedYav/tap.git ~/tap && ~/tap/install.sh" >&2
     fi
-    echo "install: run there, redirect every TAP_* install target to scratch, or set TAP_INSTALL_FORCE_NONPRIMARY=1" >&2
     exit 1
   fi
 fi
@@ -1175,6 +1379,20 @@ if tap_install_harness_wired claude; then
   if [ "${TAP_INSTALL_HOOK:-1}" = 1 ]; then
     tap_bun "$REPO/runtime/bun/src/install-hooks.ts" claude "$CLAUDE_HOME/settings.json" "$REPO/hooks/tap-advisory.sh" "$TAP_SHELL_BODY_GUARD"
   fi
+  # PermissionRequest observer: records what a seat's open approval or question is
+  # for and never answers it. The version gate runs both ways on every install and
+  # --sync, and the removal is not behind TAP_INSTALL_HOOK: an entry an older Claude
+  # does not know stops each start on a dialog.
+  claude_permission_rc=0
+  claude_permission_note="$(tap_claude_permission_outcome)" || claude_permission_rc=$?
+  if [ "$claude_permission_rc" = 0 ]; then
+    if [ "${TAP_INSTALL_HOOK:-1}" = 1 ]; then
+      tap_bun "$REPO/runtime/bun/src/install-hooks.ts" claude-permission "$CLAUDE_HOME/settings.json" "$REPO/hooks/tap-claude-permission.sh" wire
+    fi
+  else
+    if [ "${TAP_INSTALL_HOOK:-1}" = 1 ]; then echo "install: note: permission-request observer $claude_permission_note"; fi
+    tap_bun "$REPO/runtime/bun/src/install-hooks.ts" claude-permission "$CLAUDE_HOME/settings.json" "$REPO/hooks/tap-claude-permission.sh" unwire
+  fi
   # Retired UserPromptSubmit roster line (tap-hx4r): runs unconditionally, not
   # gated on TAP_INSTALL_HOOK, so an existing stale registration is cleaned up
   # even on a run that opts out of installing NEW hooks (tap-pkoq precedent —
@@ -1310,7 +1528,7 @@ tap_install_opencode_stage() {
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-shell-body-guard"
   cat >"$stage/tap-shell-body-guard" <<EOF || return 1
 #!/usr/bin/env bash
-exec $TAP_HOOK_BUN "$REPO/hooks/tap-shell-body-guard.ts" "\$@"
+${TAP_SHIM_PRELUDE}exec $TAP_HOOK_BUN "$REPO/hooks/tap-shell-body-guard.ts" "\$@"
 EOF
   chmod +x "$stage/tap-shell-body-guard" || return 1
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-opencode-session-id"
@@ -1322,7 +1540,7 @@ EOF
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-resolve-session-root"
   cat >"$stage/tap-resolve-session-root" <<EOF || return 1
 #!/usr/bin/env bash
-exec $TAP_HOOK_BUN "$REPO/runtime/bun/src/session-start.ts" resolve "\$@"
+${TAP_SHIM_PRELUDE}exec $TAP_HOOK_BUN "$REPO/runtime/bun/src/session-start.ts" resolve "\$@"
 EOF
   chmod +x "$stage/tap-resolve-session-root" || return 1
   # Sibling context shim — the session-start plugin posts the ONE shared context
@@ -1331,7 +1549,7 @@ EOF
   OPENCODE_FAIL_TARGET="$OPENCODE_HOME/plugins/tap-session-context"
   cat >"$stage/tap-session-context" <<EOF || return 1
 #!/usr/bin/env bash
-exec $TAP_HOOK_BUN "$REPO/runtime/bun/src/session-start.ts" "\$@"
+${TAP_SHIM_PRELUDE}exec $TAP_HOOK_BUN "$REPO/runtime/bun/src/session-start.ts" "\$@"
 EOF
   chmod +x "$stage/tap-session-context" || return 1
   # Sibling `tap` — install-owned bind authority for no-PATH seats. Points at the
@@ -1454,15 +1672,15 @@ if [ "$SETUP" = 1 ] || { [ "$SYNC" = 0 ] && [ "${TAP_INSTALL_SYNC_REEXEC:-0}" !=
   tap_install_record
   if bash "$REPO/bin/tap" setup --machine; then SETUP_RAN=1; else SETUP_RAN=2; echo "install: setup incomplete: rerun tap setup --machine" >&2; fi
   # Offered with the same first-run setup, never on an ordinary sync; one source line in tmux.conf, removable with `tap keybinding remove`.
-  if [ -t 0 ] && [ -t 1 ] && command -v tmux >/dev/null 2>&1; then
-    printf 'Install the TAP agent lookup keybinding (prefix C-g)? [Y/n] '
+  if [ -t 0 ] && [ -t 1 ] && [ "$TMUX_FLOOR_OK" = 1 ]; then
+    printf '%s [Y/n] ' "$TMUX_KEYBINDING_QUESTION"
     read -r _kb_answer || _kb_answer=n
     case "${_kb_answer:-Y}" in
       [Yy]*) bash "$REPO/bin/tap" keybinding install --tap "$BIN_DIR/tap" || echo "install: keybinding not installed; retry: tap keybinding install" >&2 ;;
       *) echo "install: skipped; later: tap keybinding install" ;;
     esac
     # Same first-run-only contract: TAP-managed defaults file, one marked source line BEFORE the user's own lines so their settings win; removable with `tap tmux-defaults remove`.
-    printf 'Install TAP tmux defaults (truecolor, mouse, scrolling, clipboard; plus a status bar if you have no tmux config yet)? [Y/n] '
+    printf '%s [Y/n] ' "$TMUX_DEFAULTS_QUESTION"
     read -r _td_answer || _td_answer=n
     case "${_td_answer:-Y}" in
       [Yy]*) bash "$REPO/bin/tap" tmux-defaults install || echo "install: tmux defaults not installed; retry: tap tmux-defaults install" >&2 ;;
@@ -1473,8 +1691,10 @@ else
   if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "install: interactive machine setup skipped (no terminal). next: tap setup --machine --answers <file> (see docs/EASY-MODE.md); use --dry-run to preview."
     echo "install: presets are optional; bare launch: tap launch <harness> [name]"
-    echo "install: optional tmux lookup key (prefix C-g fuzzy-picks a teammate): tap keybinding install"
-    echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard, and a status bar if you have no tmux config): tap tmux-defaults install"
+    if [ "$TMUX_FLOOR_OK" = 1 ]; then
+      echo "install: optional tmux lookup key (prefix C-g fuzzy-picks a teammate): tap keybinding install"
+      echo "install: optional tmux defaults (truecolor, mouse, scrolling, clipboard, and a status bar if you have no tmux config): tap tmux-defaults install"
+    fi
   else
     echo "install: next: tap setup --machine (configure this machine interactively)"
   fi
@@ -1491,8 +1711,11 @@ case ":${PATH}:" in
       echo "install: links installed; shell setup required — $BIN_DIR is not on PATH." >&2
       echo "install: after fixing PATH, configure with tap setup --machine --answers <file>, or run tap setup --machine in a terminal." >&2
     fi
+    other_tap="$(command -v tap 2>/dev/null || true)"
+    [ -z "$other_tap" ] || [ "$other_tap" -ef "$BIN_DIR/tap" ] || echo "install: note: 'tap' currently runs $other_tap, which is not this install (node-tap, for one, installs a command with this name); the PATH line below puts this install first." >&2
     printf 'install: open a new terminal if you enabled shell integration, or run in this terminal: export PATH=%q:"$PATH"\n' "$BIN_DIR" >&2
     [ "$SETUP_RAN" != 2 ] || exit 2
+    tap_install_keep_note >&2
     echo "install: completed; add $BIN_DIR to PATH, then run tap help" >&2
     exit 0
     ;;
@@ -1501,7 +1724,16 @@ if [ ! -x "$BIN_DIR/tap" ] || ! command -v tap >/dev/null 2>&1; then
   echo "install: shell setup incomplete — $BIN_DIR/tap is not executable. Restore bin/tap in this checkout and rerun install.sh." >&2
   exit 1
 fi
+# Another tap earlier on PATH (node-tap installs a command with this name, and so does a
+# second TAP clone) would answer every `tap` command instead of this install. Say so
+# once, with the fix. A second link to this same install is not another tap.
+other_tap="$(command -v tap 2>/dev/null || true)"
+if [ -n "$other_tap" ] && ! [ "$other_tap" -ef "$BIN_DIR/tap" ]; then
+  echo "install: WARNING: another 'tap' comes first on PATH: $other_tap. Typing tap runs that one, not this install ($BIN_DIR/tap)." >&2
+  printf 'install: fix: put TAP first by adding this line to your shell startup file, then open a new terminal: export PATH=%q:"$PATH"\n' "$BIN_DIR" >&2
+fi
 [ "$SETUP_RAN" != 2 ] || exit 2
+tap_install_keep_note
 if [ "$ARTIFACT" = 1 ]; then
   echo "install: done — $tap_release at $REPO; try: tap help  (agent sessions pick up the skills on next start)"
   exit 0

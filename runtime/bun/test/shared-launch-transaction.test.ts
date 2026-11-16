@@ -422,8 +422,10 @@ test.each(["new", "adopted", "resume", "resume-all", "restart", "replacement", "
     // so a seat's tools descend from its own Codex process. The pinned owner predates it;
     // prepend that one token on the oracle side so every other byte stays pinned and a
     // candidate without it (or with it elsewhere) still fails.
+    // Beside it rides the startup update-check override, which keeps Codex from
+    // offering its update menu to a seat nobody is watching; prepended the same way.
     if (harness === "codex" && typeof oldState.argv === "string" && oldState.argv.length > 0) {
-      oldState.argv = `--no-daemon\n${oldState.argv}`;
+      oldState.argv = `--no-daemon\n-c\ncheck_for_update_on_startup=false\n${oldState.argv}`;
     }
     // OpenCode 2 uses a private TUI and prepares a native conversation before
     // an id-less launch. Pin the explicit new argv and expected native identity;

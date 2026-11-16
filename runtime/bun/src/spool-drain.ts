@@ -54,8 +54,9 @@ function supervisingLeader(home: string): string {
 /**
  * First observed probe of a named human-owned surface publishes one durable alert
  * per payload; the payload stays queued. Shell mode alerts the sender. A Claude
- * feedback draft also alerts the supervising leader, because the blocked seat is
- * often its own sender (reminders) and only a human or the leader dismisses it.
+ * feedback card hiding the composer also alerts the supervising leader, because the
+ * blocked seat is often its own sender (reminders) and only a human or the leader
+ * can clear it once the courier will not.
  */
 function notifyHeld(ctx: DrainContext, row: DeadlineRow, outcome: "shell-mode" | "feedback-draft"): boolean {
   const env = ctx.env ?? process.env;
@@ -70,7 +71,7 @@ function notifyHeld(ctx: DrainContext, row: DeadlineRow, outcome: "shell-mode" |
     if (outcome === "shell-mode") {
       return notifySenderOnEscalate(ctx, { ...base, detail: "OpenCode shell mode blocks chat delivery", durableId: `${row.id}-shell-mode` });
     }
-    const detail = "Claude feedback-draft panel blocks chat delivery";
+    const detail = "Claude feedback-draft card hides the composer";
     const sent = notifySenderOnEscalate(ctx, { ...base, detail, durableId: `${row.id}-feedback-draft` });
     const leader = supervisingLeader(ctx.home);
     let sender = "";
@@ -540,7 +541,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
       due = deadlinePassed && row.reasonClass === "busy";
     }
     let delivered = false, rc = 0;
-    if (row.policy !== "autosettle" && (ready === "ready" || ready === "recover:codex-update" || due || force || reprobe || idleStaged)) {
+    if (row.policy !== "autosettle" && (ready === "ready" || ready === "recover:codex-update" || ready === "recover:feedback-card" || due || force || reprobe || idleStaged)) {
       const lock = acquireObligationLock(id, 0, env);
       if (!lock) continue;
       let claimToken: ClaimToken | null = null;
@@ -556,7 +557,7 @@ export async function drainOnce(ctx: DrainContext, effects: DrainEffects,
         if (["busy:queued", "busy:decision-unavailable", "busy:recovery", "busy:operator-wait"].includes(ready)) continue;
         due = ready !== "busy:clearing" && (ready === "busy" || ready.startsWith("busy:")) && deadlinePassed && row.reasonClass === "busy";
         if (["busy:modal", "busy:clearing", "gone", "unsafe"].includes(ready)) force = false;
-        if (ready === "ready" || ready === "recover:codex-update" || due || force || reprobe || idleStaged) {
+        if (ready === "ready" || ready === "recover:codex-update" || ready === "recover:feedback-card" || due || force || reprobe || idleStaged) {
           bestEffort("spool-sidecar", id, () => bumpAttempts(ctx.spoolDir, id));
           rc = await effects.redeliverLocked(id, row, force);
           delivered = rc === 0;

@@ -1,0 +1,45 @@
+
+  [38;2;153;153;153mRan [1m1[0m[38;2;153;153;153m shell command [39m
+
+[38;2;255;255;255m⏺[39m Now the live end-to-end run of the dismiss path through the real courier. It needs a fresh card, so I'm queueing
+  fixture draft 3, which you can discard.
+
+  [38;2;153;153;153mRan [1m2[0m[38;2;153;153;153m shell commands [39m
+
+[38;2;51;153;255m⏺[39m [1mSendFeedback[0m(TAP fixture capture draft 3: safe to discard)
+
+[38;2;255;255;255m⏺[39m that PR  (head [38;2;153;204;255m14404dca9[39m) is open with the dismiss design, but it isn't merge-ready yet: CI, peer-reviewer1's review
+  and the local focused checks are all still pending.
+
+  [1mWhat it does:[0m
+  - A composer the card hides now holds in every reader.
+  - Under [38;2;153;204;255minjection.feedback_card=dismiss[39m, the default, the courier sends one Escape per card, on its own one-shot
+    license, and then reads the revealed composer the normal way.
+  - Under [38;2;153;204;255mhold[39m, it sends no key and the message waits with the usual notice.
+
+  [1mWhy Escape:[0m a live probe on 2.1.325 chose it. Escape over text changes no bytes. [38;2;153;204;255m0[39m types a byte.
+
+  [1mThe draft is kept:[0m after dismissal it stays in [38;2;153;204;255m/feedback[39m and the footer still counts it.
+
+  [1mTests:[0m peer-reviewer1's legacy capture is now a test. Under [38;2;153;204;255mdismiss[39m it gets exactly one Escape and then holds on the
+  revealed text; under [38;2;153;204;255mhold[39m it gets no key.
+
+  When I go idle, a background script will shrink this pane to 71x22 and send a real note through the branch's [38;2;153;204;255mbin/tap[39m,
+  which exercises the real dismissal. That needed a third fixture draft, "TAP fixture capture draft 3: safe to
+  discard", which you can discard from [38;2;153;204;255m/feedback[39m.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCrunched for 16m 56s · done 11:52 PM · 2 shells still running[39m
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ [38;2;255;153;51m✻ [39mBug report drafted: [1mTAP fixture capture draft 3: safe to discard[0m                                           │
+│ [2m│[0m - [1mWhat happened:[0m This draft exists so a TAP seat can check, live on Claude Code 2.1.325, that its courier  │
+│ [2m│[0m dismisses the feedback-draft card with one Escape …                                                        │
+│ [38;2;153;153;153m1 to review · 2 to send · 0 to dismiss · +1 more queued[39m                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────── tap/seat-alpha ─
+[39m❯ 
+[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [36mOpus 5.5 xhigh[38;2;153;153;153m | 72%[32m↯[38;2;153;153;153m 651k/900k [94m●58m[38;2;153;153;153m [33m███████░░░[38;2;153;153;153m | 📁 tap | 🌿 main[39m
+  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m · [38;2;0;204;204m2 shells[38;2;153;153;153m · 2 feedback drafts[39m

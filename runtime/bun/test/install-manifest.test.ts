@@ -293,9 +293,9 @@ test("a release artifact's expectations name the guard's .sh door and shims that
   const shim = (name: string) => artifact.opencodePlugins.find(p => p.name === name)!.bytes!(root);
   expect(shim("tap-shell-body-guard")).toBe(`#!/usr/bin/env bash\nexec "${root}/libexec/tap/bun" "${root}/hooks/tap-shell-body-guard.ts" "$@"\n`);
   expect(shim("tap-session-context")).toBe(`#!/usr/bin/env bash\nexec "${root}/libexec/tap/bun" "${root}/runtime/bun/src/session-start.ts" "$@"\n`);
-  // The same root without libexec/ is a checkout: the bare-Bun forms, byte for byte.
+  // The same root without libexec/ is a checkout: PATH's Bun under TAP's own config and no env file, byte for byte.
   const checkout = realpathSync(mkdtempSync(join(tmpdir(), "tap-manifest-checkout-")));
   const plain = MANIFEST_HOOK_EXPECTATIONS(join(checkout, "hooks"));
   expect(plain.claudeSettings.PreToolUse).toEqual([`${checkout}/hooks/tap-shell-body-guard.ts`]);
-  expect(plain.opencodePlugins.find(p => p.name === "tap-shell-body-guard")!.bytes!(checkout)).toBe(`#!/usr/bin/env bash\nexec bun "${checkout}/hooks/tap-shell-body-guard.ts" "$@"\n`);
+  expect(plain.opencodePlugins.find(p => p.name === "tap-shell-body-guard")!.bytes!(checkout)).toBe(`#!/usr/bin/env bash\nc="${checkout}/runtime/bun/tap-bunfig.toml"; [ -f "$c" ] || c=/dev/null\nexec bun --config="$c" --no-env-file "${checkout}/hooks/tap-shell-body-guard.ts" "$@"\n`);
 });

@@ -213,7 +213,8 @@ test("unavailable lock never writes unlocked; native hung writer is killed withi
   const source = readFileSync(writer, "utf8")
     .replace('"./fsatomic"', JSON.stringify(resolve(import.meta.dir, "../src/fsatomic.ts")))
     .replace('"./remind-lock"', JSON.stringify(resolve(import.meta.dir, "../src/remind-lock.ts")))
-    .replace('"./scripts-dir"', JSON.stringify(resolve(import.meta.dir, "../src/scripts-dir.ts")));
+    .replace('"./scripts-dir"', JSON.stringify(resolve(import.meta.dir, "../src/scripts-dir.ts")))
+    .replace('"./own-bun"', JSON.stringify(resolve(import.meta.dir, "../src/own-bun.ts")));
   writeFileSync(copy, source.replace(/import \{ acquireNoFollowLock \} from [^;]+;/,
     'const acquireNoFollowLock = () => { throw new Error("primitive unavailable"); };'));
   const refused = spawnSync(process.execPath, [copy], { env: f.env, encoding: "utf8", input: JSON.stringify({ op: "emit", args: { event: "unlocked" } }) });
@@ -345,6 +346,7 @@ test("a wedged shared writer is killed at the drain budget and never holds the o
     .replace('"./fsatomic"', JSON.stringify(resolve(import.meta.dir, "../src/fsatomic.ts")))
     .replace('"./remind-lock"', JSON.stringify(resolve(import.meta.dir, "../src/remind-lock.ts")))
     .replace('"./scripts-dir"', JSON.stringify(resolve(import.meta.dir, "../src/scripts-dir.ts")))
+    .replace('"./own-bun"', JSON.stringify(resolve(import.meta.dir, "../src/own-bun.ts")))
     .replace("async function serveStream(): Promise<void> {", `async function serveStream(): Promise<void> {\n  require("node:fs").writeFileSync(${JSON.stringify(join(f.root, "wedged-pid"))}, String(process.pid)); for (;;) {}`));
   const script = `import { startupTrace, withStartupTrace } from ${JSON.stringify(copy)};
     const start = performance.now();

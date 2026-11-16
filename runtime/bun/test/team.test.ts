@@ -25,6 +25,7 @@ import { observeAll, readRoster, trimRegistryLocked } from "../src/verbs/refresh
 import { tmuxSessionNamespace } from "../src/tmux";
 import { TapError } from "../src/context";
 import { SEAT_HARNESS_VALUES } from "../src/seat-filter";
+import { permissionRequestFiles, writePermissionRequest } from "../src/permission-request";
 
 const root = resolve(import.meta.dir, "../../..");
 const shippedEntry = join(root, "bin/tap");
@@ -3933,6 +3934,82 @@ esac`);
   expect(captures("--names", "--state", "unknown,idle,working", "--harness", "claude")).toMatchObject({ claude: 1, codex: 0 });
 }, 60_000);
 
+test("a Claude seat's open permission request shows on its row only while Claude's own session file says it is waiting", () => {
+  const f = fixture(), epoch = join(f.dir, "epoch");
+  f.env.EPOCH_FILE = epoch;
+  delete f.env.TAP_SERVER_EPOCH;
+  writeFileSync(epoch, "1:1\n");
+  replaceTmux(f, String.raw`
+while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
+case "$1" in
+ list-sessions) printf 'live-session\t1:1\t1\n' ;;
+ list-panes) for n in 7 8; do printf 'live-session\tlive-session:0.%s\t%%%s\tclaude\t123\t1:1\t0\t\t\t\n' "$n" "$n"; done ;;
+ capture-pane) printf '❯ \n' ;;
+ display-message) cat "$EPOCH_FILE" ;;
+ *) exit 1 ;;
+esac`);
+  const session = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  seedPostFlip(f, Object.fromEntries([7, 8].map(n => [`seat${n}`, { status: "active", delivery: "pane", pane: `live-session:0.${n}`, pane_id: `%${n}`,
+    session: "live-session", server_epoch: "srv:1:1", harness: "claude", ...(n === 7 ? { harness_session_id: session } : {}) }])));
+  const bus = join(f.worktree, ".tap", "bus"), sessionFile = join(f.dir, "claude-session.json");
+  const waitStarted = Date.now() - 5000, at = waitStarted + 20;
+  // What Claude Code writes while a prompt is open, and after it is declined at the terminal: no hook runs for the second.
+  const claude = (status: string) => writeFileSync(sessionFile, JSON.stringify({ pid: process.pid, sessionId: session, status,
+    ...(status === "waiting" ? { waitingFor: "permission prompt" } : {}), statusUpdatedAt: waitStarted }));
+  const roster = (...args: string[]) => {
+    const r = run(["team", ...args], f.worktree, f.env);
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout;
+  };
+  const row = (handle: string) => (JSON.parse(roster("--json")).agents as Array<Record<string, unknown>>).find(agent => agent.handle === handle)!;
+
+  claude("waiting");
+  expect(writePermissionRequest(bus, "seat7", { v: 1, harness: "claude", at, session, pane_id: "%7", server_epoch: "srv:1:1",
+    tool: "Bash", summary: "Remove the build directory", permission_mode: "auto", session_file: sessionFile })).toBe(true);
+  expect(row("seat7").permission_request).toEqual({ tool: "Bash", summary: "Remove the build directory",
+    since: new Date(Math.floor(at / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z"), waiting_for: "permission prompt" });
+  expect(row("seat8").permission_request).toBe(null);
+  // The record is detail: the screen classifier still owns the state.
+  expect(row("seat7").agent_state).toBe(row("seat8").agent_state);
+  const human = roster();
+  expect(human.split("\n").find(line => line.startsWith("seat7"))).toContain("needs approval (Bash)");
+  expect(human.split("\n").find(line => line.startsWith("seat8"))).not.toContain("needs approval");
+
+  claude("idle");
+  expect(row("seat7").permission_request).toBe(null);
+  expect(permissionRequestFiles(bus, "seat7")).toEqual([]);
+  expect(roster()).not.toContain("needs approval");
+
+  // With the roster cache on, the detail is read for each request and never written into the
+  // cached observation, so no second copy outlives the record and a hit cannot show a closed request.
+  const request = (): boolean => writePermissionRequest(bus, "seat7", { v: 1, harness: "claude", at, session, pane_id: "%7", server_epoch: "srv:1:1",
+    tool: "Bash", summary: "Remove the build directory", permission_mode: "auto", session_file: sessionFile });
+  claude("waiting"); request();
+  const cachedEnv: NodeJS.ProcessEnv = { ...f.env, TAP_ROSTER_CACHE_TTL: "300" };
+  delete cachedEnv.TAP_WATCH_NOW;
+  const cachedRoster = () => {
+    const r = run(["team", "--json"], f.worktree, cachedEnv);
+    expect(r.status, r.stderr).toBe(0);
+    const doc = JSON.parse(r.stdout) as { observed_at: string; agents: Array<Record<string, unknown>> };
+    return { observedAt: doc.observed_at, seat7: doc.agents.find(agent => agent.handle === "seat7")! };
+  };
+  const miss = cachedRoster(), hit = cachedRoster();
+  expect(hit.observedAt).toBe(miss.observedAt);
+  for (const read of [miss, hit]) expect(read.seat7.permission_request).toMatchObject({ tool: "Bash", summary: "Remove the build directory" });
+  const cacheDir = join(bus, "runtime-cache"), cacheFiles = readdirSync(cacheDir);
+  expect(cacheFiles.length).toBeGreaterThan(0);
+  for (const name of cacheFiles) {
+    const bytes = readFileSync(join(cacheDir, name), "utf8");
+    expect(bytes).toContain("seat7");
+    for (const leak of ["Remove the build directory", "permissionRequest", "permission_request"]) expect(bytes.includes(leak), `${name}: ${leak}`).toBe(false);
+  }
+  claude("idle");
+  const closed = cachedRoster();
+  expect(closed.observedAt).toBe(miss.observedAt);
+  expect(closed.seat7.permission_request).toBe(null);
+  expect(permissionRequestFiles(bus, "seat7")).toEqual([]);
+});
+
 test("one epoch bracket covers every capture and drift invalidates the whole observation", () => {
   const f = fixture(), calls = join(f.dir, "epoch.calls"), epoch = join(f.dir, "epoch");
   f.env.TMUX_CALL_LOG = calls; f.env.EPOCH_FILE = epoch;
@@ -3962,7 +4039,7 @@ esac`);
       "agent_state", "agent_state_reason", "ask_window_seconds", "attached", "context_source", "context_tokens",
       "context_unknown_reason", "context_used_percent", "crew", "delivery", "digest_window_seconds", "effort",
       "family", "family_source", "handle", "harness", "launch_tuning", "model", "observed_at", "observed_effort",
-      "observed_model", "pane", "prompt_cache", "role", "sampled_at", "status", "status_reason", "turn_ended_at",
+      "observed_model", "pane", "permission_request", "prompt_cache", "role", "sampled_at", "status", "status_reason", "turn_ended_at",
       "turn_ended_source", "turn_started_at", "unattended", "waiting_on",
     ]);
     if (drift) for (const row of agents) expect(row).toMatchObject({agent_state:"unknown", agent_state_reason:"capture_failed", context_used_percent:null, sampled_at:null});

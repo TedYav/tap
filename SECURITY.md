@@ -113,10 +113,18 @@ and [cancellation](skills/tap/protocol/delivery/cancellation-tap-pe56-dead-oblig
 
 ### A sentinel is a doorbell, not proof
 
-**What can happen.** The courier decides from a sentinel's visible shape whether it is safe to
-submit. It does not prove which message it is. A stale or different TAP sentinel left in a
-composer may be submitted — harmless, because the recipient's `tap read` either handles the
-message or reports it already settled. And any local process can type text that looks like a
+**What can happen.** The courier presses Enter on text already in a composer only when that text
+is one well-formed TAP sentinel, or the scrolled tail of a wire this bus's courier itself recorded
+typing into that pane in the same tmux server generation. That record is narrow: the last four
+wires per pane, kept only while a wire is typed and not known submitted, for at most the
+staged-idle hold window (30 minutes by default).
+Text that merely ends like a sentinel is a human draft and is never submitted on that basis. A TAP
+tail that cannot be proven (its record expired, or another bus typed it) is handled as a draft too:
+the message stays on the bus, and `tap resend <id>` rings it again. One limit remains. A narrow
+composer shows only its last rows, so TAP cannot see text above a wire of its own that is still
+waiting there; text typed in front of such a stuck wire is submitted with it. The courier does not prove which message a sentinel is: a stale or different TAP
+sentinel left in a composer may be submitted — harmless, because the recipient's `tap read` either
+handles the message or reports it already settled. And any local process can type a well-formed
 sentinel; sentinels are doorbells, the bus is the record, and `tap read` resolves only real
 payloads.
 
@@ -143,7 +151,10 @@ TAP refuses to claim more than it can see.
 
 ### A delivery can consume a human draft
 
-**What can happen.** A human draft in a registered pane is ephemeral by policy. It gets a
+**What can happen.** Seats launched in auto mode, the default for Claude Code, Codex, Cursor and
+Antigravity, receive mail only when the composer is empty, so their drafts are left alone. In a
+bypass-mode seat, an OpenCode or Hermes seat, or a pane joined with `tap in`, a human draft is
+ephemeral by policy. It gets a
 30-second grace window (10 seconds for interrupts) and one `WAIT` snooze of two minutes; after that
 the courier backs the draft up, clears the composer and delivers. Restoration is best-effort. A
 collapsed paste label does not contain the pasted bytes, and some harnesses restore manually only.
@@ -160,8 +171,10 @@ and [draft grace](skills/tap/protocol/delivery/pending-input-standard-grace-then
 ### An urgent delivery interrupts a working agent
 
 **What can happen.** A message sent with explicit `--delivery interrupt` (or `--urgent`) may press
-the recipient's interrupt key and abort its current turn or tool call. Nothing else does: content
-importance and escalations do not grant that authority.
+the recipient's interrupt key and abort its current turn or tool call. A seat in auto mode is not
+interrupted: the message is queued as an ordinary delivery. No other message interrupts: content
+importance and escalations do not grant that authority. Recovery commands such as `tap nudge` can
+also send Escape to dismiss a dialog.
 
 **Who can cause it.** Any local sender who passes the flag.
 
@@ -173,8 +186,8 @@ default.
 
 ### Messages and drafts rest in plain text
 
-**What can happen.** Bus payloads, receipts, previews and saved human drafts (`input-backups/`)
-are plain files with no encryption at rest: the bus directory — by default `<repo>/.tap/bus`,
+**What can happen.** Bus payloads, receipts, previews, saved human drafts (`input-backups/`) and
+the last wires typed into each pane (`typed-wires/`) are plain files with no encryption at rest: the bus directory — by default `<repo>/.tap/bus`,
 relocatable with `TAP_HOME` — plus TAP's per-user state under `~/.tap`. Terminal scrollback and
 any terminal logging see the same text.
 
@@ -188,19 +201,62 @@ read is a transport you cannot debug.
 
 ### Delivery is highly reliable, not guaranteed
 
-**What can happen.** The service target is 99.9% recipient-observed delivery. That is a target,
-not an at-least-once or exactly-once promise, and not proof an agent processed the message.
+**What can happen.** Delivery is best effort and at-least-once in intent: a message can fail
+visibly and can arrive twice. The service target is 99.9% recipient-observed delivery. That is a
+target, never a guarantee, and not proof an agent processed the message.
 Persistence does not survive storage failure or power loss, and refusals can stall work until a
 backstop notices.
 
 **Who can cause it.** No one in particular — it is the reliability budget of a best-effort local
 transport.
 
-**Why it is accepted.** A delivery that might have happened is never automatically retried,
-because a possible effect must not be repeated. Unconfirmed mail stays pollable and failures stay
-visible instead.
+**Why it is accepted.** The courier never re-types a delivery that might have happened. The
+sender's explicit `tap resend <id>` is the one retry, and it can produce a duplicate. Unconfirmed
+mail stays pollable and failures stay visible.
 
 **Owned by.** [Delivery reliability](skills/tap/protocol/delivery/reliability.md).
+
+## What TAP stores and how to delete it
+
+Everything TAP stores is a plain file on this machine. TAP has no telemetry and sends none of
+it anywhere.
+
+| Where | What it holds | How long |
+|---|---|---|
+| `<project>/.tap/bus/payloads/`, `receipts/` | Message bodies and delivery records | Until archived |
+| `<project>/.tap/bus/archive/<YYYY-MM>/` | The same messages, moved once they have been settled for 7 days | No expiry |
+| `<project>/.tap/bus/input-backups/` | Text you were typing that a delivery cleared (see [above](#a-delivery-can-consume-a-human-draft)) | No expiry |
+| `<project>/.tap/bus/permission-requests/<seat>.<time>-<id>.json` | For a Claude Code seat stopped on an approval or a question: the tool's name, the permission mode, the session, the pane, the time and a one-line summary of at most 160 characters (the agent's description of a shell command, a file tool's path, or a question's first question; never a command line, a file body or the tool's input) | Until TAP next observes that seat no longer waiting, or the seat's next request or session start |
+| `<project>/.tap/` otherwise | The team roster, its history and delivery queue state | No expiry |
+| `~/.tap/debug/recovery/` | Pane contents captured by `tap nudge` and other recovery commands, as shown on screen, without redaction | No expiry |
+| `~/.tap/debug/` otherwise | Command and pane recordings, only once debug recording is turned on: by `tap debug on`, by `tap debug trace`, or by the `[debug] always_on` setting | Size-capped; see `tap debug --help` |
+| `~/.tap/crew-launch/` | Pending crew launch commands, including configured environment values; private directories (0700) and files (0600) | Unlinked before the harness starts; after a five-minute startup grace, a later crew command reaps exited creators' files, or any pending files older than one day; unsafe or unreadable storage is left untouched |
+| `~/Library/Logs/tmux-flight/` (macOS) | Samples of the tmux server, its server logs and incident bundles, only when the optional tmux recorder is enabled. Incident bundles can include process command lines and open-file paths | Samples and logs 14 days, incident bundles 30 days; see the [tmux recorder page](skills/tap/protocol/transport/debug-journal.md#independent-tmux-source) |
+| `~/.tap/` otherwise | The index of enrolled projects, the install record, logs and a pinned copy of fzf | No expiry |
+| `~/.config/tap/` | Your settings | No expiry |
+
+A background job runs about once a day and moves settled messages into the archive. It moves
+them; it does not delete them. Message history, saved drafts and recovery captures have no
+expiry today, so anything an agent put in a message, or that was on screen during a recovery,
+stays on disk until you remove it.
+
+Message files, delivery records, saved drafts and recovery captures are written readable by
+your user only (mode 0600). TAP creates its directories with your default permissions,
+usually 0755, so on a shared machine other local users can list file names, which include
+seat names and timestamps, but cannot read those files.
+
+To delete:
+
+- `tap doctor --prune-input-backups` deletes every saved draft in the current project.
+- `tap out <seat>` deletes that seat's permission-request record, and `tap uninstall` deletes
+  every enrolled project's, whichever history choice you make.
+- `tap uninstall --history delete` removes TAP and deletes `~/.tap`, `~/.config/tap` and the
+  `.tap/` directory of every enrolled project. `--history archive` packs them into a
+  `tap-history-<timestamp>.tar.gz` in your home directory instead, and `--history keep`, the
+  default, leaves them. If uninstall has to leave an install artifact in place it keeps the
+  history too and says so. A project that is no longer enrolled keeps its `.tap/` either way,
+  and `~/Library/Logs/tmux-flight/` is not removed.
+- No command deletes archived messages, recovery captures or the tmux recorder's logs alone.
 
 ## If you need a stronger design
 

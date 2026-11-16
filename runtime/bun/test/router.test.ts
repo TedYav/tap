@@ -181,10 +181,10 @@ describe("mixed-runtime router", () => {
     expect(readFileSync(trace, "utf8")).toBe("bash not-a-verb\n");
   });
 
-  test("exact two-argument help spellings delegate before the native table", () => {
+  test("help flags delegate while a positional help resource reaches the native handler", () => {
     const trace = join(tempDir(), "trace");
     const calls: string[][] = [];
-    for (const spelling of ["help", "--help", "-h"]) {
+    for (const spelling of ["--help", "-h"]) {
       expect(route(
         ["poll", spelling],
         { poll: () => 99 },
@@ -196,11 +196,11 @@ describe("mixed-runtime router", () => {
       )).toBe(7);
     }
     expect(calls).toEqual([
-      ["poll", "help"],
       ["poll", "--help"],
       ["poll", "-h"],
     ]);
-    expect(readFileSync(trace, "utf8")).toBe("bash poll\nbash poll\nbash poll\n");
+    expect(route(["poll", "help"], { poll: argv => argv[0] === "help" ? 99 : 1 }, () => 7)).toBe(99);
+    expect(readFileSync(trace, "utf8")).toBe("bash poll\nbash poll\n");
   });
 
   test("documented Bash-owned forms delegate whole argv without hiding native unknown options", () => {
@@ -463,7 +463,9 @@ exit 2
       encoding: "utf8", cwd: dir, env: { ...env, TAP_BUN_ROUTE_TRACE: trace },
     });
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("tap: bun and runtime/bun/main.ts are required; next: brew install oven-sh/bun/bun, then rerun ./install.sh");
+    // A bun on PATH that cannot run is not replaced by another one; the hint follows the platform.
+    const hint = process.platform === "darwin" ? "brew install oven-sh/bun/bun" : "curl -fsSL https://bun.sh/install | bash";
+    expect(r.stderr).toContain(`tap: bun and runtime/bun/main.ts are required; next: ${hint}, then rerun ./install.sh`);
     expect(existsSync(trace)).toBe(false);
   });
 

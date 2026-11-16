@@ -229,7 +229,7 @@ git -C "$PRIMARY" reset -q HEAD -- gen/export.jsonl
 git -C "$PRIMARY" checkout -q -- gen/export.jsonl
 echo "install-checkout-sync: (4b) staged regenerable drift refuses with its tag: ok"
 
-# (5) Sibling dirt that is not regenerable → refuse, name wait + ask the bus (tap-hl8i).
+# (5) Local changes that are not regenerable → refuse, name the files and the one command sequence that keeps them.
 printf 'in-flight\n' > "$PRIMARY/notes.md"
 rm -rf "$SCRATCH"
 mkdir -p "$SCRATCH"
@@ -239,10 +239,14 @@ sib_rc=$?
 set -e
 [ "$sib_rc" -ne 0 ] \
   || { echo "install-checkout-sync: (5) sibling dirt unexpectedly synced: $sib_out" >&2; exit 1; }
-[[ "$sib_out" == *"ask the bus"* ]] \
-  || { echo "install-checkout-sync: (5) sibling-dirt refusal did not name ask-the-bus: $sib_out" >&2; exit 1; }
-[[ "$sib_out" == *"tap-hl8i"* ]] \
-  || { echo "install-checkout-sync: (5) sibling-dirt refusal did not name tap-hl8i: $sib_out" >&2; exit 1; }
+[[ "$sib_out" == *"[in-flight] this clone has uncommitted changes (notes.md)"* ]] \
+  || { echo "install-checkout-sync: (5) local-change refusal did not name the cause and the file: $sib_out" >&2; exit 1; }
+[[ "$sib_out" == *"stash -u && bash "*"/install.sh --sync && git -C "*" stash pop"* ]] \
+  || { echo "install-checkout-sync: (5) local-change refusal did not give the command that keeps the changes: $sib_out" >&2; exit 1; }
+[[ "$sib_out" == *"ask them first"* ]] \
+  || { echo "install-checkout-sync: (5) local-change refusal dropped the shared-checkout caution: $sib_out" >&2; exit 1; }
+[[ "$sib_out" != *"the bus"* && "$sib_out" != *"tap-hl8i"* && "$sib_out" != *"shared primary"* ]] \
+  || { echo "install-checkout-sync: (5) local-change refusal still uses internal vocabulary: $sib_out" >&2; exit 1; }
 rm -f "$PRIMARY/notes.md"
 echo "install-checkout-sync: (5) sibling dirt refuses with ask-the-bus remedy: ok"
 
@@ -281,8 +285,10 @@ set -e
   || { echo "install-checkout-sync: (6) unique commits that are not regenerable unexpectedly synced: $strand_out" >&2; exit 1; }
 [[ "$strand_out" == *"stranded"* ]] \
   || { echo "install-checkout-sync: (6) unique-commit refusal did not say stranded: $strand_out" >&2; exit 1; }
-[[ "$strand_out" == *"tap-hl8i"* ]] \
-  || { echo "install-checkout-sync: (6) unique-commit refusal did not name tap-hl8i: $strand_out" >&2; exit 1; }
+[[ "$strand_out" == *"this clone has commits of its own that origin/main lacks"* && "$strand_out" == *"rebase origin/main"* ]] \
+  || { echo "install-checkout-sync: (6) unique-commit refusal did not name the cause and the rebase: $strand_out" >&2; exit 1; }
+[[ "$strand_out" == *"ask them first"* && "$strand_out" != *"tap-hl8i"* && "$strand_out" != *"the bus"* ]] \
+  || { echo "install-checkout-sync: (6) unique-commit refusal lost its caution or kept internal vocabulary: $strand_out" >&2; exit 1; }
 git_ok reset -q --hard HEAD~1
 echo "install-checkout-sync: (6) unique commits that are not regenerable refuse as stranded work: ok"
 
@@ -367,8 +373,8 @@ set -e
   || { echo "install-checkout-sync: (6c) refusal did not say the pile could not be proven regenerable-only: $norel_out" >&2; exit 1; }
 [[ "$norel_out" == *"no merge base"* ]] \
   || { echo "install-checkout-sync: (6c) refusal did not carry git's own reason: $norel_out" >&2; exit 1; }
-[[ "$norel_out" == *"tap-hl8i"* ]] \
-  || { echo "install-checkout-sync: (6c) unrelated-history refusal did not route to the bus: $norel_out" >&2; exit 1; }
+[[ "$norel_out" == *"do not reset"* && "$norel_out" != *"tap-hl8i"* ]] \
+  || { echo "install-checkout-sync: (6c) unrelated-history refusal did not warn against a reset in plain words: $norel_out" >&2; exit 1; }
 # Hand the shared ORIGIN back to the history the later arms assume. This arm
 # force-pushed an orphan root into it, and leaving it there breaks (7) with a
 # non-fast-forward push that reads as an unrelated failure several arms away.

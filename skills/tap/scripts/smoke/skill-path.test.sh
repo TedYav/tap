@@ -64,7 +64,9 @@ check() {
   cmp "$skill_work/expected-out" "$skill_work/out"
   if [ "${1:-}" = --verbose ]; then
     # The retained dispatcher owns verbose diagnostics, but stdout stays exact.
-    grep -q 'tap verbose:' "$skill_work/err"
+    grep -q 'tap verbose:' "$skill_work/err" || {
+      echo "skill-path: $skill_entry $*: missing verbose dispatch diagnostic" >&2; exit 1;
+    }
   else
     cmp "$skill_work/expected-err" "$skill_work/err"
   fi
@@ -73,8 +75,9 @@ check() {
 mkdir -p "$skill_home/.agents/skills/tap-double-check"
 printf 'stale personal skill\n' > "$skill_home/.agents/skills/tap-double-check/SKILL.md"
 
-usage=$'tap help skill: expected one simple skill name\n'
-missing="tap help skill: no SKILL.md for unknown-skill in $ROOT/skills, $ROOT/compat/skills, $skill_home/.agents/skills, $skill_home/.claude/skills, $skill_home/.codex/skills"$'\n'
+shipped='TAP skills: tap, in, send, escalate, config-wizard, help, extend, lead, drive, conduct, choreography, collab, discuss, pair, adapt, self, context, out, assign, reply, outstanding, team, ask, crew, calibrate-gc, harness-operator'
+usage="tap help skill: expected one simple skill name; $shipped"$'\n'
+missing="tap help skill: no SKILL.md for unknown-skill in $ROOT/skills, $ROOT/compat/skills, $skill_home/.agents/skills, $skill_home/.claude/skills, $skill_home/.codex/skills; $shipped"$'\n'
 for door in root public symlink; do
   case "$door" in
     root) skill_entry="$ROOT/scripts/tap.sh" ;;
@@ -117,14 +120,11 @@ for door in root public symlink; do
   done
 done
 
-for state in "$skill_home/.tap" "$skill_work/index" "$skill_work/bus" "$skill_work/cwd/.tap" "$skill_work/cache"; do
-  [ ! -e "$state" ] || { echo "skill-path: lookup created $state" >&2; exit 1; }
-done
-# The pin is specific to literal help skill, not all help or its aliases.
+# Other read-only help forms suppress Bun's startup cache too, even on refusal.
 for args in 'help advisory' '--help skill'; do
   control_rc=0
   env HOME="$skill_home" TAP_INDEX_HOME="$skill_work/index" PATH="$skill_work/bin:$PATH" \
-    BUN_RUNTIME_TRANSPILER_CACHE_PATH="$skill_work/cache" SKILL_EXPECT_CACHE_PIN="$skill_work/cache" \
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH="$skill_work/cache" SKILL_EXPECT_CACHE_PIN=0 \
     bash "$ROOT/bin/tap" $args > "$skill_work/control-out" 2> "$skill_work/control-err" || control_rc=$?
   if [ "$args" = '--help skill' ]; then
     [ "$control_rc" = 1 ] || { echo "skill-path: control '$args' rc=$control_rc (want 1); stderr: $(head -c 300 "$skill_work/control-err")" >&2; exit 1; }
@@ -133,5 +133,8 @@ for args in 'help advisory' '--help skill'; do
   else
     [ "$control_rc" = 0 ] || { echo "skill-path: control '$args' rc=$control_rc (want 0); stderr: $(head -c 300 "$skill_work/control-err")" >&2; exit 1; }
   fi
+done
+for state in "$skill_home/.tap" "$skill_work/index" "$skill_work/bus" "$skill_work/cwd/.tap" "$skill_work/cache"; do
+  [ ! -e "$state" ] || { echo "skill-path: lookup created $state" >&2; exit 1; }
 done
 echo 'skill-path: ordered roots, exact refusals, entry cache pins and no bus creation passed'

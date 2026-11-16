@@ -1,0 +1,30 @@
+     [2m[38;2;248;248;242m  7 [0m[38;2;166;226;46mmkdir[38;2;248;248;242m -p [38;2;230;219;116m"[38;2;255;255;255m$out[38;2;230;219;116m"[39m
+     [2m[38;2;248;248;242m  8 [0m[38;2;248;248;242mP=%93[39m
+     [38;2;153;153;153m… +43 lines [39m
+
+  [38;2;153;153;153mRan [1m2[0m[38;2;153;153;153m shell commands [39m
+
+[38;2;255;255;255m⏺[39m The first live run passed: with the card up at 119x45 and the composer visible below it, [38;2;153;204;255mtap send[39m
+  through the fixed courier delivered.
+
+  I'm going idle so the card comes back. The background script waits for the card's boxed hint row,
+  then captures it at 145x50, 100x30, 80x24, 71x22 and 58x24. At the first size where the card hides
+  the composer, it sends one more real note to this seat, which covers the hidden-composer path
+  through the courier. It restores the window size when it exits. Your pane will resize a few times
+  for about 10 seconds.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mWorked for 53s · done 10:42 PM · 3 shells still running[39m
+
+╭────────────────────────────────────────────────────────────────────────────────────────────╮
+│ [38;2;255;153;51m✻ [39mBug report drafted: [1mTAP fixture capture draft 2: safe to discard[0m                         │
+│ [2m│[0m - [1mWhat happened:[0m This draft exists so a TAP seat can capture the feedback-draft card at  │
+│ [2m│[0m several pane sizes and run a live delivery check while the card is u…                    │
+│ [38;2;153;153;153m1 to review · 2 to send · 0 to dismiss[39m                                                     │
+╰────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────── tap/seat-alpha ─
+[39m❯ 
+[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [36mOpus 5.5 xhigh[38;2;153;153;153m | 43%[32m↯[38;2;153;153;153m 392k/900k [94m●60m[38;2;153;153;153m [32m████░░░░░░[38;2;153;153;153m | 📁 live-e2e | 🌿 main[39m
+  [38;2;255;102;102m⏵⏵ bypass permissions on[38;2;153;153;153m · [38;2;0;204;204m3 shells[38;2;153;153;153m · 1 feedback draft[39m

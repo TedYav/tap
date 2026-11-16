@@ -32,6 +32,7 @@ import {
 import { assertBoundSeats, chooseSeatCohort, chooseTeam, confirmAction, discoveryTerminalAvailable, parentSeatSnapshot, revalidateTeam, requireDiscoveryTerminal, type BoundCohort, type BoundTeam } from "./discovery";
 import { pick } from "../fzf";
 import { tapScriptsDir, artifactBun, runtimeModule } from "../scripts-dir";
+import { ownBun, ownBunFlags } from "../own-bun";
 
 const VERB = "team attach";
 const LABEL = `tap ${VERB}`;
@@ -171,7 +172,7 @@ function refusalLine(stdout: string): string | null {
 
 /** `bun src/launcher/list.ts --json --cwd <root>`: the native producer's catalog — the python `list` subcommand was deleted with the S1 list port, and this bridge now consumes the same bytes the router serves. */
 function catalogSnapshot(root: string, env: NodeJS.ProcessEnv): Uint8Array {
-  const result = spawnSync(artifactBun() ?? "bun", [runtimeModule("src/launcher/list.ts"), "--json", "--cwd", root], {
+  const result = spawnSync(ownBun(), [...ownBunFlags(), runtimeModule("src/launcher/list.ts"), "--json", "--cwd", root], {
     env, maxBuffer: REGISTRY_MAX_BUFFER,
   });
   if (result.status !== 0) {

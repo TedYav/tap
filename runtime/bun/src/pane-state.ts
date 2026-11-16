@@ -91,28 +91,66 @@ function isClaudeBoxFence(line: string): boolean {
   return /^[ \t]*─{10,}/.test(plain(line));
 }
 
-/** Feedback panel immediately above the live composer, never transcript prose. */
-export function claudeFeedbackOverlay(capture: string): boolean {
-  const lines = plain(capture).split("\n").map(line => line.trim());
-  const range = claudeGeometryRange(capture);
-  let prompt = range?.start ?? lines.length;
-  if (!range) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (/^[›❯](?:\s|$)/.test(lines[i]!)) { prompt = i; break; }
-    }
-  }
+/**
+ * What Claude's feedback-draft card says about the composer below it.
+ *
+ * The card (SendFeedback's "✻ Bug report drafted: …" box) is a notice, not a
+ * modal: on Claude Code 2.1.325 the composer keeps focus, and the card's digit
+ * keys fire only while the whole composer is one 0, 1 or 2 (or Escape on an
+ * empty one). It shows only while the seat is idle, and it hides once a turn
+ * starts. Its height pushes the composer down: on a short pane (live: 71x22,
+ * 58x24) below the viewport, at 80x24 down to its prompt row alone.
+ *
+ * - `visible`: the composer is complete below the card; read it as usual.
+ * - `hidden`: the composer is not completely in view, its visible rows hold
+ *   nothing, and the hint row reads `1 to review · 2 to send · 0 to dismiss`.
+ *   The hint is not evidence of an empty composer: the September 2026 card
+ *   drew it over a composer holding a sentinel (found in review). This is the
+ *   one state the courier may dismiss with Escape; every reader holds it.
+ * - `text`: the composer is not completely in view, and the hint row reads
+ *   `clear text to review, send, or dismiss`, or its visible rows hold text.
+ *
+ * `card` is the card's own rows, the observation a dismissal license names.
+ * Null when no live card sits directly above the composer region. Other card
+ * states (confirm send, sending, error) are not recognized and hold as an
+ * unreadable composer. Live frames: tap-89a57 fixtures `claude-feedback-*`.
+ */
+export type ClaudeFeedbackCard = { composer: "visible" | "hidden" | "text"; card: string };
+
+const FEEDBACK_CARD_HEADER = /^│\s*✻ (?:Bug report|Product feedback|Feature request|Feedback) drafted:/;
+const FEEDBACK_CARD_QUEUED = String.raw`(?:\s*·?\s*\+\d+ more queued)?\s*│$`;
+const FEEDBACK_CARD_EMPTY_HINT = new RegExp(String.raw`^│\s*(?:1 to review · )?2 to send · 0 to dismiss` + FEEDBACK_CARD_QUEUED);
+const FEEDBACK_CARD_TEXT_HINT = new RegExp(String.raw`^│\s*clear text to review, send, or dismiss` + FEEDBACK_CARD_QUEUED);
+
+export function claudeFeedbackCard(capture: string): ClaudeFeedbackCard | null {
+  // Claude draws the card from column 0; a composer's continuation rows are
+  // indented two columns, so a card quoted inside a draft never matches.
+  const rows = plain(capture).split("\n").map(line => line.trimEnd());
+  const lines = rows.map(line => line.trim());
   let bottom = -1;
-  for (let i = prompt - 1; i >= 0; i--) {
-    if (/^╰─{10,}╯$/.test(lines[i]!)) { bottom = i; break; }
-    if (lines[i] && !/^─{10,}.*$/.test(lines[i]!)) return false;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (/^╰─{10,}╯$/.test(rows[i]!)) { bottom = i; break; }
   }
-  if (bottom < 0) return false;
+  if (bottom < 0) return null;
   let top = bottom - 1;
-  while (top >= 0 && /^│.*│$/.test(lines[top]!)) top--;
-  if (top < 0 || !/^╭─{10,}╮$/.test(lines[top]!)) return false;
-  const body = lines.slice(top + 1, bottom);
-  return /^│\s*✻ Bug report drafted:/.test(body[0] ?? "")
-    && /^│\s*1 to review · 2 to send · 0 to dismiss\s*│$/.test(body.at(-1) ?? "");
+  while (top >= 0 && /^│.*│$/.test(rows[top]!)) top--;
+  if (top < 0 || !/^╭─{10,}╮$/.test(rows[top]!)) return null;
+  const body = rows.slice(top + 1, bottom);
+  const hint = body.at(-1) ?? "";
+  if (!FEEDBACK_CARD_HEADER.test(body[0] ?? "")) return null;
+  const textHint = FEEDBACK_CARD_TEXT_HINT.test(hint);
+  if (!textHint && !FEEDBACK_CARD_EMPTY_HINT.test(hint)) return null;
+  // Below a live card: blank rows and composer fences, then the composer's
+  // prompt row or the end of the viewport. Anything else is transcript.
+  let prompt = bottom + 1;
+  while (prompt < lines.length && (!lines[prompt] || /^─{10,}/.test(lines[prompt]!))) prompt++;
+  const card = rows.slice(top, bottom + 1).join("\n");
+  if (prompt === lines.length) return { composer: textHint ? "text" : "hidden", card };
+  if (!/^[›❯](?:\s|$)/.test(lines[prompt]!)) return null;
+  if (claudeGeometryRange(capture)?.start === prompt) return { composer: "visible", card };
+  // Only the composer's first rows are in view: any typed byte there is text.
+  const typed = [lines[prompt]!.replace(/^[›❯]\s*/, ""), ...lines.slice(prompt + 1)].some(Boolean);
+  return { composer: textHint || typed ? "text" : "hidden", card };
 }
 
 /**
@@ -190,15 +228,18 @@ export const CLAUDE_SCROLLED_DRAFT_REASON =
 
 /**
  * Shared active-box geometry: the [top, bot) row span `claudeBox` reads, with
- * `start` the composer prompt row. Same refusals: feedback overlay, approval
- * dialog, prompt rows below the bottom border, or no prompt inside the box.
+ * `start` the composer prompt row. Same refusals: approval dialog, a feedback
+ * card that hides the composer (any box found then is an older one), prompt
+ * rows below the bottom border, or no prompt inside the box.
  */
 export function claudeActiveBoxRange(capture: string): { top: number; start: number; bot: number } | null {
-  if (claudeFeedbackOverlay(capture) || approvalPrompt("claude", capture)) return null;
+  if (approvalPrompt("claude", capture)) return null;
+  const card = claudeFeedbackCard(capture);
+  if (card && card.composer !== "visible") return null;
   return claudeGeometryRange(capture);
 }
 
-/** Geometry alone, also used to locate a feedback panel without recursion. */
+/** Geometry alone, also used to locate the composer below a feedback card without recursion. */
 function claudeGeometryRange(capture: string): { top: number; start: number; bot: number } | null {
   const lines = capture.split("\n");
   let bot = -1;
@@ -382,8 +423,8 @@ export function observePaneProbe(target: string, harness: string, command: strin
  */
 /** A pane-band refusal no delivery override may clear. */
 export const APPROVAL_PROMPT_REASON = "human approval prompt is visible";
-/** Claude's drafted-report panel holds the pane; only a human or the seat's leader dismisses it. */
-export const CLAUDE_FEEDBACK_DRAFT_REASON = "Claude feedback-draft panel is visible; a human or the seat's leader dismisses it";
+/** The feedback card hides the composer, so neither its owner nor the courier can read it. */
+export const CLAUDE_FEEDBACK_DRAFT_REASON = "Claude feedback-draft card hides the composer; a human or the seat's leader dismisses the card, or submits or clears any text under it";
 
 /**
  * `paneHeight` is the pane's real `#{pane_height}` when the caller read it with
@@ -404,7 +445,9 @@ function classifyFamily(capture: string, harness: string, copyMode: boolean, pan
   // agy's branch below reports its own overlay, which includes this rule.
   if (familyOf(harness) !== "agy" && approvalPrompt(harness, capture)) return { kind: "no-band", reason: codexHookTrust(harness, capture) ? CODEX_HOOK_TRUST_REASON : APPROVAL_PROMPT_REASON };
   if (familyOf(harness) === "claude") {
-    if (claudeFeedbackOverlay(capture)) return { kind: "no-band", reason: CLAUDE_FEEDBACK_DRAFT_REASON, cause: "feedback-draft" };
+    // A card over a complete composer is not a hold; a composer it hides is (tap-89a57).
+    const card = claudeFeedbackCard(capture);
+    if (card && card.composer !== "visible") return { kind: "no-band", reason: CLAUDE_FEEDBACK_DRAFT_REASON, cause: "feedback-draft" };
     const box = claudeBox(capture);
     if (!box) return { kind: "no-band", reason: "no recognized Claude input box" };
     if (box.typed && !claudeDimChrome(capture, box.typed)) {
@@ -437,8 +480,11 @@ function classifyFamily(capture: string, harness: string, copyMode: boolean, pan
     return composer ? { kind: "draft", text: composer } : { kind: "ready" };
   }
   if (familyOf(harness) === "agy") {
-    if (agySurveyOverlay(capture)) return { kind: "no-band", reason: "Antigravity survey blocks the composer" };
-    if (agyPermissionOverlay(capture)) return { kind: "no-band", reason: "Antigravity permission overlay is visible" };
+    // The overlay readers get the plain frame they have always read. Only the
+    // composer reader is handed paint, for its mode-hint check.
+    const plain = capture.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+    if (agySurveyOverlay(plain)) return { kind: "no-band", reason: "Antigravity survey blocks the composer" };
+    if (agyPermissionOverlay(plain)) return { kind: "no-band", reason: "Antigravity permission overlay is visible" };
     const composer = agyComposer(capture);
     if (composer === null) return { kind: "no-band", reason: "no recognized Antigravity composer" };
     return composer ? { kind: "draft", text: composer } : { kind: "ready" };
@@ -506,7 +552,8 @@ export function observePaneKind(target: string, harness: string, command: string
   if (native) {
     // OpenCode's first-load placeholder sits where typed text goes and differs
     // only by colour, so an unescaped capture reads it as a draft (tap-yqonr).
-    const escaped = family === "claude" || family.startsWith("codex") || family === "opencode" || family.startsWith("cursor") || family.startsWith("hermes");
+    // Antigravity's mode hint is the same case: it held mail for the draft grace.
+    const escaped = family === "claude" || family.startsWith("codex") || family === "opencode" || family === "agy" || family.startsWith("cursor") || family.startsWith("hermes");
     const captured = capturePane(target, escaped, family !== "opencode");
     if (captured.rateLimited) {
       return { kind: "rate-limited", reason: "tmux client budget exhausted before pane input could be inspected" };

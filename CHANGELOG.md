@@ -3,6 +3,115 @@
 Release notes are curated when a release is prepared. A protocol bump adds the
 next `0.<protocol>.0` release heading in the same change.
 
+## 0.23.3 — 2026-11-15
+
+### Added
+
+- `tap team` can show what a blocked Claude seat is waiting on. A Claude Code
+  `PermissionRequest` hook records the tool and a short summary of an open
+  approval or question, and `tap team --json` carries it as
+  `permission_request`. The hook only observes: it never answers a prompt,
+  stores no command line or file body, and does nothing outside a registered
+  seat. The installer adds it for Claude Code 2.0.45 or newer and removes it
+  when the version reads older; `./install.sh --report` says which applies.
+- `injection.feedback_card` decides what delivery does when Claude's
+  feedback-draft card hides the composer. `dismiss` (the default) sends one
+  Escape and then reads the composer as usual; the draft stays queued in
+  `/feedback`. `hold` sends no key and tells the sender the message is held.
+- Bash completion: `source <(tap completion bash)`. It is generated from the
+  same source as the zsh completion.
+- `tap init --dry-run` previews every file it would write, and
+  `--no-instructions` skips the project instruction edits. `tap init` now asks
+  before it touches an existing instructions file or `.gitignore`, and prints a
+  receipt of what it wrote.
+- `./install.sh --report` previews everything an install would change, not
+  only the harness wiring. The installer's closing message and `--help` say how
+  to remove TAP.
+- On Claude Code, `tap self compact`, `rebrief` and `clear` accept
+  `--model NAME@LEVEL` (for example `opus@high`) as a short form of
+  `--model NAME --effort LEVEL`.
+- SECURITY.md lists what TAP stores on your machine and how to delete it, and
+  the README has a Stability section and an install command on its first
+  screen.
+
+### Changed
+
+- TAP-started Codex seats start with Codex's startup update check off by
+  default, which avoids its "update available" menu. The launch can report a
+  newer version from Codex's own cache. An explicit launch setting is kept,
+  and your Codex configuration file is not changed.
+- Mail to a Claude seat that shows the feedback-draft card is delivered when
+  the composer is in view below the card. Before, the card held the seat until
+  someone dismissed it.
+- `tap <command> --help` and `-h` are answered before any effect: they write
+  no journal entry and reach no bus. A positional `help` after `send` is a
+  recipient, so use `tap send --help` or `tap help send`.
+- Launches keep the login shell's tool selection first and add the caller's
+  `PATH` after it as a fallback, without duplicates, so nested launches no
+  longer grow `PATH`.
+- `tap crew add` types a short reference into the new pane instead of the
+  whole launch command. A long `PATH` could push that line past the terminal's
+  input limit and the seat would not start.
+- Text after `/tap:self compact` or `rebrief` is an instruction for the seat
+  after the reset. The seat writes it into the handoff and does none of it
+  before the reset; a resume model named in words is passed as `--model`.
+- `tap launch gemini`, `antigravity` and `cursor-agent` refuse with the name of
+  the harness to use instead.
+- `tap in` at a shell prompt, `tap doctor` and a sender now say that a shell
+  pane cannot receive messages and what to do next.
+- `tap tmux-defaults install` lists every effect before it acts, and a config
+  it cannot merge safely is left for you to reload by hand.
+- Installer refusals name the cause and one fix for your machine. The Bash
+  check tests the shell that is running the installer, and a tmux version it
+  cannot read is reported as unknown, not as too old. It also warns when
+  another program named `tap` comes first on `PATH`.
+- `bin/tap` also looks for Bun in `$BUN_INSTALL/bin` and `~/.bun/bin`, and its
+  install hint matches your platform.
+- `tap --version` and `tap poll` start far fewer processes.
+- Debug recording no longer starts on read-only commands, help or a dry run.
+- Reading another team's roster by name no longer writes cache files into that
+  team's project.
+- Agent-facing help for a first exchange with a teammate is clearer, and
+  `tap help advisory` no longer calls message content authorized work.
+- The docs no longer promise things the code refuses, and the landing page
+  says what TAP is and shows the install command in its first view.
+- For contributors: the public repository's CI runs Bun tests on Linux, pins
+  its actions by commit, and has issue and pull request templates. The Bun test
+  runner uses one per-test timeout on every platform and the same terminal,
+  locale and time zone as the release checks. The Pages workflow builds and
+  deploys in separate jobs. An unused second delivery path was removed.
+
+### Fixed
+
+- A project you cloned could run its own code through TAP: Bun loaded that
+  project's `bunfig.toml` preload scripts and `.env` when `tap`, a TAP hook or
+  the installer ran in its directory. TAP now starts Bun with its own
+  configuration and no environment file everywhere, including the processes it
+  starts for itself and the compiled release build.
+- `tap init` refuses TAP state that came with a checkout. A committed `.tap/`
+  registry or bus could otherwise appear as a teammate's seats and mail.
+- Composer text is no longer treated as a TAP message merely because it ends
+  in `]]`, so a shell test or similar draft is not submitted with an arriving
+  message. A scrolled message tail must match a message TAP recorded typing;
+  that record lasts for the recovery hold window, 30 minutes by default.
+- On Hermes, a truncated TAP message behind the `/queue` prefix is no longer
+  cleared as a human draft during redelivery.
+- A fresh Antigravity seat received mail late because its composer hint
+  (`Auto mode: …`) was read as a draft. The hint is now recognized by how it is
+  painted.
+- With Bun missing from `PATH`, TAP's shell-command hook failed every shell
+  command an agent ran. Hooks now step aside with one line naming TAP and
+  survive a checkout that cannot load. The session-start hook's registration
+  and Git-root probes have time limits.
+- Redelivery checks a queued message's header before typing anything and
+  refuses a malformed one.
+- A launch prints the right window target when tmux `base-index` is not 0.
+- Seat identity probes have timeouts.
+- `./install.sh --report` no longer writes a Bun cache under your home
+  directory.
+- Linux: the tmux status tick, `tap doctor`'s server scan and the `tap draft`
+  clipboard copy work.
+
 ## 0.23.2 — 2026-11-07
 
 ### Added

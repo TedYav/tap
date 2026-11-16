@@ -100,9 +100,10 @@ for spelling in "-h" "--help"; do
     *) fail "'tap $spelling' printed no overview" ;;
   esac
 done
-for args in "help send" "send help"; do
+# A positional help is a recipient for send; only reserved flags request help.
+for args in "help send" "send --help" "send -h"; do
   # shellcheck disable=SC2086
-  out="$(bash "$TAP" $args 2>/dev/null)"
+  out="$(bash "$TAP" $args 2>/dev/null)" || fail "'tap $args' refused instead of printing help"
   case "$out" in
     *"tap send"*) ;;
     *) fail "'tap $args' printed no verb help" ;;
@@ -172,7 +173,7 @@ case "$control_err" in
 esac
 echo "help-forks-zero: the fixture DOES produce an overdue advisory on a working verb: ok"
 
-for args in "help" "-h" "--help" "help send" "send help" "help ask" "ask help" \
+for args in "help" "-h" "--help" "help send" "send --help" "send -h" "help ask" "ask help" \
   "team up help" "team up --help" "team up -h"; do
   # shellcheck disable=SC2086
   err="$(bash "$TAP" $args 2>&1 1>/dev/null || true)"
@@ -247,7 +248,7 @@ for spelling in "help" "-h" "--help"; do
   [ "$n" = 0 ] \
     || fail "'tap $spelling' ran git $n time(s) resolving the repo root; help must be routed before lib.sh is sourced so it resolves no bus at all (tap-v8o8)"
 done
-for args in "help send" "send help" "help ask" "ask help"; do
+for args in "help send" "send --help" "send -h" "help ask" "ask help"; do
   # shellcheck disable=SC2086
   n="$(git_execs_for "git${args// /}" $args)"
   [ "$n" = 0 ] || fail "'tap $args' ran git $n time(s); expected 0"

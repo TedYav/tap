@@ -679,7 +679,7 @@ describe("list parser — split operands and help (tap-az7l4.1, tap-az7l4.2)", (
 
   test("a split --cwd or --harness followed by a recognized option refuses with usage, exit 2", () => {
     const d = door();
-    for (const args of [["--cwd", "--json"], ["--harness", "--machine"], ["--cwd", "--harness", "claude"], ["--harness", "--cwd=/x"], ["--cwd", "-h"], ["--harness", "--help"],
+    for (const args of [["--cwd", "--json"], ["--harness", "--machine"], ["--cwd", "--harness", "claude"], ["--harness", "--cwd=/x"],
       // argparse reads ANY dash-led token as an option, known or not.
       ["--cwd", "--bogus"], ["--cwd", "-x"], ["--cwd", "--json=v"], ["--harness", "-x"],
       // A known option is recognized before the space exemption: its value may hold spaces (argparse order).
@@ -726,7 +726,7 @@ describe("list parser — split operands and help (tap-az7l4.1, tap-az7l4.2)", (
     const catalog = d.runTap(d.empty, ["help", "session", "list"]);
     expect([catalog.status, catalog.stderr]).toEqual([0, ""]);
     for (const flag of ["-h", "--help"]) {
-      for (const args of [[flag], ["--json", flag]]) {
+      for (const args of [[flag], ["--json", flag], ["--cwd", flag], ["--harness", flag]]) {
         const r = d.run(d.empty, args);
         expect([args.join(" "), r.status, r.stderr]).toEqual([args.join(" "), 0, ""]);
         // One text, two spellings: the catalog page IS what `--help` prints.

@@ -1,0 +1,13 @@
+# The Bun configuration TAP's own entry points run under.
+#
+# Bun's default configuration path is "$PWD/bunfig.toml", and it also loads
+# "$PWD/.env". TAP's command and its hooks start in whatever directory the user
+# or an agent is working in, so without an explicit configuration a project's
+# own bunfig.toml (its `preload` scripts run before the entry file) and .env
+# would apply to TAP. bin/tap and the hook adapters pass
+#   --config=<this file> --no-env-file
+# with the path derived from their own location, never from the working
+# directory. Keep this file free of `preload` and of anything project-specific.
+
+# Second line of defense for the env file, should a caller omit the flag.
+env = false

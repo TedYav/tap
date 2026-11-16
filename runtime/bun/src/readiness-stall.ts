@@ -17,7 +17,7 @@ import { acquirePathLock, lockRoot, type PaneLock } from "./panelock";
 import { createHash } from "node:crypto";
 import { opencodeStorePath } from "./opencode-store";
 
-/** The no-band holds a misread can produce. Named holds (modal, shell mode, feedback draft) have their own alarms. */
+/** The no-band holds a misread can produce. Named holds (modal, shell mode, hidden feedback-card text) have their own alarms. */
 export const STALL_VERDICTS: ReadonlySet<string> = new Set(["busy:booting", "busy:noprompt", "busy:overprint"]);
 
 export const STALL_DEFAULT_SECONDS = 600;

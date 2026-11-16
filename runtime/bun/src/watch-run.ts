@@ -38,12 +38,12 @@ export const SIDECAR_SOURCES: readonly string[] = [
   "clear-fence.ts", "codex-update.ts", "config-error.ts", "config-file.ts", "context-census.ts", "context.ts", "courier-argv.ts",
   "courier-contract.ts", "courier.ts", "debug-capture.ts", "deliver.ts", "delivery-attempt.ts",
   "delivery-clock.ts", "delivery-custody.ts", "delivery-permissions.ts", "digest-index.ts", "digest-items.ts",
-  "digest-window.ts", "envelope.ts", "events.ts", "existing-sentinel.ts", "forwarding.ts", "fsatomic.ts",
+  "digest-window.ts", "envelope.ts", "events.ts", "existing-sentinel.ts", "feedback-card-dismiss.ts", "forwarding.ts", "fsatomic.ts",
   "git-root.ts",
   "harness-families.ts", "harness-queue.ts", "ids.ts", "index-home.ts", "index-snapshot.ts", "injection-behavior.ts",
   "input-backup.ts", "input-protection.ts", "invocation-memo.ts", "latest-outbound.ts", "lock-attribution.ts", "lossless-json.ts", "native-error.ts",
   "notice-submit.ts", "notice.ts", "notifications.ts", "nudge-wire.ts", "observe-gather.ts", "observe.ts",
-  "opencode-composer.ts", "opencode-service.ts", "opencode-shared-seat.ts", "opencode-shared.ts", "opencode-store.ts", "opencode-turn-state.ts", "overprint-marker.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts", "pane/draft.ts",
+  "opencode-composer.ts", "opencode-service.ts", "opencode-shared-seat.ts", "opencode-shared.ts", "opencode-store.ts", "opencode-turn-state.ts", "overprint-marker.ts", "own-bun.ts", "pane-harness.ts", "pane-identity.ts", "pane-state.ts", "pane-tint.ts", "pane/draft.ts",
   "pane/geometry.ts", "pane/reader.ts", "pane/repaint.ts", "panelock.ts", "payload-fields.ts", "proc-row.ts", "process-ancestry.ts", "pyint.ts",
   "queue-explanation.ts", "readiness-stall.ts", "recovery-policy.ts", "recovery/cli.ts", "recovery/effect.ts", "recovery/identity-guard.ts", "recovery/operator-admission.ts", "recovery/operator-record.ts", "recovery/operator-screen.ts", "recovery/state.ts", "register-authority.ts", "registry.ts",
   "remind-job.ts", "remind-lock.ts", "remind.ts", "remote-target.ts", "reset.ts", "retry.ts", "scripts-dir.ts", "seat-state.ts",
@@ -54,7 +54,7 @@ export const SIDECAR_SOURCES: readonly string[] = [
   "spool-grace.ts", "spool-park-report.ts", "spool-park.ts", "spool-publication.ts", "spool-readiness.ts",
   "spool-rebind.ts", "spool-reown.ts", "spool-repark.ts", "spool-retired.ts", "spool-sidecar.ts", "spool-state.ts",
   "sentinel-tail.ts", "spool-watch.ts", "stuck-sentinel.ts", "submit-frame.ts", "submit-phase.ts", "team-observe.ts",
-  "team-selection.ts", "terminal-text.ts", "tmux-spawn-cwd.ts", "tmux.ts", "unicode-decimal.ts", "verbose.ts", "verbs/escalate.ts",
+  "team-selection.ts", "terminal-text.ts", "tmux-spawn-cwd.ts", "tmux.ts", "typed-wire.ts", "unicode-decimal.ts", "verbose.ts", "verbs/escalate.ts",
   "verbs/peek.ts", "wait-cues.ts", "watch-blocked.ts", "watch-child.ts", "watch-detect.ts", "watch-detectors.ts",
   "watch-evaluate.ts", "watch-evaluator.ts", "watch-lease.ts", "watch-loop.ts", "watch-notice.ts",
   "watch-registry.ts", "watch-run.ts", "watch-sidecar.ts", "watch-tick-run.ts", "watch-tick.ts",
@@ -123,7 +123,13 @@ export function reexecImage(src: string, argv = process.argv): [string, string[]
     const entry = current === src ? argv[1]! : join(current, basename(argv[1]!));
     return [shim, [shim, entry, ...argv.slice(2)]];
   } catch {
-    return [process.execPath, argv];
+    // Bun consumes its own flags, so process.argv does not carry them into the new image.
+    // This entry imports only Node built-ins before it stamps its sources, so it states
+    // own-bun.ts's rule itself: TAP's own configuration (the empty device when the file
+    // is missing, because Bun exits on a path it cannot read) and no env file.
+    let config = join(src, "../tap-bunfig.toml");
+    try { accessSync(config, constants.R_OK); } catch { config = "/dev/null"; }
+    return [process.execPath, [argv[0]!, `--config=${config}`, "--no-env-file", ...argv.slice(1)]];
   }
 }
 

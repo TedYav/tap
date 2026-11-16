@@ -38,6 +38,55 @@ export const DENYLIST: readonly string[] = [
   "ssh", "cat", "pager", "git",
 ];
 
+/**
+ * TAP's own runtime: what a pane's foreground program is while `tap in` typed
+ * at a prompt runs. Compared by name, never held in a list: these are program
+ * names to recognize, not an argv to spawn.
+ */
+const isRuntimeName = (name: string): boolean => name === "bun" || name === "tap";
+
+/**
+ * A recorded harness that is a shell or TAP's own runtime, so the row names no
+ * supported agent. This is a fact about the record, not about the pane: an
+ * agent can run under the same runtime, and a failed process read keeps the
+ * shallow name. `shellSeatEvidence` is what may claim a shell.
+ */
+export function recordedWithoutAgent(harness: string): boolean {
+  return (SHELLS as readonly string[]).includes(harness) || isRuntimeName(harness);
+}
+
+/**
+ * What registration may say about such a pane. `shell` needs positive
+ * evidence: tmux named a shell as the foreground program, or the process table
+ * shows the pane's root process is a shell AND shows the leader of its
+ * foreground group, and that leader is no supported agent. A runtime name with
+ * no readable table, a root that is not a shell, or a foreground group whose
+ * leader is not in the table is `unidentified`: unknown is never reported as
+ * absent. `null` means the record is neither shell nor runtime.
+ */
+export function shellSeatEvidence(
+  harness: string, panePid: string,
+  readTable: () => { table: PsTable | null; ok: boolean }, families: readonly string[],
+): "shell" | "unidentified" | null {
+  if ((SHELLS as readonly string[]).includes(harness)) return "shell";
+  if (!isRuntimeName(harness)) return null;
+  if (panePid === "") return "unidentified";
+  const { table, ok } = readTable();
+  const root = ok && table !== null ? table.get(panePid) : undefined;
+  if (root === undefined) return "unidentified";
+  const rootName = pyBasename(root[2]).toLowerCase().replace(/^-+/, "");
+  if (!(SHELLS as readonly string[]).includes(rootName)) return "unidentified";
+  const foreground = root[1];
+  const leader = table!.get(foreground);
+  if (foreground === "" || foreground === "0" || foreground === "-1" || leader === undefined || leader[0] !== foreground) return "unidentified";
+  return classifyCommCommand(leader[2], leader[3], families) ? "unidentified" : "shell";
+}
+
+/** The one step that turns a shell seat into one that can receive. */
+export function noAgentRecovery(handle: string): string {
+  return `run tap in ${handle} from inside an agent, or start one with tap launch <harness> <name>`;
+}
+
 // PYTHON'S WHITESPACE, NOT JAVASCRIPT'S, EVERYWHERE BELOW. JS `\s` includes
 // U+FEFF and Python's does not, so a `\s` here splits inside a `ps` field on a
 // BOM and shifts comm and command into strings the incumbent never produced —

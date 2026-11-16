@@ -188,6 +188,12 @@ function exactTapOf(line: string): string | undefined {
   return m && liveIsOurs(line, m[1]) ? m[1] : undefined;
 }
 
+/** Disclose the file an install actually edits without replacing its symlink. */
+export function configSymlinkTarget(path: string): string | null {
+  try { return lstatSync(path).isSymbolicLink() ? realpathSync(path) : null; }
+  catch { return null; } // Strict reads diagnose dangling or unreadable links before writing.
+}
+
 /** Dotfiles are often symlinks into a repo: write through the link and keep the file's mode. */
 export function writeFileAtomic(path: string, text: string): void {
   let target = path, mode = 0o644;
@@ -403,6 +409,7 @@ export function cmdKeybinding(argv: string[]): number {
   const conf = renderConf(key, tapPath), line = sourceLine(st.tap_conf);
   const hasLine = hasSourceLine(userText, st.tap_conf);
   const unchanged = tapText === conf && hasLine;
+  const userConfTarget = configSymlinkTarget(st.user_conf);
   // An unchanged disk can still owe the running server its binding (it was unbound or tmux restarted since).
   const loaded = !!liveLine && liveIsOurs(liveLine, tapPath);
   let reloaded = false;
@@ -434,7 +441,8 @@ export function cmdKeybinding(argv: string[]): number {
       reloaded = true;
     }
   }
-  emit(json, { dry_run: dry, key, tap: tapPath, tap_conf: st.tap_conf, user_conf: st.user_conf, changed: !unchanged, reloaded },
-    `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: prefix ${key} opens the teammate picker${!dry && !reloaded ? " (loads when tmux starts)" : ""}`);
+  emit(json, { dry_run: dry, key, tap: tapPath, tap_conf: st.tap_conf, user_conf: st.user_conf, user_conf_target: userConfTarget, changed: !unchanged, reloaded },
+    `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: prefix ${key} opens the teammate picker${!dry && !reloaded ? " (loads when tmux starts)" : ""}` +
+    `${userConfTarget ? `; ${dry ? "would write" : "writes"} through symlink ${st.user_conf} to ${userConfTarget}` : ""}`);
   return 0;
 }

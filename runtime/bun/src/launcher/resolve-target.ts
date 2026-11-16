@@ -17,6 +17,7 @@
 // is dropped — it was never the crew door's contract (TAP_JSON is), so a
 // literal `--json` is an unknown argument.
 import { join } from "node:path";
+import { HARNESS_ALIASES } from "../harness-families";
 import { reservedSeatName } from "../ids";
 import { ensureAscii } from "../fsatomic";
 import { errorJson } from "../native-error";
@@ -60,16 +61,46 @@ export function refuseJoinedArguments(usage: string, ...values: Array<string | n
   }
 }
 
+/**
+ * A word that is neither harness nor preset but names a harness another way:
+ * its product or binary spelling, its capitalized form, or Google's Gemini CLI,
+ * which people reach for when they mean the supported Antigravity CLI. The
+ * refusal names the canonical word; these spellings never launch.
+ */
+function knownSpelling(requested: string): { harness: string; cause: string } | null {
+  const word = requested.toLowerCase();
+  if (HARNESSES.includes(word)) {
+    return { harness: word, cause: `harness names are lowercase: '${word}'` };
+  }
+  if (Object.hasOwn(HARNESS_ALIASES, word)) {
+    const harness = HARNESS_ALIASES[word]!;
+    return { harness, cause: `TAP's name for that harness is '${harness}'` };
+  }
+  if (word === "gemini" || word === "gemini-cli") {
+    return { harness: "agy", cause: "Google's Gemini CLI is not a supported harness; Google's Antigravity CLI is, as 'agy'" };
+  }
+  return null;
+}
+
 /** _ambiguous_harness_or_preset: an IMPLICIT request may name either space. */
 function ambiguous(requested: string, env: Env, usage: string, presets: Iterable<string> = []): LauncherError {
-  const launch = usage.startsWith("tap crew add ")
-    ? "tap crew add claude newcomer --model <model>"
-    : "tap launch claude newcomer";
+  const crew = usage.startsWith("tap crew add ");
+  const example = (harness: string) => crew
+    ? `tap crew add ${harness} newcomer --model <model>`
+    : `tap launch ${harness} newcomer`;
+  const known = knownSpelling(requested);
+  if (known) {
+    return presetError(
+      "harness_or_preset_not_found",
+      example(known.harness),
+      `'${requested}' is not a known harness or a saved preset; ${known.cause}`,
+    );
+  }
   const harnesses = [...HARNESSES].sort().join(", ");
   const choices = [...presets].sort().join(", ") || "none";
   return presetError(
     "harness_or_preset_not_found",
-    `tap presets, or launch a harness directly: ${launch}`,
+    `tap presets, or launch a harness directly: ${example("claude")}`,
     `'${requested}' is not a known harness or a saved preset; canonical harnesses: ${harnesses}; available presets: ${choices}; config: ${join(configDirectory(env), "config.toml")}`,
   );
 }

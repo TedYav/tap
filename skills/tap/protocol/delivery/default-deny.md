@@ -36,6 +36,15 @@ recovery run. The startup update menu has its own narrow delivery exception belo
 
 ## Codex update Skip
 
+A Codex seat or crew that TAP starts runs with `-c check_for_update_on_startup=false`,
+so it offers no update menu. The override is argv only and yields to the same
+key set in a preset, harness policy or `--` tail; Codex's `config.toml` is not
+edited. When Codex's own `version.json` names a release newer than the one the
+pane shows, launch prints one line with both versions. That cache is refreshed
+only when Codex checks for itself. The Escape below remains for panes joined
+with `tap in`, for a seat that re-enables the check, and for a Codex that does
+not honor the key.
+
 Launcher readiness and courier delivery may send one Escape when the shared
 classifier positively identifies `codex-update-available` and both version
 numbers are readable. Escape chooses Skip; TAP never selects the update or

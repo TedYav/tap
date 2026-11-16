@@ -7,6 +7,16 @@ run-name: publish cheat-sheet guide ${{ github.sha }}
 # else in the tree may reach the artifact. A Pages site is always public, so it
 # is hosted from this public repository only.
 # Enable once in Settings -> Pages -> Source: GitHub Actions.
+#
+# Two jobs: `build` stages and uploads the site artifact, `deploy` publishes it.
+# The deploy action finds the artifact by name in this run and refuses when it
+# sees none or more than one, so the upload must happen exactly once per run.
+# It has no retry input. If `deploy` fails:
+#   - dispatch a new run (Actions -> pages -> Run workflow). Always safe.
+#   - or "Re-run failed jobs": only `deploy` runs again and it reuses the
+#     artifact `build` already uploaded.
+#   - never "Re-run all jobs": `build` uploads a second artifact with the same
+#     name and `deploy` then refuses the run for good.
 
 on:
   workflow_dispatch:
@@ -20,25 +30,29 @@ on:
       - "docs/assets/theme.js"
       - ".github/workflows/pages.yml"
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Actions are pinned by full commit sha; the trailing comment names the release
+# that sha is. To update one, resolve the new tag with
+#   git ls-remote https://github.com/<owner>/<action> 'refs/tags/<tag>' 'refs/tags/<tag>^{}'
+# Use the `^{}` line when one is printed (an annotated tag: the other line is
+# the tag object, not a commit). Change the sha and the comment together.
+# No token permission by default; each job names what it needs.
+permissions: {}
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      # configure-pages reads the repository's Pages settings.
+      pages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - name: Stage allowlisted pages
@@ -55,9 +69,22 @@ jobs:
           mkdir -p _site/assets
           cp docs/assets/theme.css docs/assets/theme.js _site/assets/
           touch _site/.nojekyll
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

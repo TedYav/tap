@@ -17,11 +17,11 @@ Human output is column-shaped. Native bare `tap team` prints seven columns (`han
 
 The record retains the server epoch it sampled. A restart within the TTL can leave the display stale until expiry. `--no-cache` bypasses cache reads and writes and takes a fresh observation. Missing, stale, corrupt or unwritable cache files never prevent a fresh roster. Cache publication uses an atomic replacement.
 
-JSON adds top-level `observed_at`, the completed observation's ISO timestamp, unchanged on a hit; it is null for an empty roster. Each agent's existing `observed_at` still dates its observed model tuning. Human output adds `cached observation Ns ago` on a hit. `--names` remains handles only. Message-queue and stalled-debt facts are read for each request.
+JSON adds top-level `observed_at`, the completed observation's ISO timestamp, unchanged on a hit; it is null for an empty roster. Each agent's existing `observed_at` still dates its observed model tuning. Human output adds `cached observation Ns ago` on a hit. `--names` remains handles only. Message-queue, stalled-debt and [permission-request](./permission-requests.md) facts are read for each request.
 
 The cache belongs to the display entry point. Delivery identity checks, registration, readiness, nudge, relaunch, health and doctor keep their live readers. A reporting cache hit can resolve an enrolled checkout locally before Git or pane fallback; unresolved or ambiguous reporting scope uses the ordinary fresh path. `admin ps` retains `--no-state` but has no observation cache.
 
-Plain roster reads with `OPENCODE_SESSION_ID` set keep native session-based team resolution and skip the shortcut: a shared-service child may belong to a root seat outside its cwd. Naming a team explicitly still permits caching. The cache never creates its bus directory: reading a team that has no bus writes no cache.
+Plain roster reads with `OPENCODE_SESSION_ID` set keep native session-based team resolution and skip the shortcut: a shared-service child may belong to a root seat outside its cwd. Naming a team explicitly bypasses cache reads and writes, so a foreign roster read leaves that team's tree unchanged. The cache never creates its bus directory: reading a team that has no bus writes no cache.
 
 ## Advanced settings
 

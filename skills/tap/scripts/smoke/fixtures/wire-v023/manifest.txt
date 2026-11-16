@@ -30,6 +30,7 @@
 runtime/bun/test/agent-state-errors.test.ts	A	Current v0.23 nudge wires exercise error-state submission without changing wire grammar
 runtime/bun/test/agent-state.test.ts	B	`[[TAP` is an ANCHOR: detectAgentState names an agy draft by `/^\s*>\s*\[\[TAP\s/m` and the test asserts sentinel_unsubmitted vs a human draft and working-wins, not the version or grammar
 runtime/bun/test/agy-band-characterization.test.ts	B	characterization of an agy band; the sentinel text is opaque input, not an asserted shape
+runtime/bun/test/agy-mode-hint.test.ts	B	one complete v0.23 note wire (WIRE) is readFrame's expected input and a typed composer row; asserts the frame state (empty/staged) and that typed text stays a draft beside the Antigravity mode hint, not wire grammar
 runtime/bun/test/agy-staged-wait.test.ts	B	whole v0.23 wire is opaque staged input to id-keyed submitVerifyLocked; asserts full-wire wait and stranded-wire refusal, not grammar
 runtime/bun/test/agy-survey-public.test.ts	B	`[[TAP` at :122/:130 is an ANCHOR locating the paste row in recorded keys; asserts skip<paste<Enter ordering and that no paste happened in the no-composer scenario, not wire shape
 runtime/bun/test/agy-survey.test.ts	B	complete v0.23 `[[TAP v0.23 ask mail]]` at :88/:93/:102/:112 (and the :55 composer case) is submitVerifyLocked INPUT; asserts .status injected/band_busy, not wire shape
@@ -48,8 +49,8 @@ runtime/bun/test/courier-codex-update.test.ts	B	v0.23 note is input to the licen
 runtime/bun/test/courier-completion.test.ts	B	ordinary v0.23 wire is fixture input for completion and pending authority; assertions cover effects and evidence
 runtime/bun/test/courier-overprint-repaint.test.ts	B	a v0.23 note sentinel is the staged input handed to submitVerifyLocked; assertions are on repaint/busy-hold outcomes, not the wire bytes — tap-vctb8
 runtime/bun/test/dead-pane-delivery.test.ts	B	Current wire is input to dead-pane delivery controls; assertions check refusal and retained custody, not sentinel grammar.
-runtime/bun/test/debug-capture.test.ts	A	retains synthetic v0.23 failure-frame bytes exactly while checking native delivery effects
-runtime/bun/test/deliver-effect.test.ts	A	pendingSentinel recipient/id branches asserted by shape (`to=mallory` at :639, id= at :39/:607/:625) — deliver.ts:273 reads BOTH keys
+runtime/bun/test/debug-capture.test.ts	A	retains synthetic v0.23 failure-frame bytes exactly while checking the failure-frame capture
+runtime/bun/test/deliver-effect.test.ts	B	Current wire is the band content the clobber door strips before backing up foreign bytes; assertions check the backup and the keys, not sentinel grammar.
 runtime/bun/test/delivery-disposition.test.ts	A	Current v0.23 urgent and digest residue stays distinct from human drafts.
 runtime/bun/test/differential.test.ts	A	bash<->Bun render parity over a case table (:288/:290); v0.23 rows added here
 runtime/bun/test/draft-chain.test.ts	A	asserts the current v0.23 wire sentinel (:138) as an INPUT to draft-chain handling; no retired grammar
@@ -80,12 +81,13 @@ runtime/bun/test/fixtures/hermes-queue-row/mid-turn-staged.ansi	B	live Hermes mi
 runtime/bun/test/fixtures/opencode-capture/shell-mode-staged-160.ansi	B	real OpenCode shell-mode pane capture; opencode-shell-mode.test.ts:12 replaces its `[[TAP...` text and still expects the same shell-mode detection, so the staged sentinel bytes are incidental, not asserted
 runtime/bun/test/fixtures/unwedge-transcripts/claude-metadata-stop.jsonl	B	Sanitized captured metadata projection with canonical own-stimulus input; progress correlation fixture
 runtime/bun/test/fixtures/unwedge-transcripts/codex-metadata-stop.jsonl	B	Sanitized native content provenance and capacity-stop projection; progress correlation fixture
-runtime/bun/test/generic-band-cursor-hermes.test.ts	A	builds a full `[[TAP v0.23 ask <id>]]` frame and asserts pendingSentinel parses it to the exact id/to shape (:168); the `[[TAP ${id}]]` args at :293/:300/:307 are id-keyed submitVerifyLocked injection controls, not wire-shape assertions, but the :168 case alone makes a grammar bump a pass/fail condition
+runtime/bun/test/generic-band-cursor-hermes.test.ts	A	builds a full current-wire frame and asserts pendingSentinel parses its id/to; other submit controls use constructed current wires as pane-state input
 runtime/bun/test/harness-queued.test.ts	A	complete owned v0.23 wire and missing-delimiter negatives exercise the queued-state predicate (tap-bdhec)
 runtime/bun/test/help.test.ts	A	asserts the nudge help page names the id-less `[[TAP v0.23 nudge]]` doorbell bytes (tap-xe42x)
 runtime/bun/test/helpers/approval-native.ts	B	WIRE is opaque input the native courier must not type at an approval prompt; assertions cover band_busy and zero keys, not wire grammar bytes (tap-rlebf.1)
 runtime/bun/test/hermes-queue-row.test.ts	A	builds the complete `/queue [[TAP v0.23 note <id> preview=…]]` wire and asserts the readers verify it staged and parse its id, so a grammar bump is a pass/fail condition (tap-rhajr)
 runtime/bun/test/input-id-whitespace.test.ts	A	staged v0.23 wire bytes decide input-ID matching and staged classification; an embedded BOM must not certify the id
+runtime/bun/test/input-protection.test.ts	B	a `/queue`-prefixed v0.23 note wire and a truncated one at :167/:170 are the busy-band INPUT to advanceProtection; asserts that TAP's own Hermes queue text opens no draft protection, not wire shape
 runtime/bun/test/lock-attribution.test.ts	A	Current v0.23 lock-park submit and sender-notice control.
 runtime/bun/test/message-construction.test.ts	C	asserted warning prose from the shared construction module (`--ask downgraded to reply=settle-only …` at :272/:282, `kind=lane-request sent reply=settle-only …` at :283) — obligation wording, not a rendered sentinel; no wire bytes (D1)
 runtime/bun/test/narrow-pane-submit.test.ts	B	WIRE is opaque input to submitVerifyLocked/classifySubmitFrame; assertions cover injected/staged/scrolled outcomes and Enter counts, not wire grammar bytes (tap-1ncs6)
@@ -100,8 +102,8 @@ runtime/bun/test/nudge-wire.test.ts	A	render/parse round-trip and refusals of th
 runtime/bun/test/opencode-paste.test.ts	B	v0.23 wire is opaque INPUT to classifySubmitFrame/submitVerifyLocked (:14/:30); assertions check paste-chunking, echo-equality and injected/status outcomes, not wire bytes
 runtime/bun/test/opencode-shell-mode.test.ts	B	v0.23 wire is opaque INPUT to submitVerifyLocked at :30/:42/:54; assertions check shell-mode band_busy/park/injected outcomes, not wire bytes
 runtime/bun/test/pane-reader.test.ts	B	one complete v0.23 sentinel used as a draft the reader must PRESERVE; asserts band geometry and chrome removal, never the wire's shape
-runtime/bun/test/pane-state.test.ts	B	`[[TAP ${SENTINEL_ID}]]` anchor placeholders; asserts submit/lock behavior, not shape
-runtime/bun/test/pane-submit-lock-physics.test.ts	B	id-keyed; the sentinel is lock-physics input
+runtime/bun/test/pane-state.test.ts	B	constructed current-wire input; asserts pane state, custody and injection effects, not wire grammar
+runtime/bun/test/pane-submit-lock-physics.test.ts	B	constructed current-wire input; asserts concurrent submit serialization and whole message ids, not wire grammar
 runtime/bun/test/recovery-proof.test.ts	B	current wire fixture ties actual staged input to fresh recovery phase evidence; no retired wire assertion
 runtime/bun/test/recovery-state.test.ts	B	current staged-wire fixtures prove changed-composer refusal under the recovery mutex
 runtime/bun/test/register.test.ts	A	writes a fixture lib.sh carrying the literal TAP_SENTINEL_VERSION assignment (:615) the real post-registration drain/version-briefing path reads; the byte itself is the input under test
@@ -120,8 +122,9 @@ runtime/bun/test/send-postplacement-legacy.test.ts	C	asserts the reply=settle-on
 runtime/bun/test/send-preview-auto-policy.test.ts	A	preview CLI controls assert injected v0.23 ask bytes and reconstruct the sentinel for preview parity
 runtime/bun/test/send-queued-codex.test.ts	B	complete v0.23 wire fixtures drive queued submission and occupied-composer retention; asserts delivery effects rather than wire grammar
 runtime/bun/test/send-remote.test.ts	A	the cross-team differential asserts the injected wire bytes on both doors (`[[TAP v0.23 <ask|note> alpha/<id>]]`, no `path=` for an enrolled sender team) — D2 member 2
+runtime/bun/test/sentinel-injection.test.ts	A	asserts which delivery wires the injection gate accepts unchanged and which malformed wires type nothing
 runtime/bun/test/sentinel-preview.test.ts	A	opt-in preview rendering and parser identity controls (tap-7r3fn.120)
-runtime/bun/test/sentinel-tail.test.ts	A	matchSentinelSuffix/sentinelShapedInput/closedSentinelInput assert scrolled-tail recognition against the real wire BYTES as a pass/fail condition (tap-1ncs6)
+runtime/bun/test/sentinel-tail.test.ts	A	matchSentinelSuffix/typedWireTail/anchoredSentinelInput assert scrolled-tail recognition against the real wire BYTES as a pass/fail condition (tap-1ncs6)
 runtime/bun/test/session-context-right-handle.test.ts	C	the pinned SessionStart line names the nudge doorbell in prose; asserts the line, not wire grammar (tap-xe42x)
 runtime/bun/test/settled-wake.test.ts	B	port of the settled-wake control: settlement-first, delivery-first, lock order
 runtime/bun/test/spool-digest-inject.test.ts	A	the digest transaction's own unit: the submit arm asserts the WHOLE v0.23 digest sentinel by value (`[[TAP v0.23 note <id> digest]]`), measured against the deleted `tap_digest_sentinel` at the base, so a wire change is a pass/fail condition on the BYTES
@@ -133,7 +136,8 @@ runtime/bun/test/submit-frame.test.ts	A	whole wrapped v0.23 composer matching an
 runtime/bun/test/submit-phases.test.ts	A	owned v0.23 sentinel phase evidence and unchanged Enter controls
 runtime/bun/test/submit-visible.test.ts	A	Current wire visible-input submission controls; no legacy grammar.
 runtime/bun/test/support/sentinel-render-cli.ts	A	native sentinel constructor fixture
-runtime/bun/test/unit3-lock.test.ts	B	`[[TAP ...]]` placeholders; asserts lock behavior
+runtime/bun/test/typed-prefix.test.ts	B	TAP-shaped text is literal payload inside an operator control; asserts the control is typed whole and Entered once, not sentinel grammar
+runtime/bun/test/unit3-lock.test.ts	B	constructed current-wire input; asserts locking and recipient reauthorization effects, not wire grammar
 runtime/bun/test/unit3-sentinel.test.ts	A	asserts renderSentinel output byte-for-byte (:35-36, :41)
 runtime/bun/test/unwedge-observe.test.ts	A	Exact v0.23 staged sentinel and whole-composer equality assertions for unwedge admission
 runtime/bun/test/unwedge-progress.test.ts	B	Canonical note and nudge wires are transcript inputs for own-stimulus versus productive-progress correlation

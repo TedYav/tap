@@ -13,8 +13,15 @@ import { join } from "node:path";
 import { Bus } from "../src/bus";
 import { canonicalPlace } from "../src/courier";
 import { parseEnvelope } from "../src/envelope";
-import { SENTINEL_VERSION, parseSentinel, renderSentinel } from "../src/sentinel";
+import { SENTINEL_VERSION, parseSentinel, assertSentinelWire, renderSentinel as renderUnchecked } from "../src/sentinel";
 import { removeScratchTree } from "./support/scratch";
+
+// Run every existing constructor case through the delivery gate.
+const renderSentinel: typeof renderUnchecked = fields => {
+  const wire = renderUnchecked(fields);
+  assertSentinelWire(wire);
+  return wire;
+};
 
 let root: string;
 let bus: Bus;

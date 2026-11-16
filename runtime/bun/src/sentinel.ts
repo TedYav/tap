@@ -4,6 +4,7 @@
 // payload on the bus is the message. A recipient never acts on the sentinel
 // alone, and TAP never trusts a value read back out of one.
 
+import { validId, validToken } from "./ids";
 import { hasPickerTrigger, previewFields } from "./sentinel-preview";
 
 export const SENTINEL_VERSION = "0.23";
@@ -124,7 +125,9 @@ export function renderSentinel(f: SentinelFields): string {
   // of the rest of the path. Both pointer cases already hand the reader an explicit
   // path, so this costs a convenience and never a record.
   if (!preview && f.body && obligation === "note" && !pointer && sentinelBodyInlineable(f.body)) out += `: ${f.body}`;
-  return `${out}]]`;
+  const wire = `${out}]]`;
+  assertSentinelWire(wire);
+  return wire;
 }
 
 /**
@@ -149,7 +152,7 @@ export function sentinelBodyInlineable(body: string): boolean {
   // The newline is the case worth naming: the sentinel is ONE line by
   // construction, and a body carrying one would split it into a header the parser
   // accepts and a tail it never sees. The class covers the rest of [:cntrl:].
-  if (/[\x00-\x1f\x7f]/.test(body)) return false;
+  if (CONTROL.test(body)) return false;
   return true;
 }
 
@@ -165,4 +168,88 @@ export function parseSentinel(text: string): Record<string, string> | null {
     if (i > 0) out[tok.slice(0, i)] = tok.slice(i + 1);
   }
   return out;
+}
+
+/** A malformed delivery wire is a pre-effect refusal, never pane input. */
+export class InvalidSentinelWire extends Error {
+  readonly errorClass = "invalid_sentinel_wire";
+  constructor() { super("invalid_sentinel_wire: refusing malformed delivery sentinel"); }
+}
+
+const CONTROL = /[\x00-\x1f\x7f-\x9f\u2028\u2029]/u;
+const WIRE_TOKEN = "[A-Za-z0-9][A-Za-z0-9._-]*";
+const JSON_TEXT = /^"(?:[^"\\]|\\.)*"/u;
+const WIRE_HEAD = new RegExp(`^\\[\\[TAP v0\\.23 (ask|note) ((?:${WIRE_TOKEN}/)?${WIRE_TOKEN})(?= |: |\\]\\])`);
+const PREVIEW_HEAD = new RegExp(`^ preview(?:\\(${WIRE_TOKEN}\\))?=`);
+
+/** Strict producer grammar; unlike pane readers this never repairs visual wraps. */
+export function assertSentinelWire(text: string): void {
+  const refuse = (): never => { throw new InvalidSentinelWire(); };
+  if (CONTROL.test(text) || !text.endsWith("]]")) refuse();
+  // An early closer would leave bytes outside the one delivery sentinel.
+  if (text.slice(0, -2).includes("]]")) refuse();
+  if (text === "[[TAP v0.23 nudge]]") return;
+  if (text.startsWith('[[TAP v0.23 nudge message=')) {
+    const quoted = text.slice('[[TAP v0.23 nudge message='.length, -2);
+    let value: unknown;
+    try { value = JSON.parse(quoted); } catch { refuse(); }
+    if (typeof value !== "string" || !sentinelBodyInlineable(value) || CONTROL.test(value) || value.includes("[[")) refuse();
+    return;
+  }
+  const head = WIRE_HEAD.exec(text);
+  if (!head) refuse();
+  let rest = text.slice(head![0].length, -2);
+  while (rest) {
+    if (rest.startsWith(": ")) {
+      const body = rest.slice(2);
+      if (head![1] !== "note" || !sentinelBodyInlineable(body) || CONTROL.test(body)) refuse();
+      return;
+    }
+    const preview = PREVIEW_HEAD.exec(rest);
+    if (preview) {
+      rest = rest.slice(preview[0].length);
+      const quoted = JSON_TEXT.exec(rest)?.[0];
+      if (!quoted) refuse();
+      let value: unknown;
+      try { value = JSON.parse(quoted!); } catch { refuse(); }
+      if (typeof value !== "string" || CONTROL.test(value) || value.includes("]]")) refuse();
+      rest = rest.slice(quoted!.length);
+      continue;
+    }
+    if (rest.startsWith(" path=")) {
+      const path = rest.slice(6);
+      if (!path.startsWith("/")) refuse();
+      return;
+    }
+    const tag = /^ (urgent|critical|escalate|digest|agent-interrupt|retry)(?= |: |$)/.exec(rest);
+    if (!tag) refuse();
+    rest = rest.slice(tag![0].length);
+  }
+}
+
+/** One gate at the delivery typing seam, including effect adapters used by tests. */
+export function injectSentinel<T extends unknown[], R>(inject: (target: string, text: string, ...args: T) => R,
+  target: string, text: string, ...args: T): R {
+  // Hermes's queue command is a harness adapter around exactly one sentinel.
+  assertSentinelWire(text.startsWith("/queue ") ? text.slice(7) : text);
+  return inject(target, text, ...args);
+}
+
+/** Validate disk routing before reconstructing a delivery wire. */
+export function assertSentinelRouting(field: (name: string) => string, id: string): void {
+  const refuse = (): never => { throw new InvalidSentinelWire(); };
+  if (field("id") !== id || !validId(id)) refuse();
+  for (const key of ["from", "to", "kind"]) if (!validToken(field(key))) refuse();
+  for (const key of ["from_team", "to_team"]) if (field(key) && !validToken(field(key))) refuse();
+  if (!["", "expected", "settle-only"].includes(field("reply"))) refuse();
+  if (!["", "urgent"].includes(field("urgency"))) refuse();
+  const preview = field("sentinel_preview");
+  if (preview && preview !== "-") {
+    try {
+      const bytes = Buffer.from(preview, "base64");
+      if (bytes.toString("base64") !== preview) refuse();
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (CONTROL.test(text) || text.includes("]]")) refuse();
+    } catch { refuse(); }
+  }
 }

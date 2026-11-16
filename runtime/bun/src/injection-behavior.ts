@@ -17,23 +17,56 @@ export class InjectionBehaviorError extends Error {
 }
 
 export function injectionBehavior(env: NodeJS.ProcessEnv = process.env): InjectionBehavior {
+  const doc = readConfig(env);
+  if (doc === null) return "clobber";
+  if (doc.injection !== undefined && !table(doc.injection)) throw new InjectionBehaviorError("injection must be a TOML table");
+  const value = doc.injection?.behavior ?? "clobber";
+  if (value === "warn") return "wait";
+  if (value !== "clobber" && value !== "wait") throw new InjectionBehaviorError("injection.behavior must be clobber or wait");
+  return value;
+}
+
+/**
+ * What delivery does when Claude's feedback-draft card hides the composer
+ * (tap-89a57). `dismiss` (default): one Escape under a one-shot license, then the
+ * composer is read as usual. `hold`: the payload stays queued with a DELIVERY HELD
+ * notice until a person clears the card.
+ */
+export type FeedbackCardBehavior = "dismiss" | "hold";
+
+export function feedbackCardBehavior(env: NodeJS.ProcessEnv = process.env): FeedbackCardBehavior {
+  const doc = readConfig(env);
+  if (doc === null) return "dismiss";
+  if (doc.injection !== undefined && !table(doc.injection)) throw new InjectionBehaviorError("injection must be a TOML table");
+  const value = doc.injection?.feedback_card ?? "dismiss";
+  if (value !== "dismiss" && value !== "hold") throw new InjectionBehaviorError("injection.feedback_card must be dismiss or hold");
+  return value;
+}
+
+/** An unusable feedback-card setting never licenses a key: it reads as hold, and tap doctor reports it. */
+export function feedbackCardBehaviorOrHold(env: NodeJS.ProcessEnv = process.env): FeedbackCardBehavior {
+  try { return feedbackCardBehavior(env); } catch { return "hold"; }
+}
+
+/** The feedback-card setting's refusal, or null when it is usable. Read and parse failures propagate. */
+export function feedbackCardFault(env: NodeJS.ProcessEnv = process.env): string | null {
+  try { feedbackCardBehavior(env); return null; }
+  catch (error) { if (error instanceof InjectionBehaviorError) return error.message; throw error; }
+}
+
+/** The parsed config, or null when there is no config file. */
+function readConfig(env: NodeJS.ProcessEnv): Record<string, any> | null {
   const path = join(configDirectory(env), "config.toml");
   // One O_NONBLOCK open, judged by fstat on that same descriptor: a FIFO (or one swapped in
   // after a separate stat) must refuse, not block delivery and health forever. Unlike
   // readSecureBytes this keeps no group/world-writable refusal on the delivery path.
   let fd: number;
   try { fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return "clobber"; throw error; }
-  let doc: Record<string, any>;
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   try {
     if (!fstatSync(fd).isFile()) throw new Error(`config.toml is not a regular file: ${path}`);
-    doc = Bun.TOML.parse(readFileSync(fd, "utf8"));
+    return Bun.TOML.parse(readFileSync(fd, "utf8"));
   } finally { closeSync(fd); }
-  if (doc.injection !== undefined && !table(doc.injection)) throw new InjectionBehaviorError("injection must be a TOML table");
-  const value = doc.injection?.behavior ?? "clobber";
-  if (value === "warn") return "wait";
-  if (value !== "clobber" && value !== "wait") throw new InjectionBehaviorError("injection.behavior must be clobber or wait");
-  return value;
 }
 
 /** The setting refusal delivery would raise for this config, or null when the setting is usable. Read and parse failures propagate. */
@@ -63,7 +96,7 @@ export function digestDraftPlan(rows: string, spool: string, now: number, cap = 
   for (const line of rows.split("\n")) {
     const f = line.split("\x1f"); if (f.length !== 9) continue;
     const id = f[6]!, ready = f[8]!;
-    if (ready !== "ready" && ready !== "recover:codex-update") {
+    if (ready !== "ready" && ready !== "recover:codex-update" && ready !== "recover:feedback-card") {
       if (ready !== "busy:pending") continue;
       let meta: Record<string, unknown>;
       try { meta = JSON.parse(readFileSync(join(spool, `${id}.meta.json`), "utf8")); } catch { continue; }

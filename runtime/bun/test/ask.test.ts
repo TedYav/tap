@@ -17,6 +17,8 @@ function fixture() {
     TAP_HOME: join(dir, "bus"), XDG_CONFIG_HOME: join(dir, "config"),
     PATH: `${join(dir, "bin")}:/usr/bin:/bin`, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", ASK_CAPTURE: dir };
   delete env.TAP_VERBOSE;
+  // The fixture's bin/ is the only place a bun may come from: bin/tap also looks in $BUN_INSTALL/bin.
+  delete env.BUN_INSTALL;
   delete env.TAP_ASK_TIMEOUT_SECONDS;
   delete env.TAP_JSON;
   return { dir, env, close: () => removeScratchTree(dir) };
@@ -426,7 +428,8 @@ test("public, direct, and help entrances are cold-state pure without debug", () 
     // Help has one owner (help.ts); without Bun the bash entry names the missing runtime.
     const extra = run(f, ["help", "ask", "extra"], doors.bin);
     expect(extra.status).toBe(1); expect(extra.stdout).toBe("");
-    expect(extra.stderr).toBe("tap: bun and runtime/bun/main.ts are required; next: brew install oven-sh/bun/bun, then rerun ./install.sh\n");
+    const hint = process.platform === "darwin" ? "brew install oven-sh/bun/bun" : "curl -fsSL https://bun.sh/install | bash";
+    expect(extra.stderr).toBe(`tap: bun and runtime/bun/main.ts are required; next: ${hint}, then rerun ./install.sh\n`);
   } finally { f.close(); }
 }, 30000);
 
@@ -541,8 +544,8 @@ test("stateless child reaches neither the debug recorder nor the command journal
       expect(help.stdout, argv.join(" ")).not.toBe("");
     }
     expect(snapshot(f.dir)).toEqual(before);
-    // Control: the same recording journals an ordinary help call, so the assertions above can fail.
-    expect(run(f, ["help"], doors.bin).status).toBe(0);
+    // Control: an unknown command still journals outside a stateless child.
+    expect(run(f, ["not-a-verb"], doors.bin).status).toBe(1);
     expect(existsSync(join(recording, "events.jsonl"))).toBe(true);
   } finally { f.close(); }
 }, 30000);

@@ -5,13 +5,44 @@ import { createInterface } from "node:readline/promises";
 import { resolveContext, TapError } from "../context";
 import { draftEntries, inputBackupBody, inputBackupIncomplete, INCOMPLETE_DRAFT_NOTICE } from "../input-backup";
 import { validToken } from "../ids";
+import { detectClipboardMode, type ClipboardMode } from "./tmux-defaults";
+
+/** Where a draft went: the tool chosen for this session and whether the copy was handed over. */
+export interface DraftCopy { tool: ClipboardMode; ok: boolean }
+const COPY_ARGV: Record<Exclude<ClipboardMode, "osc52">, string[]> = {
+  pbcopy: ["pbcopy"],
+  "wl-copy": ["wl-copy"],
+  xclip: ["xclip", "-in", "-selection", "clipboard"],
+};
+/** xclip and wl-copy stay behind to serve the selection: inherit none of their output and bound the wait. */
+const runCopyTool = (argv: string[], text: string): boolean =>
+  spawnSync(argv[0]!, argv.slice(1), { input: text, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 }).status === 0;
+
+/**
+ * Copy with the tool the tmux defaults would choose for this environment, with
+ * one difference: the draft is copied where this command runs, so a local tool
+ * is used even in an SSH session. With no local tool the text goes to the
+ * terminal as OSC 52, which needs a terminal and cannot be confirmed.
+ */
+export function copyDraft(
+  text: string,
+  env: NodeJS.ProcessEnv = process.env,
+  run: (argv: string[], text: string) => boolean = runCopyTool,
+  terminal: ((sequence: string) => void) | null = process.stderr.isTTY ? sequence => { process.stderr.write(sequence); } : null,
+): DraftCopy {
+  const tool = detectClipboardMode({ ...env, SSH_CONNECTION: "" });
+  if (tool !== "osc52") return { tool, ok: run(COPY_ARGV[tool], text) };
+  if (!terminal) return { tool, ok: false };
+  terminal(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
+  return { tool, ok: true };
+}
 
 interface DraftIO {
   tty: boolean;
   out(text: string): void;
   err(text: string): void;
   ask(): Promise<string>;
-  copy(text: string): boolean;
+  copy(text: string): DraftCopy;
 }
 function options(argv: string[]) {
   let list = argv[0] === "list", indexOnly = false, id = "", count = 5, hasCount = false;
@@ -78,8 +109,12 @@ export async function recoverDraft(argv: string[], directory: string, io: DraftI
     io.out(selected.body);
     return 2;
   }
-  if (!io.copy(selected.body)) io.err("tap draft: clipboard unavailable; printed draft only\n");
-  else if (io.tty) io.err("tap draft: copied to clipboard\n");
+  const copied = io.copy(selected.body);
+  if (!copied.ok) {
+    const why = copied.tool === "osc52" ? "no pbcopy, wl-copy or xclip for this session and no terminal for OSC 52" : `${copied.tool} failed`;
+    io.err(`tap draft: clipboard unavailable (${why}); printed draft only\n`);
+  } else if (copied.tool === "osc52") io.err("tap draft: sent to the terminal clipboard with OSC 52 (no pbcopy, wl-copy or xclip for this session)\n");
+  else if (io.tty) io.err(`tap draft: copied to clipboard with ${copied.tool}\n`);
   io.out(selected.body);
   return 0;
 }
@@ -105,6 +140,6 @@ export async function cmdDraft(argv: string[]): Promise<number> {
       try { return await Promise.race([prompt.question("Copy draft number (Enter/q cancels): "), gone]); }
       finally { detach(); prompt.close(); }
     },
-    copy: text => spawnSync("pbcopy", [], { input: text }).status === 0,
+    copy: text => copyDraft(text),
   });
 }

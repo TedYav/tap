@@ -244,9 +244,12 @@ FAKE_TMUX_CMD=zsh "$TAP" send peer -m "shell body" --from codex --id ds-deny --a
 python3 -c '
 import json,sys
 d=json.load(open(sys.argv[1]))
-assert d["ok"] is False and d["error_class"]=="unsafe_target" and d["action"]=="escalate", d
+assert d["ok"] is False and d["error_class"]=="unsafe_target", d
+# The recipient is a registered seat whose pane runs a shell: the action is the
+# step that repairs it, not an internal token.
+assert d["action"]=="run tap in peer from inside an agent, or start one with tap launch <harness> <name>", d
 assert "reason=denylist" in d["detail"], d
-' "$TAP_HOME/deny.out" || { echo "defer-spool: (5) terminal defer should be escalate-shaped with denylist reason" >&2; cat "$TAP_HOME/deny.out" >&2; exit 1; }
+' "$TAP_HOME/deny.out" || { echo "defer-spool: (5) terminal refusal should name unsafe_target, the denylist reason and the seat repair step" >&2; cat "$TAP_HOME/deny.out" >&2; exit 1; }
 assert_no_payloads_left
 echo "defer-spool: (5) denylist terminal defer never spools: ok"
 

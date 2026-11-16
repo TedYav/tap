@@ -7,6 +7,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { ensureAscii } from "./fsatomic";
 import { acquireNoFollowLock } from "./remind-lock";
 import { artifactBun, runtimeModule } from "./scripts-dir";
+import { ownBunFlags } from "./own-bun";
 
 const CAP = 300 * 1024, MAX_LINE = 4096;
 // A one-shot writer runs inside its caller's 200 ms budget and never waits;
@@ -55,13 +56,13 @@ export function withStartupTraceScope<T>(work: () => T, seed: Fields = {}): T {
   return operations.run({ fields: { ...parent.fields, ...seed }, scriptsDir: parent.scriptsDir, diagnostics: parent.diagnostics, parent }, work);
 }
 
-function writer(env: NodeJS.ProcessEnv, scriptsDir?: string): [string, string] | null {
+function writer(env: NodeJS.ProcessEnv, scriptsDir?: string): [string, string[]] | null {
   // Without a scripts dir the writer re-runs this very module (a test's stubbed copy included);
   // only the compiled router, whose own path is virtual, takes the shipped one.
   const self = import.meta.path.startsWith("/$bunfs/") ? runtimeModule("src/startup-trace.ts") : resolve(import.meta.dir, "startup-trace.ts");
   const worker = scriptsDir ? resolve(scriptsDir, "../../../runtime/bun/src/startup-trace.ts") : self;
   const bun = artifactBun() ?? (scriptsDir ? env.TAP_SMOKE_BUN || Bun.which("bun", { PATH: env.PATH }) : process.execPath);
-  return bun ? [bun, worker] : null;
+  return bun ? [bun, [...ownBunFlags(bun), worker]] : null;
 }
 
 /** Keep filesystem work in a killable child, including when imported by a launcher. */
@@ -74,7 +75,7 @@ function writeNative(op: string, args: Fields, env: NodeJS.ProcessEnv = process.
   try {
     const command = writer(env);
     if (!command) return;
-    spawnSync(command[0], [command[1]], {
+    spawnSync(command[0], command[1], {
       input: JSON.stringify({ op, args: packet, context: context ? JSON.stringify(context) : null }), cwd: env.HOME,
       env: { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" },
       stdio: ["pipe", "ignore", "ignore"], timeout: 200, killSignal: "SIGKILL",
@@ -93,7 +94,7 @@ function writeStream(operation: Operation, op: string, args: Fields, env: NodeJS
       operation.stream = null;
       const command = writer(process.env, operation.scriptsDir);
       if (!command) return;
-      const child = spawn(command[0], [command[1], "--stream"], {
+      const child = spawn(command[0], [...command[1], "--stream"], {
         cwd: process.env.HOME, env: { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" },
         stdio: ["pipe", "ignore", "ignore"], detached: true,
       });

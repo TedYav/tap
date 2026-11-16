@@ -19,7 +19,7 @@ import { shellQuote } from "../shell-quote";
 import { ensureAscii } from "../fsatomic";
 import { displayText } from "../fzf";
 import { NO_SERVER_ON, tmux, tmuxSessionNamespace } from "../tmux";
-import { configRoots, readIf as readFileIfPresent, tmuxVersion, userConfPath, writeFileAtomic as writeFileThroughSymlink } from "./keybinding";
+import { configRoots, configSymlinkTarget, parseConf, readIf as readFileIfPresent, tmuxVersion, userConfPath, writeFileAtomic as writeFileThroughSymlink } from "./keybinding";
 
 export const MARKER = "# tap-tmux-defaults";
 
@@ -126,7 +126,7 @@ export function renderDefaults(spec: DefaultsSpec): string {
     `set -as terminal-overrides ",*:Tc"`,
     `set -g mouse on`,
     `set -g focus-events on`,
-    `set -g history-limit 10000`,
+    `set -gF history-limit "#{?#{e|>|:#{history-limit},10000},#{history-limit},10000}"`,
     `set -g update-environment "${UPDATE_ENVIRONMENT}"`,
     `set -g set-clipboard ${spec.mode === "osc52" ? "on" : "off"}`,
     ...(spec.mode === "osc52" ? [] : [`set -g copy-command "${COPY_COMMAND[spec.mode]}"`]),
@@ -163,7 +163,10 @@ const recordedStatus = (text: string | null): boolean => !!text && text.split("\
 function ownedDefaults(text: string | null): DefaultsSpec | null {
   const mode = recordedMode(text), terminal = recordedTerminal(text);
   const spec = mode && terminal ? { mode, terminal, status: recordedStatus(text) } : null;
-  return spec && text === renderDefaults(spec) ? spec : null;
+  if (!spec) return null;
+  const rendered = renderDefaults(spec);
+  const legacy = rendered.replace('set -gF history-limit "#{?#{e|>|:#{history-limit},10000},#{history-limit},10000}"', "set -g history-limit 10000");
+  return text === rendered || text === legacy ? spec : null;
 }
 
 /** Whether the host resolves tmux-256color; no infocmp answer means do not pin. */
@@ -484,6 +487,34 @@ export function cmdTmuxDefaults(argv: string[]): number {
   const placementOk = marked.length > 0 && marked.every(i => i <= firstCommandIndex(lines)) && marked.length === 1;
   const unchanged = defaultsText === conf && placementOk;
   const normalizeLine = !dry && !unchanged && marked.length > 0;   // present but misplaced or duplicated: relocate TAP's own line, touch nothing else
+  // Only replay simple declarative configs. Sourcing plugins or arbitrary commands
+  // again can have effects unrelated to defaults, even when their syntax parses.
+  const ownLines = userText.split("\n").filter(l => l !== line).join("\n");
+  const commands = parseConf(ownLines);
+  let safeReplay = commands.every(words =>
+    /^(set|set-option|setw|set-window-option|bind|bind-key|unbind|unbind-key)$/.test(words[0] ?? "") &&
+    !words.some(w => /#\(|[{}]/.test(w)));
+  const ns = tmuxSessionNamespace(env);
+  if (safeReplay && ns.observable && ns.names.size > 0) {
+    for (const words of commands) {
+      if (!/^(set|set-option|setw|set-window-option)$/.test(words[0] ?? "")) continue;
+      const optionIndex = words.findIndex((w, i) => i > 0 && !w.startsWith("-"));
+      const flags = words.slice(1, optionIndex < 0 ? undefined : optionIndex);
+      // Appends and value-less toggles repeat effects; explicit targets may address unrelated sessions.
+      if (optionIndex < 0 || optionIndex === words.length - 1 || flags.some(w => /[at]/.test(w))) { safeReplay = false; break; }
+      const option = words[optionIndex]!;
+      if (!option.startsWith("@") && tmux(["show-options", "-g", option], env).code !== 0) {
+        safeReplay = false; break;
+      }
+    }
+  }
+  let livePlan = unchanged ? "unchanged" : !ns.observable ? "unobservable" : ns.names.size === 0 ? "no-server" :
+    safeReplay ? "defaults-then-user-config" : "manual-reload";
+  if (livePlan === "defaults-then-user-config" && userText) {
+    // Parse only, before any disk or live mutation; dry runs make the same choice.
+    const check = tmux(["source-file", "-n", st.user_conf], env);
+    if (check.code !== 0) livePlan = "manual-reload";
+  }
   if (dry && !unchanged && !json) {
     // The exact bytes a real run would write, so the receipt needs no trust.
     process.stdout.write(`would write ${st.defaults_file}:\n${conf}`);
@@ -506,24 +537,48 @@ export function cmdTmuxDefaults(argv: string[]): number {
         `${displayText((error as Error).message)}; ${wroteDefaults ? `${st.defaults_file} was written but ${st.user_conf} was not, so tmux will not load it` : "nothing was written"}`);
     }
   }
-  // The live server gets the file directly: it sets options and binds, and re-sourcing the user's own
-  // config to restore their overrides could re-run plugins, so TAP never does. Their settings
-  // re-assert on the next tmux start, exactly as the loaded order guarantees.
+  const userConfTarget = configSymlinkTarget(st.user_conf);
+  const liveChanged: string[] = [], liveReasserted: string[] = [];
   let reloaded = false;
-  if (!dry && !unchanged) {
-    const ns = tmuxSessionNamespace(env);
-    if (ns.observable && ns.names.size > 0) {
-      const r = tmux(["source-file", st.defaults_file], env);
-      if (r.code !== 0) throw new TapError(1, "reload_failed", "tap tmux-defaults install   (retry), or restart tmux",
-        `wrote ${st.defaults_file} and the source line in ${st.user_conf}, but the running tmux refused to load it (${displayText(r.stderr.trim()) || "no reason given"}); the settings load when tmux restarts`);
-      reloaded = true;
+  if (!dry && !unchanged && livePlan === "defaults-then-user-config") {
+    const snapshot = (): Record<string, string> => {
+      const values: Record<string, string> = {};
+      for (const key of Object.keys(defaultsOptions(spec))) {
+        const r = tmux(["show", "-gv", key], env);
+        if (r.code !== 0) throw new TapError(1, "reload_failed", "tap tmux-defaults status", `could not observe ${key}`);
+        values[key] = r.stdout.trimEnd();
+      }
+      return values;
+    };
+    const before = snapshot();
+    const load = (path: string): void => {
+      const r = tmux(["source-file", path], env);
+      if (r.code !== 0) throw new TapError(1, "reload_failed", `tmux source-file ${shellQuote(st.user_conf)}`,
+        `config written; running tmux refused ${path} (${displayText(r.stderr.trim()) || "no reason given"}); live settings may be partially applied`);
+    };
+    load(st.defaults_file);
+    const applied = snapshot();
+    load(st.user_conf);
+    const after = snapshot();
+    if (Number(after["history-limit"]) < Number(before["history-limit"])) {
+      const keep = tmux(["set", "-g", "history-limit", before["history-limit"]!], env);
+      if (keep.code !== 0) throw new TapError(1, "reload_failed", "tap tmux-defaults status", "could not preserve the larger running history limit");
+      after["history-limit"] = before["history-limit"]!;
     }
+    for (const key of Object.keys(before)) {
+      if (before[key] !== applied[key]) liveChanged.push(key);
+      if (applied[key] !== after[key]) liveReasserted.push(key);
+    }
+    reloaded = true;
   }
-  emit(json, { dry_run: dry, clipboard: spec.mode, terminal: spec.terminal, status_bar: spec.status, defaults_file: st.defaults_file, user_conf: st.user_conf, changed: !unchanged, reloaded,
+  emit(json, { dry_run: dry, clipboard: spec.mode, terminal: spec.terminal, status_bar: spec.status, defaults_file: st.defaults_file, user_conf: st.user_conf, changed: !unchanged, reloaded, user_conf_target: userConfTarget, live_plan: livePlan, live_changed: liveChanged, live_reasserted: liveReasserted,
     ...(dry ? { preview: { defaults_file_content: conf, source_line: line } } : {}) },
     `${dry ? "would install" : unchanged && !reloaded ? "already installed" : "installed"}: tmux defaults (clipboard=${spec.mode}${spec.terminal === "inherit" ? ", your default-terminal kept" : ""}${spec.status ? ", status bar" : ""}) in ${st.defaults_file}, source line in ${st.user_conf}` +
+    `${userConfTarget ? `; ${dry ? "would write" : "writes"} through symlink ${st.user_conf} to ${userConfTarget}` : ""}` +
+    `${dry ? `; live plan: ${livePlan}` : reloaded ? `; live options changed by TAP: ${liveChanged.join(", ") || "none"}; user config reasserted: ${liveReasserted.join(", ") || "none"}` : ""}` +
+    `${livePlan === "manual-reload" ? "; live settings untouched: config cannot be safely replayed automatically" : ""}` +
     `${normalizeLine ? " (source line moved back before your settings)" : ""}` +
-    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + shellQuote(st.defaults_file) : ""}` +
+    `${!dry && !unchanged && !reloaded ? "; a running tmux picks them up when it restarts, or now: tmux source-file " + shellQuote(st.user_conf) : ""}` +
     `${!dry && !unchanged ? "; for terminal colors, detach and reattach the current tmux client after loading the defaults" : ""}` +
     `${!dry && !unchanged && owned?.status && !spec.status ? "; the status bar already loaded stays until tmux restarts" : ""}`);
   return 0;

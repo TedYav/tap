@@ -9,7 +9,7 @@
 | `goalie_unarmed`, `no_goalie_episode`, `goalie_episode_closed` | `goalie verdict` | Arm first, wait for a judge request, or wait for real activity to open the next episode. |
 | `goalie_verdict_failed` | `goalie verdict` | The matching episode could not be claimed; inspect `tap goalie status --json` and retry only from the current judge request. |
 | `suspended` | `send` | The registry entry is parked; re-register it. |
-| `unsafe_target` | `send` | The pane is now a shell/editor/pager rather than an agent REPL; no artifacts were created. |
+| `unsafe_target` | `send` | The pane is now a shell/editor/pager rather than an agent REPL; no artifacts were created. For a registered seat the action is the repair: run `tap in <seat>` from inside an agent, or `tap launch`. |
 | `unsupported_harness` | `send` | The pane command has no supported injection adapter; no artifacts were created. |
 | `spooled_id` | `send` | The requested id already has a spool entry; wait for redelivery or remove the spool entry. |
 | `clear_in_progress` | `clear` | Another clear of this seat holds the fence; nothing was stamped or replaced. Wait, then retry. |

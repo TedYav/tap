@@ -8,6 +8,16 @@
 
 **Registry authority:** With the global `schema: "0.20"` marker live, every current lifecycle verb resolves the enrolled root's acting team registry and refuses before mutation when that authority is invalid or unreachable. No current verb falls back to the bus mirror or archived launcher journal. Retired lifecycle spellings are absent from dispatch and help rather than retained as deferred implementations.
 
+**Help before effects:** `--help` and reserved `-h` before a `--` separator
+print the command page on stdout and exit 0 before onboarding, journaling,
+refusal recording or command effects. The public wrapper suppresses Bun
+startup-cache writes for help. A known family subcommand selects its page;
+resource operands are ignored when selecting a page. A positional `help`
+remains data wherever it could name a resource. Launch retains its more
+specific argument-ownership rules below.
+Renamed `roster` and `reset` retain their exact help exceptions; all other
+argv reaches their documented refusal.
+
 **Launch help:** `tap launch` and `tap session launch` recognize `-h`/`--help`
 before onboarding, public debug journaling or launch effects. Help uses the
 launch grammar: option values remain values; explicit `--` and the existing

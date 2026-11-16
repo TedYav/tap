@@ -37,7 +37,7 @@ import { rootIndexable, enrollPreflight, teamNameForRoot, bornLiveBootstrap, boo
 import { humanLine } from "../native-error";
 import { ensureSeatInstance, currentInstance, resolveHandleByPane, supersedeForwardingAliases, type RegistryDoc } from "../registry";
 import { acquireRegistryLock, lockRoot } from "../panelock";
-import { agentFamilies, harnessFallbackHandle } from "../observe";
+import { agentFamilies, harnessFallbackHandle, noAgentRecovery, readProcessTableMemoized, shellSeatEvidence } from "../observe";
 import { pidHasAncestor } from "../process-ancestry";
 import { isPaneId } from "../lifecycle-target";
 import { SEAT_ALIVE, SEAT_PANE_GONE, SEAT_PANE_RECYCLED, SEAT_UNOBSERVABLE, isLaunchReservation, samePaneIdentity, seatVerdict, type ChooserObservation } from "../seat-verdict";
@@ -53,6 +53,7 @@ import { validateLockedRegistryAuthority as sharedValidateAuthority } from "../s
 import { startupTrace, withStartupTrace } from "../startup-trace";
 import { USER_IDENTITY } from "../ids";
 import { artifactBun, runtimeModule, tapScriptsDir } from "../scripts-dir";
+import { ownBun, ownBunFlags } from "../own-bun";
 
 const TAP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const COURIER_IDENTITY = "courier";
@@ -435,7 +436,7 @@ function supersedeStaleForwardingAliases(doc: JsonMap, agents: JsonMap): void {
   // what silently rounds an unrelated unknown-extension integer riding
   // inside a forwarding record (e.g. 9007199254740993 -> ...992).
   const input = `{"seats":${JSON.stringify(seatsOut)},"seat_forwardings":${dumps(forwardings, true)}}`;
-  const r = spawnSync(artifactBun() ?? "bun", [runtimeModule("src/forwarding.ts"), "supersede"], {
+  const r = spawnSync(ownBun(), [...ownBunFlags(), runtimeModule("src/forwarding.ts"), "supersede"], {
     input,
     encoding: "utf8",
   });
@@ -2204,7 +2205,7 @@ function paneTransaction(ctx: TxnCtx): number {
     if (releasedList.length > 0) {
       mkdirSync(bus.payloads, { recursive: true });
       mkdirSync(bus.receipts, { recursive: true });
-      const capsR = spawnSync(artifactBun() ?? "bun", [runtimeModule("src/seat-adopt.ts"), "caps"], { encoding: "utf8", timeout: 15_000 });
+      const capsR = spawnSync(ownBun(), [...ownBunFlags(), runtimeModule("src/seat-adopt.ts"), "caps"], { encoding: "utf8", timeout: 15_000 });
       if (capsR.status === 0 && capsR.stdout) {
         try {
           const caps = JSON.parse(capsR.stdout) as { max_adopted_handles?: number };
@@ -2214,7 +2215,7 @@ function paneTransaction(ctx: TxnCtx): number {
       const capped = releasedList.slice(0, cap);
       // The owner checks its deadline before starting each handle. A started
       // rewrite must finish; killing this child can lose its actual outcome.
-      const r = capped.length === 0 ? null : spawnSync(artifactBun() ?? "bun", [
+      const r = capped.length === 0 ? null : spawnSync(ownBun(), [...ownBunFlags(),
         runtimeModule("src/seat-adopt.ts"), "adopt-batch",
         bus.payloads, bus.receipts, chosen, team, String(deadline),
         ...capped.map((e) => e.handle),
@@ -2292,6 +2293,17 @@ function paneTransaction(ctx: TxnCtx): number {
     process.stdout.write(`tap register: REACTIVATED seat ${team}/${chosen} — session ${harnessSessionId} (was suspended), pane ${observed!.paneId || "-"}\n`);
   } else if (!ctx.jsonMode) {
     process.stdout.write(`tap register: registered ${chosen} on team ${team}\n`);
+  }
+  // Registration stands either way; a newcomer who typed this at a prompt
+  // learns now, not from a sender's refusal, that nothing can reach this seat.
+  if (!ctx.jsonMode) {
+    const evidence = shellSeatEvidence(harness, observed?.panePid ?? "", () => readProcessTableMemoized(ctx.env), agentFamilies(ctx.env));
+    if (evidence === "shell") {
+      process.stderr.write(`tap register: ${chosen}'s pane runs a shell, not an agent, so messages sent to ${chosen} cannot be delivered; next: ${noAgentRecovery(chosen)}\n`);
+    } else if (evidence === "unidentified") {
+      // A runtime name alone does not say whether an agent runs under it.
+      process.stderr.write(`tap register: could not tell whether ${chosen}'s pane holds a supported agent (its foreground program is '${harness}' and process inspection did not settle it), so messages sent to ${chosen} may be refused; next: tap team\n`);
+    }
   }
   // Post-commit tail timing (launchfast): one trace row splits the
   // write→register_end tail across its steps. control_lines_ms holds the

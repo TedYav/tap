@@ -8,6 +8,7 @@ test("implicit reporting discovers the caller once and keeps pane precedence", (
       [["whoami", "--json"], 5],
       [["outstanding", "self", "--json"], 7],
       [["show", f.id], 4],
+      [["poll", "--json"], 7],
     ] as const) {
       const r = f.run([...args]);
       expect(r.code, r.stderr).toBe(0);

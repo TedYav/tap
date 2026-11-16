@@ -1,12 +1,14 @@
 ---
 name: ask
-description: "For one bounded prompt needing no TAP seat, follow-up, or lifecycle, run a stateless harness question and print the answer."
+description: "Run one stateless headless harness prompt and print the answer; no TAP seat or follow-up. To ask a teammate, use tap send --ask."
 argument-hint: '<preset|harness> -f <prompt.md> | -m "..." [--model <tier>]'
 allowed-tools: 'Bash'
 role: maker
 ---
 
 # /tap:ask — one-shot harness invocation
+
+No teammate receives this. To ask a seat a question, use `tap send <seat> --ask -f <file>`.
 
 ```bash
 tap ask <preset|harness> -f <prompt.md> | -m "..." [--model <tier>]

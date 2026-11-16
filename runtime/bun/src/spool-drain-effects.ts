@@ -33,7 +33,7 @@ import { recordLockPark } from "./lock-attribution";
 import { DEFAULT_AGENT_FAMILIES } from "./observe";
 import { loadRegistry, seatMap } from "./registry";
 import { RESET_HELD_LOCK_WAIT_MS, withResetCustody } from "./reset";
-import { renderSentinel } from "./sentinel";
+import { assertSentinelRouting, renderSentinel } from "./sentinel";
 import { senderIndexEvidence, spoolRecipientBusHome } from "./remote-target";
 import { reownAfterRepark } from "./spool-reown";
 import { clearReparkPending, markReparkPendingOutcome, stagedIdleHoldOutcome } from "./spool-repark";
@@ -325,7 +325,7 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
     let wire = "";
     try {
       const raw = readFileSync(canon, "utf8"), field = (name: string) => envelopeField(raw, name) ?? "";
-      if (field("id") !== id || !field("from") || !field("to") || !field("kind")) throw new Error("missing canonical routing fields");
+      assertSentinelRouting(field, id);
       const from = field("from_team") ? `${field("from_team")}/${field("from")}` : field("from");
       const to = field("to_team") ? `${field("to_team")}/${field("to")}` : field("to");
       const fromTeam = from.includes("/") ? from.split("/", 1)[0]! : "";
@@ -336,7 +336,10 @@ function singleEffectCustody(ctx: DrainContext, id: string, b: SpoolBinding, for
       wire = renderSentinel({ id, from, to, kind: field("kind"),
         senderIndex: fromTeam && toTeam && fromTeam !== toTeam ? senderIndexEvidence(fromTeam, ctx.env?.TAP_INDEX_HOME) : undefined,
         reply: field("reply") || "expected", urgency: retry ? "" : field("urgency"), path: canon, ...(retry ? { retry: true } : {}) });
-    } catch { repark(); return refused; }
+    } catch (error) {
+      process.stderr.write(`tap: spool delivery refused: ${error}\n`);
+      repark(); return refused;
+    }
     if (!registryMatchesTeam(b.targetRegistry, b.toTeam)) { repark(true); return refused; }
     if (boundPaneIdentityState(b.targetRegistry, b.target, b.pane, b.paneId, ctx.env) !== "match") { repark(); return refused; }
     const harness = paneHarnessAt(b.pane, ctx.env);

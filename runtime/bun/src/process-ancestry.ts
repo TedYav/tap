@@ -7,16 +7,23 @@
 import { spawnSync } from "node:child_process";
 import { libprocRow } from "./proc-row";
 import { reportingMemo, reportingMemoActive } from "./invocation-memo";
-import { REGISTRY_MAX_BUFFER } from "./spawn";
+import { IDENTITY_PROBE_TIMEOUT_MS, REGISTRY_MAX_BUFFER } from "./spawn";
 
 /** A process's parent pid and controlling tty, as `ps` spells them. */
 export interface ProcessRow { ppid: string; tty: string }
 
-const reportingRows = reportingMemo<Map<number, ProcessRow> | null>();
+const PROBE_OPTIONS = { timeout: IDENTITY_PROBE_TIMEOUT_MS, killSignal: "SIGKILL" as const };
 
-function reportingProcessRow(pid: number, env: NodeJS.ProcessEnv): ProcessRow | null {
+const reportingRows = reportingMemo<Map<number, ProcessRow> | "timeout" | null>();
+
+function timedOut(error: Error | undefined): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+}
+
+function reportingProcessRow(pid: number, env: NodeJS.ProcessEnv): ProcessRow | null | undefined {
   const rows = reportingRows(env.PATH ?? "", () => {
-    const result = spawnSync("ps", ["-Ao", "pid=,ppid=,tty="], { encoding: "utf8", env, maxBuffer: REGISTRY_MAX_BUFFER });
+    const result = spawnSync("ps", ["-Ao", "pid=,ppid=,tty="], { encoding: "utf8", env, maxBuffer: REGISTRY_MAX_BUFFER, ...PROBE_OPTIONS });
+    if (timedOut(result.error)) return "timeout";
     // Preserve the kernel fallback when a sandbox cannot spawn ps.
     if (result.error) return null;
     const table = new Map<number, ProcessRow>();
@@ -28,9 +35,9 @@ function reportingProcessRow(pid: number, env: NodeJS.ProcessEnv): ProcessRow | 
     }
     return table;
   });
-  if (rows) return rows.get(pid) ?? null;
+  if (rows && rows !== "timeout") return rows.get(pid) ?? null;
   const raw = libprocRow(pid);
-  if (!raw) return null;
+  if (!raw) return rows === "timeout" ? undefined : null;
   const [ppid = "", tty = ""] = raw.split(/[ \t]+/);
   return { ppid, tty };
 }
@@ -75,10 +82,13 @@ function reportingProcessRow(pid: number, env: NodeJS.ProcessEnv): ProcessRow | 
  * `ps` that cannot run at all (a sandbox forbids exec of setuid binaries)
  * falls back to the OS process table.
  */
-export function processRow(pid: number, env: NodeJS.ProcessEnv = process.env): ProcessRow | null {
+/** Undefined means a timed-out probe and no independent kernel answer. */
+export function processRow(pid: number, env: NodeJS.ProcessEnv = process.env): ProcessRow | null | undefined {
   if (reportingMemoActive()) return reportingProcessRow(pid, env);
-  const row = spawnSync("ps", ["-o", "ppid=", "-o", "tty=", "-p", String(pid)], { encoding: "utf8", env });
-  const raw = (row.error ? libprocRow(pid) ?? "" : row.stdout ?? "").replace(/\n+$/, "");
+  const row = spawnSync("ps", ["-o", "ppid=", "-o", "tty=", "-p", String(pid)], { encoding: "utf8", env, ...PROBE_OPTIONS });
+  const kernel = row.error ? libprocRow(pid) : null;
+  if (timedOut(row.error) && kernel === null) return undefined;
+  const raw = (row.error ? kernel ?? "" : row.stdout ?? "").replace(/\n+$/, "");
   if (!raw) return null;
   const firstRecord = raw.split("\n", 1)[0] ?? "";
   const fields = firstRecord.replace(/^[ \t]+|[ \t]+$/g, "").split(/[ \t]+/);
@@ -97,29 +107,38 @@ export function processRow(pid: number, env: NodeJS.ProcessEnv = process.env): P
  * that proof read the canned row and refuse every self-attested rebind (full
  * gate on c40af9e16). The libproc fallback still answers when `ps` cannot run.
  */
-export function parentPid(pid: number, env: NodeJS.ProcessEnv = process.env): string {
-  const row = spawnSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", env });
-  const raw = row.error ? libprocRow(pid) ?? "" : row.status === 0 ? row.stdout ?? "" : "";
+function readParentPid(pid: number, env: NodeJS.ProcessEnv): string | undefined {
+  const row = spawnSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", env, ...PROBE_OPTIONS });
+  const kernel = row.error ? libprocRow(pid) : null;
+  if (timedOut(row.error) && kernel === null) return undefined;
+  const raw = row.error ? kernel ?? "" : row.status === 0 ? row.stdout ?? "" : "";
   const first = (raw.replace(/\n+$/, "").split("\n", 1)[0] ?? "").replace(/^[ \t]+|[ \t]+$/g, "");
   return first.split(/[ \t]+/)[0] ?? "";
 }
 
-/**
- * tap_pid_has_ancestor: the fail-closed process-ancestry walk. True when PID
- * is ANCESTOR or descends from it within 64 steps; an unreadable row, a
- * non-numeric parent, or reaching init refuses. ANCESTOR that is not a pid
- * refuses without a probe.
- */
-export function pidHasAncestor(pid: number, ancestor: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (!/^\d+$/.test(ancestor)) return false;
+export function parentPid(pid: number, env: NodeJS.ProcessEnv = process.env): string {
+  return readParentPid(pid, env) ?? "";
+}
+
+export type AncestryState = "descendant" | "not-descendant" | "unobservable";
+
+/** Keep unavailable ancestry distinct from a completed negative walk. */
+export function ancestryState(pid: number, ancestor: string, env: NodeJS.ProcessEnv = process.env): AncestryState {
+  if (!/^\d+$/.test(ancestor)) return "not-descendant";
   let current = pid;
   for (let i = 0; i < 64; i++) {
-    if (String(current) === ancestor) return true;
-    const parent = parentPid(current, env);
-    if (!/^\d+$/.test(parent)) return false;
+    if (String(current) === ancestor) return "descendant";
+    const parent = readParentPid(current, env);
+    if (parent === undefined) return "unobservable";
+    if (!/^\d+$/.test(parent)) return "not-descendant";
     const ppid = Number(parent);
-    if (ppid <= 1 || ppid === current) return false;
+    if (ppid <= 1 || ppid === current) return "not-descendant";
     current = ppid;
   }
-  return false;
+  return "unobservable";
+}
+
+/** Boolean ownership proofs remain fail-closed on unavailable ancestry. */
+export function pidHasAncestor(pid: number, ancestor: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return ancestryState(pid, ancestor, env) === "descendant";
 }

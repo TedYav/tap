@@ -5,10 +5,10 @@ export { withoutCodexPaint };
 import { opencodeBoxText } from "./opencode-composer";
 // A submission decision uses one joined frame, never an id's disappearance alone.
 import { capturePane, isOpenCodeCommand, normalizeInputMatch, promptLineRe, promptRowReAwk, tmux } from "./tmux";
-import { classifyPane, claudeActiveBoxRange, claudeBox, claudeFeedbackOverlay, claudeQueuedRows, isPasteCollapse } from "./pane-state";
+import { classifyPane, claudeActiveBoxRange, claudeBox, claudeFeedbackCard, claudeQueuedRows, isPasteCollapse } from "./pane-state";
 import { agentAtRest, approvalPrompt, detectAgentState } from "./agent-state";
 import { parseStuckSentinel } from "./stuck-sentinel";
-import { matchSentinelSuffix, sentinelShapedInput } from "./sentinel-tail";
+import { matchSentinelSuffix } from "./sentinel-tail";
 import { dimPromptInput, promptGlyph } from "./pane/geometry";
 
 export type SubmitFrame = { state: "staged" | "empty" | "queued" | "changed" | "unobservable"; mode: "idle" | "working" | "mid-turn"; width: string; fused?: boolean;
@@ -22,10 +22,13 @@ export type SubmitFrame = { state: "staged" | "empty" | "queued" | "changed" | "
    * in with `scrolledControl`; an ordinary wire sets it whenever its tail is
    * recognized by the shared suffix rule (tap-1ncs6, `sentinel-tail.ts`). */
   scrolled?: boolean;
-  /** Claude's feedback-draft panel is up: no authority may press Enter (tap-89a57).
-   * An approval prompt or trust dialog is up: no authority may press Enter either,
+  /** An approval prompt or trust dialog is up: no authority may press Enter,
    * since Enter selects its highlighted choice (tap-rlebf.1). */
-  held?: "feedback-draft" | "approval" };
+  held?: "approval";
+  /** Claude only: the feedback card hides the composer (tap-89a57). The frame
+   * stays `unobservable`: only a submit that pasted onto a positively empty
+   * composer may read `text` as its own wire. */
+  card?: "hidden" | "text" };
 
 /** Cursor warning tints recolor the composer; only its closed borders bound it. */
 export function cursorComposer(frame: string): string | null {
@@ -85,7 +88,84 @@ export function agyComposer(frame: string): string | null {
   const rows = lines.slice(top + 1, bottom);
   while (rows.length && !rows.at(-1)!.trim()) rows.pop();
   const typed = rows.map(line => line.replace(/^\s*>\s?/, ""));
-  return typed.some(line => line.trim()) ? typed.join("\n") : "";
+  if (!typed.some(line => line.trim()) || agyModeHint(frame)) return "";
+  return typed.join("\n");
+}
+
+/** One painted cell: its character, its foreground, and whether only a foreground paints it. */
+interface PaintedCell { ch: string; fg: string | null; plain: boolean }
+
+/**
+ * The painted cells of the named rows, or null when one of them carries a
+ * sequence this walk does not model. tmux emits only paint CHANGES, so a row's
+ * paint depends on the rows above it: the walk covers the frame from its first
+ * byte and never starts at a row.
+ */
+function paintedRows(frame: string, rows: number[]): Map<number, PaintedCell[]> | null {
+  const out = new Map<number, PaintedCell[]>(rows.map(row => [row, []]));
+  let row = 0, fg: string | null = null, known = true;
+  const other = new Set<number>();
+  for (let i = 0; i < frame.length; i++) {
+    const ch = frame[i]!;
+    if (ch === "\n") { row++; continue; }
+    if (ch !== "\x1b") { out.get(row)?.push({ ch, fg, plain: known && other.size === 0 }); continue; }
+    const sgr = /^\x1b\[([0-9;]*)m/.exec(frame.slice(i, i + 64));
+    if (!sgr) { if (out.has(row)) return null; continue; }
+    i += sgr[0].length - 1;
+    const params = sgr[1]!.split(";").map(value => Number(value || 0));
+    for (let p = 0; p < params.length; p++) {
+      const value = params[p]!;
+      if (value === 0) { fg = null; known = true; other.clear(); }
+      else if (value === 38 && params[p + 1] === 2 && p + 4 < params.length) { fg = params.slice(p, p + 5).join(";"); p += 4; }
+      else if (value === 38 && params[p + 1] === 5 && p + 2 < params.length) { fg = params.slice(p, p + 3).join(";"); p += 2; }
+      else if ((value >= 30 && value <= 37) || (value >= 90 && value <= 97)) fg = String(value);
+      else if (value === 39) fg = null;
+      else if (value >= 1 && value <= 9) other.add(value);
+      else if (value === 22) { other.delete(1); other.delete(2); }
+      else if (value >= 23 && value <= 29 && value !== 26) other.delete(value - 20);
+      // A background, an underline colour or any other parameter: not a
+      // foreground-only cell until the next full reset.
+      else { known = false; break; }
+    }
+  }
+  return out;
+}
+
+/**
+ * Antigravity paints a mode hint where typed text goes: at start and after a
+ * shift+tab mode cycle an empty composer reads `> Auto mode: … (shift+tab to
+ * cycle)` until the first keystroke. Paint decides, never the sentence (it
+ * names the mode and is cut short in a narrow pane) and never a pinned colour
+ * (it is the theme's). The hint is the composer's only row, every character of
+ * it carries one explicit foreground and nothing else, and that foreground is
+ * the one on the `? for shortcuts` cue directly below the band, which
+ * Antigravity paints only while the composer is empty. Typed and pasted text
+ * carry the default foreground. Each condition must hold on the same painted
+ * frame; a plain capture, a second row, a task card above the cue or an
+ * unmodelled sequence leaves the text a draft.
+ */
+export function agyModeHint(frame: string): boolean {
+  if (!frame.includes("\x1b[")) return false;
+  const band = agyBand(frame);
+  if (!band) return false;
+  const { lines, top, bottom } = band;
+  const filled: number[] = [];
+  for (let i = top + 1; i < bottom; i++) if (lines[i]!.trim()) filled.push(i);
+  const cueRow = bottom + 1;
+  if (filled.length !== 1 || !/^\s*>\s+\S/.test(lines[filled[0]!]!)) return false;
+  if (!/^\s*\? for shortcuts(?:\s|$)/.test(lines[cueRow] ?? "")) return false;
+  const painted = paintedRows(frame, [filled[0]!, cueRow]);
+  if (!painted) return false;
+  const oneForeground = (cells: PaintedCell[]): string | null => {
+    const inked = cells.filter(cell => cell.ch.trim());
+    const fg = inked[0]?.fg ?? null;
+    return fg !== null && inked.every(cell => cell.plain && cell.fg === fg) ? fg : null;
+  };
+  const prompt = painted.get(filled[0]!)!;
+  const cue = painted.get(cueRow)!;
+  const hint = oneForeground(prompt.slice(prompt.findIndex(cell => cell.ch === ">") + 1));
+  const cueStart = cue.findIndex(cell => cell.ch === "?");
+  return hint !== null && hint === oneForeground(cue.slice(cueStart, cueStart + "? for shortcuts".length));
 }
 
 /** Full AGY wire equality modulo renderer-only padding and visual wrapping.
@@ -517,14 +597,17 @@ function readFrameText(frame: string, command: string, expected: string, width: 
     return { state: "staged", scrolled: true, mode, width, text: actual };
   }
   // tap-1ncs6: an ordinary wire whose head scrolled out of Claude's composer
-  // viewport is its own tail, recognized by the shared shape-and-suffix rule.
+  // viewport is its own tail, recognized by the shared suffix rule.
   // The band was read empty before this wire was typed, and a human keystroke
   // during the paste lands at the cursor and breaks the suffix, so the visible
-  // tail is sole content. `tap nudge` on a scrolled tail passes the tail
-  // itself as `expected`, which matches whole (whitespace-free) and is still
-  // a scrolled read. Controls keep their own proof above.
-  if (!matches && actual && command.startsWith("claude") && (isOrdinarySentinel(expected) || sentinelShapedInput(expected))
-      && matchSentinelSuffix(actual, expected) !== null) {
+  // tail is sole content. The cascade and `tap nudge` pass a tail they already
+  // proved against the pane's typed-wire record as `expected`; it matches whole
+  // (whitespace-free) and is still a scrolled read. This reader only confirms
+  // the composer still holds that text. Whether `expected` is wire text at all
+  // is the suffix rule's own question (`sentinel-tail.ts`): a typed control
+  // closes with `]]` too and never takes this arm, because its whitespace and
+  // its head are content. The two control arms above are its only proof.
+  if (!matches && actual && command.startsWith("claude") && matchSentinelSuffix(actual, expected) !== null) {
     const scrolled = !normalizeInputMatch(actual).startsWith("[[TAP");
     return { state: "staged", ...(scrolled ? { scrolled } : {}), mode, width, text: actual };
   }
@@ -541,7 +624,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
  * The ORDER is the contract and it is not `readFrame`'s order, which is why
  * this is its own function rather than a call into that one:
  *   - the approval check runs for claude and codex ONLY, not every harness;
- *   - claude's feedback overlay blocks before its box is read;
+ *   - claude's feedback card is read before its box: hidden text blocks, a hidden empty composer reads empty;
  *   - the generic path requires a prompt region to EXIST before cursor's box
  *     reader is consulted, so a cursor pane with no prompt row is UNKNOWN
  *     while a cursor pane with a prompt row but unreadable box geometry is
@@ -573,7 +656,10 @@ export function composerInput(frame: string, command: string): ComposerInput {
 
   if (approvalPrompt(command, delegated)) return blocked;
   if (command.startsWith("claude")) {
-    if (claudeFeedbackOverlay(delegated)) return blocked;
+    // A composer the feedback card hides is unreadable input the courier must
+    // not type onto (tap-89a57).
+    const card = claudeFeedbackCard(delegated);
+    if (card && card.composer !== "visible") return blocked;
     // `raw`, not `typed`. The Bash door returned whatever the `claude-box` CLI
     // mode prints, and that mode prints `box.raw` — trailing spaces on every
     // row preserved. `typed` additionally strips per-row trailing blanks and
@@ -589,9 +675,10 @@ export function composerInput(frame: string, command: string): ComposerInput {
   // this file. Callers pass the pane's basename, so basename-and-lowercase only
   // widens spellings no production caller sends; `agy` stays exact.
   if (isOpenCodeCommand(command)) return text(opencodeBoxText(delegated));
-  // The agy reader saw an ANSI-stripped frame through the Bash pipe, so it does
-  // here too rather than being handed the raw one.
-  if (command === "agy") return text(agyComposer(stripCsi(delegated)));
+  // The agy reader strips paint itself. It is handed the frame as captured so
+  // its mode-hint check, the one reader of paint here, can see it; a plain
+  // frame reads exactly as before.
+  if (command === "agy") return text(agyComposer(delegated));
 
   // Generic: the LAST prompt row and everything after it. The incumbent's awk
   // reset its accumulator at every match, which is what makes it the last — and
@@ -705,7 +792,6 @@ export type SentinelDecision = { action: "submit" } | { action: "withhold"; reas
 
 /** Existing active modal witnesses; footer URLs and transcript words are data. */
 function obviousDialog(frame: string, command: string): boolean {
-  if (command.startsWith("claude") && claudeFeedbackOverlay(frame)) return true;
   if (command === "agy" && agyPermissionOverlay(frame)) return true;
   if (detectAgentState(command, frame).agentState === "blocked") return true;
   if (isOpenCodeCommand(command)) {
@@ -715,16 +801,8 @@ function obviousDialog(frame: string, command: string): boolean {
   return false;
 }
 
-/**
- * Claude's feedback-draft panel takes the pane's keys, so liveness never
- * overrides it (tap-89a57): its anchored detector is not status chrome.
- */
-function heldSurface(frame: string, command: string): boolean {
-  return command.startsWith("claude") && claudeFeedbackOverlay(frame);
-}
-
 export function sentinelSubmitDecision(frame: string, command: string, expected: string, harnessAlive = false): SentinelDecision {
-  if (approvalPrompt(command, frame) || heldSurface(frame, command)) return { action: "withhold", reason: "dialog" };
+  if (approvalPrompt(command, frame)) return { action: "withhold", reason: "dialog" };
   const input = sentinelInputTail(frame, command);
   const want = normalizeInputMatch(expected);
   const visible = input !== null && (normalizeInputMatch(input).includes(want) ||
@@ -756,7 +834,7 @@ export function visibleSentinel(frame: string, command: string): string | null {
  * nudge samples it twice after an OpenCode repaint before one Enter.
  */
 export function visibleSentinelId(frame: string, command: string, harnessAlive = false): string | null {
-  if (approvalPrompt(command, frame) || heldSurface(frame, command)) return null;
+  if (approvalPrompt(command, frame)) return null;
   if (obviousDialog(frame, command) && !harnessAlive) return null;
   const wire = visibleSentinel(frame, command);
   if (wire === null) return null;
@@ -768,7 +846,10 @@ export function classifySubmitFrame(frame: string, command: string, expected: st
   const read = readFrame(frame, command, expected, width, scrolledControl);
   const { text: _text, ...result } = read;
   if (approvalPrompt(command, frame)) return { ...result, state: "unobservable", held: "approval" };
-  if (heldSurface(frame, command)) return { ...result, state: "unobservable", held: "feedback-draft" };
+  if (command.startsWith("claude")) {
+    const card = claudeFeedbackCard(frame);
+    if (card && card.composer !== "visible") return { ...result, state: "unobservable", card: card.composer };
+  }
   if (command.startsWith("claude") && result.state !== "unobservable" && claudeQueuedControlMatches(frame, expected)) {
     return { ...result, state: "queued", mode: "working" };
   }
@@ -776,8 +857,9 @@ export function classifySubmitFrame(frame: string, command: string, expected: st
   // tap-maavp effect 2: inside a READABLE BOUNDED composer every byte is
   // composer content, so our wire plus other non-space bytes is the
   // recipient's own input fused around it — Enter would submit that input
-  // with the wire. Flag it `fused` and keep it `changed`; the caller backs up
-  // the foreign bytes, clears, re-injects, then Enters. The earlier promotion
+  // with the wire. Flag it `fused` and keep it `changed`: the courier reads
+  // `changed`, withholds Enter and leaves the band as it is. No caller
+  // recovers a fused band (back up, clear, re-inject). The earlier promotion
   // stays for its own case: unknown chrome rows, or the wire visible while
   // the composer itself is unreadable or unbounded (generic regions).
   const boundedRead = read.text !== null && (isOpenCodeCommand(command)
@@ -939,8 +1021,6 @@ if (import.meta.main) {
     process.stdout.write(composerMatches(input, process.argv[3] ?? "", process.argv[4] ?? "", process.argv[5] === "1", process.argv[6], process.argv[7] === "1") ? "yes" : "no");
   } else if (process.argv[2] === "approval-prompt") {
     process.stdout.write(approvalPrompt(process.argv[3] ?? "", input) ? "blocked" : "clear");
-  } else if (process.argv[2] === "claude-feedback-overlay") {
-    process.stdout.write(claudeFeedbackOverlay(input) ? "blocked" : "clear");
   } else if (process.argv[2] === "claude-box") {
     const box = claudeBox(input);
     process.stdout.write(box === null ? "unknown" : `known:${box.raw}`);

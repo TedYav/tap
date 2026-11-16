@@ -25,7 +25,7 @@
 import { createHash } from "node:crypto";
 import { AWK_POSIX_SPACE, HERMES_PREFIX, PYTHON_SPACE, normalizeInputMatch } from "../terminal-text";
 import { approvalPrompt } from "../agent-state";
-import { claudeActiveBoxRange, claudeFeedbackOverlay } from "../pane-state";
+import { claudeActiveBoxRange, claudeFeedbackCard } from "../pane-state";
 import { agyComposer, agyPermissionOverlay, composerInput } from "../submit-frame";
 import { opencodeBoxText, opencodeTerminalOverprint } from "../opencode-composer";
 import { tmux } from "../tmux";
@@ -504,7 +504,10 @@ export function pendingInputText(io: PaneIo, target: string, cmd: string, frame?
     }
     if (approvalPrompt(cmd, overlayFrame)) return { status: "blocked" };
     if (cmd.startsWith("claude")) {
-      if (claudeFeedbackOverlay(overlayFrame)) return { status: "blocked" };
+      // The feedback card is not a modal, but a composer it hides is
+      // unreadable input, which holds like a modal (tap-89a57).
+      const card = claudeFeedbackCard(overlayFrame);
+      if (card && card.composer !== "visible") return { status: "blocked" };
       promptSource = overlayFrame;
     }
   }

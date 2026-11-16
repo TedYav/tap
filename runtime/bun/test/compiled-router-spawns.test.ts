@@ -41,11 +41,14 @@ function world() {
     recordedSoon: (file: string) => { for (let i = 0; i < 100; i++) { if (existsSync(join(root, "state", file))) break; Bun.sleepSync(50); } return existsSync(join(root, "state", file)) ? readFileSync(join(root, "state", file), "utf8") : ""; } };
 }
 
+/** The flags every start of real Bun carries (src/own-bun.ts): the shipped config beside the router's own sources, no env file. */
+const ownFlags = () => [`--config=${join(compiledRouterSrc(), "../tap-bunfig.toml")}`, "--no-env-file"];
+
 test("the compiled router re-execs `tap goalie run` into real bun on the shipped goalie-run.ts", () => {
   const w = world();
   const result = w.run(["goalie", "run"]);
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
-  expect(w.recorded("bun-argv").trim().split("\n")).toEqual([join(compiledRouterSrc(), "goalie-run.ts"), "run"]);
+  expect(w.recorded("bun-argv").trim().split("\n")).toEqual([...ownFlags(), join(compiledRouterSrc(), "goalie-run.ts"), "run"]);
 }, 120000);
 
 test("in a release artifact the compiled router re-execs `tap goalie run` through libexec/tap/bun, not bun from PATH", () => {
@@ -67,7 +70,7 @@ test("the compiled router starts the goalie sidecar window on real bun and the s
   const result = w.run(["goalie", "on", "--by", "owner", "--goalie", "goalie", "--threshold", "60", "--interval", "60"]);
   const line = w.recorded("tmux-new-window");
   expect(line, `rc=${result.status} out=[${result.stdout}] err=[${result.stderr}]`).not.toBe("");
-  expect(line).toContain(` exec '${join(w.root, "bin/bun")}' '${join(compiledRouterSrc(), "goalie-run.ts")}' run`);
+  expect(line).toContain(` exec '${join(w.root, "bin/bun")}' ${ownFlags().map(flag => `'${flag}'`).join(" ")} '${join(compiledRouterSrc(), "goalie-run.ts")}' run`);
   expect(line).not.toContain("$bunfs");
 }, 120000);
 
@@ -78,5 +81,5 @@ test("the compiled router launches the `tap remind --when-done` custodian on rea
   const result = w.run(["remind", "peer", "--when-done", "true", "--circle-back", "5m", "--fallback", "fallback", "-f", body]);
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
   const argv = w.recordedSoon("bun-argv").trim().split("\n");
-  expect(argv).toEqual([join(compiledRouterSrc(), "remind-job.ts"), join(w.bus, "watch", "reminders.json"), expect.stringMatching(/^remind-[0-9a-f]{16}$/)]);
+  expect(argv).toEqual([...ownFlags(), join(compiledRouterSrc(), "remind-job.ts"), join(w.bus, "watch", "reminders.json"), expect.stringMatching(/^remind-[0-9a-f]{16}$/)]);
 }, 120000);

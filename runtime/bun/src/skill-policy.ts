@@ -34,7 +34,7 @@ export function aliasBody(name: string, canonical: string, source: string): stri
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
   if (!match || !/^name: .+$/m.test(match[1]!)) throw new Error(`missing skill frontmatter: ${canonical}`);
   const metadata = match[1]!.replace(/^name: .+$/m, `name: ${name}`);
-  return `---\n${metadata}\n---\n\nRun \`tap help skill ${canonical}\`, then read the returned SKILL.md and follow it for the original task and arguments. Resolve all relative references from that canonical file's directory, never from this wrapper.\n`;
+  return `---\n${metadata}\n---\n\nBefore anything else, run \`tap help skill ${canonical}\`, read the returned SKILL.md and follow it. Everything that came with this invocation, flags and free text alike, is that skill's input: do not act on any of it until its instructions say how and when. Resolve all relative references from that canonical file's directory, never from this wrapper.\n`;
 }
 /** Codex has no frontmatter switch for user-only skills; its per-skill agents manifest carries one. */
 export const CODEX_AGENTS_FILE = "agents/openai.yaml";

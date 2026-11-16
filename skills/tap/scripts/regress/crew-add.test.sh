@@ -282,8 +282,14 @@ cat > "$FAKE_BIN/bun" <<'CREW_BUN'
 # crew add's register child is `bun <checkout>/runtime/bun/main.ts register …`
 # (verbArgv, B7c R2b); bin/tap's own exec carries the public verb, never
 # `register`, so only the child matches.
+# Bun's own flags come first; the entry file and its first argument follow them.
+n=1
+while [ "$n" -le "$#" ]; do
+  case "${!n}" in --config=*|--no-env-file) n=$((n + 1)) ;; *) break ;; esac
+done
+m=$((n + 1)); entry="${!n:-}"; mode="${!m:-}"
 if [ "${FAKE_REGISTER_EMPTY:-0}" = 1 ]; then
-  case "${1:-}:${2:-}" in
+  case "$entry:$mode" in
     */runtime/bun/main.ts:register) exit 37 ;;
   esac
 fi
@@ -293,7 +299,7 @@ fi
 if [ "${FAKE_CORRUPT_MARKER_AFTER_REGISTER:-0}" = 1 ] &&
    [ -n "${FAKE_AFTER_REGISTER_SNAPSHOT:-}" ] &&
    [ -n "${TEAM_REAL:-}" ]; then
-  case "${1:-}:${2:-}" in
+  case "$entry:$mode" in
     */runtime/bun/main.ts:register)
       child_rc=0
       "$REAL_CREW_BUN" "$@" || child_rc=$?
@@ -305,7 +311,7 @@ if [ "${FAKE_CORRUPT_MARKER_AFTER_REGISTER:-0}" = 1 ] &&
       ;;
   esac
 fi
-case "${1:-}" in
+case "$entry" in
   */launcher/crew-invocation.ts)
     case "${FAKE_LAUNCHER_REFUSAL:-}" in
       structured)
@@ -520,7 +526,7 @@ index_home = re.escape(sys.argv[2])
 # before the binary. Pin the forwarded value to this fixture's index rather
 # than tolerating any TAP_* there. This arm runs under the sandbox's empty
 # config dir, so the crew seat launches with the unsaved default, auto: Codex
-# gets --no-daemon, --approve-for-me and the launcher's per-launch profile
+# gets --no-daemon with the startup update check off, --approve-for-me and the launcher's per-launch profile
 # (-c pairs) before the model; no bypass flag appears.
 # The child's env is first scrubbed with `env -u VAR` for the
 # identity and launch-evidence variables the parent holds, so the assignments
@@ -531,7 +537,7 @@ assert "-u TAP_LAUNCH_ROOT -u TAP_LAUNCH_ID " in sent, sent
 assert re.search(
     r"exec env \S+ -lic 'exec \"\$0\" \"\$@\"' /usr/bin/env (?:-u \S+ )+"
     r"CREW_SMOKE_FLAG=on CREW_SMOKE_SECOND=two TAP_BOOT_ID=\S+ TAP_INDEX_HOME=" + index_home + r" codex "
-    r"--no-daemon --approve-for-me (?:-c \S+ )+--model gpt-5\.6-sol",
+    r"--no-daemon -c check_for_update_on_startup=false --approve-for-me (?:-c \S+ )+--model gpt-5\.6-sol",
     sent,
 ), sent
 assert "--dangerously-bypass-approvals-and-sandbox" not in sent, sent

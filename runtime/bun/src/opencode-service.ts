@@ -7,6 +7,7 @@ import { bunBinary } from "./courier-argv";
 import { runtimeModule } from "./scripts-dir";
 import { libprocIdentity } from "./proc-row";
 import { OpenCodeWitnessCache, localOpenCodeURL, type OpenCodeProcess, type OpenCodeService } from "./opencode-shared";
+import { ownBunFlags } from "./own-bun";
 
 export function parseOpenCodeProcesses(text: string): Map<number, OpenCodeProcess> | null {
   const rows = new Map<number, OpenCodeProcess>();
@@ -124,7 +125,7 @@ export function readOpenCodeService(env: NodeJS.ProcessEnv = process.env,
  * Credentials travel on stdin, never in argv, logs or an opencode auto-start command. */
 export function openCodeAPI(service: OpenCodeService, path: string, method = "GET", body?: unknown): any {
   if (!localOpenCodeURL(service.url) || !path.startsWith("/api/") || path.startsWith("//")) throw new Error("invalid OpenCode endpoint");
-  const result = spawnSync(bunBinary(), [runtimeModule("src/opencode-service.ts"), "--request"], {
+  const result = spawnSync(bunBinary(), [...ownBunFlags(bunBinary()), runtimeModule("src/opencode-service.ts"), "--request"], {
     input: JSON.stringify({ url: service.url, password: service.password, path, method, body }),
     encoding: "utf8", timeout: 3000, maxBuffer: 4 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"],
   });

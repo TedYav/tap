@@ -21,12 +21,22 @@ for name in $identity_names; do identity_env+=("$name=ambient-session"); done
 # tap-lcuft: a sixth spelling of operator state — a sentinel PATH the runner
 # must strip, so `${CLAUDE_CONFIG_DIR:-~/.claude}` fallbacks land in scratch.
 identity_env+=("CLAUDE_CONFIG_DIR=$WORK/ambient-claude-config")
+# Focused tests must receive the gate's terminal, language and time zone even
+# when the developer's shell uses different values.
+identity_env+=(TERM=xterm-256color LANG=ambient-language TZ=Pacific/Honolulu LC_ALL=C LC_CTYPE=C)
 
 # The selected Bun's directory also contains a competing tmux. Only the
 # caller's guard may receive a child lookup; no real tmux is used in this probe.
 cat > "$WORK/engine/bun" <<'BUN'
 #!/bin/bash
 set -eu
+[ "$TERM" = dumb ] && [ "$LANG" = C ] && [ "$TZ" = UTC ] \
+  || { echo "ambient terminal/locale/time zone leaked: TERM=$TERM LANG=$LANG TZ=$TZ" >&2; exit 1; }
+case "$(/usr/bin/locale charmap)" in
+  [Uu][Tt][Ff]-8|[Uu][Tt][Ff]8) ;;
+  *) echo 'runner character handling is not UTF-8' >&2; exit 1 ;;
+esac
+[ -z "${LC_ALL+x}" ] || { echo 'ambient LC_ALL overrides runner locale pins' >&2; exit 1; }
 for name in CLAUDE_CODE_SESSION_ID CODEX_THREAD_ID OPENCODE_SESSION_ID CURSOR_CONVERSATION_ID ANTIGRAVITY_CONVERSATION_ID TAP_HARNESS_SESSION_ID TAP_TRANSCRIPT_PATH TAP_SESSION_SOURCE TAP_LAUNCH_ROOT TAP_LAUNCH_ID TAP_CLEAR_ID CLAUDE_CONFIG_DIR; do
   if [ "$1" = --child ]; then
     [ "$(printenv "$name")" = fixture-session ] || { echo "fixture identity lost: $name" >&2; exit 1; }

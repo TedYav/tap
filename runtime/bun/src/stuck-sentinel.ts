@@ -68,6 +68,18 @@ export function queuePrefix(paneCommand: string): string {
   return /^hermes/.test(paneCommand) ? "/queue " : "";
 }
 
+/**
+ * A band's text behind the harness queue prefix, or the band itself when the
+ * harness has no prefix or the band does not start with it. Hermes rides
+ * `/queue ` in front of the wire the courier types, so every guard that asks
+ * "is this TAP's own text?" must look behind it, or TAP's own staged wire
+ * reads as somebody's draft.
+ */
+export function afterQueuePrefix(text: string, paneCommand: string): string {
+  const band = text.trimStart(), prefix = queuePrefix(paneCommand);
+  return prefix && band.startsWith(prefix) ? band.slice(prefix.length).trimStart() : band;
+}
+
 const refuse = (reason = ""): StuckSentinelVerdict => ({ ok: false, reason });
 // The reason text is a consumer surface (submit-visible.test.ts pins the
 // previous parser's `%r` form), so reproduce `repr()`, not just its quote

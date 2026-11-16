@@ -58,12 +58,15 @@ for pair in tap-advisory.sh:claude tap-codex-session-start.sh:codex tap-cursor-s
 done
 echo "artifact-shell-doors: (3) the three session-start wrappers run through the shim: ok"
 
-# (4) The guard door passes stdin through and returns the child's stdout and status.
-set +e; out="$(printf '{"tool":"payload"}' | env PATH="$NOBUN" "$ART/hooks/tap-shell-body-guard.sh")"; rc=$?; set -e
-[ "$rc" = 3 ] || fail "guard door exit $rc, want the child's 3"
+# (4) The guard door passes stdin and stdout through and fails open: the recorder exits 3,
+# and the door turns that into exit 0 plus one stderr line naming TAP.
+set +e; out="$(printf '{"tool":"payload"}' | env PATH="$NOBUN" "$ART/hooks/tap-shell-body-guard.sh" 2>"$LOG/guard-err")"; rc=$?; set -e
+[ "$rc" = 0 ] || fail "guard door exit $rc, want 0 whatever the child returns"
 [ "$out" = '{"tool":"payload"}' ] || fail "guard door stdout: $out"
 [ "$(head -n 1 "$LOG/shim-argv")" = "$ART/hooks/tap-shell-body-guard.ts" ] || fail "guard door shim argv: $(cat "$LOG/shim-argv")"
-echo "artifact-shell-doors: (4) the guard door keeps stdin, stdout and the exit status: ok"
+[ "$(wc -l <"$LOG/guard-err" | tr -d ' ')" = 1 ] || fail "guard door stderr is not one line: $(cat "$LOG/guard-err")"
+grep -q '^tap: shell guard skipped' "$LOG/guard-err" || fail "guard door stderr does not name TAP: $(cat "$LOG/guard-err")"
+echo "artifact-shell-doors: (4) the guard door keeps stdin and stdout and absorbs a failing child: ok"
 
 # (5) A checkout layout (no libexec/) with no Bun on PATH: the session-start wrappers stay silent and exit 0.
 CO="$WORK/checkout"; mkdir -p "$CO/hooks"

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { removeScratchTree } from "./support/scratch";
+import { renderSentinel } from "../src/sentinel";
 
 // Ported from skills/tap/scripts/regress/pane-submit-lock-physics.test.sh
 // (tap-9ivr lane B, PHYSICS tier).
@@ -132,7 +133,9 @@ function awaitBandPrompt(pane: string): void {
 }
 
 function submitOne(id: string): ReturnType<typeof Bun.spawn> {
-  return Bun.spawn([process.execPath, SENDER, COURIER, paneIdCache!, id, `[[TAP v=0.20 id=${id} from=probe to=band]]`], {
+  const wire = renderSentinel({ from: "probe", to: "band", id,
+    kind: "discuss", reply: "expected", path: "/fixture/payload.md" });
+  return Bun.spawn([process.execPath, SENDER, COURIER, paneIdCache!, id, wire], {
     env: childEnv(),
     stdout: "ignore",
     stderr: "pipe",

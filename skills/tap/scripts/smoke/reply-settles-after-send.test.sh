@@ -218,8 +218,8 @@ set +e; TAP_JSON=1 "$TAP" reply in-1 -m "again" --by codex >"$TAP_HOME/r2.out" 2
 [ "$rc" != 0 ] || { echo "reply: (2) replying to a settled payload should fail" >&2; exit 1; }
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["ok"] is False and d["error_class"]=="already_settled", d' "$TAP_HOME/r2.out" \
   || { echo "reply: (2) missing already_settled class" >&2; cat "$TAP_HOME/r2.out" >&2; exit 1; }
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["action"]=="tap send", d' "$TAP_HOME/r2.out" \
-  || { echo "reply: (2) should name tap send" >&2; cat "$TAP_HOME/r2.out" >&2; exit 1; }
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["action"]=="tap send <sender> -f <file>", d' "$TAP_HOME/r2.out" \
+  || { echo "reply: (2) should name the exact follow-up send" >&2; cat "$TAP_HOME/r2.out" >&2; exit 1; }
 python3 - "$TAP_HOME/r2.out" "$TAP_HOME/receipts/in-1.done" <<'PY' \
   || { echo "reply: (2) should name settle time and current open obligations" >&2; cat "$TAP_HOME/r2.out" >&2; exit 1; }
 import json, sys

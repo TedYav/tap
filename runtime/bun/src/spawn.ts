@@ -1,3 +1,6 @@
+/** Bound identity subprocess reads without relying on child cooperation. */
+export const IDENTITY_PROBE_TIMEOUT_MS = 5_000;
+
 /**
  * What a `spawnSync` call actually did, and how much of a child's output we are
  * willing to hold.

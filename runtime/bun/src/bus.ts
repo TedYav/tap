@@ -5,7 +5,7 @@
 // `.started` and no deferral marker: deferral is simply the absence of a `.done`,
 // so the item stays unprocessed and resurfaces on the next poll.
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { constants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { containerRefusal } from "./bushome";
@@ -13,6 +13,23 @@ import { isFile } from "./watch-lease";
 import { scheduleBusMaintenance } from "./bus-maintenance-trigger";
 
 export const BUS_AUTHORITY_MARKER = ".tap-bus-authority";
+
+/** Create once without following a link or replacing an existing operator file. */
+function createBootstrapFile(path: string, contents: string): void {
+  let fd: number;
+  try { fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error(`${path} is not an ordinary unshared bootstrap file`);
+    return;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error(`${path} is not an ordinary unshared bootstrap file`);
+    writeFileSync(fd, contents);
+  } finally { closeSync(fd); }
+}
 
 export class Bus {
   readonly home: string;
@@ -38,7 +55,7 @@ export class Bus {
    * bootstrapping has already left the decoy tree behind, and the next lookup
    * there would read it as real.
    */
-  ensureDirs(): void {
+  ensureDirs(maintenance = true): void {
     const expected = containerRefusal(this.home);
     if (expected) {
       const e = new Error(`TAP_HOME='${this.home}' does not name a bus; expected '${expected}'`);
@@ -61,30 +78,26 @@ export class Bus {
     }
     if (this.home.endsWith("/.tap/bus")) {
       const ignore = join(dirname(this.home), ".gitignore");
-      if (!existsSync(ignore)) {
-        writeFileSync(ignore,
+      createBootstrapFile(ignore,
           "# TAP bus — ephemeral, machine-local runtime state (payloads, receipts, registry,\n" +
           "# input backups). Never committed. `.tap/config` IS committed.\n" +
           "bus/\n");
-      }
     }
     // A one-time marker stamping this bus as genuinely bootstrapped. Written
     // here because every real write path crosses ensureDirs first.
     const authority = join(this.home, BUS_AUTHORITY_MARKER);
-    if (!existsSync(authority)) {
-      try {
-        writeFileSync(authority, `bootstrapped_at_epoch=${Math.floor(Date.now() / 1000)}\n`);
-      } catch {
-        const e = new Error(
-          `could not write ${authority} — a bus whose root cannot be stamped ` +
-          "will accept sends now and silently refuse to redeliver them later",
-        );
-        (e as Error & { tapErrorClass?: string }).tapErrorClass = "bus_authority_unwritable";
-        (e as Error & { tapAction?: string }).tapAction = "fix TAP_HOME's own permissions, not just its children";
-        throw e;
-      }
+    try {
+      createBootstrapFile(authority, `bootstrapped_at_epoch=${Math.floor(Date.now() / 1000)}\n`);
+    } catch {
+      const e = new Error(
+        `could not write ${authority} — a bus whose root cannot be stamped ` +
+        "will accept sends now and silently refuse to redeliver them later",
+      );
+      (e as Error & { tapErrorClass?: string }).tapErrorClass = "bus_authority_unwritable";
+      (e as Error & { tapAction?: string }).tapAction = "fix TAP_HOME's own permissions, not just its children";
+      throw e;
     }
-    scheduleBusMaintenance(this.home);
+    if (maintenance) scheduleBusMaintenance(this.home);
   }
 
   /** Settled: a `.done`, or a `.cancelled` for an obligation the sender cleared.

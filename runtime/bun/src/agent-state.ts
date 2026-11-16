@@ -12,6 +12,7 @@ import { opencodeShellMode, opencodeTerminalOverprint } from "./opencode-compose
 
 import { createHash } from "node:crypto";
 
+import { HARNESS_ALIASES } from "./harness-families";
 import { codexPlaceholder, readStdinFrame, withoutCodexPaint } from "./terminal-text";
 
 const CODEX_QUEUED_MESSAGES = /(?:^|\n)([•*] Messages to be submitted after next tool call \(press esc to\s+interrupt and send immediately\)\n(?:[ \t]+↳[^\n]*(?:\n[ \t]{4,}[^\n]*)*\n)+)[ \t\n\u2800-\u28ff]*$/;
@@ -456,15 +457,8 @@ const RULES: Record<Harness, Rule[]> = {
 
 function normalizeHarness(value: string): Harness | null {
   const name = value.split("/").pop()?.toLowerCase() ?? "";
-  const exact: Record<string, Harness> = {
-    "claude-code": "claude",
-    "cursor-agent": "cursor",
-    "open-code": "opencode",
-    antigravity: "agy",
-    "antigravity-cli": "agy",
-    "hermes-agent": "hermes",
-  };
-  if (exact[name]) return exact[name];
+  const alias = Object.hasOwn(HARNESS_ALIASES, name) ? HARNESS_ALIASES[name] : undefined;
+  if (alias) return alias;
   for (const harness of Object.keys(RULES) as Harness[]) {
     if (name === harness || name.startsWith(`${harness}-`)) return harness;
   }

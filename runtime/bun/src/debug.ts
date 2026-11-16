@@ -20,6 +20,7 @@ import { LauncherError } from "./config-error";
 import { deliveryStats, renderStats } from "./debug-stats";
 import { ARM_CHILD, armsTapEvents, pruneArmClaims } from "./debug-arm";
 import { listed, streamUpdates, StreamSet, type Listing, type Position, type TraceWindow } from "./debug-streams";
+import { ownBunArgv, ownBunFlags } from "./own-bun";
 export { listed, streamUpdates, type Listing } from "./debug-streams";
 
 export type Run = { id: string; directory: string; socket: string; redaction?: "credentials-v1"; config: { max_mb: number; retain_mb?: number; fidelity?: CaptureFidelity; capture?: CaptureSource[]; always_on?: boolean; archive_mb?: number } };
@@ -207,7 +208,7 @@ function names(path: string): string[] {
 }
 export async function collectArtifacts(run: Run, buses: Record<string, string>, seen: Set<string>, env = process.env, append = appendEvent, listings = new Map<string, Listing>()): Promise<void> {
   try {
-    const result = await command([bunBinary(), join(import.meta.dir, "recovery/artifacts.ts"), "_collect", run.directory], 10000, env);
+    const result = await command([...ownBunArgv(bunBinary()), join(import.meta.dir, "recovery/artifacts.ts"), "_collect", run.directory], 10000, env);
     if (result.code) append(run, "capture.gap", { source: "recovery", reason: result.stderr.trim() });
   } catch (error) { append(run, "capture.gap", { source: "recovery", reason: errorText(error) }); }
   for (const [bus, team] of Object.entries(buses)) {
@@ -832,7 +833,7 @@ options:
                         7). stats only
   --always-on, --no-always-on
                         set debug.always_on in config.toml (default off).
-                        config only; read by the next tap command
+                        config only; read after a successful effectful command
   --lifetime-hours       retired; recording now continues until tap debug off
 
 examples:
@@ -954,9 +955,9 @@ export async function main(argv: string[], env = process.env, tmuxIO?: TmuxContr
           ...(args.retain === undefined ? {} : { retain_mb: args.retain }), ...(args.archive === undefined ? {} : { archive_mb: args.archive }),
           ...(args.alwaysOn === undefined ? {} : { always_on: args.alwaysOn }) }, env);
         if (args.capture !== undefined && !config.capture.includes("tmux")) await setTmuxEnabled(false, env, tmuxIO);
-        // always_on is read by the next public command; the other settings wait for the next capture.
+        // always_on is read after the next successful effectful command; the other settings wait for the next capture.
         const capture = args.fidelity !== undefined || args.capture !== undefined || args.max !== undefined || args.retain !== undefined || args.archive !== undefined;
-        return { ...config, applies: args.alwaysOn === undefined ? "next capture" : capture ? "next capture; always_on on the next tap command" : "next tap command" };
+        return { ...config, applies: args.alwaysOn === undefined ? "next capture" : capture ? "next capture; always_on on the next successful effectful command" : "next successful effectful command" };
       }
       if (args.action === "off") {
         // Off means off: always_on is cleared under this lock, so an arm child queued behind off finds it off.
@@ -1017,7 +1018,7 @@ export async function main(argv: string[], env = process.env, tmuxIO?: TmuxContr
         const log = openSync(join(directory, "recorder.log"), "a", 0o600);
         let exited = false;
         try {
-          const child = spawn(bunBinary(), [import.meta.path, "_collect", join(directory, "session.json")], { detached: true, stdio: ["ignore", log, log], env: { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" } });
+          const child = spawn(bunBinary(), [...ownBunFlags(bunBinary()), import.meta.path, "_collect", join(directory, "session.json")], { detached: true, stdio: ["ignore", log, log], env: { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" } });
           child.once("exit", () => { exited = true; });
           await new Promise<void>((accept, reject) => { child.once("spawn", accept); child.once("error", reject); });
           child.unref();
@@ -1096,7 +1097,7 @@ export async function main(argv: string[], env = process.env, tmuxIO?: TmuxContr
     }
     if (result.always_on_cleared) console.log("  Always on: cleared (debug.always_on = false); tap debug config --always-on turns it back on");
     else if (result.always_on_error) console.log("  Always on: off; the [debug] config is refused: " + result.always_on_error);
-    else if (result.always_on) console.log(`  Always on: ${armsTapEvents(debugConfig(env)) ? `a tap command starts a recorder when none is live; arm log ${join(home(env), "arm.log")}` : "set, but capture excludes tap-events, so nothing arms"}`);
+    else if (result.always_on) console.log(`  Always on: ${armsTapEvents(debugConfig(env)) ? `a successful effectful command starts a recorder when none is live; arm log ${join(home(env), "arm.log")}` : "set, but capture excludes tap-events, so nothing arms"}`);
     if (result.arm_skipped) console.log("  Arm skipped: " + result.arm_skipped);
   }
   return 0;

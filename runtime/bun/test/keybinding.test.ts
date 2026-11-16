@@ -681,3 +681,13 @@ test("completion scopes flags to each keybinding subcommand", async () => {
   expect(flags("remove").sort()).toEqual(["--dry-run", "--json"]);
   expect(flags("status")).toEqual(["--json"]);
 });
+
+
+test("install discloses a symlinked user config target", () => {
+  const target = join(home, "dotfiles.conf");
+  writeFileSync(target, "# custom config\n");
+  symlinkSync(target, join(home, ".tmux.conf"));
+  expect(run("install", "--tap", tap, "--dry-run").out).toContain(target);
+  expect(run("install", "--tap", tap).out).toContain(target);
+  expect(lstatSync(join(home, ".tmux.conf")).isSymbolicLink()).toBe(true);
+});

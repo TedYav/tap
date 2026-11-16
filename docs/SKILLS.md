@@ -1,8 +1,7 @@
 # TAP skills
 
-TAP's skills are going to be overhauled. For now, start with the key skills
-below: `tap:help` for help, `tap:config-wizard` for settings, and `tap:lead`
-when you want an agent to lead a team.
+Start with the key skills below: `tap:help` for help, `tap:config-wizard` for
+settings, and `tap:lead` when you want an agent to lead a team.
 
 ## Skills you invoke
 
@@ -77,7 +76,7 @@ tap help skill lead
 ```
 
 Open the returned file before using the skill. Namespaced and flat names resolve
-there too. The native plugin exposes all 25 skills. Flat hosts start with `tap`,
+there too. The native plugin exposes the full set. Flat hosts start with `tap`,
 `tap-in`, `tap-send`, `tap-escalate`, `tap-config-wizard`, `tap-help` and
 `tap-extend`; the
 full-kit setting adds the rest. Skills guide agent behavior; TAP transports

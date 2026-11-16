@@ -135,17 +135,25 @@ function isArtifactRoot(root: string): boolean {
  * `{hookroot}` substitution; the OpenCode plugin list names the generated
  * plugin files whose exact bytes are pinned. A release artifact (its root holds
  * libexec/tap/bun, tap-7r3fn.192) has no Bun on PATH, so it registers the guard's
- * .sh door and its shims exec that Bun; a checkout keeps the bare-Bun forms.
+ * .sh door and its shims exec that Bun; a checkout shim starts PATH's Bun with
+ * TAP's own config and no env file.
  */
 export function MANIFEST_HOOK_EXPECTATIONS(hookroot: string) {
   const artifact = isArtifactRoot(resolve(hookroot, ".."));
   const guard = `${hookroot}/tap-shell-body-guard.${artifact ? "sh" : "ts"}`;
-  const bun = (repo: string) => (artifact ? `"${repo}/libexec/tap/bun"` : "bun");
+  // A checkout shim starts Bun with TAP's own config and no env file, so the directory
+  // an agent works in cannot supply a bunfig.toml preload or a .env. These bytes must
+  // equal what install.sh writes: the scan below records a shim only on an exact match.
+  const shim = (repo: string, entry: string) => artifact
+    ? `#!/usr/bin/env bash\nexec "${repo}/libexec/tap/bun" ${entry} "$@"\n`
+    : `#!/usr/bin/env bash\nc="${repo}/runtime/bun/tap-bunfig.toml"; [ -f "$c" ] || c=/dev/null\nexec bun --config="$c" --no-env-file ${entry} "$@"\n`;
   return {
     /** Claude settings.json → hooks: bare absolute paths, one per event. */
     claudeSettings: {
       SessionStart: [`${hookroot}/tap-advisory.sh`],
       PreToolUse: [guard],
+      // Present only when install.sh read a Claude Code new enough to know the event.
+      PermissionRequest: [`${hookroot}/tap-claude-permission.sh`],
     },
     /** Cursor hooks.json: flat rows (nested=false), commands carry their own prefix. */
     cursorHooks: {
@@ -170,16 +178,16 @@ export function MANIFEST_HOOK_EXPECTATIONS(hookroot: string) {
       { name: "tap-opencode-tmux-guard.ts", type: "copy" },
       {
         name: "tap-shell-body-guard", type: "shim",
-        bytes: (repo: string) => `#!/usr/bin/env bash\nexec ${bun(repo)} "${repo}/hooks/tap-shell-body-guard.ts" "$@"\n`,
+        bytes: (repo: string) => shim(repo, `"${repo}/hooks/tap-shell-body-guard.ts"`),
       },
       { name: "tap-opencode-session-id", type: "copy" },
       {
         name: "tap-resolve-session-root", type: "shim",
-        bytes: (repo: string) => `#!/usr/bin/env bash\nexec ${bun(repo)} "${repo}/runtime/bun/src/session-start.ts" resolve "$@"\n`,
+        bytes: (repo: string) => shim(repo, `"${repo}/runtime/bun/src/session-start.ts" resolve`),
       },
       {
         name: "tap-session-context", type: "shim",
-        bytes: (repo: string) => `#!/usr/bin/env bash\nexec ${bun(repo)} "${repo}/runtime/bun/src/session-start.ts" "$@"\n`,
+        bytes: (repo: string) => shim(repo, `"${repo}/runtime/bun/src/session-start.ts"`),
       },
       {
         name: "tap", type: "shim",

@@ -129,7 +129,7 @@ function seatEligible(command: string, seat: Seat, flag: string): boolean {
   return true;
 }
 
-/** Cursor is one-based in the argv passed by zsh, including the tap command. */
+/** Cursor is one-based in the argv passed by a shell adapter, including the tap command. */
 export function completionCandidates(words: string[], cursor: number, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): Candidate[] {
   if (!Number.isSafeInteger(cursor) || cursor < 1 || cursor > words.length + 1) return [];
   const before = words.slice(0, cursor - 1);
@@ -212,8 +212,12 @@ export function cmdCompletion(argv: string[]): number {
     process.stdout.write(`function _tap() {\n${body}\n}\ncompdef _tap tap\n`);
     return 0;
   }
+  if (argv.length === 1 && argv[0] === "bash") {
+    process.stdout.write(readFileSync(join(tapRoot(), "completions/tap.bash"), "utf8"));
+    return 0;
+  }
   if (argv[0] !== "candidates") {
-    process.stderr.write("tap completion: supported shell is zsh; next: tap help completion\n");
+    process.stderr.write("tap completion: supported shells are zsh and bash; next: tap help completion\n");
     return 1;
   }
   const cursorAt = argv.indexOf("--cursor");

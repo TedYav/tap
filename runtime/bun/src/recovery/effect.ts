@@ -18,6 +18,7 @@ import { seatMap, loadCurrentRegistry } from "../registry";
 import { OldStoreError } from "../register-authority";
 import { MAX_EFFECTS, canAct, readRun, runDirectory, updateRun, writeRun, type RecoveryRun, type RecoveryTarget, type Liveness } from "./state";
 import { operatorKeyRefusal } from "./operator-screen";
+import { ownBunFlags } from "../own-bun";
 
 export interface PaneSnapshot {
   dead: string; command: string; windowCount: string; paneId: string;
@@ -404,7 +405,7 @@ export function escalateRecovery(id: string, summary: string, env = process.env)
   const targetName = `${run.target.team}/${run.target.handle}`;
   const question = summary.startsWith(targetName + ":") ? summary : `${targetName}: ${summary}`;
   writeFileSync(body, `${question}\nRecovery: ${id}\nEvidence: ${runDirectory(id, env)}\n`, { mode: 0o600 });
-  const result = spawnSync(process.execPath, [join(tapScriptsDir(), "../../../runtime/bun/src/verbs/escalate.ts"), "--team", run.caller?.team || run.target.team,
+  const result = spawnSync(process.execPath, [...ownBunFlags(process.execPath), join(tapScriptsDir(), "../../../runtime/bun/src/verbs/escalate.ts"), "--team", run.caller?.team || run.target.team,
     // A recorded `user`/`unknown` nudge actor (no team) is evidence, not a seat that can escalate.
     "--from", (run.caller?.team && run.caller.actor) || run.target.handle, "-f", body], { env: { ...env, BUN_BE_BUN: "1" }, encoding: "utf8", timeout: 10_000 });
   atomicWrite(join(runDirectory(id, env), "escalation-result.json"), JSON.stringify({ at: new Date().toISOString(),

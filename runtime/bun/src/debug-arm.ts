@@ -25,6 +25,8 @@ import { configDirectory, debugConfig, type DebugConfig } from "./config-file";
 import { bunBinary } from "./courier-argv";
 import { atomicWrite } from "./fsatomic";
 import { runtimeModule } from "./scripts-dir";
+import armCommands from "./debug-arm-commands.txt" with { type: "text" };
+import { ownBunArgv } from "./own-bun";
 
 /** One arm child per window, at most. */
 export const ARM_WINDOW_MS = 60_000;
@@ -38,12 +40,8 @@ export const ARM_CHILD = "TAP_DEBUG_ALWAYS_ON_CHILD";
  * always_on on. Arming needs the config sandboxed too, or no state pin at all. */
 export const STATE_PINS = ["TAP_INDEX_HOME", "TAP_HOME", "TAP_SESSION_MANIFEST", "TAP_LOCK_DIR", "TAP_VERSION_SEEN_PATH", "OPENCODE_DB_PATH"];
 const CLAIM = /^arm\.attempt\.(\d+)$/;
-/** Verbs whose public promise is no state creation (bin/tap pins their Bun cache off,
- * in the same list): arming would write the cache and start a recorder. Every debug
- * invocation joins them, so tap debug off never re-arms itself. setup joins them too:
- * its refusals and dry runs promise no machine effects, and it is the verb that edits
- * config.toml, so the next command arms instead. */
-const NEVER_ARM = new Set(["ask", "provenance", "who", "health", "doctor", "show", "admin", "models", "completion", "version", "--version", "debug", "setup"]);
+/** One command allowlist, also read by bin/tap before Bun starts. */
+const ARM_COMMANDS = new Set(armCommands.trim().split("\n"));
 
 export const debugHome = (env: NodeJS.ProcessEnv) => join(env.TAP_INDEX_HOME || join(homedir(), ".tap"), "debug");
 
@@ -128,23 +126,35 @@ function startArmChild(home: string, window: number, env: NodeJS.ProcessEnv): vo
   const log = openArmLog(home, `arm window=${window} pid=${process.pid}`);
   try {
     // cwd is the debug home, so a long-lived recorder never holds a worktree directory.
-    Bun.spawn([bunBinary(), runtimeModule("src/debug.ts"), "on"], { cwd: home, stdio: ["ignore", log ?? "ignore", log ?? "ignore"], detached: true,
+    Bun.spawn([...ownBunArgv(bunBinary()), runtimeModule("src/debug.ts"), "on"], { cwd: home, stdio: ["ignore", log ?? "ignore", log ?? "ignore"], detached: true,
       env: { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", [ARM_CHILD]: "1" } }).unref();
   } finally { if (log !== null) closeSync(log); }
 }
 
-/** Whether this public argv may arm: not a help form, a NEVER_ARM verb, or the
- * `tap session` list and completion forms bin/tap also keeps state-free. */
-function mayArm(args: string[]): boolean {
-  const [verb, sub] = args.filter(arg => arg !== "-v" && arg !== "--verbose");
-  if (verb === undefined || NEVER_ARM.has(verb) || args.some(arg => arg === "help" || arg === "-h" || arg === "--help")) return false;
-  return !(verb === "session" && (sub === undefined || sub === "list" || sub === "complete" || sub.startsWith("--")));
+/** Only explicit effectful commands may arm after successful dispatch. */
+export function mayArm(args: string[]): boolean {
+  const words = args.filter(arg => arg !== "-v" && arg !== "--verbose");
+  const [verb, sub] = words;
+  if (!verb || args.some(arg => ["help", "-h", "--help", "--dry-run", "--list-history"].includes(arg))) return false;
+  // Reminder operands name recipients; only list and missing/flag-led targets are observational.
+  if (verb === "remind" && (!sub || sub === "list" || sub.startsWith("-"))) return false;
+  if (verb === "operate" && args.includes("--observe")) return false;
+  if (verb === "calibrate" && !args.includes("-f")) return false;
+  if (verb === "role") {
+    let operands = 0;
+    for (let i = 1; i < words.length; i++) {
+      if (words[i] === "--team") { i++; continue; }
+      if (!words[i]!.startsWith("-")) operands++;
+    }
+    if (operands < 2 && !args.includes("--unset")) return false;
+  }
+  return ARM_COMMANDS.has(verb) || ARM_COMMANDS.has(`${verb} ${sub}`);
 }
 
 /**
  * Arm a recorder when always_on is set and none is live. `args` is the public
- * argv. main.ts has already applied the journal's exemptions (stateless
- * children, launch help) and found no live recorder.
+ * argv. main.ts calls this only after successful dispatch, with no live recorder,
+ * and applies the journal exemptions for stateless children and launch help.
  */
 export function armAlwaysOn(args: string[], env: NodeJS.ProcessEnv = process.env, start = startArmChild, passwdHome?: () => string): void {
   try {
@@ -176,4 +186,10 @@ export function pruneArmClaims(home: string, now = Date.now()): void {
     const match = CLAIM.exec(name);
     if (match && Number(match[1]) < window) { try { unlinkSync(join(home, name)); } catch { /* already gone */ } }
   }
+}
+
+/** Preserve caller argv and pins before handlers derive their own environment. */
+export function deferAlwaysOn(args: string[], env: NodeJS.ProcessEnv, arm: (args: string[], env: NodeJS.ProcessEnv) => void = armAlwaysOn): () => void {
+  const publicArgs = [...args], publicEnv = { ...env };
+  return () => arm(publicArgs, publicEnv);
 }

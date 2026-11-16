@@ -270,7 +270,7 @@ mode:0o755});
   expect(manifest.entries.find((e:any)=>e.kind==="hook"&&e.path===settings).created_containers.hooks).toBe(true);
   for(const kind of ["symlink","hook","block","json-key","file"])expect(manifest.entries.some((e:any)=>e.kind===kind)).toBe(true);
    const shim=join(process.env.TAP_OPENCODE_HOME!,"plugins/tap-session-context");
-   const expectedShim=`#!/usr/bin/env bash\nexec bun "${join(realpathSync(clone),"runtime/bun/src/session-start.ts")}" "$@"\n`;
+   const expectedShim=`#!/usr/bin/env bash\nc="${join(realpathSync(clone),"runtime/bun/tap-bunfig.toml")}"; [ -f "$c" ] || c=/dev/null\nexec bun --config="$c" --no-env-file "${join(realpathSync(clone),"runtime/bun/src/session-start.ts")}" "$@"\n`;
    expect(manifest.entries.find((e:any)=>e.kind==="file"&&e.path===shim)).toEqual({kind:"file",path:shim,sha256:new Bun.CryptoHasher("sha256").update(expectedShim).digest("hex")});
   // A mutated shim is unrecorded (so uninstall reports it preserved); the
   // installer's exact bytes are recorded again. --scan reads the manifest the
@@ -518,6 +518,45 @@ test("archive verifies contents before removing every enrolled history root",asy
  expect(r.exitCode).toBe(0);expect(r.stdout.toString()).toBe("retained message");
 });
 
+test("uninstall removes pending permission-request records whatever the history choice, and the dry run says so",async()=>{
+ const root=fixture(),team=join(root,"team"),requests=join(team,".tap","bus","permission-requests");mkdirSync(requests,{recursive:true});
+ writeFileSync(join(requests,"scout.json"),"{}\n");writeFileSync(join(team,".tap","message.md"),"retained message");
+ writeFileSync(join(process.env.TAP_INDEX_HOME!,"global-registry.json"),JSON.stringify({schema:"0.20",teams:{one:{root:team}}}));
+ writeFileSync(join(process.env.TAP_INDEX_HOME!,"install-manifest.json"),JSON.stringify({version:1,repo,entries:[{kind:"file",path:join(root,"missing"),sha256:"none"}]}));
+ const dry=await captured(()=>uninstallMachine(noPrompt,{dryRun:true}));
+ expect(dry.result).toBe(0);
+ expect(dry.lines).toContain(`would remove: ${requests}`);
+ expect(existsSync(join(requests,"scout.json"))).toBe(true);
+ // The default history choice keeps history; the records are live state and go anyway.
+ const real=await captured(()=>uninstallMachine(noPrompt,{yes:true}));
+ expect(real.result).toBe(0);
+ expect(real.lines).toContain(`removed: ${requests}`);
+ expect(existsSync(requests)).toBe(false);
+ expect(readFileSync(join(team,".tap","message.md"),"utf8")).toBe("retained message");
+});
+
+test("uninstall removes permission-request records on the paths that find nothing else to uninstall",async()=>{
+ // A hook already running can finish writing after its settings entry is gone, so a later
+ // uninstall meets a record with no hook left in the manifest, or with no manifest at all.
+ for (const manifest of ["empty","missing"]) {
+  const root=fixture(),team=join(root,"team"),requests=join(team,".tap","bus","permission-requests");mkdirSync(requests,{recursive:true});
+  writeFileSync(join(requests,"scout.json"),"{}\n");writeFileSync(join(team,".tap","message.md"),"retained message");
+  writeFileSync(join(process.env.TAP_INDEX_HOME!,"global-registry.json"),JSON.stringify({schema:"0.20",teams:{one:{root:team}}}));
+  if(manifest==="empty")writeFileSync(join(process.env.TAP_INDEX_HOME!,"install-manifest.json"),JSON.stringify({version:1,repo,entries:[]}));
+  const dry=await captured(()=>uninstallMachine(noPrompt,{dryRun:true}));
+  expect(dry.result).toBe(0);
+  expect(dry.lines.some(line=>line.startsWith("Nothing to uninstall"))).toBe(true);
+  expect(dry.lines).toContain(`would remove: ${requests}`);
+  expect(existsSync(join(requests,"scout.json"))).toBe(true);
+  const real=await captured(()=>uninstallMachine(noPrompt,{yes:true}));
+  expect(real.result).toBe(0);
+  expect(real.lines.some(line=>line.startsWith("Nothing to uninstall"))).toBe(true);
+  expect(real.lines).toContain(`removed: ${requests}`);
+  expect(existsSync(requests)).toBe(false);
+  expect(readFileSync(join(team,".tap","message.md"),"utf8")).toBe("retained message");
+ }
+});
+
 test("a failed archive verification leaves every history root in place",()=>{
  const root=fixture(),team=join(root,"team");mkdirSync(join(team,".tap"),{recursive:true});
  writeFileSync(join(team,".tap","message.md"),"retained message");
@@ -680,7 +719,10 @@ test("malformed Gemini hooks do not abort install or hide readable manifest entr
 test("first install completes wizard before final PATH remedy and records shell PATH",()=>{
  const root=fixture(),tools=join(root,"tools");mkdirSync(tools);
  for(const name of ["bash","bun","python3","git","jq","tmux","tar","lsof","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
-  const binary=Bun.which(name);if(binary)symlinkSync(binary,join(tools,name));
+  const binary=Bun.which(name);if(!binary)continue;
+  // tmux on PATH may be a wrapper that finds its own files beside itself; a link to it would not run.
+  if(name==="tmux")writeFileSync(join(tools,name),`#!/bin/sh\nexec "${binary}" "$@"\n`,{mode:0o755});
+  else symlinkSync(binary,join(tools,name));
  }
  for(const name of ["codex","open"])writeFileSync(join(tools,name),"#!/bin/sh\nexit 0\n",{mode:0o755});
  for(const name of ["CLAUDE","CODEX","HERMES","CURSOR","OPENCODE","GEMINI","CURSOR_AGENT","AGENTS"]){const path=join(root,name);mkdirSync(path);process.env[`TAP_${name}_HOME`]=path;}
@@ -728,7 +770,10 @@ finally:
 test("wizard Enter on the alias prompt takes the affirmative default",()=>{
  const root=fixture(),tools=join(root,"tools");mkdirSync(tools);
  for(const name of ["bash","bun","python3","git","jq","tmux","tar","lsof","dirname","readlink","mkdir","ln","cp","mv","rmdir","chmod","grep","rm","sed","date","id","mktemp","cat","uname","find","tr","head","tail"]) {
-  const binary=Bun.which(name);if(binary)symlinkSync(binary,join(tools,name));
+  const binary=Bun.which(name);if(!binary)continue;
+  // tmux on PATH may be a wrapper that finds its own files beside itself; a link to it would not run.
+  if(name==="tmux")writeFileSync(join(tools,name),`#!/bin/sh\nexec "${binary}" "$@"\n`,{mode:0o755});
+  else symlinkSync(binary,join(tools,name));
  }
  for(const name of ["codex","open"])writeFileSync(join(tools,name),"#!/bin/sh\nexit 0\n",{mode:0o755});
  for(const name of ["CLAUDE","CODEX","HERMES","CURSOR","OPENCODE","GEMINI","CURSOR_AGENT","AGENTS"]){const path=join(root,name);mkdirSync(path);process.env[`TAP_${name}_HOME`]=path;}

@@ -24,6 +24,8 @@ import { assertCrewResumeUnheld } from "../crew-resume-identity";
 import { NATIVE_CONVERSATION_ID } from "../native-conversation";
 import { LauncherError } from "../launcher/types";
 import { inWorkdir, stableSpawnCwd } from "../tmux-spawn-cwd";
+import { ownBun, ownBunFlags } from "../own-bun";
+import { cleanupCrewLaunchFiles, prepareCrewLaunchFile } from "../crew-launch-file";
 
 export const CREW_SUBCOMMANDS = ["list", "add", "resume", "shutdown", "relaunch", "rearm", "remove"] as const;
 
@@ -58,7 +60,7 @@ function awaitPaneIn(pane: string, dir: string, timeoutMs = 3000): boolean {
 }
 
 function outChild(scriptsDir: string, handle: string): void {
-  spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/main.ts`, "out", handle], { stdio: "ignore" });
+  spawnSync(ownBun(), [...ownBunFlags(), `${scriptsDir}/../../../runtime/bun/main.ts`, "out", handle], { stdio: "ignore" });
 }
 
 function rollback(scriptsDir: string, paneId: string, handle?: string): void {
@@ -82,6 +84,7 @@ function relayRefusal(payload: string): number {
 }
 
 export function cmdCrew(argv: string[], scriptsDir: string): number | Promise<number> {
+  cleanupCrewLaunchFiles();
   const sub = argv[0] ?? "";
   const rest = argv.slice(1);
   if (sub === "list") {
@@ -184,7 +187,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   // The native public resolver owns argv policy and refusal rendering. Keep
   // its stderr separate from its JSON, and leave TAP_JSON caller-controlled.
   // Use Bun from PATH (or a release artifact's shim): process.execPath can be the compiled TAP router.
-  const target = spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/src/launcher/resolve-target.ts`,
+  const target = spawnSync(ownBun(), [...ownBunFlags(), `${scriptsDir}/../../../runtime/bun/src/launcher/resolve-target.ts`,
     "--usage", "tap crew add <preset|harness> [name]", "--verb", "tap crew", ...positionals, ...(presetSupplied ? ["--preset", preset] : [])],
     { env: { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" }, encoding: "utf8" });
   if ((target.status ?? 1) !== 0) return relayRefusal((target.stdout || target.stderr || "").replace(/\n+$/, ""));
@@ -223,7 +226,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
   // still runs (a preflight that failed on any nonzero would pre-empt that
   // tested recovery path).
   const preflightArgs = [harness, "preflight/preflight", "--cwd", crewCwd, ...presetArgs, ...digestArgs, ...modelArgs, ...overrides, ...resumeArgs];
-  const preflight = spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...preflightArgs], { env: { ...process.env, TAP_JSON: "1" }, stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" });
+  const preflight = spawnSync(ownBun(), [...ownBunFlags(), `${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...preflightArgs], { env: { ...process.env, TAP_JSON: "1" }, stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" });
   if ((preflight.status ?? 1) !== 0) {
     const payload = preflight.stdout ?? "";
     const classes = ["launch_env_forbidden", "launch_model_unsupported", "launch_effort_unsupported", "launch_arg_invalid", "harness_env_forbidden", "preset_not_found", "preset_not_composable", "preset_harness_mismatch", "preset_config_missing", "preset_config_invalid", "preset_config_insecure", "preset_unsupported", "preset_handle_ambiguous", "preset_config_changed"];
@@ -319,7 +322,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
     throw new TapError(1, "registry_unreachable", "tap doctor", "acting registry could not be re-resolved after crew registration");
   }
   const invocationArgs = [harness, `${chosenTeam}/${chosenHandle}`, "--cwd", crewCwd, "--record-pane", newPane, "--record-registry", fresh.registryPath, ...presetArgs, ...digestArgs, ...modelArgs, ...overrides, ...resumeArgs];
-  const invocation = spawnSync(artifactBun() ?? "bun", [`${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...invocationArgs], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+  const invocation = spawnSync(ownBun(), [...ownBunFlags(), `${scriptsDir}/../../../runtime/bun/src/launcher/crew-invocation.ts`, ...invocationArgs], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
   if (invocation.stderr) process.stderr.write(invocation.stderr);
   if ((invocation.status ?? 1) !== 0) {
     rollback(scriptsDir, newPane, chosenHandle);
@@ -335,8 +338,12 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
     rollback(scriptsDir, newPane, chosenHandle);
     throw error;
   }
+  let launchFile;
+  try { launchFile = prepareCrewLaunchFile((invocation.stdout ?? "").replace(/\n+$/, "")); }
+  catch (error) { rollback(scriptsDir, newPane, chosenHandle); throw error; }
   try {
-    if (tmux(["send-keys", "-t", newPane, "-l", "--", literalKeysArg(`exec env ${(invocation.stdout ?? "").replace(/\n+$/, "")}`)]) !== 0 || tmux(["send-keys", "-t", newPane, "Enter"]) !== 0) {
+    if (tmux(["send-keys", "-t", newPane, "-l", "--", literalKeysArg(launchFile.command)]) !== 0 || tmux(["send-keys", "-t", newPane, "Enter"]) !== 0) {
+      launchFile.discard();
       rollback(scriptsDir, newPane, chosenHandle);
       throw new TapError(1, "tmux_error", "retry tap crew add", `could not start ${harness} in crew pane '${newPane}'`);
     }
@@ -344,6 +351,7 @@ async function cmdCrewAdd(argv: string[], scriptsDir: string): Promise<number> {
     // A timed-out send may have taken effect: no Enter, retry, or rollback.
     if (error instanceof ServerUnresponsive) throw new TapError(1, error.tapErrorClass,
       `inspect the server; do not retry a possible effect; after inspection, cleanup: tmux kill-window -t '${newPane}'`, error.message);
+    launchFile.discard();
     throw error;
   }
   // The exact crew process must survive startup; its parent may have exited.

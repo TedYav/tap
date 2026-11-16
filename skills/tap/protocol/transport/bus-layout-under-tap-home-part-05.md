@@ -88,11 +88,11 @@ human `tap team`. An inactive team resumes maintenance on its next ordinary
 command or watcher tick.
 
 History lives in `archive/YYYY-MM/{payloads,receipts}/`, bucketed by settlement
-month. **The month buckets are the index (project decision, 2026-11-04).** Each month also has
+month. **The month buckets are the index.** Each month also has
 an append-only manifest, `archive/YYYY-MM/index.ndjson`, one record per ID:
 `{id, month, settled_at, payload_sha256, receipts:[...]}`. The pre-2026-11 root
 `archive/index.ndjson` is frozen in place: nothing reads or rewrites it, and its
-rows' files already live in their month buckets. **Rule (project decision, 2026-11-04): nothing reads
+rows' files already live in their month buckets. **Rule: nothing reads
 `archive/index.ndjson`.** A future change that needs its rows migrates them into
 the month manifests in one pass and removes the root; it never adds a second
 reader or a legacy branch. No command reads the whole
@@ -113,7 +113,7 @@ resumes idempotently; history is never deleted. One ID lives in one month bucket
 an ID whose copy is already in a different month than its settlement stays active,
 counted as `archived-in-other-month` with both months named on stderr.
 
-**Archival is idempotent by ordering (project decision, 2026-11-04).** An interruption at any
+**Archival is idempotent by ordering.** An interruption at any
 step leaves one of two shapes: an active payload that still has its `.done` or
 `.cancelled`, or active receipts without a payload. Neither is open work: the
 first is settled by its receipt and the second is not mail. Leftover receipts or

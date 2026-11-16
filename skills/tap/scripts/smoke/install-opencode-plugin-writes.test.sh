@@ -159,11 +159,68 @@ cmp -s "$ROOT/hooks/tap-opencode-session-start.ts" "$S/opencode/plugins/tap-open
 for name in tap-shell-body-guard tap-opencode-session-id tap-resolve-session-root tap-session-context tap; do
   [ -x "$S/opencode/plugins/$name" ] || fail "control: $name is not executable"
 done
+# The generated shims run in whatever directory the agent works in. A project's
+# bunfig.toml preload must not run in them, and each passes --no-env-file so
+# that directory's .env is not loaded either.
+HOSTILE="$S/project"
+mkdir -p "$HOSTILE"
+# The name is passed as an argument so this file holds no relative path to a
+# file the repository does not track; the bunfig.toml bytes are unchanged.
+printf 'preload = ["./%s"]\n' preload.ts >"$HOSTILE/bunfig.toml"
+printf 'require("node:fs").appendFileSync(process.env.TAP_TEST_PRELOAD_MARKER, "ran\\n");\n' >"$HOSTILE/preload.ts"
+for name in tap-resolve-session-root tap-shell-body-guard; do
+  ( cd "$HOSTILE" && TAP_TEST_PRELOAD_MARKER="$S/preload-marker" "$S/opencode/plugins/$name" </dev/null >"$S/shim.out" 2>&1 ) || true
+  [ ! -e "$S/preload-marker" ] || fail "control: $name ran the working directory's bunfig.toml preload" "$S/shim.out"
+done
+for name in tap-resolve-session-root tap-shell-body-guard tap-session-context; do
+  grep -qF -- '--no-env-file' "$S/opencode/plugins/$name" || fail "control: $name does not pass --no-env-file"
+done
 cat >"$S/want-guard-shim" <<EOF
 #!/usr/bin/env bash
-exec bun "$ROOT/hooks/tap-shell-body-guard.ts" "\$@"
+c="$ROOT/runtime/bun/tap-bunfig.toml"; [ -f "\$c" ] || c=/dev/null
+exec bun --config="\$c" --no-env-file "$ROOT/hooks/tap-shell-body-guard.ts" "\$@"
 EOF
 cmp -s "$S/want-guard-shim" "$S/opencode/plugins/tap-shell-body-guard" || fail "control: guard shim bytes changed"
+# The shim text is also the ownership record: each generated shim must be in the
+# manifest with the hash of the bytes on disk, or uninstall would leave it behind.
+shim_recorded() { # shim_recorded <name>: prints the number of matching file entries
+  python3 - "$S/index/install-manifest.json" "$S/opencode/plugins/$1" <<'PY2'
+import hashlib, json, sys
+entries = json.load(open(sys.argv[1]))["entries"]
+digest = hashlib.sha256(open(sys.argv[2], "rb").read()).hexdigest()
+print(sum(1 for e in entries if e.get("kind") == "file" and e.get("path") == sys.argv[2] and e.get("sha256") == digest),
+      sum(1 for e in entries if e.get("kind") == "file" and e.get("path") == sys.argv[2]))
+PY2
+}
+for name in tap-shell-body-guard tap-resolve-session-root tap-session-context tap; do
+  [ "$(shim_recorded "$name")" = "1 1" ] || fail "control: $name is not recorded once with its on-disk hash: $(shim_recorded "$name")"
+done
+# An install made before the shim text changed holds the previous bytes and
+# their hash. It must still uninstall, and a re-run must rewrite and re-record.
+for name in tap-shell-body-guard tap-resolve-session-root tap-session-context; do
+  printf '#!/usr/bin/env bash\nexec bun "%s/previous/%s.ts" "$@"\n' "$ROOT" "$name" >"$S/opencode/plugins/$name"
+done
+python3 - "$S/index/install-manifest.json" "$S/opencode/plugins" <<'PY2'
+import hashlib, json, os, sys
+path, plugins = sys.argv[1], sys.argv[2]
+manifest = json.load(open(path))
+for entry in manifest["entries"]:
+    if entry.get("kind") == "file" and os.path.dirname(entry["path"]) == plugins and os.path.basename(entry["path"]) in ("tap-shell-body-guard", "tap-resolve-session-root", "tap-session-context"):
+        entry["sha256"] = hashlib.sha256(open(entry["path"], "rb").read()).hexdigest()
+json.dump(manifest, open(path, "w"))
+PY2
+# The dry run applies the same ownership check as a removal and leaves this
+# checkout's own git configuration alone.
+HOME="$S/home" TAP_INDEX_HOME="$S/index" XDG_CONFIG_HOME="$S/xdg" bash "$S/bin/tap" uninstall --dry-run >"$S/dry.out" 2>&1 || fail "control: uninstall --dry-run failed with previous shim bytes" "$S/dry.out"
+for name in tap-shell-body-guard tap-resolve-session-root tap-session-context; do
+  grep -qF "would remove: $S/opencode/plugins/$name" "$S/dry.out" || fail "control: uninstall would not remove a previous-text $name" "$S/dry.out"
+done
+run_install
+[ "$RC" = 0 ] || fail "control: reinstall over previous shim bytes failed ($RC)" "$ERR"
+cmp -s "$S/want-guard-shim" "$S/opencode/plugins/tap-shell-body-guard" || fail "control: reinstall did not rewrite the previous guard shim"
+for name in tap-shell-body-guard tap-resolve-session-root tap-session-context; do
+  [ "$(shim_recorded "$name")" = "1 1" ] || fail "control: after reinstall $name is not recorded once with its new hash: $(shim_recorded "$name")"
+done
 [ -f "$S/opencode/plugins/foreign.ts" ] || fail "control: a foreign plugin was removed"
 [ ! -e "$S/opencode/plugins/tap-opencode-session-env.ts" ] || fail "control: retired v1 environment plugin remains loadable"
 assert_no_residue control

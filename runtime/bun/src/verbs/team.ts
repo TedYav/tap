@@ -73,7 +73,7 @@ import { parseSessionDoor } from "../launcher/session-doors";
 import { captureCrewProcess, fenceCrewLifetime } from "../crew-lifetime";
 import { crewFamilyHandles } from "../crew-ownership";
 
-import { observedRows, withAgentStates, type ObservedRow } from "../roster-observation";
+import { observedRows, withAgentStates, withPermissionRequests, type ObservedRow } from "../roster-observation";
 export { observedRows, withAgentStates, readComputeJobs, type AgentStateOptions, type ObservedRow } from "../roster-observation";
 
 const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]/g;
@@ -99,6 +99,7 @@ export { AGENT_FAMILIES, DENYLIST } from "../harness-families";
 export type { RegistryRow } from "../team-observe";
 import { observe, type RegistryRow } from "../team-observe";
 import { artifactBun } from "../scripts-dir";
+import { ownBun, ownBunFlags } from "../own-bun";
 export { observe } from "../team-observe";
 
 interface RegistryRead {
@@ -616,6 +617,13 @@ function seatFacts(row: ObservedRow, now: number): SeatFacts {
   return { harness: row.harness, daemon: isDaemon(row), models: [row.tokenSample?.tuning?.model, row.model], state, idleSeconds: idleSeconds(state, row.turnEndedAt, now) };
 }
 
+/** A seat stopped on a prompt says which kind, whatever the screen classifier made of it. */
+function permissionNote(row: ObservedRow): string {
+  const request = row.permissionRequest;
+  if (!request) return "";
+  return request.waitingFor === "input needed" ? " · asks a question" : ` · needs approval (${request.tool})`;
+}
+
 function humanAgent(row: ObservedRow, team: string): string {
   const state = rowState(row);
   // The exhausted healing alarm is the roster-visible half of the stuck-paint
@@ -626,7 +634,7 @@ function humanAgent(row: ObservedRow, team: string): string {
     ? ` ${formatAge(seatClock() - dated)}` : "";
   const label = row.agentStateReason === "heal_exhausted" && (row.agentState === "overprint" || row.agentState === "booting")
     ? `${row.agentState} · heal exhausted (tap nudge)`
-    : `${state}${age}`;
+    : `${state}${age}${permissionNote(row)}`;
   return statusIndicator(state, label);
 }
 
@@ -671,6 +679,10 @@ function rosterJson(team: string, rows: ObservedRow[], facts: Record<string, Rec
       agent_state: row.agentState,
       agent_state_reason: row.agentStateReason,
       waiting_on: row.waitingOn ?? [],
+      // Claude only: what the seat's open approval or question is for, from its PermissionRequest hook.
+      permission_request: row.permissionRequest
+        ? { tool: row.permissionRequest.tool, summary: row.permissionRequest.summary, since: isoSeconds(row.permissionRequest.since), waiting_for: row.permissionRequest.waitingFor }
+        : null,
       turn_started_at: isoSeconds(row.turnStartedAt),
       turn_ended_at: isoSeconds(row.turnEndedAt),
       turn_ended_source: row.turnEndedSource ?? null,
@@ -1543,7 +1555,7 @@ export async function tryCachedRoster(argv: string[], scriptsDir: string): Promi
     if (crew && takeSeatFilters(args, "tap help crew").rest.some(arg => !["--no-state", "--no-cache"].includes(arg))) return null;
     options = parseRosterOptions(args);
   } catch { return null; }
-  if (options.noCache || process.env.TAP_VERBOSE === "1" || rosterCacheTtl() === 0) return null;
+  if (options.team || options.noCache || process.env.TAP_VERBOSE === "1" || rosterCacheTtl() === 0) return null;
   const ctx = reportingContext(process.cwd(), process.env, options.team);
   if (!ctx) return null;
   const oldCrew = process.env.TAP_TEAM_CREW_ONLY, oldVerb = process.env.TAP_TEAM_LIST_VERB;
@@ -1586,7 +1598,7 @@ export function cmdTeam(argv: string[], scriptsDir: string, cacheContext?: Resol
       jsonRefusal(refusal);
       return refusal.code;
     }
-    const result = spawnSync(artifactBun() ?? "bun", [resolve(scriptsDir, "../../../runtime/bun/src/routing.ts"), "teams", ...args], {
+    const result = spawnSync(ownBun(), [...ownBunFlags(), resolve(scriptsDir, "../../../runtime/bun/src/routing.ts"), "teams", ...args], {
       encoding: "utf8", env: process.env, maxBuffer: REGISTRY_MAX_BUFFER,
     });
     if (result.stdout) process.stdout.write(result.stdout);
@@ -1748,7 +1760,8 @@ export function cmdTeam(argv: string[], scriptsDir: string, cacheContext?: Resol
     if (options.json && error instanceof TapError) { jsonRefusal(error); return error.code; }
     throw error;
   }
-  const cacheTtl = options.noCache || calibrating ? 0 : rosterCacheTtl(process.env, catalog?.advanced?.roster_cache_ttl_seconds);
+  // Named roster reads may target another team: keep that bus read-only.
+  const cacheTtl = options.team || options.noCache || calibrating ? 0 : rosterCacheTtl(process.env, catalog?.advanced?.roster_cache_ttl_seconds);
   const facts = options.names ? {} : presetFacts(sourceRows, catalog);
   const all = options.all || crewOnly;
   // --recent observes state in every shape, --all and --names included: a working seat sorts first.
@@ -1783,6 +1796,9 @@ export function cmdTeam(argv: string[], scriptsDir: string, cacheContext?: Resol
     observedAt = Date.now();
     cache?.write({rows, hierarchyRows, serverEpoch:observation.serverEpoch, callerSocket}, observedAt);
   }
+  // After the cache, on a hit and on a miss alike: an open request's detail is read for
+  // each request and is never written into the cached observation.
+  if (states) rows = withPermissionRequests(rows, ctx.bus.home, !!options.team);
   if (options.refreshModels && !options.json) {
     process.stderr.write("tap team: --refresh-models is retired; running OpenCode 2 seats publish model windows automatically. Nothing was refreshed.\n");
   }

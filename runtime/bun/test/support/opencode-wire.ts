@@ -108,5 +108,17 @@ try {
   console.log("opencode-context-wire: first-request context + variant / restart dedupe / native model resume / changed identity / plugin windows / mutant clean: ok");
 } finally {
   try { tmux(["kill-server"]); } catch { /* all sessions may already be gone */ }
-  server.stop(true); removeScratchTree(work);
+  server.stop(true);
+  // tmux's kill only signals the TUI and its private server, and both take a moment to
+  // close the store. The last arm ends right here, so wait (bounded) until nothing holds
+  // the scratch tree; removeScratchTree still refuses if something does. Each look is
+  // bounded too: an lsof that does not answer fails the test with the tree left in
+  // place, because removeScratchTree would ask it again without a bound.
+  const lsof = Bun.which("lsof") ?? "/usr/sbin/lsof";
+  for (const deadline = Date.now() + 15000; Date.now() < deadline; await Bun.sleep(200)) {
+    const open = Bun.spawnSync([lsof, "+D", work], { stdout: "pipe", stderr: "pipe", timeout: Math.max(1, Math.min(5000, deadline - Date.now())) });
+    if (open.exitedDueToTimeout) throw new Error(`lsof did not answer within its bound; scratch left in place: ${work}`);
+    if (open.exitCode === 1 && open.stdout.toString().trim() === "") break;
+  }
+  removeScratchTree(work);
 }

@@ -774,16 +774,16 @@ describe("tap doctor (native cutover, tap-hgf07)", () => {
     });
     const journalBytes = () =>
       readdirSync(journalDir).sort().map((f) => readFileSync(join(journalDir, f), "utf8")).join("\n---\n");
-    // Sanity: the journal machinery is live — an ordinary verb journals.
-    const probe = spawnTap(["help"]);
-    expect(probe.status, String(probe.stderr)).toBe(0);
+    // Sanity: the journal is live — even an unknown command journals.
+    const probe = spawnTap(["not-a-verb"]);
+    expect(probe.status, String(probe.stderr)).toBe(1);
     let snapshot = journalBytes();
     expect(snapshot.length).toBeGreaterThan(0);
     // Global -v/--verbose flags precede the verb: a leading-verbose doctor is
     // still doctor and must not journal either, while a leading-verbose
     // ordinary verb still does.
-    const verboseProbe = spawnTap(["--verbose", "help"]);
-    expect(verboseProbe.status, String(verboseProbe.stderr)).toBe(0);
+    const verboseProbe = spawnTap(["--verbose", "not-a-verb"]);
+    expect(verboseProbe.status, String(verboseProbe.stderr)).toBe(1);
     snapshot = journalBytes();
     expect(snapshot.length).toBeGreaterThan(0);
     const before = snapshot;
@@ -942,6 +942,22 @@ esac
     status: "active", delivery: "pane", harness: "claude", session: "u1/scout",
     pane: "u1/scout:0.0", pane_id: "%9", server_epoch: "srv:900:100", boot_id: "boot:2",
   };
+
+  for (const harness of ["bun", "zsh"]) {
+    test(`a seat registered from a shell prompt (harness ${harness}) is not told to register again`, () => {
+      const fx = fixture({ tmuxSh: absentSeatTmux, registry: {
+        schema: "0.20", team: { name: "u1", worktree_root: "REALROOT" },
+        seats: { scout: { ...activeSeat, harness } },
+      } });
+      const before = stateDigest(fx);
+      const next = jsonRun(fx).find("seat_unavailable")[0]?.detail.next;
+      expect(next).toBe("run tap in scout from inside an agent, or start one with tap launch <harness> <name>");
+      const human = runDoctor(fx);
+      expect(human.rc).toBe(0);
+      expect(human.out + human.err).not.toContain("tap register scout");
+      expect(stateDigest(fx)).toBe(before);
+    });
+  }
 
   for (const [epoch, reason] of [["srv:900:100", "session_absent"], ["srv:901:100", "server_epoch_stale"]]) {
     test(`stored-active seat with ${reason} is named separately from clean bus integrity, without writes`, () => {
@@ -2140,13 +2156,12 @@ exit 1
     expect(installation.tap.head).toMatch(/^[0-9a-f]{7,40}$/);
   });
 
-  test("tmux server census: other servers are summarized without an age-based health claim", () => {
-    // Ported from the retired shell smoke doctor-tmux-servers.test.sh
-    // (tap-7r3fn.19): a recorded server whose socket refuses is
-    // server_unresponsive; other servers are inventory, regardless of socket
-    // age. A healthy selected socket suppresses only the refusal; diagnostics
-    // never change the exit.
-    const lsofSh = `#!/bin/sh
+  // `lsof -c tmux -U -Fpcn` as each platform prints it. macOS names every tmux
+  // process `tmux`. Linux reports the process title, so a server is
+  // `tmux: server` and a client `tmux: client`, and each socket path carries a
+  // ` type=STREAM` suffix; the Linux arm follows output captured on tmux 3.4.
+  const CENSUS_LSOF: Record<string, string> = {
+    macOS: `#!/bin/sh
 case "$*" in
   *"-c tmux"*)
     printf 'p4242\\nctmux\\nf5\\nn->0xdeadbeef\\n'
@@ -2155,7 +2170,25 @@ case "$*" in
     printf 'p7171\\nctmux\\nf5\\nn%s\\n' "$TAP_FIXTURE_DEFAULT" ;;
   *) exit 0 ;;
 esac
-`;
+`,
+    Linux: `#!/bin/sh
+case "$*" in
+  *"-c tmux"*)
+    printf 'p4242\\nctmux: server\\nntype=STREAM\\n'
+    printf 'p5151\\nctmux: server\\nn%s type=STREAM\\nn%s type=STREAM\\n' "$TAP_FIXTURE_STALE" "$TAP_FIXTURE_STALE"
+    printf 'p6161\\nctmux: server\\nn%s type=STREAM\\n' "$TAP_FIXTURE_FRESH"
+    printf 'p7171\\nctmux: server\\nn%s type=STREAM\\n' "$TAP_FIXTURE_DEFAULT"
+    printf 'p8181\\nctmux: client\\nntype=STREAM\\n' ;;
+  *) exit 0 ;;
+esac
+`,
+  };
+  test.each(Object.entries(CENSUS_LSOF))("tmux server census (%s lsof shape): other servers are summarized without an age-based health claim", (_shape, lsofSh) => {
+    // Ported from the retired shell smoke doctor-tmux-servers.test.sh
+    // (tap-7r3fn.19): a recorded server whose socket refuses is
+    // server_unresponsive; other servers are inventory, regardless of socket
+    // age. A healthy selected socket suppresses only the refusal; diagnostics
+    // never change the exit.
     const psSh = `#!/bin/sh
 [ "$1" = "-axo" ] && printf '4242\\n4242\\n4242\\n5151\\n'
 exit 0
@@ -2408,6 +2441,7 @@ exit 1
       // The TAP socket holds its sessions: nothing to report even with TAP seats elsewhere.
       let t = await setup(["alt-tap"]);
       expect(mismatch(jsonRun(t.fx, [], t.env("populated"))).length).toBe(0);
+      expect(jsonRun(t.fx, [], t.env("populated")).find("tmux_persistent_server")[0]?.detail).toMatchObject({ exit_empty: "off", behavior: "server stays alive after its last session closes" });
       // list-sessions on the TAP socket fails: unknown, never an empty server.
       t = await setup(["alt-tap"]);
       expect(mismatch(jsonRun(t.fx, [], t.env("unreadable"))).length).toBe(0);

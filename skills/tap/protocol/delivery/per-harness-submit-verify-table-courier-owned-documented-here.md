@@ -32,6 +32,19 @@ The idle staged submit (tap-9lqa7) still requires a positive idle agent state,
 and Hermes's idle witness is an empty at-rest prompt row. A wire left staged in
 an idle Hermes composer therefore stays for `tap nudge`.
 
+### Antigravity's mode hint
+
+At start and after a shift+tab mode cycle, an empty Antigravity composer shows
+a hint such as `> Auto mode: edits & safe commands auto-approved (shift+tab to
+cycle)` until the first keystroke. It is an empty composer, not a draft. Paint
+decides, never the sentence or a fixed colour: the hint is the composer's only
+row, every character of it carries one explicit foreground and no other
+attribute, and that foreground is the one on the `? for shortcuts` cue directly
+below the band, which Antigravity shows only while the composer is empty. Typed
+and pasted text carry the default foreground. All of this must hold on one
+painted frame; a plain capture, a second row, a task card above the cue or an
+unrecognized sequence leaves the text a draft, which holds mail as before.
+
 ### Codex staged wires (tap-2ajq8)
 
 Codex paints a mid-turn paste progressively, so landing waits for the whole
@@ -83,13 +96,9 @@ Sending the completion key consumes zero-Enter authority even if acceptance
 remains unverified. An unverified result after that key never retains
 `reprobePending`.
 
-### Claude feedback-draft hold (tap-89a57, 2026-10-01)
+### Claude feedback-draft card (tap-89a57)
 
-Claude Code's SendFeedback panel (`✻ Bug report drafted: …` closed by `1 to review · 2 to send · 0 to dismiss`, directly above the composer) is `feedback-draft` in the input classifier and delivery band, `busy:feedback-draft` in spool readiness, and the `feedback-draft` park reason. It was previously parked as a generic `no-input-prompt` and waited as `busy:modal` with no alarm; a seat once sat behind it for 20 minutes. Agent state is unchanged: `blocked` there means an approval prompt.
-
-No key reaches the pane: not the sentinel, not Enter, not `0`. Urgent, force, no-spool, queue-prefix (`noPromptOk`) and attested-liveness authority do not override it: at the first band read, before urgent's interrupt key, at the final pre-paste read, and at each per-Enter read when the panel appears after the paste (the attempt then ends unverified with the wire possibly staged). The courier never sends, reviews or dismisses the draft.
-
-The first drain probe that observes the panel publishes one deterministic `DELIVERY HELD` notice per payload to the sender and, when a supervision watch is armed, to its armer (the supervising leader). The leader copy covers the common case where the blocked seat is its own sender, such as reminders. The leader notice is skipped when the armer is the sender or the blocked seat, and when the arm is reminders-only. Deduplication, retry and poll visibility follow the shell-mode notice below. Without an armed supervision watch, the sender notice is the only alarm. The watch is read from the drained bus, which is the sender's: for cross-team mail it names the sender team's leader, not the recipient team's. The cure is manual: a human or the seat's leader reads the panel and dismisses it (`0`); held mail then drains on its own.
+Claude's feedback-draft card is a notice, not a modal. The courier delivers past a card above a complete composer. A composer the card hides holds as `feedback-draft`, unless `injection.feedback_card=dismiss` (the default) clears the card with one licensed Escape first. See [Claude feedback-draft card](./claude-feedback-card.md).
 
 ### Stuck-readiness alarm (tap-bprtg, 2026-10-01)
 

@@ -13,6 +13,10 @@ import { submitVerifyLocked, type BoundRecipient, type PaneEffects } from "../sr
 import { pendingSentinel } from "../src/deliver";
 import { classifyPane, observePaneKind, paneState } from "../src/pane-state";
 import { removeScratchTree } from "./support/scratch";
+import { renderSentinel } from "../src/sentinel";
+
+const deliveryWire = (id: string) => renderSentinel({ from: "probe", to: "peer", id,
+  kind: "discuss", reply: "expected", path: "/fixture/payload.md" });
 
 // The REAL live-pane bytes (cursor-harness.test.sh:70): the terminal cursor
 // block overlays the first character in reverse video, resetting dim on that
@@ -290,21 +294,21 @@ describe("submitVerifyLocked traverses the real paneState", () => {
   test("an idle Cursor seat injects instead of refusing", () => {
     const id = "probe-20260918T000000Z-u1genericb001";
     const r = withFrame("cursor-placeholder", "cursor-agent", () =>
-      submitVerifyLocked("sess:0.0", id, `[[TAP ${id}]]`, bound("cursor-agent"), fx()));
+      submitVerifyLocked("sess:0.0", id, deliveryWire(id), bound("cursor-agent"), fx()));
     expect(r.status).toBe("injected");
   });
 
   test("an idle Hermes seat injects instead of refusing", () => {
     const id = "probe-20260918T000000Z-u1genericb002";
     const r = withFrame("hermes-placeholder", "hermes", () =>
-      submitVerifyLocked("sess:0.0", id, `[[TAP ${id}]]`, bound("hermes"), fx()));
+      submitVerifyLocked("sess:0.0", id, deliveryWire(id), bound("hermes"), fx()));
     expect(r.status).toBe("injected");
   });
 
   test("a typed Cursor draft stays refused with the draft text", () => {
     const id = "probe-20260918T000000Z-u1genericb003";
     const r = withFrame("cursor-typed", "cursor-agent", () =>
-      submitVerifyLocked("sess:0.0", id, `[[TAP ${id}]]`, bound("cursor-agent"), fx()));
+      submitVerifyLocked("sess:0.0", id, deliveryWire(id), bound("cursor-agent"), fx()));
     expect(r.status).toBe("band_busy");
     expect("bandText" in r && String(r.bandText)).toContain("ship the release notes");
   });

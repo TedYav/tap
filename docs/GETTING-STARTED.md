@@ -8,8 +8,9 @@ signed in. TAP supplies communication; the harnesses supply models and accounts.
 
 Start the installing agent in the folder you want as your first project (it
 keeps the TAP clone elsewhere) and point it at
-[AGENT-SETUP](AGENT-SETUP.md). That runbook holds a paste-ready installation
-prompt and covers the permanent clone, prerequisites, permission choices and
+[AGENT-SETUP](AGENT-SETUP.md), or paste it the prompt from the
+[landing page](https://tedyav.github.io/tap/#agent-install). That runbook
+covers the permanent clone, prerequisites, permission choices and
 installation checks. It creates no presets. Return here after those steps.
 
 Your TAP clone holds the installed software; your project holds the agents'
@@ -24,21 +25,38 @@ cd /path/to/your/project
 tap init
 ```
 
-Use your actual project path. Inside a Git repository `tap init` creates `.tap/`
-without asking. Outside Git it asks whether to initialize the directory anyway. In an
-interactive terminal it asks before creating a missing `AGENTS.md` with TAP's
-project instructions; without a terminal, or with `--json`, it writes that file
-without asking. Enrollment creates
-`.tap/bus` and a team named after the directory; in Git it also ignores
-`.tap/`.
+Use your actual project path. Inside Git, `tap init` creates `.tap/` and its
+team registry, adds `.tap/` to the Git-root `.gitignore` when needed, and enrolls
+the team in the machine index (`~/.tap/global-registry.json` by default).
+Outside Git, it asks before initializing the directory; `--yes` accepts.
 
-It then asks `Trust current directory in installed harnesses Y/n`, listing the
-directory and supported installed harnesses (Codex, Antigravity, Claude and Cursor).
-Enter grants each harness's normal folder trust, including any project settings
-and hooks that it ties to folder trust. Separate approval dialogs remain untouched.
-No leaves trust unchanged; some harnesses may need manual trust before use here.
-`tap init --yes` also accepts this question; add `--no-trust-folders` to skip it.
-Automatic onboarding and setup do not grant folder trust.
+It also adds a delimited TAP block to `AGENTS.md`, preserving existing instructions.
+A terminal asks before creating the file or appending a missing block [Y/n];
+`--yes` accepts. Redirected input and `--json` keep the automatic block write.
+Use `--no-instructions` to skip the file, whether it exists or not. Existing
+complete TAP blocks are left intact.
+
+It then asks `Trust current directory in installed harnesses Y/n`, naming each
+installed harness, configuration path and native trust setting: Codex's
+`trust_level`, Claude's `hasTrustDialogAccepted`, Antigravity's `trustedWorkspaces`,
+or Cursor's `.workspace-trusted` marker. Enter grants that harness's normal folder
+trust, including any project settings and hooks tied to it. Separate approval
+dialogs remain untouched. No leaves trust unchanged; some harnesses may need manual
+trust before use here. `--yes` accepts this offer even without a terminal;
+`--no-trust-folders` skips it. Automatic onboarding and setup do not grant it.
+
+Every run reports the paths it created or modified, including machine-index files,
+persistent lock files and any accepted harness trust settings. `tap init --dry-run`
+previews the same targets without writing or acquiring locks. The preview assumes
+acceptance of terminal offers and any outside-Git consent; add `--yes` to include
+folder trust without a terminal. It cannot predict concurrent edits or later lock
+and write failures.
+
+The receipt gives manual undo steps for the instruction block and the ignore line
+that run added. Remove only the block between `<!-- TAP:BEGIN -->` and
+`<!-- TAP:END -->` and the added `.tap/` line, preserving other content.
+`tap uninstall` removes recorded installation artifacts; it does not undo these
+project edits.
 
 ## 3. Launch both harnesses
 
@@ -56,6 +74,16 @@ TAP starts and registers each seat. A launch from a foreground terminal opens
 that agent. From an agent or without a terminal, launch leaves it running in
 the background; visit it from your terminal with `tap attach claude` or
 `tap attach codex`. `tap team` lists the seat names.
+
+If you have only one of the two CLIs, launch it twice and give the second seat
+a name: `tap launch claude`, then `tap launch claude reviewer`. A second bare
+`tap launch claude` would offer a menu for the seat that already holds that
+name instead of starting another.
+
+If you run these from inside tmux, launch also leaves the seat in the
+background. `tap attach claude` then switches your tmux client to the seat
+instead of nesting a second tmux; press your prefix, then **L**, to switch back
+to the session you came from. **Ctrl-b**, then **d** detaches your whole client.
 
 Launch uses your saved permission choice, or auto mode by default.
 [Choose bypass mode](#choose-bypass-mode) before launching if you prefer it.
@@ -86,8 +114,8 @@ If a seat parks on a prompt, detach (**Ctrl-b**, then **d**), visit it with
 `tap attach <seat>` — the seat names are the roster's — finish the prompt, and
 return. If no answer arrives, inspect the receiving seat before resending.
 
-If a message arrives while you are typing, type WAIT (in capitals) to hold
-deliveries for two minutes.
+If a message arrives while you are typing, see
+[Mail while you type](#mail-while-you-type).
 
 A **tmux session** keeps an agent running when you detach. Each TAP **seat**
 has a name you can address; the **team** is the group working in this project.
@@ -152,8 +180,8 @@ Launch another model your account supports directly:
 tap launch claude model-reviewer --model fable --effort high
 ```
 
-`tap help launch` lists legal effort levels. OpenCode and Cursor accept model
-only, without `--effort`. Service-mode and environment qualifications stay
+`tap help launch` lists legal effort levels. Cursor accepts a model only,
+without `--effort`; for OpenCode, `--effort` selects a model variant. Service-mode and environment qualifications stay
 attached to each launch choice; they are not universal model capabilities.
 
 Presets save a combination you use often. Once you know which settings work
@@ -171,6 +199,39 @@ text it can capture; paste-back is conditional. Use `tap draft` to recover it.
 Pasted content or images may be missing. Type `WAIT` in caps to hold deliveries
 for two minutes when you need more time. **Wait** leaves your typing alone but
 holds messages until the agent's input is empty.
+
+## Mail while you type
+
+What TAP does when a message arrives while you are typing in a seat depends on
+that seat's permission mode.
+
+- **Auto mode**, the default for Claude Code, Codex, Cursor and Antigravity
+  seats that TAP launches: TAP waits until the input box is empty. It does not
+  clear a draft, and an urgent message is delivered as an ordinary one instead
+  of interrupting the agent.
+- **Bypass mode**, OpenCode and Hermes seats, and panes joined by hand with
+  `tap in`: your draft gets a 30-second grace, or 10 seconds for an urgent
+  message. The pane flashes green while mail waits and red with 10 seconds
+  left. TAP then saves the draft, clears the input box and delivers. It pastes
+  the saved text back when it can; `tap draft` recovers it when it cannot.
+  Pasted content and images may not be captured.
+
+`WAIT` and the `injection.behavior` setting matter where a draft can be
+cleared; `STOP` and `START` work in every mode:
+
+- Type `WAIT`, in capitals, anywhere in your draft to snooze all incoming mail
+  once, for up to two minutes or until you submit or clear the draft. Typing it
+  again does not extend the snooze.
+- Type only `STOP` to hold all mail, urgent included, while you use another
+  view in the agent's interface. Wait for the acknowledgement, and type only
+  `START` to release the hold. It expires after ten minutes, and `STOP` does
+  nothing when no mail is pending.
+- Run `tap config set injection.behavior wait` to stop TAP clearing drafts at
+  all: mail then waits until the input box is empty.
+- Claude Code can show a feedback-draft card above its input box. When the
+  card pushes the input box out of view, TAP dismisses it with one Escape and
+  then delivers; the draft stays in Claude's `/feedback`. Run
+  `tap config set injection.feedback_card hold` to have mail wait instead.
 
 ## Configure message previews
 
@@ -251,10 +312,11 @@ handle.
 Seats that TAP launches use each harness's own permission checks (auto) unless
 you choose otherwise. Bypass lets the agent run commands and edit files without
 asking, with your own permissions. To choose it, set the harness's permissions
-to `bypass`; the next launch picks it up:
+to `bypass`; the next launch picks it up. For Claude (use `codex`, `cursor` or
+`agy` in the key for the others):
 
 ```bash
-tap config set harness.cursor.permissions bypass
+tap config set harness.claude.permissions bypass
 ```
 
 A bypass flag left in that harness's `params` refuses an auto launch until the
@@ -282,8 +344,9 @@ flags in
   `permission` setting and Hermes's `approvals.mode`.
 
 Claude, Codex and Antigravity also ask you to trust each new project folder the
-first time a seat starts there. TAP treats that dialog like any other prompt;
-it never answers it for you.
+first time a seat starts there. Message delivery treats that dialog like any
+other prompt and never answers it. The folder-trust offer in `tap init` is
+where TAP records folder trust for you, and only when you accept it.
 
 A seat waiting on one of these prompts is blocked, as TAP's
 [prompt detector](../runtime/bun/src/agent-state.ts) reads it. `tap team` shows
@@ -295,15 +358,16 @@ blocked seats first under attention
 ([`roster-stalled.ts`](../runtime/bun/src/roster-stalled.ts)), and `tap watch`
 does not probe it by default ([`watch-evaluator.ts`](../runtime/bun/src/watch-evaluator.ts)).
 
-TAP never types into the prompt, urgent messages included: the
+Message delivery never types into the prompt, urgent messages included: the
 [courier](../runtime/bun/src/courier.ts) holds delivery while the dialog is up.
 Attach, answer the prompt yourself, then detach with **Ctrl-b**, then **d**. The
 waiting messages then go through.
 
 ## TAP and tmux
 
-TAP is developed and tested on macOS; CI runs on macOS. Linux support is best
-effort: an Ubuntu 24.04 container smoke reached Claude Code and Codex sign-in,
+TAP is developed and tested on macOS, where the full test suite runs. The public
+repository's CI runs a smaller set on Ubuntu: fast smoke tests, a typecheck and
+an install smoke. Linux support is best effort: an Ubuntu 24.04 container smoke reached Claude Code and Codex sign-in,
 but did not test an authenticated exchange. The optional keybinding and tmux
 defaults installers require tmux 3.2 or newer. Linux desktop notifications and
 `wl-copy`/`xclip` integration have not been exercised end to end. `notify-send`
@@ -319,12 +383,19 @@ be required), but it does not protect tmux inside a login session when
 for running it outside that session scope. Linger is irrelevant on hosts without
 systemd; this path was not tested in the Linux container smoke.
 
+When TAP starts a tmux server, it sets server-wide `exit-empty off`: the
+server stays alive after its last session closes. Existing servers keep their
+own value. `tap doctor` reports this setting; it does not need repair.
+
 TAP runs every seat inside tmux. First-run setup can install two optional tmux
 integrations (never on a plain sync; both removable, and neither edits your
 own lines):
 
 - The lookup key: `prefix C-g` opens the teammate picker — `tap keybinding install`.
 - Managed tmux defaults so tmux behaves like a bare terminal — `tap tmux-defaults install`.
+
+Both installers edit a symlinked tmux config through the link. Their dry runs
+and receipts name the real target, so dotfile repository changes are visible.
 
 The defaults are one TAP-owned file, `~/.config/tap/tmux-defaults.conf`, plus
 one marked `source-file` line in your `~/.tmux.conf`, inserted before your own
@@ -336,7 +407,17 @@ lines of history, and a working clipboard: `pbcopy` on macOS, `wl-copy` or
 no escape-time and no extended-keys. If you have no tmux config yet, the same file also
 holds a calm status bar (team/session, windows by name, the time); with a config of your
 own you get it only through `tap tmux-defaults install --status-bar`, and
-`--no-status-bar` leaves it out either way. `tap tmux-defaults status --json` reports
+`--no-status-bar` leaves it out either way.
+
+On a running server, install loads the defaults and then re-sources your
+config if it contains only plain option and binding commands and parses cleanly.
+The receipt lists the options TAP changed and your config reasserted; the managed
+file never lowers a larger running history limit. If your config uses plugins,
+sourced files or other commands, TAP leaves live settings untouched and prints
+`tmux source-file <your-config>` for you to run after reviewing those effects.
+`--dry-run` previews the same live plan.
+
+`tap tmux-defaults status --json` reports
 what is installed and what the running server shows; `--dry-run` prints the
 exact lines first; `tap tmux-defaults remove` deletes the file and the marked
 line (options already loaded stay until tmux restarts).

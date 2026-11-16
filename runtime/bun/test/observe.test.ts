@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   US, agentFamilies, bootIdsMatch, buildSnapshot, classifyCommCommand, classifyRow,
   harnessEvidence, isPaneId, observeHarnessPidFromTable, observeProcessHarness,
+  recordedWithoutAgent, shellSeatEvidence,
   observeRows, parsePanes, parsePsTable, parseSessions, pendingReservationExpired,
   sessionPanesFor, serverEpochFromRaw, harnessFamily,
 } from "../src/observe";
@@ -199,6 +200,47 @@ test("epoch and boot predicates twin their lib.sh counterparts", () => {
 test("pane ids are % plus digits, nothing else", () => {
   for (const good of ["%0", "%12", "%999"]) expect(isPaneId(good)).toBe(true);
   for (const bad of ["", "%", "1", "%a", "%1a", "pane", "%-1", "% 1"]) expect(isPaneId(bad)).toBe(false);
+});
+
+test("a shell claim needs positive evidence; a runtime name alone is unidentified", () => {
+  const families = ["claude", "codex"];
+  const table = parsePsTable([
+    "5005 5005 5060 zsh -zsh",          // a shell prompt running `tap in`
+    "5060 5060 5060 bun bun /x/main.ts in seat",
+    "5007 5007 5007 bun bun /x/agent.ts", // the pane's own root is the runtime
+    "5009 5009 5090 zsh -zsh",          // a shell with an agent in the foreground
+    "5090 5090 5090 claude /x/claude",
+  ].join("\n"));
+  const read = () => ({ table, ok: true });
+  const unread = () => ({ table: null, ok: false });
+  const never = () => { throw new Error("a recorded shell needs no process read"); };
+  // tmux named a shell: that is the evidence.
+  expect(shellSeatEvidence("zsh", "5005", never, families)).toBe("shell");
+  // The runtime under a shell root whose foreground group is no agent.
+  expect(shellSeatEvidence("bun", "5005", read, families)).toBe("shell");
+  // The same name with nothing to back it: unknown, never absent.
+  expect(shellSeatEvidence("bun", "5005", unread, families)).toBe("unidentified");
+  expect(shellSeatEvidence("bun", "9999", read, families)).toBe("unidentified");
+  expect(shellSeatEvidence("bun", "", never, families)).toBe("unidentified");
+  // A shell root whose foreground group has no observable leader: the
+  // foreground program was not seen, so nothing says it is not an agent.
+  const rootOnly = () => ({ table: parsePsTable("5005 5005 5060 zsh -zsh"), ok: true });
+  expect(shellSeatEvidence("bun", "5005", rootOnly, families)).toBe("unidentified");
+  // A row at that pid that does not lead the group is not the leader either.
+  const follower = () => ({ table: parsePsTable(["5005 5005 5060 zsh -zsh", "5060 5059 5060 bun bun /x/main.ts"].join("\n")), ok: true });
+  expect(shellSeatEvidence("bun", "5005", follower, families)).toBe("unidentified");
+  for (const group of ["0", "-1"]) {
+    const none = () => ({ table: parsePsTable(`5005 5005 ${group} zsh -zsh`), ok: true });
+    expect(shellSeatEvidence("bun", "5005", none, families)).toBe("unidentified");
+  }
+  expect(shellSeatEvidence("bun", "5007", read, families)).toBe("unidentified");
+  expect(shellSeatEvidence("tap", "5009", read, families)).toBe("unidentified");
+  // Supported agents and other programs get no line at all.
+  expect(shellSeatEvidence("claude", "5009", never, families)).toBeNull();
+  expect(shellSeatEvidence("vim", "5005", never, families)).toBeNull();
+  expect(recordedWithoutAgent("bun")).toBe(true);
+  expect(recordedWithoutAgent("fish")).toBe(true);
+  expect(recordedWithoutAgent("claude")).toBe(false);
 });
 
 // ---------------------------------------------------------------------------

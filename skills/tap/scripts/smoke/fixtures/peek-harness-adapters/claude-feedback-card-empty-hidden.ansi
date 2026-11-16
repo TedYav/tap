@@ -1,0 +1,24 @@
+    draft: safe to discard" will put the card in this pane
+    once I go idle. A background script then captures it,
+    pastes a [38;2;153;204;255m[[probe]][39m line the way the courier does,
+    presses Enter, and captures again. The probe line will
+    arrive in this pane as a message. The draft stays in
+    your queue for you to discard; nothing is sent.
+
+  When the capture finishes I'll build the fix in a
+  worktree: remove the feedback-draft hold at every call
+  site and flip the fixture tests.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCooked for 8m 29s · done 1:43 PM · 1 shell still running
+[39m
+╭────────────────────────────────────────────────────────╮
+│ [38;2;255;153;51m✻ [39mBug report drafted: [1mTAP fixture capture draft: safe…[0m │
+│ [2m│[0m - [1mWhat happened:[0m This draft exists so a TAP seat can │
+│ [2m│[0m capture a live frame of the feedback-draft card      │
+│ [2m│[0m (Claude Code 2.1.325). TAP's courier was holding     │
+│ [2m│[0m messag…                                              │
+│ [38;2;153;153;153m1 to review · 2 to send · 0 to dismiss[39m                 │
+╰────────────────────────────────────────────────────────╯
+
+
+[38;2;136;136;136m───────────────────────────────────────── tap/seat-alpha ─

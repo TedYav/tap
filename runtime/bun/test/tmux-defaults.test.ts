@@ -683,3 +683,107 @@ test("opting out of the status bar on a loaded server says its styling stays unt
   expect(off.out).toContain("status bar already loaded stays until tmux restarts");
   expect(run("install", "--status-bar").out).not.toContain("stays until tmux restarts");
 });
+
+
+test("install preserves running user overrides and reports the live transition", () => {
+  writeFileSync(userConf(), "set -g mouse off\nset -g history-limit 50000\nbind-key -T root MouseDown2Pane display-message mine\n");
+  expect(T("-f", userConf(), "new-session", "-d", "-s", "custom").status).toBe(0);
+  const dry = JSON.parse(run("install", "--dry-run", "--json").out);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("off");
+  const receipt = JSON.parse(run("install", "--json").out);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("off");
+  expect(T("show", "-gv", "history-limit").stdout.trim()).toBe("50000");
+  expect(T("list-keys", "-T", "root", "MouseDown2Pane").stdout).toContain("mine");
+  expect(receipt.live_reasserted).toContain("mouse");
+  expect(receipt.live_changed).toContain("focus-events");
+  expect(dry.live_plan).toBe(receipt.live_plan);
+});
+
+test("install discloses the symlink target in preview and receipt", () => {
+  const target = join(home, "dotfiles.conf");
+  writeFileSync(target, "set -g mouse off\n");
+  symlinkSync(target, userConf());
+  expect(run("install", "--dry-run").out).toContain(target);
+  expect(run("install").out).toContain(target);
+  expect(lstatSync(userConf()).isSymbolicLink()).toBe(true);
+});
+
+
+test("plugin configs are not replayed and dry-run previews the manual reload", () => {
+  const effect = join(home, "plugin-ran");
+  writeFileSync(userConf(), `set -g mouse off\nrun-shell 'touch ${effect}'\n`);
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "plugins").status).toBe(0);
+  T("set", "-g", "mouse", "off");
+  const dry = JSON.parse(run("install", "--dry-run", "--json").out);
+  const result = JSON.parse(run("install", "--json").out);
+  expect(dry.live_plan).toBe("manual-reload");
+  expect(result.live_plan).toBe(dry.live_plan);
+  expect(result.reloaded).toBe(false);
+  expect(existsSync(effect)).toBe(false);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("off");
+});
+
+test("a syntax error leaves live settings untouched in preview and install", () => {
+  writeFileSync(userConf(), "set -g mouse on {\n");
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "invalid").status).toBe(0);
+  T("set", "-g", "mouse", "off");
+  expect(JSON.parse(run("install", "--dry-run", "--json").out).live_plan).toBe("manual-reload");
+  expect(JSON.parse(run("install", "--json").out).reloaded).toBe(false);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("off");
+});
+
+test("defaults never lower a larger live history even without a user override", () => {
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "history").status).toBe(0);
+  T("set", "-g", "history-limit", "50000");
+  expect(run("install").code).toBe(0);
+  expect(T("show", "-gv", "history-limit").stdout.trim()).toBe("50000");
+});
+
+test("legacy owned defaults migrate without being mistaken for user edits", () => {
+  expect(run("install").code).toBe(0);
+  const legacy = readFileSync(defaultsPath(), "utf8").replace('set -gF history-limit "#{?#{e|>|:#{history-limit},10000},#{history-limit},10000}"', "set -g history-limit 10000");
+  writeFileSync(defaultsPath(), legacy);
+  expect(run("install").code).toBe(0);
+  expect(readFileSync(defaultsPath(), "utf8")).toContain("set -gF history-limit");
+});
+
+
+test("defaults raise the built-in history limit to 10000", () => {
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "history-default").status).toBe(0);
+  expect(T("show", "-gv", "history-limit").stdout.trim()).toBe("2000");
+  expect(run("install").code).toBe(0);
+  expect(T("show", "-gv", "history-limit").stdout.trim()).toBe("10000");
+});
+
+
+test("append configs require manual reload instead of repeating their effects", () => {
+  writeFileSync(userConf(), 'set -g status-right "base"\nset -ag status-right " | mine"\n');
+  expect(T("-f", userConf(), "new-session", "-d", "-s", "append").status).toBe(0);
+  // Simulate a user who changed the live prefix after startup.
+  T("set", "-g", "status-right", "live | mine");
+  expect(JSON.parse(run("install", "--dry-run", "--json").out).live_plan).toBe("manual-reload");
+  expect(JSON.parse(run("install", "--json").out).reloaded).toBe(false);
+  expect(T("show", "-gv", "status-right").stdout.trim()).toBe("live | mine");
+});
+
+test("unknown options require manual reload before TAP changes anything live", () => {
+  writeFileSync(userConf(), "set -g mouse off\nset -g bogus-option-xyz on\n");
+  expect(T("-f", "/dev/null", "new-session", "-d", "-s", "unknown").status).toBe(0);
+  T("set", "-g", "mouse", "off");
+  const dry = JSON.parse(run("install", "--dry-run", "--json").out);
+  expect(dry.live_plan).toBe("manual-reload");
+  const r = run("install", "--json");
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.out).reloaded).toBe(false);
+  expect(T("show", "-gv", "mouse").stdout.trim()).toBe("off");
+});
+
+
+test("value-less toggle configs require manual reload", () => {
+  writeFileSync(userConf(), "set -g status\n");
+  expect(T("-f", userConf(), "new-session", "-d", "-s", "toggle").status).toBe(0);
+  expect(T("show", "-gv", "status").stdout.trim()).toBe("off");
+  expect(JSON.parse(run("install", "--dry-run", "--json").out).live_plan).toBe("manual-reload");
+  expect(JSON.parse(run("install", "--json").out).reloaded).toBe(false);
+  expect(T("show", "-gv", "status").stdout.trim()).toBe("off");
+});

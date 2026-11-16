@@ -25,5 +25,5 @@ catch { process.exitCode=1; }
   const run = spawnSync(binary, [], { encoding: "utf8", env: { ...process.env, PATH: `${join(work, "bin")}:${process.env.PATH}`, PROBE_ARGV: argv }, timeout: 10000 });
   expect(run.status, run.stderr).toBe(0);
   expect(JSON.parse(run.stdout)).toEqual({ data: [] });
-  expect(readFileSync(argv, "utf8").trim().split("\n")).toEqual([join(work, "runtime/bun/src/opencode-service.ts"), "--request"]);
+  expect(readFileSync(argv, "utf8").trim().split("\n")).toEqual([`--config=${join(work, "runtime/bun/tap-bunfig.toml")}`, "--no-env-file", join(work, "runtime/bun/src/opencode-service.ts"), "--request"]);
 }, 120000);

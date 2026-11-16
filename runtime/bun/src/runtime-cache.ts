@@ -32,8 +32,8 @@ export function runtimeCache<T>(directory: string, name: string, identity: unkno
       } catch { return null; }
     },
     write(snapshot: T, observedAt = Date.now()): void {
-      // A display cache never creates the bus it sits in: a named read of another
-      // team, or of a bus not yet initialized, stays read-only.
+      // A display cache never creates the bus it sits in. The display entry
+      // point separately decides whether the selected bus may be written.
       if (ttl <= 0 || !existsSync(dirname(directory))) return;
       try {
         atomicWrite(path, JSON.stringify({ version: 1, key, observedAt, snapshot, checksum: cacheDigest(snapshot) } satisfies Entry<T>) + "\n");

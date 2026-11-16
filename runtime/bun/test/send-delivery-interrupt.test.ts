@@ -428,6 +428,35 @@ describe("U4: the interrupt class delivers natively", () => {
     expect(v.spool.map(r => r.reason)).toContain("no-input-prompt");
   }, 120_000);
 
+  const cardFrame = (name: string) => readFileSync(join(import.meta.dir, `../../../skills/tap/scripts/smoke/fixtures/peek-harness-adapters/${name}.ansi`));
+
+  test("a Claude feedback card above a complete composer gets no interrupt key (tap-89a57)", () => {
+    // The card renders only on an idle seat: nothing to interrupt, and Escape
+    // on its empty composer would dismiss it. The capture is the live card over a complete composer.
+    const fx = fixture();
+    writeFileSync(fx.env.FAKE_MODAL!, cardFrame("claude-feedback-card-visible"));
+    const v = run(fx, ["send", "rb", "-m", "hi", "--urgent"]);
+    expect(v.route).toBe(routeOf("send"));
+    expect(v.keys.some(l => /Escape|C-c/.test(l))).toBe(false);
+    expect(v.stderr).toContain("Claude feedback card is up, so the seat is idle; urgent delivery sends no interrupt key");
+    expect(v.stderr).not.toContain("interrupt attempt for");
+  }, 120_000);
+
+  test("a feedback card hiding the composer gets exactly one dismissing Escape, then holds while it stays (tap-89a57)", () => {
+    // The fake pane keeps showing the card, so the one licensed Escape does not clear it: the payload parks.
+    const fx = fixture();
+    writeFileSync(fx.env.FAKE_MODAL!, cardFrame("claude-feedback-card-empty-hidden"));
+    const v = run(fx, ["send", "rb", "-m", "hi", "--urgent"]);
+    expect(v.route).toBe(routeOf("send"));
+    expect(v.keys.filter(l => /Escape/.test(l))).toHaveLength(1);
+    expect(v.keys.some(l => l.includes(" -l -- ") || /C-c/.test(l))).toBe(false);
+    expect(v.stderr).toContain("still up after its one Escape; holding");
+    expect(v.spool.map(r => r.reason)).toContain("feedback-draft");
+    // The license is spent for that card: a second send to the same card sends no key (keys accumulate per fixture).
+    const again = run(fx, ["send", "rb", "-m", "again", "--urgent"]);
+    expect(again.keys.filter(l => /Escape/.test(l))).toHaveLength(1);
+  }, 120_000);
+
   test("a live clearing fence refuses urgent outright", () => {
     const fx = fixture({ clearFence: true });
     const v = run(fx, ["send", "rb", "-m", "hi", "--urgent"]);

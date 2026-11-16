@@ -20,7 +20,6 @@ const PATH_RULE = /import\.meta\.(?:dir|path|url|dirname|filename)\b/;
 
 /** Files whose spawn hits are the fallbacks themselves. Each entry says why. */
 const SPAWN_ALLOW: Record<string, string> = {
-  "src/courier-argv.ts": "the builders' own fallbacks: bun from PATH, or process.execPath, when no artifact shim exists",
   "src/watch-run.ts": "reexecImage's source fallback; it checks the shim with Node built-ins because this entry imports nothing else before it stamps its sources",
 };
 

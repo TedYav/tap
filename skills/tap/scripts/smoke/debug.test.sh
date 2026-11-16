@@ -76,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='debug-', dir=os.environ['TMUX_TMPDIR'])
         env['REAL_BUN'] = shutil.which('bun')
         env['FD_RECORD'] = str(p/'fd-record')
         (p/'bin/bun').write_text('''#!/bin/bash
-case "$1" in */debug.ts)
+case " $* " in *"/debug.ts "*)
   flags=''
   for fd in 0 1 2 9; do if [ -t "$fd" ]; then flags="${flags}1"; else flags="${flags}0"; fi; done
   printf '%s\\n' "$flags" >> "$FD_RECORD"

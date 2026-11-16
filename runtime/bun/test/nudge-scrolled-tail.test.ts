@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { compiledRouter, compiledRouterCleanup, compiledRouterSrc } from "./compiled-router";
+import { recordTypedWire, typedWires } from "../src/typed-wire";
 
 // tap-1ncs6: `tap nudge` against a Claude seat whose 38-column composer shows
 // only the scrolled tail of a delivered wire. The public verb, the recorded
@@ -28,10 +29,16 @@ function composerFrame(text: string): string {
   return [...lines.slice(0, prompt), `❯ ${text}`, ...lines.slice(border)].join("\n");
 }
 
+// A human draft that ends like a wire: a shell test.
+const LOOKALIKE = 'why does this fail: if [[ -z "$FOO" ]]';
+
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-function fixture(composer: "tail" | "draft" | "cut-opener" | "empty" | "overprint" = "tail", harness = "claude") {
+// `typed`: the server generation the pane's typed-wire record says the courier typed WIRE in
+  // (the proof a scrolled tail needs), or false for no record. The seat's own generation is srv:900:100.
+function fixture(composer: "tail" | "draft" | "lookalike" | "cut-opener" | "empty" | "overprint" = "tail", harness = "claude",
+  typed: false | { epoch: string; bus?: string } = composer === "tail" ? { epoch: "srv:900:100" } : false) {
   const root = mkdtempSync(join(tmpdir(), "tap-nudge-tail-"));
   roots.push(root);
   for (const p of ["bin", "bus/payloads", "bus/receipts", "config/tap", "index", "state"]) mkdirSync(join(root, p), { recursive: true });
@@ -39,7 +46,7 @@ function fixture(composer: "tail" | "draft" | "cut-opener" | "empty" | "overprin
   writeFileSync(join(root, "bus/registry.json"), JSON.stringify({ schema: "0.20", team: { name: "testteam" }, seats: {
     peer: { session: "testteam/peer", pane: "testteam/peer:0.0", pane_id: "%301", harness, server_epoch: "srv:900:100", boot_id: "boot:1", status: "active" },
   } }));
-  writeFileSync(join(root, "state/frame"), composer === "overprint" ? OVERPRINT : composer === "empty" ? EMPTY : composer === "tail" ? FRAME : composerFrame(composer === "draft" ? "see the wiki page [[Release notes]]" : "[[TAP v0.23 note truncated"));
+  writeFileSync(join(root, "state/frame"), composer === "overprint" ? OVERPRINT : composer === "empty" ? EMPTY : composer === "tail" ? FRAME : composerFrame(composer === "draft" ? "see the wiki page [[Release notes]]" : composer === "lookalike" ? LOOKALIKE : "[[TAP v0.23 note truncated"));
   writeFileSync(join(root, "state/harness"), harness);
   writeFileSync(join(root, "state/effects"), "");
   writeFileSync(join(root, "bin/tmux"), `#!${process.execPath}
@@ -73,16 +80,22 @@ else { appendFileSync(root+"/state/effects", args.join(" ")+"\\n"); if(args.incl
   const env = { ...process.env, HOME: root, XDG_CONFIG_HOME: join(root, "config"), TAP_HOME: join(root, "bus"),
     TAP_INDEX_HOME: join(root, "index"), TAP_SERVER_EPOCH: "srv:900:100", TAP_BOOT_ID: "boot:1",
     PATH: join(root, "bin") + ":" + process.env.PATH, FAKE_ROOT: root, TAP_TUI_SETTLE_SCALE: "0.01" };
+  if (typed) recordTypedWire("%301", { epoch: typed.epoch, bus: typed.bus ?? join(root, "bus") }, ID, WIRE, env);
   return { root, run: (router?: string, ...extra: string[]) => spawnSync(router ?? "bash", [...(router ? [] : [resolve(import.meta.dir, "../../../bin/tap")]), "nudge", "peer", ...extra], { cwd: root, env, encoding: "utf8", timeout: 25000 }),
-    effects: () => readFileSync(join(root, "state/effects"), "utf8") };
+    effects: () => readFileSync(join(root, "state/effects"), "utf8"),
+    // What the seat's own courier could still prove in this pane.
+    typed: () => typedWires("%301", { epoch: "srv:900:100", bus: join(root, "bus") }, env) };
 }
 
-test("nudge recognizes the scrolled tail by shape, presses Enter once through the recorded run, and never injects", () => {
+test("nudge recognizes the scrolled tail of a wire the courier typed, presses Enter once through the recorded run, and never injects", () => {
   const f = fixture();
   expect(WIRE.startsWith("[[TAP")).toBe(true);
   expect(FRAME.includes("[[TAP")).toBe(false);
+  expect(f.typed()).toMatchObject([{ id: ID, wire: WIRE }]);
   const result = f.run();
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
+  // The submitted wire is no longer evidence: its tail showing up later is someone's draft.
+  expect(f.typed()).toEqual([]);
   expect(result.stderr).toContain("scrolled tail of a TAP wire");
   expect(result.stdout).toContain("re-submitted");
   const effects = f.effects();
@@ -102,6 +115,36 @@ test("an anchored opener that never closes is shaped but not a tail: refused, no
   expect(result.stderr).toContain("no single complete TAP sentinel");
   expect(f.effects()).toBe("");
   expect(readFileSync(join(f.root, "state/frame"), "utf8")).toContain("note truncated");
+}, 20000);
+
+for (const [label, make, kept] of [
+  ["a draft that only ends like a wire", () => fixture("lookalike"), "$FOO"],
+  ["a wire tail with no record that the courier typed it", () => fixture("tail", "claude", false), "landed the whole wire"],
+  ["a wire tail recorded in a previous server generation", () => fixture("tail", "claude", { epoch: "srv:800:100" }), "landed the whole wire"],
+  ["a wire tail recorded by another bus's courier", () => fixture("tail", "claude", { epoch: "srv:900:100", bus: join(tmpdir(), "tap-foreign-bus-never-created") }), "landed the whole wire"],
+] as const) {
+  test(`${label} is a human draft to nudge: nothing is pressed, typed or cleared`, () => {
+    const f = make();
+    const result = f.run();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the composer holds a draft");
+    expect(result.stderr).not.toContain("scrolled tail of a TAP wire");
+    expect(f.effects()).toBe("");
+    expect(readFileSync(join(f.root, "state/frame"), "utf8")).toContain(kept);
+  }, 20000);
+}
+
+test("a nudge that presses nothing leaves the typed-wire evidence in place", () => {
+  // Same proven tail, but the seat's pane binding is gone: the nudge refuses before any key.
+  const f = fixture();
+  const registry = join(f.root, "bus/registry.json");
+  const doc = JSON.parse(readFileSync(registry, "utf8"));
+  doc.seats.peer.pane_id = "%999";
+  writeFileSync(registry, JSON.stringify(doc));
+  const result = f.run();
+  expect(result.status).not.toBe(0);
+  expect(f.effects()).not.toContain("Enter");
+  expect(f.typed()).toMatchObject([{ id: ID, wire: WIRE }]);
 }, 20000);
 
 test("a human draft in the composer holds the nudge; nothing is pressed, typed or cleared", () => {
@@ -224,7 +267,7 @@ test("the compiled router's park requeue starts the spool waiter on real bun and
   expect(result.stdout).toContain(`requeued copy-mode park ${id}`);
   const log = join(f.root, "state/bun-argv");
   for (let i = 0; i < 100 && !existsSync(log); i++) Bun.sleepSync(50);
-  expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([join(compiledRouterSrc(), "spool-waiter.ts"), id]);
+  expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([`--config=${join(compiledRouterSrc(), "../tap-bunfig.toml")}`, "--no-env-file", join(compiledRouterSrc(), "spool-waiter.ts"), id]);
 }, 120000);
 
 // tap-gpk7b: an incident's operator escalation resolved the escalate entry from the compiled
@@ -241,4 +284,33 @@ test("the compiled router's incident escalation reaches the shipped escalate.ts"
   // before notifying anyone: its own diagnostic is the proof that the entry was reached.
   expect(outcome.error).toBeUndefined();
   expect(outcome.stderr).toMatch(/^tap escalate: notifier '.*' not found — no notification attempted/);
+}, 120000);
+
+// The escalation child is the router's own executable run as the Bun command line
+// (BUN_BE_BUN=1), which loads "$PWD/bunfig.toml" whatever the router was compiled with.
+// The seat's directory here ships a preload that leaves a marker when Bun starts escalate.ts.
+test("the compiled router's incident escalation does not run the working directory's bunfig.toml preload", () => {
+  const f = fixture();
+  const mark = join(f.root, "state/preload-ran"), entry = join(compiledRouterSrc(), "verbs/escalate.ts");
+  writeFileSync(join(f.root, "preload.ts"), `import { writeFileSync } from "node:fs";
+if (process.argv.some(arg => arg.endsWith("/verbs/escalate.ts"))) writeFileSync(${JSON.stringify(mark)}, "x");
+`);
+  // The relative path is assembled: the publish closure scan reads a literal one as a file this test needs.
+  writeFileSync(join(f.root, "bunfig.toml"), `preload = ["./${"preload.ts"}"]\n`);
+  // Control: the same binary as Bun, on the same entry, in that directory, without TAP's
+  // flags does run the preload. Without it the absence below could never fail.
+  spawnSync(compiledRouter(), [entry, "--help"], { cwd: f.root, encoding: "utf8", timeout: 25000,
+    env: { ...process.env, HOME: f.root, TAP_HOME: join(f.root, "bus"), TAP_INDEX_HOME: join(f.root, "index"), BUN_BE_BUN: "1" } });
+  expect(existsSync(mark)).toBe(true);
+  rmSync(mark);
+
+  writeFileSync(join(f.root, "state/exit-on-enter"), "");
+  const result = f.run(compiledRouter());
+  expect(result.stderr).toMatch(/tap recovery: INCIDENT: harness exited or registered instance changed after recovery/);
+  const debug = join(f.root, "index/debug/recovery");
+  const recovery = readdirSync(debug).find(name => name.startsWith("recovery-"))!;
+  const outcome = JSON.parse(readFileSync(join(debug, recovery, "escalation-result.json"), "utf8"));
+  // escalate.ts itself ran (its own refusal is the proof), and the preload did not.
+  expect(outcome.stderr).toMatch(/^tap escalate: notifier '.*' not found — no notification attempted/);
+  expect(existsSync(mark)).toBe(false);
 }, 120000);

@@ -1,6 +1,8 @@
 # Identity and lifecycle
 
+- [Project initialization](./project-initialization.md): write receipts, dry-run targets, instruction consent and native folder-trust grants.
 - [Agent state](./agent-state.md): failed turns, modal holds and usable composers.
+- [Permission requests](./permission-requests.md): what a Claude seat's open approval or question is for, the record, and when it is shown.
 - [Antigravity conversation capture](./agy-conversation-capture.md): native hook timing, identity and resume binding.
 - [Relaunch shorthands](./relaunch-shorthands.md): `--context` and `--ponytail` on `tap session relaunch`.
 - [Seat selection for `tap out`](./seat-picker.md): `--last`, and the terminal chooser for a tie or a missed name.

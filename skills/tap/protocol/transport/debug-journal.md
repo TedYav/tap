@@ -27,12 +27,25 @@ file is inert. Edits preserve unrelated TOML and comments under the config lock.
 
 `on`/`off` controls both owned sources. A legacy tmux scheduler remains
 `unmanaged` until the operator runs `tap debug tmux-migrate`; installation and
-ordinary debug controls never adopt it. With `always_on = true`, the next public command that finds no live
-tap-events recorder starts `tap debug on` in the background, at most once a
-minute, and only when `capture` includes `tap-events`; `tap debug off` clears
-it. `archive_mb` caps the [archive](#archive).
+ordinary debug controls never adopt it. With `always_on = true`, a successful
+command on the effectful-command allowlist starts `tap debug on` in the background
+when no live tap-events recorder exists, at most once a minute, and only when
+`capture` includes `tap-events`. Read-only commands, unknown verbs, help, dry runs
+and refusals never arm or write always-on state. Explicit `init` and `setup`
+commands also never arm, so their write receipts remain complete. The command allowlist in
+`runtime/bun/src/debug-arm-commands.txt` also controls the entry point's Bun
+startup-cache exemption. The list deliberately excludes receipt reads (`read`),
+`uninstall`, debug/setup/init controls and self clear/rebrief controls that report
+accepted work with a nonzero exit; it is narrower than all possible mutations.
+Role changes, calibration appends, bus archival, crew lifecycle changes and
+reminder scheduling/cancellation remain eligible, while their report forms do not.
+Launch and resume return after their attach child detaches, so they arm then.
+`tap debug off` clears always-on intent. `archive_mb` caps the [archive](#archive).
 
 ## Independent tmux source
+
+Automatic tmux capture is macOS-only: it is scheduled by a launchd LaunchAgent and
+refuses on other platforms. The standalone tick script can still be run by hand.
 
 `tap debug tmux-migrate` adopts the existing `local.tmux-flight` LaunchAgent
 or prepares a new one. New installations remain disabled unless `always_on`

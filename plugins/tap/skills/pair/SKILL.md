@@ -8,4 +8,4 @@ allowed-tools: 'Bash, Read, Grep, Glob, Edit, Write, Skill'
 # disarm the builder and encode a read-only partner this contract does not have.
 ---
 
-Run `tap help skill pair`, then read the returned SKILL.md and follow it for the original task and arguments. Resolve all relative references from that canonical file's directory, never from this wrapper.
+Before anything else, run `tap help skill pair`, read the returned SKILL.md and follow it. Everything that came with this invocation, flags and free text alike, is that skill's input: do not act on any of it until its instructions say how and when. Resolve all relative references from that canonical file's directory, never from this wrapper.

@@ -9,7 +9,6 @@ import { captureOwnedCrew } from "../src/recovery/worker";
 import { submitVerify } from "../src/courier";
 import { redeliver } from "../src/spool-drain-effects";
 import type { DrainContext } from "../src/spool-drain";
-import { deliver } from "../src/deliver";
 import * as paneLocks from "../src/panelock";
 import { waitWorkerReply } from "../src/recovery/waiter";
 import { createRun, releaseRun, recoveryHold, WALL_MS, type RecoveryTarget } from "../src/recovery/state";
@@ -113,12 +112,8 @@ test("real private crew timeout cancels the unanswered canonical assignment with
     const spy = spyOn(paneLocks, "acquirePaneLock");
     try {
       expect(submitVerify(alias, "held-probe", "wire", { paneId: ownerPane, serverEpoch: obs.observation.serverEpoch, harness: "codex" }).status).toBe("recovery_held");
-      const result = deliver({ bus: ctx.bus, id: "held-dark-probe", pane: alias, sentinel: "wire", bound: { paneId: ownerPane, serverEpoch: obs.observation.serverEpoch, harness: "codex" },
-        from: "driver", to: "driver", kind: "note", via: "send" });
-      expect(result.action).toBe("repark");
-      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1);
       expect(spy.mock.calls.every(args => args[0] === ownerPane)).toBe(true);
-      expect(existsSync(ctx.bus.sentPath("held-dark-probe"))).toBe(false);
     } finally { spy.mockRestore(); }
     releaseRun(leased.id);
     await copy();

@@ -72,7 +72,11 @@ test("readiness observations classify empty, draft, modal and unavailable bands"
   for (const [name, expected] of [
     ["pane-state/claude/idle-band.ansi", "ready"],
     ["pane-state/claude/draft-box.txt", "busy:pending"],
-    ["peek-harness-adapters/claude-feedback-empty-constructed.ansi", "busy:feedback-draft"],
+    // tap-89a57: a card over a complete composer is a notice; a hidden empty-hint
+    // composer admits one licensed Escape (the default injection.feedback_card=dismiss).
+    ["peek-harness-adapters/claude-feedback-card-visible.ansi", "ready"],
+    ["peek-harness-adapters/claude-feedback-card-empty-hidden.ansi", "recover:feedback-card"],
+    ["peek-harness-adapters/claude-feedback-card-text-hidden.ansi", "busy:feedback-draft"],
   ]) {
     writeFileSync(f.frame, readFileSync(join(scripts, "smoke/fixtures", name!)));
     expect(String(f.ready())).toBe(expected!);

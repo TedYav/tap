@@ -32,7 +32,8 @@ import { loadRegistry, seatMap } from "../registry";
 import { parseTarget, selectTarget, SelectorError, type TargetSelection } from "../selector";
 import { sentinelInputTail, visibleSentinel } from "../submit-frame";
 import { stuckSentinelFieldsFromRegion } from "../stuck-sentinel";
-import { closedSentinelInput, sentinelShapedInput } from "../sentinel-tail";
+import { anchoredSentinelInput, typedWireTail } from "../sentinel-tail";
+import { typedWires } from "../typed-wire";
 import { paneCurrentCommand, ServerUnresponsive, tmuxReadOnly } from "../tmux";
 import { opencodeShellMode } from "../opencode-composer";
 import { retireOverprintAfterReadableHeal, type OverprintHealVerdict } from "../overprint-marker";
@@ -457,9 +458,24 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     try { const self = resolveSelf(ctx, pane, 1); ladderHandle = self.handle; ladderPaneId = self.paneId; ladderRegistry = ctx.registryPath; }
     catch { ladderHandle = ""; }
   }
+  // Typed-wire evidence for the target pane: its registered server generation, and the
+  // buses whose courier this nudge can speak for (the caller's, and the target team's own).
+  // The generation comes from the registry row, not an observation, so a stale row can match
+  // a stale record; the bound-pane identity check before the Enter is what refuses that pane.
+  const typedForLadder = () => {
+    let epoch = "";
+    try {
+      const row = ladderHandle ? seatMap(loadRegistry(ladderRegistry))[ladderHandle] as { server_epoch?: unknown } | undefined : undefined;
+      epoch = typeof row?.server_epoch === "string" ? row.server_epoch : "";
+    } catch { epoch = ""; }
+    const buses = [...new Set([ctx.bus.home, ...(argvSel?.rootReal ? [busForRoot(argvSel.rootReal)] : [])])];
+    return buses.flatMap(bus => typedWires(ladderPaneId, { epoch, bus }));
+  };
   if (dryRun) {
+    const staged = sentinelInputTail(frame, paneCmd) ?? "";
     const lines = previewLadder({ harness: paneCmd, interrupt, wire, label: toLabel || pane, deliver: deliver && ladderHandle !== "" },
-      tmuxReadOnly(["capture-pane", "-p", "-e", "-J", "-t", pane]).stdout, composerRead(pane, paneCmd), closedSentinelInput(sentinelInputTail(frame, paneCmd) ?? ""));
+      tmuxReadOnly(["capture-pane", "-p", "-e", "-J", "-t", pane]).stdout, composerRead(pane, paneCmd),
+      anchoredSentinelInput(staged) && visibleSentinel(frame, paneCmd) !== null || typedWireTail(staged, typedForLadder()));
     out(`tap nudge: dry run plan for ${toLabel || pane} (${pane}); nothing sent\n${lines.map(line => `  ${line}\n`).join("")}`);
     return 0;
   }
@@ -529,7 +545,10 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const region = sentinelInputTail(frame, paneCmd);
     // Nothing staged (or no readable region): rung 3 reads the composer itself.
     if (region === null || region === "") return null;
-    if (!region.includes("[[TAP") && !sentinelShapedInput(region)) {
+    // TAP's own text is an opener, or the proven tail of a wire the courier typed
+    // into this pane. Text that only ends like a wire is a human draft: nothing staged.
+    const typedTail = typedWireTail(region, typedForLadder());
+    if (!region.includes("[[TAP") && !typedTail) {
       // tap-w85su: a copy-mode park that outlived the copy mode is what this
       // nudge recovers when the composer is clean. tap-zvuc9: a copy mode nobody
       // is viewing is left first, once, when a park would requeue but for it.
@@ -552,16 +571,16 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     if (boundary?.stagedId && (expected === null || parseNudgeWire(expected) !== null)) {
       throw new TapError(1, "target_changed", "tap peek " + toLabel, "the exact predecessor sentinel is no longer visible; nothing submitted");
     }
-    // A staged nudge doorbell names no payload: it is submitted by shape, like a scrolled tail.
+    // A staged nudge doorbell names no payload: its own grammar recognizes it whole, and it is submitted like a proven tail.
     // The bound expected text is the wire itself, so the Enter recheck proves it is the sole composer text.
     if (expected !== null && parseNudgeWire(expected) !== null) return nudgeScrolledTail(expected);
     if (expected === null) {
-      // tap-1ncs6: the composer shows only the scrolled tail of a wire. Its
-      // shape says it is safe to submit; no id is visible to corroborate, so the
-      // argv target is the recipient and the tail itself is what every Enter
-      // recheck reads. Recognition is by class, not identity (SECURITY.md).
-      // An anchored opener that never closes is not a tail and stays refused.
-      if (closedSentinelInput(region)) return nudgeScrolledTail(region);
+      // tap-1ncs6: the composer shows only the scrolled tail of a wire. The
+      // pane's typed-wire record proves the courier typed it; the argv target
+      // is the recipient and the tail itself is what every Enter recheck
+      // reads. An anchored band that is not one complete sentinel is not a
+      // tail and stays refused, however it ends.
+      if (typedTail) return nudgeScrolledTail(region);
       throw new TapError(1, "usage_error", "inspect the composer; preserve incomplete or ambiguous text and use tap read for the canonical message", "no single complete TAP sentinel is visible in the active input; nothing submitted");
     }
     const stored = stuckSentinelFieldsFromRegion(expected, paneCmd);
@@ -652,7 +671,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
 
   /**
    * tap-1ncs6: the composer shows the scrolled tail of a wire whose head and
-   * id are out of frame. Recognition is by class, not identity: the argv
+   * id may be out of frame. The pane's typed-wire record is the proof: the argv
    * target names the recipient, the tail itself is the expected text every
    * Enter recheck reads, and the recorded recovery run files its effects
    * under the literal `scrolled-tail` payload slot. Never a re-injection.
@@ -673,7 +692,7 @@ function nudge(argv: string[], scriptsDir: string, families: ReadonlySet<string>
     const tailDrift = (when: string): TapError => new TapError(1, "identity_mismatch", `run 'tap register ${handle} --pane <tmux-target>' from team '${team}'`, `recipient identity drifted ${when}`);
     const identity = boundPaneIdentityState(registryLocation, handle, bound.pane, bound.paneId);
     if (identity !== "match") throw tailDrift(`(${identity})`);
-    process.stderr.write(`tap nudge: composer of ${toLabel || pane} shows the scrolled tail of a TAP wire; submitting it by shape, not identity\n`);
+    process.stderr.write(`tap nudge: composer of ${toLabel || pane} shows the scrolled tail of a TAP wire the courier typed; submitting it\n`);
     return runRecordedNudge({ policy, registry: registryLocation, handle, team, pane, paneId: bound.paneId, paneCmd, id: SCROLLED_TAIL_SLOT,
       expected: tail, effectBus: ctx.bus.home, recipientBus: busForRoot(rootReal), scriptsDir, families, toLabel, drift: tailDrift,
       repainted: repaintedByHeal && paneCmd === "opencode", boundary, selection });

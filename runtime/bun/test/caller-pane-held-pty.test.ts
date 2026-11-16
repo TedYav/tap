@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import * as childProcess from "node:child_process";
+import * as procRow from "../src/proc-row";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -313,4 +315,23 @@ describe("no terminal at all stays unobservable", () => {
     expect(seen.state).toBe("unobservable");
     expect(seen.state === "unobservable" ? seen.refusal : "").toContain("process ancestry ended");
   });
+});
+
+for (const phase of ["climb-row", "holder-ancestry", "holder-table"] as const)
+test(`timed-out held-terminal ${phase} without kernel evidence stays unobservable`, () => {
+  const nativeSpawn = childProcess.spawnSync;
+  const missingKernel = spyOn(procRow, "libprocRow").mockReturnValue(null);
+  const spawn = spyOn(childProcess, "spawnSync").mockImplementation(((command: string, args: string[], options: childProcess.SpawnSyncOptions) => {
+    const victim = phase === "climb-row" ? ZSH : HOLDER;
+    const spelling = phase === "climb-row" ? args.includes("tty=") : !args.includes("tty=") && args[0] === "-o";
+    const timeoutHere = phase === "holder-table" ? args[0] === "-Ao" : spelling && args.at(-1) === String(victim);
+    if (command === "ps" && timeoutHere)
+      return { error: Object.assign(new Error("probe timed out"), { code: "ETIMEDOUT" }), status: null,
+        signal: "SIGKILL", pid: 0, stdout: "", stderr: "", output: [] };
+    return nativeSpawn(command, args, options);
+  }) as unknown as typeof childProcess.spawnSync);
+  try {
+    const seen = observeCallingPane(envFor(agyTree(), agyTable));
+    expect(seen.state).toBe("unobservable");
+  } finally { spawn.mockRestore(); missingKernel.mockRestore(); }
 });

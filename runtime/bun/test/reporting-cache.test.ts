@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { reportingFixture } from "./support/reporting-fixture";
 
-test("a warm caller observation serves all three reports without live children while queue data stays fresh", () => {
+test("a warm caller observation serves reports without live children while queue data stays fresh", () => {
   const f = reportingFixture();
   const run = (args: string[]) => f.run(args, undefined, undefined, { TAP_REPORTING_CACHE_TTL: "5" });
   try {
@@ -17,6 +17,10 @@ test("a warm caller observation serves all three reports without live children w
     expect(warm.stdout).toBe(cold.stdout);
     expect(warm.calls).toEqual([]);
     f.inbound();
+    const inbox = run(["poll", "--json"]);
+    expect(inbox.code, inbox.stderr).toBe(0);
+    expect(JSON.parse(inbox.stdout).pending).toHaveLength(1);
+    expect(inbox.calls).toEqual([]);
     const obligations = run(["outstanding", "self", "--json"]);
     expect(obligations.code, obligations.stderr).toBe(0);
     expect(obligations.stderr).toContain("self has 1 unsettled inbound");

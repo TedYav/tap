@@ -56,10 +56,16 @@ change the accepting handler's help for those forms. The July draft's general
 Bash/launcher renderer ownership has been superseded by the native catalog.
 
 - `tap help` is the overview; `tap help <verb>` is the canonical page.
-- `tap <verb> --help` in its exact one-token help form returns that same page.
-- Trailing `help` is an alias only where it cannot be data. New verbs default
-  to data-bearing until their safe routing and focused assertion change together.
-- Multi-token family help and ordinary operands retain their accepting route.
+- `--help` and reserved `-h` before `--` print the command page on stdout,
+  exit 0 and perform no effects, including journaling, refusal recording and
+  startup-cache creation. Recognized family subcommands select their page;
+  resource operands do not become help topics.
+- A positional `help` remains data where it could name a resource. It is an
+  alias only where it cannot be data. New verbs default to data-bearing.
+- Launch help retains its value-operand and harness-passthrough grammar; an
+  explicit `--` leaves following help-looking arguments with the harness.
+- Renamed `roster` and `reset` retain only their exact help forms; longer argv
+  still receives the documented refusal, including its JSON representation.
 
 **CLI-HELP-3/4:** Pages use `NAME`, `USAGE`, `DESCRIPTION`, `OPTIONS`,
 `EXAMPLES`, `EXIT CODES`, `SEE ALSO`, in that order where applicable. `NAME` and

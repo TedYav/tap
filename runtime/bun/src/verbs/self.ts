@@ -28,9 +28,9 @@ const say = (message: string) => process.stderr.write(`self: ${message}\n`);
 
 export interface SelfOptions { verb: SelfVerb; text: string; pane?: string; harness?: string; interval?: string; handoff?: string; notify?: string; model?: string; effort?: string }
 
-const USAGE = "usage: tap self compact --handoff FILE [--notify SEAT] [--model NAME] [--effort LEVEL] [--pane TARGET] [--harness NAME] -- FOCUS\n" +
+const USAGE = "usage: tap self compact --handoff FILE [--notify SEAT] [--model NAME[@LEVEL]] [--effort LEVEL] [--pane TARGET] [--harness NAME] -- FOCUS\n" +
   "       tap self <goal|loop> [--pane TARGET] [--harness NAME] [--interval DURATION] -- TEXT\n" +
-  "       tap self <clear|rebrief> --handoff FILE [--charter FILE] [--notify SEAT] [--model NAME] [--effort LEVEL] [--pane TARGET] [--harness NAME]";
+  "       tap self <clear|rebrief> --handoff FILE [--charter FILE] [--notify SEAT] [--model NAME[@LEVEL]] [--effort LEVEL] [--pane TARGET] [--harness NAME]";
 
 export function parseSelf(argv: string[]): SelfOptions {
   const verb = argv[0];
@@ -58,7 +58,11 @@ export function parseSelf(argv: string[]): SelfOptions {
   if (out.verb === "compact" && !out.handoff) throw new Error("an authored --handoff FILE is required; use /tap:self compact to prepare it");
   if (out.model !== undefined || out.effort !== undefined) {
     if (out.verb !== "compact") throw new TapError(1, "usage_error", "tap help self", "--model and --effort only apply to compact, clear and rebrief", "tap self");
-    checkSwitches({ model: out.model, effort: out.effort });
+    const switches: SeatSwitches = { model: out.model, effort: out.effort };
+    checkSwitches(switches);
+    // `--model name@level` is split there; carry both halves forward.
+    if (switches.model !== undefined) out.model = switches.model;
+    if (switches.effort !== undefined) out.effort = switches.effort;
   }
   return out;
 }
@@ -111,7 +115,7 @@ export function selfExit(result: SubmitResult): { code: number; reason?: "lock-p
     case "lock_busy": return { code: 4, reason: "lock-park" };
     case "band_busy": case "recovery_held": case "copy_mode": case "rate_limited": return { code: 4, reason: "no-prompt" };
     case "unverified": case "attempt_evidence_unwritable": return { code: 5 };
-    case "identity_mismatch": case "team_reset_fenced": case "clearing": return { code: 1 };
+    case "invalid_wire": case "identity_mismatch": case "team_reset_fenced": case "clearing": return { code: 1 };
   }
 }
 

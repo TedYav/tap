@@ -95,14 +95,14 @@ test("the public entry journals in-process with broad secrets, deepest team and 
     writeFileSync(join(f.index, "global-registry.json"), JSON.stringify({ teams: {
       outer: { root: f.root }, inner: { root: f.run }, historical: { root: f.run, state: "historical" },
     } }));
-    // Help is static text, so the journal row is the command's only write.
-    const result = spawnSync(entry, ["help", "send", "-m", "body secret", "--token", "flag secret",
+    // An unknown command exercises journaling without a handler effect.
+    const result = spawnSync(entry, ["not-a-verb", "send", "-m", "body secret", "--token", "flag secret",
       "SSH_KEY='quoted secret'", "inherited-secret", "café"], { cwd: f.run, env: { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" }, encoding: "utf8", timeout: 10000 });
     expect(result.stderr).not.toContain("journal write failed");
     const journal = join(f.run, "events.jsonl");
     const encoded = readFileSync(journal, "utf8"), row = JSON.parse(encoded);
     expect(row.team).toBe("inner");
-    expect(row.argv).toEqual(["help", "send", "-m", "<redacted>", "--token", "<redacted>", "SSH_KEY=<redacted>", "<redacted>", "café"]);
+    expect(row.argv).toEqual(["not-a-verb", "send", "-m", "<redacted>", "--token", "<redacted>", "SSH_KEY=<redacted>", "<redacted>", "café"]);
     expect(encoded).toContain("\\u00e9");
     expect(row.caller_pid).toBe(result.pid);
     expect(row.operation_id).toMatch(/^[a-f0-9]{32}$/);
@@ -268,8 +268,8 @@ test("new shell children have no tty descriptors, with a positive pty control", 
     const bin = join(f.root, "bin"), record = join(f.root, "fds");
     mkdirSync(bin);
     writeFileSync(join(bin, "bun"), String.raw`#!/bin/bash
-case "$1" in
-  */debug-capture.ts)
+case " $* " in
+  *"/debug-capture.ts "*)
     s0=0; s1=0; s2=0
     [ ! -t 0 ] || s0=1
     [ ! -t 1 ] || s1=1
@@ -325,18 +325,16 @@ finally:
 }, 30_000);
 
 
-test("non-launch help stays in the public journal while launch help stays read-only", () => {
+test("public help leaves the active command journal unchanged", () => {
   const f = fixture();
   try {
-    for (const args of [["help"], ["send", "--help"], ["team", "up", "--help"]]) {
-      const result = spawnSync(entry, args, { cwd: f.root, env: f.env, encoding: "utf8" });
-      expect(result.status, result.stderr).toBe(0);
-    }
+    const control = spawnSync(entry, ["not-a-verb"], { cwd: f.root, env: f.env, encoding: "utf8" });
+    expect(control.status).toBe(1);
     const journal = join(f.run, "events.jsonl");
     const before = readFileSync(journal, "utf8");
-    expect(before.trim().split("\n").map(line => JSON.parse(line).argv))
-      .toEqual([["help"], ["send", "--help"], ["team", "up", "--help"]]);
-    for (const args of [["launch", "codex", "--help"], ["session", "launch", "codex", "-h"]]) {
+    expect(before).toContain('"tap.command"');
+    for (const args of [["help"], ["send", "--help"], ["team", "up", "--help"],
+      ["launch", "codex", "--help"], ["session", "launch", "codex", "-h"]]) {
       const result = spawnSync(entry, args, { cwd: f.root, env: f.env, encoding: "utf8" });
       expect(result.status, result.stderr).toBe(0);
       expect(readFileSync(journal, "utf8")).toBe(before);

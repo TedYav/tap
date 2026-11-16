@@ -1,8 +1,9 @@
 // One release identity for installed TAP, archives and exports. The first level-two
 // heading is authoritative: a malformed newest release must not fall back to an older one.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { cacheDigest, runtimeCache } from "./runtime-cache";
 import { SENTINEL_VERSION } from "./sentinel";
 import { tapRoot, tapScriptsDir } from "./scripts-dir";
 
@@ -56,9 +57,61 @@ export function versionAtCommit(root: string, commit: string, version: string): 
   return tagged && count === "0" ? version : `${version}+${count}.g${head}`;
 }
 
+/** Version display only: no caller identity, registry or delivery consumer. */
+function checkoutVersionCache(root: string, version: string) {
+  try {
+    // Git's environment can select another repository, config or history.
+    // Leave those invocations to Git instead of approximating its resolution.
+    const interaction = new Set(["GIT_PAGER", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_ASKPASS",
+      "GIT_TERMINAL_PROMPT", "GIT_SSH", "GIT_SSH_COMMAND"]);
+    if (Object.keys(process.env).some(key => key.startsWith("GIT_") && !interaction.has(key))) return null;
+    const optional = (path: string): string | null => {
+      try { return readFileSync(path, "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+    };
+    const dotGit = join(root, ".git");
+    const pointer = statSync(dotGit).isDirectory() ? null : optional(dotGit);
+    if (pointer !== null && !/^gitdir: [^\r\n]+\n?$/.test(pointer)) return null;
+    const directory = pointer === null ? dotGit : resolve(root, pointer.slice(8).trim());
+    const commonPointer = optional(join(directory, "commondir"));
+    const common = commonPointer === null ? directory : resolve(directory, commonPointer.trim());
+    // Replacement refs and grafts can change ancestry independently of HEAD.
+    if (existsSync(join(common, "refs/replace")) || existsSync(join(common, "info/grafts"))) return null;
+    const head = optional(join(directory, "HEAD"))?.trim();
+    const branch = head?.match(/^ref: (refs\/heads\/[^\r\n]+)$/)?.[1];
+    if (!branch && !/^[0-9a-f]{40,64}$/.test(head ?? "")) return null;
+    const branchRef = branch ? optional(join(common, branch)) : null;
+    const tag = optional(join(common, `refs/tags/v${version}`));
+    const packed = optional(join(common, "packed-refs"));
+    // Symbolic refs and other ref-storage formats need Git's own resolver.
+    if ([branchRef, tag].some(ref => ref !== null && !/^[0-9a-f]{40,64}$/.test(ref.trim()))) return null;
+    if (branch && branchRef === null && !packed?.split("\n").some(line => line.endsWith(` ${branch}`))) return null;
+    const identity = {
+      schema: 1, root: resolve(root), version, head,
+      branch: branchRef, tag, packed,
+      shallow: optional(join(common, "shallow")),
+      config: optional(join(common, "config")),
+      worktreeConfig: optional(join(directory, "config.worktree")),
+      path: process.env.PATH,
+    };
+    return { identity, cache: runtimeCache(directory, "tap-version", identity, 3600,
+      (value): value is string => typeof value === "string" && (value === version
+        || new RegExp(`^${version.replaceAll(".", "\\.")}\\+(?:[0-9]+\\.)?g[0-9a-f]{12,64}$`).test(value))) };
+  } catch { return null; }
+}
+
 export function installedVersion(root: string): string {
   const { version } = readRelease(readFileSync(join(root, "CHANGELOG.md"), "utf8"), SENTINEL_VERSION);
-  if (existsSync(join(root, ".git"))) return versionAtCommit(root, "HEAD", version);
+  if (existsSync(join(root, ".git"))) {
+    const before = checkoutVersionCache(root, version);
+    const cached = before?.cache.read();
+    if (cached) return cached.snapshot;
+    const observed = versionAtCommit(root, "HEAD", version);
+    // A ref moving during the Git reads must not publish under its old key.
+    const after = checkoutVersionCache(root, version);
+    if (before && after && cacheDigest(before.identity) === cacheDigest(after.identity)) before.cache.write(observed);
+    return observed;
+  }
   const marker = join(root, "tap-release.json");
   if (!existsSync(marker)) return version;
   const build = JSON.parse(readFileSync(marker, "utf8"));

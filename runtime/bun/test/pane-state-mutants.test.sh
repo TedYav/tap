@@ -157,7 +157,7 @@ run_mutant claude-capture-fail-after-live-is-gone \
 # reader plain bytes where it expects the prompt-dimming SGR markers. The
 # hermes-profile arm is the discriminator, not Cursor wording.
 run_mutant cursor-hermes-capture-unescaped \
-  'const escaped = family === "claude" || family.startsWith("codex") || family === "opencode" || family.startsWith("cursor") || family.startsWith("hermes");' \
+  'const escaped = family === "claude" || family.startsWith("codex") || family === "opencode" || family === "agy" || family.startsWith("cursor") || family.startsWith("hermes");' \
   'const escaped = false;' \
   runtime/bun/src/pane-state.ts \
   test/generic-band-cursor-hermes.test.ts \
@@ -165,11 +165,19 @@ run_mutant cursor-hermes-capture-unescaped \
 # OpenCode's first-load placeholder differs from typed text only by paint, so an
 # unescaped capture reads a fresh seat's welcome screen as a draft (tap-yqonr).
 run_mutant opencode-capture-unescaped \
-  'family.startsWith("codex") || family === "opencode" || family.startsWith("cursor")' \
-  'family.startsWith("codex") || family.startsWith("cursor")' \
+  'family.startsWith("codex") || family === "opencode" || family === "agy"' \
+  'family.startsWith("codex") || family === "agy"' \
   runtime/bun/src/pane-state.ts \
   test/pane-state.test.ts \
   'a fresh OpenCode welcome screen is ready'
+# Antigravity's mode hint differs from typed text only by paint too, so an
+# unescaped capture reads a fresh or mode-cycled seat as holding a draft.
+run_mutant agy-capture-unescaped \
+  'family === "opencode" || family === "agy" || family.startsWith("cursor")' \
+  'family === "opencode" || family.startsWith("cursor")' \
+  runtime/bun/src/pane-state.ts \
+  test/pane-state.test.ts \
+  'an Antigravity mode hint is ready'
 # tap-vctb8: the unanchored in-box scan is what catches a stderr line that
 # WRAPS onto the footer or corner row, where both geometry gates bail false.
 run_mutant opencode-unanchored-scan-dropped \

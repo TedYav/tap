@@ -14,7 +14,7 @@ and where to go deeper.
 
 ## Level 1: Two agents, one conversation
 
-After [installing TAP](../README.md#get-your-first-reply), run these in your
+After [installing TAP](../README.md#install), run these in your
 project terminal, one at a time:
 
 ```bash
@@ -165,6 +165,14 @@ no workflow it imposes, and you stay in the panes. Its agents share your
 machine and your permissions; read [SECURITY.md](../SECURITY.md) to decide
 whether that fits your threat model. You have outgrown TAP, or want something
 different, when you want one of these.
+
+**One vendor's agents only.** If every agent you run is the same CLI, its
+built-in team feature may be enough without another tool. Claude Code's
+[agent teams](https://code.claude.com/docs/en/agent-teams), for example, are
+experimental and off by default; they give each teammate its own pane in tmux
+or iTerm2, and teammates message each other directly. Every teammate is a
+Claude Code instance. TAP's reason to exist is crossing vendors: a Claude Code
+seat and a Codex seat on one team, each under its own login.
 
 **A server that agents connect through.** A broker or runtime can carry agents
 across machines, keep their terminals alive when you disconnect, or run as a

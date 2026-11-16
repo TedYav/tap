@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { submitVerifyLocked, type PaneEffects } from "../src/courier";
-import { claudeBox, claudeFeedbackOverlay, classifyPane } from "../src/pane-state";
+import { claudeBox, claudeFeedbackCard, classifyPane } from "../src/pane-state";
 import { composerMatches, classifySubmitFrame, sentinelSubmitDecision, visibleSentinelId } from "../src/submit-frame";
 import { frameIo, inputLine, inputRegion, inputHasId, pendingInputText, escapedPromptFromFrame } from "../src/pane/reader";
 
@@ -158,12 +158,13 @@ test("truncated agent footer still locates the composer", () => {
   expect(claudeBox(frame(wire).replace("← 3 agents", "← 2 agen…"))?.typed).toBe(wire);
 });
 
-test("feedback modal above the composer remains blocked with the tray open", () => {
-  const modal = ["╭" + "─".repeat(40) + "╮", "│ ✻ Bug report drafted: example │", "│ 1 to review · 2 to send · 0 to dismiss │", "╰" + "─".repeat(40) + "╯"].join("\n");
-  const capture = frame(wire).replace("previous output", modal);
-  expect(claudeFeedbackOverlay(capture)).toBe(true);
-  expect(pendingInputText(frameIo(capture, "118"), "%p", "claude")).toEqual({ status: "blocked" });
-  expect(sentinelSubmitDecision(capture, "claude", wire).action).toBe("withhold");
+test("a feedback card above the composer with the tray open leaves the composer readable", () => {
+  // tap-89a57 reversed (2026-11-14): the card is a notice, not a modal.
+  const card = ["╭" + "─".repeat(40) + "╮", "│ ✻ Bug report drafted: example │", "│ clear text to review, send, or dismiss │", "╰" + "─".repeat(40) + "╯"].join("\n");
+  const capture = frame(wire).replace("previous output", card);
+  expect(claudeFeedbackCard(capture)?.composer).toBe("visible");
+  expect(pendingInputText(frameIo(capture, "118"), "%p", "claude")).toEqual({ status: "text", text: wire });
+  expect(sentinelSubmitDecision(capture, "claude", wire)).toEqual({ action: "submit" });
 });
 
 test("one background agent has a readable composer", () => {

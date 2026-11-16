@@ -3,20 +3,28 @@ user-invocable: false
 name: assign
 description: "Hands a teammate a work order over TAP, with a tracked reply obligation. Use when assigning work rather than sharing a note."
 argument-hint: "<to> -f <path>"
-allowed-tools: 'Bash'
+allowed-tools: 'Bash, Write'
 role: maker
 ---
 
 # /tap:assign — hand someone WORK
 
-Write the body to a file, then pass it:
+Use the harness's native file-writing tool to create the work order at an explicit
+repository-local path, for example `tmp/<seat>/<request-id>-assign.md`, and pass
+that same path. Choose a fresh request id for each order:
 
 ```bash
-body="$(mktemp)"
-# write with the harness Write tool, or:
-printf '%s\n' "$order" > "$body"
-tap assign <to> -f "$body"
-rm -f "$body"
+tap assign <to> -f tmp/<seat>/<request-id>-assign.md
+```
+
+Backticks and `$()` stay literal because the composing shell never sees the body.
+Work orders quote commands, so never build one in a double-quoted shell string.
+For stdin without a draft file, use a **quoted** heredoc:
+
+```bash
+tap assign <to> -f - <<'EOF'
+your work order here
+EOF
 ```
 
 `tap assign` is exactly `tap send <to> --expect-reply --kind order` with the ordinary delivery

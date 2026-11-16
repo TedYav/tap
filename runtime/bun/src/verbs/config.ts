@@ -55,6 +55,7 @@ export const DEFAULTS: Record<string, string | number | boolean> = {
   "sentinel.preview": false,
   "sentinel.preview_chars": 120,
   "injection.behavior": "clobber",
+  "injection.feedback_card": "dismiss",
   "delivery.now_window_seconds": DELIVERY_NOW_WINDOW_DEFAULT,
   "delivery.polite_window_seconds": DELIVERY_POLITE_WINDOW_DEFAULT,
   "onboarding.init": "ask",

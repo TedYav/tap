@@ -1,7 +1,7 @@
 ---
 user-invocable: false
 name: send
-description: "When messaging a TAP seat, choose tap assign or an ask for review/fix/implementation work; plain tap send is a note."
+description: "When messaging a TAP seat: tap send is a note, tap send --ask is a question owed a reply, tap assign is a work order."
 argument-hint: "<to> -f <path>"
 allowed-tools: 'Bash, Write'
 role: maker
@@ -17,6 +17,9 @@ and pass that same path:
 ```bash
 tap send <to> -f tmp/<seat>/<request-id>-send.md
 ```
+
+A question to a teammate is `tap send <to> --ask -f <path>`; `tap ask` is a
+one-shot headless run that no seat receives.
 
 Backticks and `$()` stay literal because the composing shell never sees the body
 text. You choose the unique path: a file-writing tool does not allocate one or

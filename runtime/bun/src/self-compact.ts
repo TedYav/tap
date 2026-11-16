@@ -29,6 +29,7 @@ import { checkText } from "./self-gate";
 import { focusNarrowing, handoffPing } from "./compact-focus";
 import { tapScriptsDir, artifactBun, runtimeModule } from "./scripts-dir";
 import { applySwitches, claudeSwitchEffects, hasSwitches, requireSwitchHarness, switchFailure, switchWarning, type SeatSwitches, type SwitchReport } from "./self-switch";
+import { ownBunArgv } from "./own-bun";
 
 const scripts = tapScriptsDir();
 const HEAD_BYTES = 65536;
@@ -746,7 +747,7 @@ export async function worker(path: string): Promise<void> {
 
 /** The one production detachment seam: own process group, stdio to the worker log, never awaited. armSelfCompact and the process-lifetime test share it, so a detachment regression cannot hide behind a hand-rolled spawn in a test. */
 export function spawnDetachedWorker(bun: string, workerScript: string, requestPath: string, logFd: number, env: NodeJS.ProcessEnv = process.env): number {
-  const child = Bun.spawn([bun, workerScript, "--run", requestPath], { detached: true, stdin: "ignore", stdout: logFd, stderr: logFd, env: { ...env } });
+  const child = Bun.spawn([...ownBunArgv(bun), workerScript, "--run", requestPath], { detached: true, stdin: "ignore", stdout: logFd, stderr: logFd, env: { ...env } });
   child.unref();
   return child.pid;
 }

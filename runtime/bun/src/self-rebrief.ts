@@ -18,6 +18,7 @@ import { authoredRecovery } from "./compact-focus";
 import { clearCommand } from "./clear-command";
 import { tapScriptsDir, artifactBun } from "./scripts-dir";
 import { applySwitches, checkSwitches, claudeSwitchEffects, hasSwitches, requireSwitchHarness, switchFailure, switchWarning, type SeatSwitches, type SwitchReport } from "./self-switch";
+import { ownBunArgv } from "./own-bun";
 
 export { clearCommand };
 
@@ -395,7 +396,7 @@ export function armSelfRecovery(options: Options, context?: ResolvedContext, scr
   atomicWrite(join(dir, `${id}.receipt.json`), JSON.stringify({ state: "armed", witness: "none", recoveryId: request.recoveryId, id, handoff, oldSession, oldTranscript }) + "\n");
   const log = openSync(join(dir, `${id}.log`), "a", 0o600);
   try {
-    const child = Bun.spawn([bun, workerPath, "--run", path], { detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env } });
+    const child = Bun.spawn([...ownBunArgv(bun), workerPath, "--run", path], { detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env } });
     child.unref();
   } catch (error) {
     atomicWrite(join(dir, `${id}.receipt.json`), JSON.stringify({ state: "incomplete", id, handoff, detail: `observer spawn failed; nothing submitted: ${error}` }) + "\n");
