@@ -193,9 +193,9 @@ metadata.secondary_roles = ["debugger"]
 metadata.avoid_roles = ["leader", "architect", "approver", "reviewer", "prose_writer", "driver"]
 
 [presets.astra-med]
-description = "gpt-6-astra at medium"
+description = "gpt-6.2-astra at medium"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=medium", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.pronouns = "she/her"
@@ -210,9 +210,9 @@ metadata.secondary_roles = ["driver", "reviewer", "leader"]
 metadata.avoid_roles = ["tasker", "architect", "approver", "researcher"]
 
 [presets.astra-fast]
-description = "gpt-6-astra at medium, fast mode"
+description = "gpt-6.2-astra at medium, fast mode"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=medium", "service_tier=fast"]
 metadata.model_family = "openai"
 metadata.pronouns = "she/her"
@@ -227,9 +227,9 @@ metadata.secondary_roles = ["leader"]
 metadata.avoid_roles = ["architect", "approver", "researcher"]
 
 [presets.astra]
-description = "gpt-6-astra at high"
+description = "gpt-6.2-astra at high"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=high", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.starter = true
@@ -239,15 +239,15 @@ metadata.cost_basis = "subscription"
 metadata.cost_level = "high"
 metadata.budget_capacity = "medium high"
 metadata.speed = "medium fast"
-metadata.summary = "Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.summary = "GPT-6.2 Astra is strong at computer use and rivals Fable in architecture and software design. Fable retains an edge on the hardest design decisions. Use high effort for design, implementation and review."
 metadata.primary_roles = ["driver", "prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer"]
 metadata.secondary_roles = ["leader", "researcher"]
 metadata.avoid_roles = ["tasker"]
 
 [presets.astra-ponytail]
-description = "gpt-6-astra at xhigh, Ponytail mode"
+description = "gpt-6.2-astra at xhigh, Ponytail mode"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
 env.PONYTAIL_DEFAULT_MODE = "full"
 metadata.model_family = "openai"
@@ -263,9 +263,9 @@ metadata.secondary_roles = []
 metadata.avoid_roles = ["driver", "tasker", "implementer", "leader"]
 
 [presets.astra-xhigh]
-description = "gpt-6-astra at xhigh"
+description = "gpt-6.2-astra at xhigh"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.pronouns = "she/her"
@@ -280,9 +280,9 @@ metadata.secondary_roles = ["approver"]
 metadata.avoid_roles = ["driver", "tasker", "implementer", "leader", "partner"]
 
 [presets.astra-max]
-description = "gpt-6-astra at max"
+description = "gpt-6.2-astra at max"
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=max", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.pronouns = "she/her"
@@ -314,9 +314,9 @@ metadata.secondary_roles = []
 metadata.banned_roles = ["implementer", "researcher", "leader", "architect", "approver", "reviewer", "prose_writer", "driver"]
 
 [presets.sol]
-description = "gpt-6.1-sol at high"
+description = "gpt-6.2-sol at high"
 harness = "codex"
-params.model = "gpt-6.1-sol"
+params.model = "gpt-6.2-sol"
 params.config = ["model_reasoning_effort=high", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.starter = true
@@ -326,15 +326,15 @@ metadata.cost_basis = "subscription"
 metadata.cost_level = "medium"
 metadata.budget_capacity = "medium"
 metadata.speed = "medium"
-metadata.summary = "Strong reviewer and debugger. Great pair programmer and implementer. Solid choice to drive an implementation lane, or pair program with another agent building an implementation lane. Also a very strong writer."
+metadata.summary = "GPT-6.2 Sol is a strong implementer, just below Opus. It can drive an implementation lane, pair with another developer, review code and debug. It also writes well."
 metadata.primary_roles = ["reviewer", "debugger", "implementer", "prose_writer", "partner"]
 metadata.secondary_roles = ["driver", "leader", "researcher"]
 metadata.avoid_roles = ["architect", "approver"]
 
 [presets.sol-xhigh]
-description = "gpt-6.1-sol at xhigh"
+description = "gpt-6.2-sol at xhigh"
 harness = "codex"
-params.model = "gpt-6.1-sol"
+params.model = "gpt-6.2-sol"
 params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
 metadata.model_family = "openai"
 metadata.pronouns = "she/her"
@@ -349,9 +349,9 @@ metadata.secondary_roles = ["driver", "leader", "researcher"]
 metadata.avoid_roles = ["architect", "approver"]
 
 [presets.sol-ponytail]
-description = "gpt-6.1-sol at xhigh, Ponytail mode"
+description = "gpt-6.2-sol at xhigh, Ponytail mode"
 harness = "codex"
-params.model = "gpt-6.1-sol"
+params.model = "gpt-6.2-sol"
 params.config = ["model_reasoning_effort=xhigh", "service_tier=default"]
 env.PONYTAIL_DEFAULT_MODE = "full"
 metadata.model_family = "openai"
@@ -367,9 +367,9 @@ metadata.secondary_roles = ["debugger", "prose_writer", "implementer", "approver
 metadata.avoid_roles = ["leader", "driver"]
 
 [presets.sol-max]
-description = "gpt-6.1-sol at max, Ponytail mode"
+description = "gpt-6.2-sol at max, Ponytail mode"
 harness = "codex"
-params.model = "gpt-6.1-sol"
+params.model = "gpt-6.2-sol"
 params.config = ["model_reasoning_effort=max", "service_tier=default"]
 env.PONYTAIL_DEFAULT_MODE = "full"
 metadata.model_family = "openai"

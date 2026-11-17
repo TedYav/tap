@@ -49,8 +49,16 @@ export function createOpenCodeContextReader(readMap: () => WindowMap | null = ()
         const completed = message.time.completed;
         const input = parts.every(integer) ? parts.reduce((sum, n) => sum + n, 0) : null;
         if (!integer(input) || !integer(completed) || !Number.isFinite(new Date(completed).getTime())) return unknown("invalid_usage");
-        const sample: TokenSample = {input_tokens:input, observed_at:new Date(completed).toISOString(), source:"opencode_store",
-          window_tokens:null, window_source:null, used_percent:null, percent_source:null, unknown_reason:null, tuning:null};
+        const model = message.model;
+        const observedAt = new Date(completed).toISOString();
+        const tuning: TokenSample["tuning"] = typeof model?.providerID === "string" && model.providerID &&
+          typeof model?.id === "string" && model.id ? {
+            model: `${model.providerID}/${model.id}`,
+            effort: typeof model.variant === "string" && model.variant ? model.variant : null,
+            observed_at: observedAt, source: "opencode_store",
+          } : null;
+        const sample: TokenSample = {input_tokens:input, observed_at:observedAt, source:"opencode_store",
+          window_tokens:null, window_source:null, used_percent:null, percent_source:null, unknown_reason:null, tuning};
         db.close(); db = undefined;
         if (map === undefined) { try { map = readMap(); } catch { map = null; } }
         const window = map?.version?.match(/^2(?:\.|$)/) ? windowFor(map, session.directory, `${message.model?.providerID}/${message.model?.id}`) : undefined;

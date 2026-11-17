@@ -3,6 +3,40 @@
 Release notes are curated when a release is prepared. A protocol bump adds the
 next `0.<protocol>.0` release heading in the same change.
 
+## 0.23.4 — 2026-11-17
+
+### Added
+
+- `tap team` shows the model and effort an OpenCode seat is actually using. TAP
+  reads the provider, model and variant from the seat's latest completed
+  response, the same record its context figure comes from, and
+  `tap team --json` carries them as `observed_model` and `observed_effort`.
+  The value follows the last finished response, so a change made in the
+  OpenCode UI appears after the next reply. If the response omits a variant,
+  `observed_effort` is null; a seat with no completed response still shows its
+  launch settings.
+- `/tap:lead` gains six working habits, adapted from the MIT-licensed pstack
+  skill library: write a throughput check before fanning out, prefer a
+  fresh seat for a newly delegated unit and carry its consolidated scope, own
+  what a delegate produces, judge progress by its side effects rather than reports of it,
+  give each verdict one of three values (verified, not verified or
+  inconclusive), and classify a question before asking the person.
+
+### Changed
+
+- The `tap team` model column no longer marks a launch-setting fallback with
+  `(launch)`. The column shows the observed model and effort when TAP has
+  them and the launch settings otherwise; `tap team --json` still keeps the
+  two apart (`observed_model` and `observed_effort` beside `model` and
+  `effort`).
+- The shipped Codex presets select GPT-6.2: all six Astra presets use
+  `gpt-6.2-astra` and all four Sol presets use `gpt-6.2-sol`, including the
+  two simple-setup starters. Their descriptions, the setup examples and the
+  cheatsheet follow. A config you already have keeps the models it names.
+- Gemini Carbon and Kimi K3.1 Pro show short names in the model column
+  (`carbon4`, `kimi3.1pro`). An effort written into a Carbon model id, such as
+  `gemini-4-carbon-high`, shows as the effort (`carbon4@high`).
+
 ## 0.23.3 — 2026-11-15
 
 ### Added

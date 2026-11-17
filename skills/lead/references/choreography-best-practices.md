@@ -24,6 +24,15 @@ activity detector; and an **infrequent leader loop** (30–45 min) emitting mini
 it does not prove a stall. A working seat replies once with status, then continues. Notes and per-head
 reports suffice; repeated messages or head changes are not required.
 
+**Judge progress by its side effects, not by reports of it.** A lane's progress is what it changed:
+a commit or push, a PR head, a CI run, a receipt, a file the brief names. A seat's prose ("almost
+done", "tests passing") is a claim to check against those, and silence is not a stall while the
+seat is visibly working. When a check finds neither new side effects nor a working state, inspect
+the lane's dependency and delivery state: waiting, or a state you could not read, does not prove a
+stall. Once an actual missed dependency, failed delivery or explicit blocker confirms the lane is
+stuck, recover, replace or split it in that same tick, carrying the consolidated scope described
+under "the work lands in the right hands", instead of waiting another cycle.
+
 **Every other part of the shape reaches the leader by bus send**, so if the courier or the pane
 broke, nothing arrives:
 a scheduled wake is the only coverage that does not depend on delivery working.
@@ -96,6 +105,34 @@ Bare/poll registrations are transport-only. Default complex writers to separate 
 only Writer Token doctrine below permits unrelated DRIVERS to share. Never parallel subagents or
 crews: disjoint files and no-stash rules are not isolation.
 
+**Before you fan out, write the throughput check.** Four lines in the strategy doc or the brief,
+each answered, or marked `n/a: <reason>` rather than dropped:
+
+- **Blocking first steps:** what must finish before anything parallel starts (a schema, an
+  interface, a shared fixture, a decision only the owner can make).
+- **Independent workstreams:** disjoint files, services or layers; each becomes a lane.
+- **Shared mutable state:** split the target before serializing on it (separate worktrees, separate
+  files, a seam agreed up front). Serialize only for a real invariant, and name it.
+- **Smallest safe decomposition:** fewer lanes than you could run. If one seat is best, say why.
+
+For many near-identical cheap units, take one unit through brief, build, review and landing before
+starting the rest: a flaw in the brief then costs one lane, not every lane.
+
+**Prefer a fresh seat for a newly delegated unit, carrying consolidated scope**: the original
+brief, every directive given since, and the prior seat's report and branch. A chartered driver's
+queue succession still follows `/tap:conduct` and `/tap:drive`: the acquisition owner claims the
+next ready item, or explicitly transfers that role to a named successor with acknowledgement. For a
+fix round or a retry, choose continuity or a fresh seat deliberately; either way consolidate the
+scope instead of relying on a chain of interrupts, which silently drops directives. State that is
+costly to move (a worktree with uncommitted changes, a running process, a review mid-read) favors
+continuity. A role outlives its seat: when a driver's seat ends, its next round goes to a seat
+given that scope, not to whoever is idle.
+
+**You own what your delegates produce.** Before reporting a delegate's result to the owner, read
+the evidence it points to (the diff, the receipt, the CI run, the review comment and who posted
+it) and write your own summary. Quote the delegate only as a claim you checked. A second opinion
+is the same question to a different model family; agreement between them is the strong signal.
+
 - Route each lane to the cheapest live teammate; the LEADER keeps judgment and final-gate work —
   except where the charter has transferred the whole-diff gate to a non-author
   (a LEADER who authored any delivered hunk never gates its own run). The live roster lives in
@@ -133,6 +170,13 @@ verbatim result lines, independently executed gates, red citations. Not because 
 weak, but because under completion pressure self-assessment drifts toward the claim — measured, not
 hypothesized, across seats and harnesses in one night, frontier included. You are not the
 exception; you are the data.
+
+**A verdict has three values: VERIFIED, NOT VERIFIED, or INCONCLUSIVE.** Inconclusive is not a
+pass, and neither is a check that ran on the wrong surface (a unit test standing in for the live
+pane, the wrong commit, a different runner). A gap does not count as a pass: when a fanned-out
+check returns without the commit and method its brief named, ask for it once, then record the gap.
+An aggregate report names every dropout and gap beside the results, so a reader can see what was
+never checked.
 
 ### Writer-token operational consequences
 
@@ -241,3 +285,8 @@ Decide at kickoff who checks and what wakes you, not whether the run is attended
 - `base-motion.md` — driver-owned rebases, retargets and evidence when a base moves.
 - `supervision.md` — sentinel choice and recipes, `done_when` authoring, drift-peek mechanics.
 - `routine-authoring.md` — the save-loop's authoring-gate detail.
+
+Several ideas in this file (the throughput check, consolidated scope for fresh seats, owning
+delegates' work, side effects over reports, three-valued verdicts) are adapted from Lauren Tan's
+pstack `poteto-mode` and `swarm` skills (MIT, Copyright (c) 2026 Lauren Tan; upstream
+`cursor/plugins` at `3dbd22ff`).

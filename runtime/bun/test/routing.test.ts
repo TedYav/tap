@@ -612,7 +612,7 @@ test("nested seats keep urgency within teams, cold before unknown, and align all
   expect(lines[1]).toMatch(/^alpha  3\/3 seats active/);
   expect(lines.slice(2,5).map(line=>line.trim().split(/\s+/)[0])).toEqual(["soon","z-cold","a-unknown"]);
   expect(lines[2]).toMatch(/329k\/600k ●2m +anthropic +opus@high +opus$/);
-  expect(lines[4]).toMatch(/openai +gpt@high \(launch\) +sol$/);
+  expect(lines[4]).toMatch(/openai +gpt@high +sol$/);
   const contextAt = lines[0]!.indexOf("context");
   expect(lines[2]!.indexOf("329k/600k")).toBe(contextAt);
   expect(human).not.toContain("\x1b");

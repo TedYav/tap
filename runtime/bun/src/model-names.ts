@@ -10,11 +10,11 @@ const EFFORT_COLOR: Record<string, number> = { low: 27, medium: 39, high: 40, xh
 const RULES: [RegExp, (m: RegExpExecArray) => string][] = [
   [/^claude-(opus|fable|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i, m => `${m[1]}${m[2]}${m[3] ? `.${m[3]}` : ""}`],
   [new RegExp(`^gpt-${VERSION}-(astra|luna|sol)$`, "i"), m => `${m[2]}${m[1]}`],
-  [new RegExp(`^gemini-${VERSION}-(argon|flash)(?:-(?:${EFFORT_WORD}))?$`, "i"), m => `${m[2]}${m[1]}`],
+  [new RegExp(`^gemini-${VERSION}-(argon|carbon|flash)(?:-(?:${EFFORT_WORD}))?$`, "i"), m => `${m[2]}${m[1]}`],
   [new RegExp(`^glm-${VERSION}(-flash)?$`, "i"), m => `glm${m[1]}${m[2] ?? ""}`],
   [new RegExp(`^grok-${VERSION}(?:-(?:${EFFORT_WORD}))?$`, "i"), m => `grok${m[1]}`],
   [new RegExp(`^deepseek-v${VERSION}(-flash|-pro)?(?:-\\d{4})?$`, "i"), m => `deepseek${m[1]}${m[2] ?? ""}`],
-  [new RegExp(`^kimi-k${VERSION}$`, "i"), m => `kimi${m[1]}`],
+  [new RegExp(`^kimi-k${VERSION}(?:-(pro))?$`, "i"), m => `kimi${m[1]}${m[2] ?? ""}`],
   // A launch alias names a family, not a version; none is invented for it.
   [/^(opus|fable|sonnet|haiku)$/i, m => m[1]!],
 ];
@@ -41,12 +41,16 @@ export interface SeatModel {
   launchEffort?: string | null;
 }
 
-/** The human model cell: observed model@effort, else the launch choice marked `(launch)`. */
+/** The human model cell: observed model@effort, else the stored launch choice. */
 export function modelCell(seat: SeatModel, color: boolean): string {
   const { observedModel, observedEffort, launchModel, launchEffort } = seat;
-  if (observedModel) return prettyModelName(observedModel) + (observedEffort ? `@${effortWord(observedEffort, color)}` : "");
+  if (observedModel) {
+    const model = prettyModelName(observedModel);
+    const effort = observedEffort || (model !== observedModel ? EFFORT_SUFFIX.exec(observedModel)?.[1]?.toLowerCase() : undefined);
+    return model + (effort ? `@${effortWord(effort, color)}` : "");
+  }
   if (!launchModel && !launchEffort) return "?";
   // Some ids carry their effort, which the short name drops: `gemini-4-argon-high`.
   const effort = launchEffort || EFFORT_SUFFIX.exec(launchModel ?? "")?.[1]?.toLowerCase();
-  return `${launchModel ? prettyModelName(launchModel) : "?"}@${effort ? effortWord(effort, color) : "?"} (launch)`;
+  return `${launchModel ? prettyModelName(launchModel) : "?"}@${effort ? effortWord(effort, color) : "?"}`;
 }

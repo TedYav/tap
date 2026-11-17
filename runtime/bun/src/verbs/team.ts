@@ -600,8 +600,7 @@ function humanHarness(row: ObservedRow): string {
   return isDaemon(row) ? (rosterStyle() ? "\x1b[3mdaemon\x1b[0m" : "daemon") : row.harness;
 }
 
-/** Observed model@effort from the bound-transcript sample; the (launch)
- * marker keeps the fallback honest when no observation exists. */
+/** Observed model@effort from the bound transcript, with stored launch settings as fallback. */
 function rowModelCell(row: ObservedRow): string {
   const tuning = row.tokenSample?.tuning;
   return modelCell({ observedModel: tuning?.model, observedEffort: tuning?.effort, launchModel: row.model, launchEffort: row.effort }, rosterStyle());

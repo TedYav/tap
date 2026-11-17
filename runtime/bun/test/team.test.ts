@@ -484,7 +484,7 @@ esac`);
     expect(observed("other")).toMatchObject({ agent_state: "idle", turn_ended_at: null, turn_ended_source: null });
   }, 60_000);
 
-  test("model column prefers transcript-observed tuning and marks the launch fallback", () => {
+  test("model column prefers transcript-observed tuning and falls back to launch settings", () => {
     const f = fixture();
     const transcript = join(f.dir, "codex.jsonl");
     writeFileSync(transcript, [
@@ -528,7 +528,7 @@ esac`);
     }));
     // Human cells show the short name; the JSON below keeps the raw observed id.
     expect(rows.observed).toEqual(["84k/380k", "astra6@xhigh", "n/a"]);
-    expect(rows.fallback).toEqual(["—", "fable@high (launch)", "n/a"]);
+    expect(rows.fallback).toEqual(["—", "fable@high", "n/a"]);
     expect(rows.compacted).toEqual(["—", "astra6@high", "n/a"]);
     const agents = Object.fromEntries(JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents.map((a: { handle: string }) => [a.handle, a]));
     expect(agents.observed).toMatchObject({model: null, effort: null, observed_model: "gpt-6-astra", observed_effort: "xhigh", observed_at: "2026-09-26T04:00:00Z"});
@@ -3871,8 +3871,9 @@ esac`);
   test("the model column shows short names, JSON keeps raw ids, and effort color follows the roster style rule", () => {
     const { f } = filterFixture();
     const plain = run(["team"], f.worktree, f.env);
-    expect(plain.stdout).toContain("opus@xhigh (launch)");
-    expect(plain.stdout).toContain("fable5.1@low (launch)");
+    expect(plain.stdout).toContain("opus@xhigh");
+    expect(plain.stdout).not.toContain("(launch)");
+    expect(plain.stdout).toContain("fable5.1@low");
     expect(plain.stdout).not.toContain("\x1b");
     const agents = JSON.parse(run(["team", "--json"], f.worktree, f.env).stdout).agents;
     expect(agents.find((seat: { handle: string }) => seat.handle === "dated")).toMatchObject({ model: "opus[1m]", effort: "xhigh" });
@@ -3880,14 +3881,14 @@ esac`);
     const env = { ...f.env };
     delete env.NO_COLOR;
     const color = runTty(["team", "--wide"], f.worktree, env, 200);
-    expect(color.stdout).toContain("opus@\x1b[38;5;208mxhigh\x1b[0m (launch)");
-    expect(color.stdout).toContain("fable5.1@\x1b[38;5;27mlow\x1b[0m (launch)");
-    const preset = color.stdout.split("\n").filter(line => line.includes("(launch)")).map(line => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trimEnd().length);
+    expect(color.stdout).toContain("opus@\x1b[38;5;208mxhigh\x1b[0m");
+    expect(color.stdout).toContain("fable5.1@\x1b[38;5;27mlow\x1b[0m");
+    const preset = color.stdout.split("\n").filter(line => /opus@|fable5\.1@/.test(line)).map(line => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trimEnd().length);
     expect(new Set(preset).size).toBe(1);
     const noColor = runTty(["team", "--wide"], f.worktree, { ...env, NO_COLOR: "" }, 200);
-    expect(noColor.stdout).toContain("opus@xhigh (launch)");
+    expect(noColor.stdout).toContain("opus@xhigh");
     const dumb = spawnSync("python3", ["-B", "-c", TTY_RUNNER, "200", shippedEntry, "team", "--wide"], { cwd: f.worktree, env: { ...env, TERM: "dumb" }, encoding: "utf8" });
-    expect(dumb.stdout).toContain("opus@xhigh (launch)");
+    expect(dumb.stdout).toContain("opus@xhigh");
   }, 60_000);
 });
 
@@ -4156,3 +4157,18 @@ esac`);
   expect(invalid.status).toBe(1); expect(JSON.parse(invalid.stdout).error_class).toBe("advanced_config_invalid");
   expect(invalid.stdout).toContain("unknown_knob");
 }, 60_000);
+
+test("OpenCode roster displays observed variant and filters by observed model", () => {
+  const { f, calls } = openCodeRosterFixture();
+  const db = new Database(f.env.OPENCODE_DB_PATH!);
+  db.query("UPDATE session_message SET data = json_set(data, '$.model', json(?)) WHERE session_id = 'seat'").run(
+    JSON.stringify({providerID:"synthetic", id:"hf:moonshotai/Kimi-K3.1-Pro", variant:"high"}));
+  db.close();
+  expect(run(["team"], f.worktree, f.env).stdout).toContain("kimi3.1pro@high");
+  const json = run(["team", "--json", "--model", "kimi3.1pro"], f.worktree, f.env);
+  expect(json.status, json.stderr).toBe(0);
+  expect(JSON.parse(json.stdout).agents).toHaveLength(1);
+  expect(JSON.parse(json.stdout).agents[0]).toMatchObject({observed_model:"synthetic/hf:moonshotai/Kimi-K3.1-Pro",
+    observed_effort:"high", observed_at:new Date(2).toISOString()});
+  expect(calls()).toEqual([]);
+});

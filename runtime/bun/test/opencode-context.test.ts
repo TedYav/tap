@@ -77,3 +77,33 @@ test("the same model keeps a separate window per project directory", () => {
   f.db.query("UPDATE session_v2 SET directory = ?").run(b);
   expect(createOpenCodeContextReader(() => map)("seat",f.path).window_tokens).toBe(900000); f.db.close();
 });
+
+test("observed model and variant belong to the latest completed usage record", () => {
+  const f = fixture();
+  const kimi = {providerID:"synthetic", id:"hf:moonshotai/Kimi-K3.1-Pro", variant:"high"};
+  f.add(100, {model:{...kimi, variant:"low"}});
+  f.add(200, {model:kimi});
+  f.add(300, {model:{...kimi, variant:"max"}, time:{created:300}});
+  f.add(400, {model:{...kimi, variant:"low"}}, "other");
+  const read = createOpenCodeContextReader(() => null);
+  expect(read("seat", f.path).tuning).toEqual({model:"synthetic/hf:moonshotai/Kimi-K3.1-Pro", effort:"high",
+    observed_at:new Date(201).toISOString(), source:"opencode_store"});
+  f.add(500, {model:{providerID:"provider", id:"glm"}});
+  expect(read("seat", f.path).tuning?.effort).toBeNull();
+  f.add(600, {type:"compaction", status:"completed"});
+  expect(read("seat", f.path).tuning).toBeNull();
+  f.db.close();
+});
+
+test("malformed model metadata never hides valid usage or invents tuning", () => {
+  for (const model of [null, {}, {providerID:"p", id:12}, {providerID:"", id:"glm"}]) {
+    const f = fixture(); f.add(100, {model});
+    expect(createOpenCodeContextReader(() => null)("seat", f.path)).toMatchObject({input_tokens:101839, tuning:null});
+    f.db.close();
+  }
+  for (const variant of [null, "", 3, {}]) {
+    const f = fixture(); f.add(100, {model:{providerID:"provider", id:"glm", variant}});
+    expect(createOpenCodeContextReader(() => null)("seat", f.path).tuning).toMatchObject({model:"provider/glm", effort:null});
+    f.db.close();
+  }
+});

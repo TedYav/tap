@@ -9,9 +9,9 @@ test("checked-in models retain effort, service and wrapper variants and provider
   const fable = refs.filter(v => v.model === "fable");
   expect(fable.find(v => v.tuning.effort === "medium")?.metadata?.intelligence).toBe("frontier");
   expect(fable.find(v => v.tuning.effort === "high")?.metadata?.intelligence).toBe("s-tier");
-  const astra = refs.filter(v => v.model === "gpt-6-astra" && v.tuning.effort === "medium");
+  const astra = refs.filter(v => v.model === "gpt-6.2-astra" && v.tuning.effort === "medium");
   expect(astra.map(v => v.tuning.qualifiers.service_tier).sort()).toEqual(["default", "fast"]);
-  const xhigh = refs.filter(v => v.model === "gpt-6-astra" && v.tuning.effort === "xhigh");
+  const xhigh = refs.filter(v => v.model === "gpt-6.2-astra" && v.tuning.effort === "xhigh");
   expect(xhigh.map(v => v.tuning.environment.PONYTAIL_DEFAULT_MODE).sort()).toEqual(["full", "off"]);
   expect(refs.some(v => v.model === "synthetic/hf:moonshotai/Kimi-K3")).toBe(true);
   for (const v of refs) expect(v.command).toContain("--model");

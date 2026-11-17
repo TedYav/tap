@@ -2553,7 +2553,7 @@ OPTIONS
     tap assign <crew> -f <brief-file> [--reply-to <seat>]
 
 EXAMPLES
-  tap crew add codex reviewer --model gpt-6-astra   start a codex helper named reviewer
+  tap crew add codex reviewer --model gpt-6.2-astra   start a codex helper named reviewer
   tap crew add astra reviewer              same, from a preset that carries its model
   tap crew add astra reviewer --assign review.md --reply-to lane-driver
   tap crew add astra reviewer --env CODEX_LOG=debug -- --search
@@ -2664,11 +2664,11 @@ PAGES["team roster"] = lines(
   "           5m; the expired dot is dark red. Color requires a TTY, NO_COLOR",
   "           absent and TERM other than dumb.",
   "           No marker means unsupported or insufficient evidence (Codex included).",
-  "  model    model@effort observed from the bound transcript for claude/codex seats,",
-  "           falling back to the stored launch choice, marked (launch). Other",
+  "  model    model@effort observed for claude/codex/opencode seats,",
+  "           falling back to the stored launch choice. Other",
   "           harnesses stay on the launch snapshot. Known models show a short",
   "           name (`claude-opus-5-5` reads `opus5.5@xhigh`), and a launch alias",
-  "           drops `[1m]` without gaining a version (`opus@xhigh (launch)`); any other",
+  "           drops `[1m]` without gaining a version (`opus@xhigh`); any other",
   "           model shows its full id. JSON keeps the raw ids. The effort word is",
   "           colored low to max (blue, light blue, green, orange, red) on a terminal",
   "           with NO_COLOR absent and TERM other than dumb; other efforts stay plain.",

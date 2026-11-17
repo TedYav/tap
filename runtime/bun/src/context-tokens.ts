@@ -7,7 +7,7 @@ export interface ObservedTuning {
   model: string;
   effort: string | null;
   observed_at: string;
-  source: "claude_transcript" | "codex_transcript";
+  source: "claude_transcript" | "codex_transcript" | "opencode_store";
 }
 export interface TokenSample {
   input_tokens: number | null;

@@ -27,12 +27,17 @@ yields the seat's current model/effort for Claude and Codex: the newest qualifyi
 `observed_at`. There is no wall-clock staleness rule: the newest observed record is the seat's
 current setting even after idle hours, and a setting survives a compact boundary. The roster
 `model` column renders the observed pair when a sample exists and falls back to the recorded
-launch snapshot with an explicit `(launch)` marker, else `?`; harnesses without transcript
-observation (OpenCode and every other non-claude/codex family) carry that launch marker
-permanently, which is scope, not a defect. JSON adds top-level `observed_model`, `observed_effort`
+launch snapshot, else `?`, without a provenance marker. Harnesses without transcript
+observation (harnesses other than Claude, Codex and OpenCode) use that launch snapshot. JSON adds top-level `observed_model`, `observed_effort`
 and `observed_at` beside the unchanged launch-provenance `model`/`effort`/`launch_tuning`; the
 `context_tokens` object keeps its schema. Calibration continues to match on launch tuning, since
 observed ids are full model names, not reference variants.
+
+OpenCode reads the model's `providerID`/`id` and optional `variant` from the same
+latest completed assistant record as its token usage. The variant becomes observed effort;
+missing variants stay unknown. Compaction, revert, invalid usage and identity failures
+retain the usage reader's existing unknown result, so launch settings remain the fallback.
+No harness process or API request is started to read tuning.
 
 **Family label (tap-gp75).** `tap presets` (FAMILY column, `family` in `--json`) and `tap team` (family column, `family` on every `--json` agent row) show vendor lineage, so a panel composer groups seats by family without recalling mappings. The value is the preset's `metadata.model_family` (vocabulary and the claude/codex/agy harness fallback: part 06 §Preset `metadata`); opencode, cursor and hermes without the key show `-` / `null`. A seat's family comes from its recorded launch preset, kept for tuned and model-only seats; a preset matched from the handle text is not claimed, so that seat shows its harness's vendor. When the launch-reference metadata is substituted on a seat, its published `metadata.model_family` equals the resolved `family` (omitted when unknown); the reference's own lineage is never shown beside a different one. `tap team --json` labels the source as `family_source` (`preset` for the explicit key, `harness` for the fallback, null when unknown), and `tap team calibration` reads only `preset` lineage, never a harness inference. It is never derived from a model id and is not the preset `family` notes key.
 

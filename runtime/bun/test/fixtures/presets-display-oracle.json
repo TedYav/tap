@@ -292,43 +292,43 @@
         {
           "name": "astra",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at high",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at high",
           "roles": "driver, prototyper, partner, prose_writer, implementer, architect, approver, reviewer"
         },
         {
           "name": "astra-fast",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at medium, fast mode",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at medium, fast mode",
           "roles": "prototyper, tasker, prose_writer, implementer"
         },
         {
           "name": "astra-max",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at max",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at max",
           "roles": "debugger, reviewer, architect"
         },
         {
           "name": "astra-med",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at medium",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at medium",
           "roles": "prototyper, partner, prose_writer, implementer"
         },
         {
           "name": "astra-ponytail",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at xhigh, Ponytail mode",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at xhigh, Ponytail mode",
           "roles": "architect, approver, reviewer, prose_writer"
         },
         {
           "name": "astra-xhigh",
           "harness": "codex",
-          "model": "gpt-6-astra",
-          "description": "gpt-6-astra at xhigh",
+          "model": "gpt-6.2-astra",
+          "description": "gpt-6.2-astra at xhigh",
           "roles": "debugger, reviewer, architect"
         },
         {
@@ -467,29 +467,29 @@
         {
           "name": "sol",
           "harness": "codex",
-          "model": "gpt-6.1-sol",
-          "description": "gpt-6.1-sol at high",
+          "model": "gpt-6.2-sol",
+          "description": "gpt-6.2-sol at high",
           "roles": "reviewer, debugger, implementer, prose_writer, partner"
         },
         {
           "name": "sol-max",
           "harness": "codex",
-          "model": "gpt-6.1-sol",
-          "description": "gpt-6.1-sol at max, Ponytail mode",
+          "model": "gpt-6.2-sol",
+          "description": "gpt-6.2-sol at max, Ponytail mode",
           "roles": "reviewer, architect, debugger"
         },
         {
           "name": "sol-ponytail",
           "harness": "codex",
-          "model": "gpt-6.1-sol",
-          "description": "gpt-6.1-sol at xhigh, Ponytail mode",
+          "model": "gpt-6.2-sol",
+          "description": "gpt-6.2-sol at xhigh, Ponytail mode",
           "roles": "reviewer, architect, partner"
         },
         {
           "name": "sol-xhigh",
           "harness": "codex",
-          "model": "gpt-6.1-sol",
-          "description": "gpt-6.1-sol at xhigh",
+          "model": "gpt-6.2-sol",
+          "description": "gpt-6.2-sol at xhigh",
           "roles": "reviewer, debugger, implementer, prose_writer, partner"
         },
         {
