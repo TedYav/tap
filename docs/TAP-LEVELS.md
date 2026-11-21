@@ -19,8 +19,15 @@ project terminal, one at a time:
 
 ```bash
 tap init
+```
+
+```bash
 tap launch claude
-# After Claude opens, Ctrl-b then d returns to your terminal.
+```
+
+If Claude opens, press **Ctrl-b**, then **d** to return to your project shell.
+
+```bash
 tap launch codex
 ```
 
@@ -95,12 +102,12 @@ the effort entry from `params.config`; other tuning entries are omitted.
 ```toml
 [presets.astra]
 harness = "codex"
-params.model = "gpt-6-astra"
+params.model = "gpt-6.2-astra"
 params.config = ["model_reasoning_effort=high"]
 metadata.intelligence = "s-tier"
 metadata.cost_level = "high"
 metadata.speed = "medium fast"
-metadata.summary = "Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed."
+metadata.summary = "GPT-6.2 Astra at high effort. A great collaborator and executor: careful, fast, and candid about what it missed. Best on bounded work with a clear spec, such as code review, well-scoped tickets and pairing. Too literal for ambiguous or open-ended tasks: state the goal and the audience, and ask it to keep its tests."
 metadata.primary_roles = ["prototyper", "partner", "prose_writer", "implementer", "architect", "approver", "reviewer"]
 metadata.secondary_roles = ["driver", "leader", "researcher"]
 metadata.avoid_roles = ["tasker"]

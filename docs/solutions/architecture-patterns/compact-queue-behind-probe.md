@@ -48,7 +48,7 @@ staged command and replace it.
 
 ## What a test may claim
 
-`skills/tap-self/scripts/regress/compact-wake.test.sh` may claim that the
+`skills/self/scripts/regress/compact-wake.test.sh` may claim that the
 worker is armed, that the handoff exists before any pane input, and that a
 failed arm is loud. It may not claim that the ping survives a compaction. A
 stand-in that asserts survival is replaying an assumption about the harness.

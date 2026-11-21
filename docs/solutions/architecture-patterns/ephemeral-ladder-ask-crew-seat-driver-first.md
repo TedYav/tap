@@ -32,7 +32,7 @@ related_components:
 
 ## Context
 
-TAP staffs ephemeral help in graduated forms. `skills/using-tap/SKILL.md` names the four
+TAP staffs ephemeral help in graduated forms. `skills/tap/references/staffing.md` names the four
 staffed forms (subagent, burst engine, crew, launcher-managed seat). The **ask** is a
 fifth, lighter one: a stateless one-shot cross-harness invocation (`tap ask`).
 Graduated forms need a teaching that says which rung to reach for, and who reaches.
@@ -153,7 +153,7 @@ The skill-surface edits are follow-on implementation, not this doc
 
 - `CONCEPTS.md` — *Crew*, *Seat*, *Burst Engine*, *LEADER / DRIVER / EXECUTOR*, and the new
   *Ask* / *Ephemeral Ladder* entries.
-- `skills/using-tap/SKILL.md` — the staffing floor (forms, visibility, what a crew may
+- `skills/tap/references/staffing.md` — the staffing floor (forms, visibility, what a crew may
   never do).
 - `skills/lead/references/routines/dynamic-workflows.md` — burst engines, the same-harness
   sibling axis.

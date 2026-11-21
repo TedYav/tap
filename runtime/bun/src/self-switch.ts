@@ -10,8 +10,10 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { TapError } from "./context";
-import { submitVerifyLocked, REAL_EFFECTS, type BoundRecipient, type SubmitAuthority, type SubmitResult } from "./courier";
+import { submitVerifyLocked, authorizePaneEffect, inspectClearFenceRecord, REAL_EFFECTS, type PaneEffects, type BoundRecipient, type SubmitAuthority, type SubmitResult } from "./courier";
+import { capturePane } from "./tmux";
 import { acquirePaneLock } from "./panelock";
+import { resetFenceRefusal } from "./reset";
 import { recoveryHold } from "./recovery/state";
 
 export interface SeatSwitches { model?: string; effort?: string }
@@ -112,6 +114,18 @@ export function switchProven(path: string, session: string, offset: number, sinc
   } catch { return false; } finally { if (fd !== undefined) closeSync(fd); }
 }
 
+/** Join wrapped dialog whitespace only after its rule; all content and anchors must match. */
+export function claudeModelConfirmation(frame: string): boolean {
+  const rows = frame.replace(ANSI, "").split("\n");
+  const rule = rows.findLastIndex(row => /^\s*▔{10,}\s*$/.test(row));
+  if (rule < 0) return false;
+  const dialog = rows.slice(rule + 1).join(" ").replace(/\s+/g, " ").trim();
+  const selected = / ❯ 1\. Yes, switch to (.+?) 2\. No, go back Enter to confirm · Esc to cancel$/.exec(dialog);
+  return !!selected && dialog === "Switch model? Your next response will be slower and use more tokens " +
+    `This conversation is cached for the current model. Switching to ${selected[1]} means the full history gets re-read. ` +
+    `❯ 1. Yes, switch to ${selected[1]} 2. No, go back Enter to confirm · Esc to cancel`;
+}
+
 export interface SwitchEffects {
   /** A nonblocking pane-submit lock, held across every switch and proof; null while another submit holds it. */
   reserve(): { release(): void } | null;
@@ -119,6 +133,8 @@ export interface SwitchEffects {
   valid(): boolean;
   size(): number;
   submit(command: string, kind: SwitchKind): SubmitResult;
+  /** One Enter on a recognized model dialog; false means no key sent. */
+  acceptModelConfirmation?(): boolean;
   proven(kind: SwitchKind, value: string, offset: number, since: number): boolean;
   settle(seconds: number): void;
   wait(): Promise<void>;
@@ -128,7 +144,8 @@ export interface SwitchEffects {
 /**
  * Submit each requested switch once and wait, bounded, for its transcript
  * proof. Only a refusal that took no pane effect is retried. A submit that may
- * have left text in the composer ends all further typing for this reset.
+ * have left text in the composer ends all further typing for this reset, except
+ * one Enter on the complete model confirmation after our own /model.
  */
 export async function applySwitches(switches: SeatSwitches, fx: SwitchEffects, timeout = SWITCH_TIMEOUT_MS, spacing = 2): Promise<SwitchReport> {
   let lock: { release(): void } | null = null;
@@ -147,16 +164,21 @@ async function switchUnderLock(switches: SeatSwitches, fx: SwitchEffects, timeou
   for (const step of switchSteps(switches)) {
     const outcome = (state: SwitchOutcome["state"], detail: string) => { report[step.kind] = { state, command: step.command, detail }; };
     if (halt) { outcome("skipped", halt); continue; }
+    let accepted = false;
     try {
       if (!fx.valid()) { halt = "seat or native session changed; nothing more typed"; outcome("skipped", halt); continue; }
-      const deadline = fx.now() + timeout;
+      let deadline = fx.now() + timeout;
       const offset = fx.size(), since = fx.now();
       let result = fx.submit(step.command, step.kind);
       while (TRANSIENT.has(result.status) && fx.now() < deadline && fx.valid()) {
         await fx.wait();
         result = fx.submit(step.command, step.kind);
       }
-      if (result.status !== "injected" && result.status !== "harness_queued") {
+      if (step.kind === "model" && result.status === "unverified" && fx.valid()) {
+        accepted = fx.acceptModelConfirmation?.() ?? false;
+        if (accepted) deadline = fx.now() + timeout;
+      }
+      if (!accepted && result.status !== "injected" && result.status !== "harness_queued") {
         const detail = "detail" in result ? `: ${result.detail}` : "";
         outcome("unconfirmed", `submit ${result.status}${detail}`);
         // Effort levels belong to a model: an unsubmitted /model leaves effort on the old one.
@@ -168,13 +190,14 @@ async function switchUnderLock(switches: SeatSwitches, fx: SwitchEffects, timeou
         await fx.wait();
         proven = fx.proven(step.kind, step.value, offset, since);
       }
-      outcome(proven ? "confirmed" : "unconfirmed", proven ? "transcript recorded the switch"
-        : offset < 0 ? "submitted; the bound transcript was unreadable, so the switch is unproven" : "submitted; no transcript confirmation before the deadline");
+      outcome(proven ? "confirmed" : "unconfirmed", (accepted ? "model confirmation dialog accepted; " : "") + (proven ? "transcript recorded the switch"
+        : offset < 0 ? "submitted; the bound transcript was unreadable, so the switch is unproven" : "submitted; no transcript confirmation before the deadline"));
+      if (accepted && !proven) halt = "model confirmation was accepted but the switch is unproven; nothing more typed";
       // tap-lmbs: an input queued with no gap after a local command often goes unprocessed.
       fx.settle(spacing);
     } catch (error) {
       // A throw may follow a pane effect, so nothing more is typed; the resume still follows.
-      outcome("unconfirmed", `switch failed: ${error instanceof Error ? error.message : String(error)}`);
+      outcome("unconfirmed", `${accepted ? "model confirmation dialog accepted; " : ""}switch failed: ${error instanceof Error ? error.message : String(error)}`);
       halt = "an earlier switch failed; nothing more typed";
     }
   }
@@ -193,13 +216,25 @@ export function switchFailure(switches: SeatSwitches, error: unknown): SwitchRep
  * that session's Claude transcript.
  */
 export function claudeSwitchEffects(target: { id: string; bound: BoundRecipient; authority: SubmitAuthority; transcript: string; session: string;
-  valid(): boolean; settle(seconds: number): void; wait(): Promise<void> }): SwitchEffects {
+  valid(): boolean; settle(seconds: number): void; wait(): Promise<void> }, paneFx: PaneEffects = REAL_EFFECTS,
+  capture: (pane: string, escaped: boolean, joined: boolean) => { code: number; stdout: string } = capturePane): SwitchEffects {
   const pane = target.bound.paneId;
   const authority: SubmitAuthority = { ...target.authority, expectedNativeSession: target.session, singleEnter: false };
   return { valid: target.valid, settle: target.settle, wait: target.wait, now: Date.now,
     reserve: () => acquirePaneLock(pane, 0),
     submit: (command, kind) => recoveryHold(pane) ? { status: "recovery_held", detail: "recovery owns the pane" }
-      : submitVerifyLocked(pane, `${target.id}-${kind}`, command, target.bound, REAL_EFFECTS, authority),
+      : submitVerifyLocked(pane, `${target.id}-${kind}`, command, target.bound, paneFx, authority),
+    acceptModelConfirmation: () => {
+      const frame = capture(pane, true, false);
+      if (frame.code !== 0 || !claudeModelConfirmation(frame.stdout)) return false;
+      // Keep the same pane/session and custody checks as every other named key.
+      if (!target.valid() || authorizePaneEffect(pane, target.bound, paneFx, authority).status !== "ok") return false;
+      if (resetFenceRefusal(authority.busHome ?? "", "self model confirmation") || recoveryHold(pane) ||
+          inspectClearFenceRecord(authority.recipientBusHome || authority.busHome || "", authority.recipient ?? "").state === "live" ||
+          paneFx.copyMode?.(pane)?.status !== "normal") return false;
+      if (paneFx.pressEnter(pane) !== true) throw new Error("model confirmation Enter attempted but unverified; no retry");
+      return true;
+    },
     size: () => transcriptSize(target.transcript),
     proven: (kind, value, offset, since) => switchProven(target.transcript, target.session, offset, since, kind, value) };
 }

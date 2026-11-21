@@ -3,21 +3,31 @@
 You are helping a human install TAP, a way for agents on one machine to talk to
 each other. TAP is beta software; expect bugs. Send bug reports and feature
 requests to [GitHub Issues](https://github.com/TedYav/tap/issues), or email
-ted@tedyav.com if you cannot use Issues. The folder your session runs in becomes
-the human's first TAP project, so start in that folder (an empty one is fine)
-and keep the TAP clone outside it: a clone's contributor instructions are for
-changing TAP itself, not for installing it.
+ted@tedyav.com if you cannot use Issues. Start in the folder where the human wants to work.
+Inside Git, TAP enrolls the repository root even if you start in a subdirectory.
+Outside Git, it enrolls the starting folder, which can be empty.
+Keep the permanent TAP clone outside that project.
 
-Expect the agent to stop and ask roughly 6 to 8 times: package installs,
-permission mode, config, tmux settings and a restart. Picking the recommended
-option is fine for a first try.
+The human chooses permissions and a few defaults, approves a preview, then
+reopens their Claude Code or Codex chat in tmux for the first reply. Some
+agents group the questions. Terminal checks come afterward.
 
-1. Clone over HTTPS into a permanent directory outside this folder:
-   `git clone https://github.com/TedYav/tap.git ~/tap`. If the human gave you a
-   different TAP address, use theirs. The installed command points into this
-   clone, so do not use a temporary or disposable directory. If cloning fails,
-   stop and show the human the error; do not substitute another URL.
-2. Read `<clone>/docs/AGENT-SETUP.md` and follow that installation runbook.
+1. Check `git --version`. If Git is missing, show the human the install command
+   for their platform and ask before installing. Have them handle any terminal
+   or administrator prompt, then check the version again.
+   Use `https://github.com/TedYav/tap.git` unless they supplied another address.
+   Choose a permanent directory outside the project (normally `tap` in their
+   home directory). If the destination is new, clone once. If it already
+   exists, check that it is the primary checkout of the requested repository:
+   run the checks **in the destination**. Its `git rev-parse --show-toplevel`
+   must name that directory, its Git directory and common directory must match,
+   and `git remote get-url origin` must identify the requested repository.
+   Run `git fetch origin main`. On a clean `main` with no commits of its own
+   beyond `origin/main`, update with `git merge --ff-only origin/main`. On a mismatch,
+   leave the directory alone and ask where to put the clone. Show any clone
+   or fetch error to the human and stop.
+2. Read `<clone>/docs/AGENT-SETUP.md` in that verified checkout. Carry its
+   absolute path into the runbook so you use the same clone throughout.
 3. Finish only after one agent shows the human the other's actual reply. Name
    any startup prompt that needs the human. A queued message is not success.
 4. When done, open `<clone>/docs/cheatsheet.html` for the human.
@@ -27,8 +37,9 @@ The human stays in control of:
 - Account sign-in. Do not sign in for them.
 - Permission mode. Recommend auto, the default; name bypass as the alternative
   and say in one sentence what it grants; apply bypass only after they say yes.
-- Harness wiring. The installer's `--report` output previews the hooks and
-  plugins it will wire; the pasted installation prompt is consent to that install.
+- Harness wiring. Show which CLIs the installer will change. The pasted prompt
+  covers Claude Code and Codex. Wait for the human’s OK if the install would
+  wire or update any other CLI.
 - Machine config and shell startup files. Preserve existing settings; show a
   dry run in its own message and apply it only after they say yes.
 - Trust and permission dialogs. Answer one for them only when it is on the list

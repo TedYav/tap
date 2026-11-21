@@ -2,7 +2,7 @@
 title: What a pairing partner catches
 date: 2026-08-27
 category: best-practices
-module: skills/tap-pair
+module: skills/pair
 problem_type: best_practice
 component: development_workflow
 severity: high
@@ -21,7 +21,7 @@ tags:
 
 `/tap-pair` keeps its review rules to one line each. This note is why those
 lines exist. The one-line habits themselves stay in
-`skills/tap-pair/references/review-contract.md`, where every round uses them.
+`skills/pair/references/review-contract.md`, where every round uses them.
 
 ## Re-running a script does not audit the definition
 

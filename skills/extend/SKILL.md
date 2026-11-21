@@ -93,12 +93,18 @@ for a learning before re-deriving one. The map:
 **Test without touching the live install.** Run tests only through
 `bash runtime/bun/test/run.sh <test-file>...` and
 `bash scripts/smoke-all.sh --only <shell-test>`, plus
-`(cd runtime/bun && bun run typecheck)`. The runners isolate HOME, TAP state
-and tmux. A bare `bun test` or a hand-run test script uses the person's real
+`(cd runtime/bun && bun run typecheck)`. In a fresh checkout, run
+`bun install --frozen-lockfile` once in `runtime/bun` before typechecking.
+The runners isolate HOME, TAP state and tmux. A bare `bun test` or a hand-run test script uses the person's real
 TAP state and tmux server.
 
+**Add a setting.** Start at the code that reads the setting. For a fixed
+default, keep the reader and `DEFAULTS` in `runtime/bun/src/verbs/config.ts`
+in agreement. Run `runtime/bun/test/config.test.ts` through the Bun runner,
+along with the test for the behavior the setting changes.
+
 **Add a command.** Copy a small verb such as
-`runtime/bun/src/verbs/tmux-defaults.ts`, register it in `nativeHandlers` in
+`runtime/bun/src/verbs/tmux-defaults.ts`, register it in `nativeLoaders` in
 `runtime/bun/main.ts`, and add its help page to `PAGES` in `help.ts`. The help
 test fails until the handler table, the help catalog and the
 `runtime/bun/test/fixtures/help/catalog-index.json` fixture agree.
@@ -115,11 +121,15 @@ that name a harness; a few lists spell the same harness `antigravity` or
 prompt detection in `agent-state.ts`, executable detection in
 `verbs/machine.ts`, and session-start wiring in `hooks/`. Typecheck catches
 the typed tables; the rest are plain lists. Resume, fork and permission
-support are optional and can come later.
+support are optional and can come later. Run
+`runtime/bun/test/session-context-harness-enum.test.ts` through the Bun runner.
+It checks for a startup hook or a documented limitation for each family, and
+that the observer recognizes the same families. Also exercise launch, prompt
+detection and submission for the new harness.
 
-**Keep and update the change.** Commit it in the clone on `main`. The usual
-`./install.sh --sync` refuses a clone that carries its own commits, so update
-a customized clone this way instead, with `source` set to the source root:
+**Keep a local change.** Commit it in the clone on `main`. While these commits
+are unpublished, update them as follows, with `source` set to the source root.
+The usual `./install.sh --sync` refuses unpublished source changes.
 
 ```bash
 git -C "$source" fetch origin
@@ -141,10 +151,12 @@ git -C "$source" push -u origin main
 ```
 
 Renaming moves `main`'s tracking to `upstream`; the `-u` push points it back at
-the fork. Once customizations are pushed to the fork's `main`,
-`./install.sh --sync` updates from the fork as usual. To take in upstream
-changes, run `git fetch upstream`, `git rebase upstream/main` and
-`git push --force-with-lease origin main`, then `./install.sh`.
+the fork. Once other machines follow the fork’s `main`, preserve its published
+history so each installation can fast-forward. To take in upstream changes,
+start an update branch from the fork’s current `origin/main`, run
+`git fetch upstream` and `git merge upstream/main`, and test the result.
+Merge that branch into the fork through a pull request using a merge commit.
+Each machine can then run `./install.sh --sync` from its permanent clone.
 
 ## 4. Share it back
 

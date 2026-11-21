@@ -186,7 +186,7 @@ a {
 <p class="eyebrow">TAP · start here</p>
 <h1>Launch two agents.<br>Hear them talk.</h1>
 <p class="intro">Initialize your project, run <code>tap launch claude</code> and <code>tap launch codex</code>, and ask one to talk to the other.</p>
-<nav class="nav" aria-label="Documentation"><a href="index.html">Home</a><a href="cheatsheet.html" aria-current="page">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="nav" aria-label="Documentation"><a href="index.html">Home</a><a href="cheatsheet.html" aria-current="page">Get started</a><a href="cheatsheet-install.html">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Skills</a></nav>
 </header>
 <section aria-labelledby="install"><h2 id="install">1 / Install once</h2>
 <p>Start an installing agent outside the TAP clone and point it at <a href="https://github.com/TedYav/tap/blob/main/docs/AGENT-SETUP.md">AGENT-SETUP</a>. That runbook owns prerequisites, the permanent clone and permission choices. TAP is beta software; expect bugs. Sign in to Claude Code and Codex yourself.</p>
@@ -200,9 +200,9 @@ tap init</code></pre>
 </section>
 <section class="section" aria-labelledby="harnesses"><h2 id="harnesses">3 / Launch two seats</h2>
 <p>Run these in your project terminal, one at a time:</p>
-<pre><code>tap launch claude
-# After Claude opens, Ctrl-b then d returns to your terminal.
-tap launch codex</code></pre>
+<pre><code>tap launch claude</code></pre>
+<p>If Claude opens, press <kbd>Ctrl-b</kbd>, then <kbd>d</kbd> to return to your project shell.</p>
+<pre><code>tap launch codex</code></pre>
 <p>TAP starts and registers each seat. From a foreground terminal, launch opens the agent. If launched by an agent or without a terminal, visit it with <code>tap attach claude</code> or <code>tap attach codex</code>.</p>
 <p>Launch uses your saved permission choice, or auto mode by default. <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md#choose-bypass-mode">Choose bypass mode</a> before launching if you prefer it. Finish sign-in, folder-trust and hook-review prompts yourself.</p>
 </section>

@@ -1,11 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TapError } from "../src/context";
-import type { SubmitResult } from "../src/courier";
+import { REAL_EFFECTS, type SubmitResult } from "../src/courier";
 import { parseOptions } from "../src/self-rebrief";
-import { applySwitches, checkSwitches, switchFailure, requireSwitchHarness, switchProven, switchSteps, switchWarning, transcriptSize, type SwitchEffects, type SwitchKind } from "../src/self-switch";
+import { applySwitches, claudeSwitchEffects, claudeModelConfirmation, checkSwitches, switchFailure, requireSwitchHarness, switchProven, switchSteps, switchWarning, transcriptSize, type SwitchEffects, type SwitchKind } from "../src/self-switch";
 import { parseSelf } from "../src/verbs/self";
 import { removeScratchTree } from "./support/scratch";
 
@@ -189,4 +189,74 @@ test("a /model that never left a no-effect refusal skips /effort, which belongs 
   expect(report.model).toMatchObject({ state: "unconfirmed", detail: "submit band_busy: draft" });
   expect(report.effort?.state).toBe("skipped");
   expect(f.log.filter(entry => entry.startsWith("/effort"))).toEqual([]);
+});
+
+const confirmation = readFileSync(new URL("./fixtures/self-switch/model-confirm.txt", import.meta.url), "utf8");
+test("model confirmation requires the complete selected-Yes dialog, including wrapped physical rows", () => {
+  expect(claudeModelConfirmation(confirmation)).toBe(true);
+  expect(claudeModelConfirmation(readFileSync(new URL("./fixtures/self-switch/model-confirm-80col.txt", import.meta.url), "utf8"))).toBe(true);
+  expect(claudeModelConfirmation(confirmation.replace("Yes, switch to Haiku 5.5", "Yes, switch to Haiku\n5.5"))).toBe(true);
+  expect(claudeModelConfirmation(confirmation.replace("full history gets re-read.", "full history\ngets re-read."))).toBe(true);
+  for (const frame of [
+    confirmation.replace("Switch model?", "Allow tool?"),
+    confirmation.replace("❯ 1.", "  1.").replace("  2. No", "❯ 2. No"),
+    confirmation.replace("Enter to confirm · Esc to cancel", ""),
+    confirmation.replace("Yes, switch to Haiku 5.5", "Yes, switch to Sonnet 5.5"),
+    confirmation.replace("full history gets re-read.", "full history"),
+    confirmation + "\n❯ Allow access?\n", "Switch model?\n❯ 1. Yes, switch to Haiku 5.5\nEnter to confirm · Esc to cancel",
+  ]) expect(claudeModelConfirmation(frame)).toBe(false);
+});
+
+test("an unverified model accepts one dialog Enter and still needs transcript proof", async () => {
+  for (const proof of [true, false]) {
+    const f = fakeSwitch({results:{model:[{status:"unverified", detail:"unobservable"}]}});
+    let accepts = 0;
+    f.fx.acceptModelConfirmation = () => { accepts++; return true; };
+    f.fx.proven = () => proof;
+    const report = await applySwitches({model:"haiku", effort:"low"}, f.fx, 1000);
+    expect(accepts).toBe(1);
+    expect(f.log.filter(s => s === "/model haiku")).toHaveLength(1);
+    expect(report.model?.detail).toContain("model confirmation dialog accepted");
+    expect(report.model?.state).toBe(proof ? "confirmed" : "unconfirmed");
+    expect(report.effort?.state).toBe(proof ? "confirmed" : "skipped");
+  }
+});
+
+test("confirmation handling is limited to unverified model submits and the original seat", async () => {
+  for (const kind of ["model", "effort"] as const) {
+    for (const status of ["unverified", "injected"] as const) {
+      const f = fakeSwitch({results:{[kind]:[{status, detail:"unobservable"}]}});
+      let accepts = 0;
+      f.fx.acceptModelConfirmation = () => { accepts++; return false; };
+      await applySwitches({[kind]:kind === "model" ? "haiku" : "low"}, f.fx, 1000);
+      expect(accepts).toBe(kind === "model" && status === "unverified" ? 1 : 0);
+    }
+  }
+  const f = fakeSwitch({results:{model:[{status:"unverified", detail:"unobservable"}]}});
+  let checks = 0;
+  f.fx.valid = () => ++checks === 1;
+  f.fx.acceptModelConfirmation = () => { throw Error("must not accept after identity changed"); };
+  expect((await applySwitches({model:"haiku"}, f.fx, 1000)).model?.detail).toBe("submit unverified: unobservable");
+});
+
+test("production model confirmation effect checks the frame, identity and copy mode before one Enter", () => {
+  for (const guard of ["none", "frame", "capture", "seat", "pane", "copy", "unknown-copy", "key-failed"]) {
+    let enters = 0, captures = 0;
+    const fx = claudeSwitchEffects({id:"switch", bound:{paneId:"%5", serverEpoch:"epoch", harness:"claude"},
+      authority:{registryPath:join(root,"registry.json"), agentFamilies:new Set(["claude"]), scriptsDir:root, busHome:root},
+      transcript:join(root,"missing"), session:"s1", valid:() => guard !== "seat", settle:() => {}, wait:async () => {}}, {
+      ...REAL_EFFECTS,
+      observePane: () => ({paneId:guard === "pane" ? "%6" : "%5", serverEpoch:"epoch", session:"fixture", panePid:"42", currentCommand:"claude"}),
+      harnessEvidence: () => "alive", inputHeld: () => null,
+      copyMode: () => guard === "copy" ? {status:"copy-mode"} : guard === "unknown-copy" ? {status:"unobservable", reason:"unknown"} : {status:"normal"},
+      pressEnter: () => { enters++; return guard !== "key-failed"; },
+    }, (_pane, escaped, joined) => {
+      captures++; expect(escaped).toBe(true); expect(joined).toBe(false);
+      return {code:guard === "capture" ? 1 : 0, stdout:guard === "frame" ? "Permission needed" : confirmation};
+    });
+    if (guard === "key-failed") expect(() => fx.acceptModelConfirmation!()).toThrow("Enter attempted but unverified; no retry");
+    else expect(fx.acceptModelConfirmation!()).toBe(guard === "none");
+    expect(captures).toBe(1);
+    expect(enters).toBe(guard === "none" || guard === "key-failed" ? 1 : 0);
+  }
 });

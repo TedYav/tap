@@ -3,6 +3,54 @@
 Release notes are curated when a release is prepared. A protocol bump adds the
 next `0.<protocol>.0` release heading in the same change.
 
+## 0.23.5 — 2026-11-17
+
+### Fixed
+
+- After a Claude `tap self compact`, `rebrief` or `clear` with `--model`, TAP
+  can press Enter once on Claude Code's complete "Switch model?" dialog,
+  including when its text wraps on a narrow pane. That dialog appears when the
+  conversation is cached for the current model, and nothing used to answer it.
+  TAP reports the switch as confirmed only after the transcript records it.
+- Setup guides for people and agents were corrected after a review of the
+  public copy:
+  - The install consent names the folder TAP actually enrolls. Inside a Git
+    repository that is the repository root, even when you start in a
+    subfolder.
+  - Easy Mode shows the preview and waits for a yes before applying settings.
+  - The install prompt asks the agent to list the agent CLIs TAP will change,
+    and to wait for your OK before wiring any besides Claude Code and Codex.
+  - Agent setup asks before installing missing Git. It verifies an existing
+    clone and fast-forwards a clean primary checkout of the requested
+    repository.
+  - After setup, the handoff gives the absolute path of the `tap` command, so
+    it works before your shell picks up the new PATH.
+  - Start each agent CLI once before running `./install.sh`, or run
+    `./install.sh --sync` after adding one later; the README now says so.
+  - The first-reply walkthrough puts each launch in its own block and explains
+    what to do when the other seat is waiting on a prompt in the background.
+  - The README notes that the first install downloads a checksum-verified copy
+    of `fzf`.
+  - The docs now agree that `--effort` selects a model variant on OpenCode.
+  - The getting-started guide explains how to trust TAP's two hooks in Codex,
+    and how to register a seat with `tap in` if you skipped them.
+- Guidance for changing TAP itself:
+  - Run `bun install --frozen-lockfile` in `runtime/bun` before typechecking a
+    fresh checkout.
+  - A published fork takes upstream changes by merge, so its other machines
+    keep updating with `./install.sh --sync`.
+  - The extension guide names the first tests to run for a new setting or
+    harness.
+
+### Changed
+
+- The GPT-6.2 Astra and Sol preset descriptions now say what these models do
+  well: careful, fast execution of well-specified work. They also say these
+  models can follow an incomplete brief too literally, so state the goal and
+  the done condition. The fast-mode description gives its current usage rate,
+  twice the Standard allowance or credits.
+- The docs site's "Factory skills" menu is now "Skills".
+
 ## 0.23.4 — 2026-11-17
 
 ### Added

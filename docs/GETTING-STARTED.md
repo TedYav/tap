@@ -6,8 +6,8 @@ signed in. TAP supplies communication; the harnesses supply models and accounts.
 
 ## 1. Install once
 
-Start the installing agent in the folder you want as your first project (it
-keeps the TAP clone elsewhere) and point it at
+Start the installing agent in the folder where you want to work. Inside Git,
+TAP enrolls the repository root. Keep the TAP clone elsewhere and point the agent at
 [AGENT-SETUP](AGENT-SETUP.md), or paste it the prompt from the
 [landing page](https://tedyav.github.io/tap/#agent-install). That runbook
 covers the permanent clone, prerequisites, permission choices and
@@ -64,7 +64,12 @@ Run these from your project terminal, one at a time:
 
 ```bash
 tap launch claude
-# After Claude opens, Ctrl-b then d returns to your terminal.
+```
+
+If Claude opens, press **Ctrl-b**, then **d** to return to your project shell.
+Run the next command there.
+
+```bash
 tap launch codex
 ```
 
@@ -153,9 +158,11 @@ can run outside Codex's sandbox after you trust them.
 
 The captured Codex 0.156.1 screen offers **Trust all and continue** and
 **Continue without trusting (hooks won't run)**; **Esc** skips the screen.
-Labels can change between Codex versions. Trusting enables the hooks. Declining
-or skipping leaves TAP's shell-body guard and SessionStart hooks inactive in
-that seat until you trust them through Codex's hook review. Installation does
+Labels can change between Codex versions. For automatic seat registration,
+trust the two verified TAP hooks individually. Skipping leaves the shell-body
+guard inactive and omits TAP’s startup instructions, including what to do if
+Codex reports `identity unobservable`. You can register manually with `tap in`.
+Return to hook review to enable both hooks. Installation does
 not pre-trust them, and TAP's courier never answers a trust or permission
 dialog. An installing agent trusts these two hooks only when you approved that
 in its automatic-test list, and never chooses **Trust all**.
@@ -469,7 +476,6 @@ needs *Applications in terminal may access clipboard* enabled in the profile.
 
 To update TAP later, run `./install.sh --sync` from your TAP clone.
 If it refuses because the clone has local changes, resolve those changes and
-rerun it; a refused sync is an incomplete update. A clone carrying your own
-committed customizations updates with `git fetch origin`,
-`git rebase origin/main` and `./install.sh` instead; the `extend` skill
-(`tap help skill extend`) covers customizing TAP.
+rerun it. For unpublished local commits, follow the rebase instructions in
+`tap help skill extend`. For a published fork, that same guide explains how
+to merge upstream changes and keep every installation on the fork’s history.

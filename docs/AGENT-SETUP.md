@@ -2,9 +2,9 @@
 
 You are setting up TAP for a human on this machine. Install a verified release
 archive or use a permanent clone, configure the chosen harnesses, and verify an
-actual reply before reporting success. The folder your session runs in becomes
-the human's first TAP project; keep the clone outside it, because a clone's
-contributor instructions apply to changing TAP, not this installation. This is the
+actual reply before reporting success. Start in the folder where the human wants
+to work. Inside Git, TAP enrolls the repository root. Outside Git, it enrolls
+the starting folder. Keep the TAP clone outside the project. This is the
 installation runbook; the [configuration wizard](../skills/config-wizard/SKILL.md)
 owns the configuration step below.
 
@@ -30,9 +30,11 @@ A human who wants another agent to start this install copies the prompt from the
 - Do not answer preference questions for the human. Do not install optional
   plugins, replace existing config or launch agents on assumed choices. An
   explicit yes to the named list in step 3 is not an assumed choice.
-- Preview before you apply. The installer's `--report` output previews harness
-  wiring; the pasted installation prompt is consent to that install. Machine
-  configuration and shell-integration changes still need a dry run and a yes.
+- Preview before you apply. Show which harnesses the installer will change.
+  The pasted prompt covers Claude Code and Codex. If the install would wire
+  or update another CLI, wait for the human’s OK before installing.
+  Preview machine configuration and any shell integration together and wait
+  for a yes before applying them.
   Put anything the human must read in a message of its own that ends your turn;
   a question dialog can hide text above it in the same turn. Configuration
   preferences each need a separate question and answer, with the recommended
@@ -45,10 +47,11 @@ A human who wants another agent to start this install copies the prompt from the
 
 ## 1. Choose the install source and check requirements
 
-Before anything changes directory, record the project folder, the one your
-session started in: `project_dir="$PWD"`. Every `tap init`, launch and registry
-check below runs from `"$project_dir"`; the installer runs inside the clone in a
-subshell so your shell stays in the project.
+Record the absolute starting directory with `pwd -P` and keep it as
+`project_dir` for the conversation. Run `tap init` and the launches from
+that directory so the conversation picker finds the right chat. Step 3 uses
+the init preview to locate the team registry. Run the installer from its
+permanent directory in a separate shell.
 
 Downloadable releases are not published yet. Use the archive route only when the
 human supplies a release archive, its trusted SHA-256, and the bootstrap from the
@@ -74,8 +77,10 @@ a separate Bun, or run Git ancestry checks to verify this route.
 
 ### Permanent clone
 
-If the human gave you a TAP address, clone from theirs; otherwise use this one.
-Clone outside the folder your session runs in:
+If you came from the web setup instructions, use the permanent clone already
+verified there. Otherwise check that Git is installed as described under
+Requirements below. Use the human’s TAP address if supplied. For a new
+destination outside the project, the default clone command is:
 
 ```bash
 git clone https://github.com/TedYav/tap.git ~/tap
@@ -83,12 +88,13 @@ git clone https://github.com/TedYav/tap.git ~/tap
 
 If cloning fails, stop and show the human the error; do not substitute another URL.
 
-If a clone already exists at that path, check it before using it: after
-`git -C ~/tap fetch origin main`, `git -C ~/tap branch --show-current` prints
-`main`, and both `git -C ~/tap status --porcelain` and
-`git -C ~/tap log origin/main..HEAD` print nothing. Then
-`git -C ~/tap merge --ff-only origin/main`, which stops on divergence, and
-install from it. Anything else, show the human and ask; never move or delete
+For an existing destination, confirm it is the primary checkout as described
+below. Before fetching, check that `git remote get-url origin` there identifies
+the repository the human requested. Leave an unrelated directory alone and ask
+where to put the clone. In the verified checkout, run `git fetch origin main`.
+Check that `git branch --show-current` prints `main`, and that both
+`git status --porcelain` and `git log origin/main..HEAD` print nothing.
+Update it with `git merge --ff-only origin/main`, which stops on divergence. Anything else, show the human and ask; never move or delete
 their clone on your own.
 
 For the remaining examples the permanent clone is `~/tap`. Substitute its actual
@@ -204,18 +210,10 @@ Claude Code’s native installer does not need Node.
 
 ## 2. Install and configure
 
-Before installing either source, tell the human which supported harness homes
-already exist, as described below. For an archive, run its bootstrap from the
-download directory, with the archive path and trusted digest selected in step 1:
-
-```bash
-/bin/bash tap-bootstrap.sh --archive "$TAP_ARCHIVE" --sha256 "$TAP_SHA256"
-```
-
 For a clone, after the requirements are installed, preview harness wiring:
 
 ```bash
-(cd "$tap_root" && ./install.sh --report)
+"${tap_root:?set tap_root to the verified installation path}/install.sh" --report
 ```
 
 The installer links into the permanent clone or the archive's stable `current`
@@ -225,14 +223,24 @@ only when that harness's command is on PATH or its hooks file already exists.
 A bare home directory with neither is left untouched, and a missing directory
 is skipped. The report writes nothing and names, per harness, one of *will wire*,
 *already wired*, *present, not wired* (with the
-reason) or *absent*. Show its output in a message of its own and name every
-harness it will wire, including any the human never mentioned. Explain what
-will be written as a statement: the report is the preview, and the pasted prompt
-is consent to install this harness wiring. Machine configuration still gets
-its own dry run and a yes below. Then install the clone:
+reason) or *absent*. Show the report in its own message. Name the CLIs whose
+hooks or plugins the installer can add or refresh, including eligible CLIs
+marked *already wired*. If the list includes anything besides Claude Code and
+Codex, wait for the human’s OK for that list. If they decline an extra CLI,
+leave the install pending. When the list is approved or contains only the
+requested pair, install the clone:
 
 ```bash
-(cd "$tap_root" && ./install.sh)
+"${tap_root:?set tap_root to the verified installation path}/install.sh"
+```
+
+For a supplied archive, check the same eligibility conditions and show the
+harness list before running the bootstrap, which invokes the installer. Wait for
+the same approval for extra CLIs. From the download directory, use the archive
+and trusted digest selected in step 1:
+
+```bash
+/bin/bash tap-bootstrap.sh --archive "$TAP_ARCHIVE" --sha256 "$TAP_SHA256"
 ```
 
 A harness they install later is wired by one more `./install.sh --sync`.
@@ -349,8 +357,9 @@ zero-preset answers example.
 tap help
 ```
 
-Check the installed link with `ls -l ~/.local/bin/tap` (substitute the printed
-bin directory). It must point into the installation selected in step 1.
+Check the installed link with `ls -l` at the path the installer printed. It must
+point into the installation selected in step 1. Record the absolute path of
+that installed command for the human to use after leaving this chat.
 
 For an **archive**, record the bootstrap's archive digest and installed-version
 line, then inspect the marker at the installed path:
@@ -372,17 +381,19 @@ clone. Record the new ancestry line. A refusal stops setup; `STALE` or
 `CANNOT-CHECK` is not a verified live installation. Report success only after
 `origin/main` is confirmed as an ancestor of the executing HEAD for this route.
 
-The project is the folder your session runs in; the human chose it by starting
-you there. Ask one question, in plain text, ending your turn, and nothing about
-launch forms: the relaunch step below shows the human one form, and the partner
-seat uses the bare harness so its handle is exactly `partner`.
+From the recorded starting folder, run `tap init --yes --dry-run --json`.
+Check that it succeeded. Record the returned `team.root` as `team_root`,
+including for the by-hand path. The `changes` list shows the exact paths TAP
+would write. The `folder_trust_grants` list shows the harnesses, configuration
+paths and settings for trust in the starting folder. Use those values in the
+question below. If they choose a different folder, preview again from there.
 
 > Ready to test TAP. I can test automatically, which means I will:
 >
-> - create a TAP team in this folder (`<project_dir>`, where this session started): a `.tap/` folder and, in a Git repository, a `.tap/` line in `.gitignore`; TAP's short section appended to `AGENTS.md`, created if missing; and folder trust in each installed harness that supports it, which here means <the ones found in step 1 among Claude, Codex, Cursor and Antigravity> (`tap init --yes`);
-> - ask you for three quick steps that bring this conversation inside TAP (exit, one launch command, pick this conversation in the picker it opens) so I can message the test seat directly;
+> - set up the team at `<team_root>` from our starting folder `<project_dir>`. The preview lists `<paths and actions, or “no file changes”>`. It requests `<harness, path and setting for each folder-trust grant, or “no folder trust”>`.
+> - ask you to reopen this conversation inside TAP so I can message the test seat directly.
 > - launch the other harness as a seat named `partner` in the background: Codex if I am Claude Code, Claude if I am Codex;
-> - in Codex's hook review, on whichever of the two seats is Codex, trust TAP's two hooks after checking that both paths point into `~/tap`; Codex applies hook trust machine-wide; nothing else gets trusted;
+> - review the two TAP hooks wherever Codex asks and trust each one only if its path points into `<verified TAP installation>`. Codex applies this choice machine-wide.
 > - send `partner` one question and show you its reply verbatim; leave both seats running.
 >
 > Or I can walk you through the same steps by hand in your terminal, one at a time. Automatic, or by hand?
@@ -393,8 +404,8 @@ receipt folders of enrolled team buses; a refusal naming 'identity unobservable'
 for retrying the exact command once with sandbox escalation, which automatic
 review evaluates. That is expected, not a stale registration."
 
-**Automatic**, in this order. From the project (`cd "$project_dir"`), run
-`tap init --yes`; it creates the team and grants folder trust in one step.
+**Automatic**, in this order. From the same starting folder used for the
+approved preview, run `tap init --yes`. Check its receipt before launching.
 Relaunch yourself inside TAP as described below. Launch the other harness
 as a seat named `partner`, from the project, with the bare harness form so the
 handle is exactly `partner`: `tap launch codex partner` when you are Claude
@@ -446,9 +457,9 @@ conversation comes along when it runs in Claude Code or Codex. This runbook
 documents the steps for those two harnesses only; from any other harness, run
 the round trip above with two fresh seats.
 
-The harness's conversation picker lists conversations from the directory the
-seat starts in, which is why the project is the folder you run in. If the
-project is elsewhere, say so and use two fresh seats instead.
+The conversation picker lists chats from the directory where the seat starts.
+Return to the original starting folder even when the team root is above it.
+If the human wants to work in a different folder, use two fresh seats there.
 
 1. Before the human exits you, tell them your harness, your conversation's id
    (`echo $CLAUDE_CODE_SESSION_ID` in Claude Code, `echo $CODEX_THREAD_ID` in
@@ -458,17 +469,21 @@ project is elsewhere, say so and use two fresh seats instead.
    confirm which conversation TAP recorded.
 2. Before `/exit`, tell the human: "This chat will disappear, then return inside
    tmux. A status bar at the bottom is expected." Give them this plain script
-   in one message, substituting your harness (`claude` or `codex`) and the first
-   message and id recorded above. Show only their harness's command:
+   in one message. Substitute the absolute installed command path verified
+   above, quoted for the human’s shell, and the actual harness, first message
+   and conversation id. Include the attach instruction if their terminal is
+   already in tmux.
 
    > 1. Type `/exit`.
-   > 2. In the same folder, run `tap launch <harness> installer --resume`.
-   > 3. A list of past conversations opens. Pick this conversation, matching its
+   > 2. In the same folder, run `"<absolute tap path>" launch <harness> installer --resume`.
+   >    If you are already in tmux, the seat starts in the background. Run
+   >    `"<absolute tap path>" attach installer` to open it.
+   > 3. In the picker, select this conversation, matching its
    >    first message and id: `<first message>` — `<id>`.
    > 4. Say "I'm back" to the agent.
 
-   Use the bare harness command: an alias written this session is not in the
-   shell that returns after `/exit`. For both Claude and Codex,
+   The absolute path works in the shell that returns after `/exit`, even
+   before it loads new PATH settings or aliases. For Claude and Codex,
    `tap launch --resume` opens the native picker without creating a conversation.
    For Codex, include the two-hook review instructions above: it may appear
    before the picker, and SessionStart binds the choice once hooks are trusted.
@@ -486,7 +501,7 @@ project is elsewhere, say so and use two fresh seats instead.
    `tap session resume installer` reopens this conversation:
 
    ```bash
-   jq -r '.seats["installer"].harness_session_id // empty' "$project_dir/.tap/team-registry.json"
+   jq -r '.seats["installer"].harness_session_id // empty' "$team_root/.tap/team-registry.json"
    ```
 
    It must equal the id you recorded before exiting. If it is empty or

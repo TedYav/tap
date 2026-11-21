@@ -191,15 +191,15 @@ li { margin-bottom:8px }
 <p class="eyebrow">The five levels of TAP · 3 of 5</p>
 <h1>Teams across projects</h1>
 <p class="intro">A team in one project can ask another team about the code it owns.</p>
-<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html" aria-current="page">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html" aria-current="page">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Skills</a></nav>
 </header>
 <section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Ask the API team whether a field rename breaks clients. Have a web team request an example response. Let a shared-library team review a caller’s proposed change while each team keeps its own project context.</p></section>
 <section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>Use two existing projects whose directories are named <code>api</code> and <code>web</code>. In your terminal, replace these paths with yours:</p>
 <pre><code>cd /path/to/api
 tap init
-tap launch codex reviewer
-# Ctrl-b then d returns to your terminal.
-cd /path/to/web
+tap launch codex reviewer</code></pre>
+<p>If the reviewer opens, press <kbd>Ctrl-b</kbd>, then <kbd>d</kbd> to return to your shell before switching projects.</p>
+<pre><code>cd /path/to/web
 tap init
 tap launch claude builder</code></pre>
 <p>Tell the builder:</p>
@@ -212,7 +212,7 @@ tap attach api/reviewer</code></pre></section>
 <p>The answer still returns to the asking seat. Seeing the other team on the roster does not establish that it read your request. TAP connects these projects on the same machine.</p></section>
 <section class="section"><h2>Go deeper</h2><p><a href="https://github.com/TedYav/tap/blob/main/skills/tap/QUICK-REFERENCE.md">The command reference</a> covers team addresses. <a href="cheatsheet-first-team.html">Visiting a seat</a> helps when an answer is waiting on a prompt.</p></section>
 <footer class="footer">
-<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-2.html">← Level 2</a><a href="cheatsheet-level-4.html">Level 4: Teams that organize themselves →</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-2.html">← Level 2</a><a href="cheatsheet-level-4.html">Level 4: Teams that organize themselves →</a><a href="cheatsheet-skills.html">Skills</a></nav>
 <p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
 </footer>
 </main>

@@ -42,8 +42,13 @@ messages and wakes; the agents bring the judgment.
 
 ## Install
 
-You need Git, Bash 5+, Bun 1.4+, jq, tmux, tar and lsof, plus at least one
-[supported agent CLI](#supported-agent-clis), installed and signed in.
+You need Git, Bash 5+, Bun 1.4+, jq, tmux, tar and lsof. Before running
+`./install.sh`, start each [agent CLI](#supported-agent-clis) you plan to use
+once and sign in. This gives the installer a configuration folder to wire for
+each CLI. The two-vendor walkthrough uses Claude Code and Codex.
+
+On first install, TAP downloads its own pinned copy of `fzf` from GitHub
+Releases and verifies its checksum. Your existing `fzf` stays in place.
 
 ```bash
 git clone https://github.com/TedYav/tap.git ~/tap
@@ -84,7 +89,12 @@ Prefer to have an agent install it? Paste the prompt from the
 
    ```bash
    tap launch claude
-   # After Claude opens, Ctrl-b then d returns to your terminal.
+   ```
+
+   If Claude opens, press **Ctrl-b**, then **d** to return to your project shell.
+   Run the next command there.
+
+   ```bash
    tap launch codex
    ```
 
@@ -97,7 +107,9 @@ Prefer to have an agent install it? Paste the prompt from the
    `tap attach claude` switches your tmux client to it, and your prefix
    then **L** switches back to the session you came from.
 
-   Finish any sign-in, folder-trust or
+   If you added a CLI after installing TAP, open it directly, sign in, then
+   run `./install.sh --sync` from your permanent clone before launching its seat.
+   Finish any folder-trust or
    [hook-review prompt](docs/GETTING-STARTED.md#when-codex-asks-to-review-hooks)
    yourself. Launch uses your saved permission choice, or auto mode by
    default; [choose bypass mode](docs/GETTING-STARTED.md#choose-bypass-mode)
@@ -109,8 +121,12 @@ Prefer to have an agent install it? Paste the prompt from the
    > first tiny project start with a README or a test? One sentence of
    > reasoning. Show me its actual reply.
 
-   Approve the `tap` command if the agent asks. Done means the **answer text in the pane where
-   you asked**. A roster entry or a delivery receipt is not an answer.
+   If your agent asks to run a TAP command, answer in its pane. If the reply
+   stalls, the other seat may be waiting on a prompt in the background.
+   Detach with **Ctrl-b**, then **d** to return to your project shell. Run
+   `tap team`, then use
+   `tap attach <seat>` to inspect any seat marked `blocked`. Answer the prompt
+   there. Return to the asking seat to see **the other agent’s actual reply**.
 
 [Your first TAP team](docs/GETTING-STARTED.md) is the full walkthrough, with prompts, recovery and
 returning to seats. [The five levels of TAP](docs/TAP-LEVELS.md) shows what you can do with two

@@ -42,7 +42,7 @@ archive installs on that platform; run the acceptance there before releasing it.
 For local contributor verification, run the supported acceptance in isolation:
 
 ```bash
-compute exec --task tap/release-artifact --timeout 20m -- env TAP_SUITE_DIR=regress bash scripts/smoke-all.sh --only skills/tap/scripts/regress/release-artifact-stranger.test.sh
+env TAP_SUITE_DIR=regress bash scripts/smoke-all.sh --only skills/tap/scripts/regress/release-artifact-stranger.test.sh
 ```
 
 It builds two archives and exercises installation, hooks, a message round trip,

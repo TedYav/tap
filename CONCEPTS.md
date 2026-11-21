@@ -1,6 +1,6 @@
 # Concepts
 
-Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
+This glossary defines TAP’s entities, processes and status terms. Add or revise a definition when the project gives a term a specific meaning.
 
 ## Transport
 
@@ -172,10 +172,9 @@ only the doorbell*, and *silence must be armed to mean one thing*.
 The capability ladder agent primitives have climbed. **L1 autocomplete**: here is
 a function interface, fill it in. **L2 spec-driven development**: here is a spec and a plan; follow
 the instructions and build it. **L3 orchestration + choreography**: here is a goal, possibly a
-plan, possibly a set of steps; help me assemble a team and propose the workflow. `/tap:lead` is the L3
-primitive: aimed at frontier-tier lead seats, it composes over the L2 primitives (/ce-plan,
-/brainstorming, /lfg, harness-native workflow engines) rather than reimplementing them — it
-proposes a strategy whose phases are routines, skill invocations, or delegated work orders.
+plan, possibly a set of steps; help me assemble a team and propose the workflow.
+`/tap:lead` works at L3. It uses the team’s planning and execution skills to propose a
+strategy whose phases are routines, skill invocations, or delegated work orders.
 
 ### TAP Orchestration
 The optional opinionated layer distributed as `tap-orchestrate`. It composes TAP core facts and verbs into recoverable heterogeneous-agent Runs. The dependency is one-way: orchestration may read core; core never learns orchestration semantics. `tap-orchestrate` is the package name; its public slash prefix remains unratified, so new orchestration actions do not use the core-only `/tap-*` namespace by inference.

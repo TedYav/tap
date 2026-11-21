@@ -22,9 +22,9 @@ without an effort question. Keep the choices the human accepts there. Optional
 plugin offers default to No and can wait until after the first answer.
 
 A non-TTY runner skips the wizard. Use `tap setup --machine --answers <file>`
-below; never feed default answers into a terminal wizard. Ask only which
-harness pair to use, each permission choice, and whether PATH integration is
-wanted. On this path presets, effort, plugins and slash-skill aliases wait. Do not import
+below. Confirm the pair, each permission choice, the two new-user preferences
+in step 2 and whether the human wants PATH integration. Skip choices they
+have already made. On this path presets, effort, plugins and slash-skill aliases wait. Do not import
 the reference catalog or replace an existing config.
 
 ## 2. Save simple machine settings
@@ -76,25 +76,6 @@ unanswered default is not consent. Apply the recorded answer:
   blocked. Choosing auto alone does not turn on a sandbox; each
   harness's own settings stay in force.
 
-Record the selected permission choices in an answers file. This example assumes
-the human chose **auto for both**; substitute their actual choices, including
-`bypass` only when authorized. It adds no presets, plugins or shell integration:
-
-```bash
-answers_file="$(mktemp)"
-cat > "$answers_file" <<'JSON'
-{
-  "harnesses": {
-    "claude": {"presets": "skip", "permissions": "auto"},
-    "codex": {"presets": "skip", "permissions": "auto"}
-  },
-  "write": "apply"
-}
-JSON
-tap setup --machine --answers "$answers_file" --dry-run
-tap setup --machine --answers "$answers_file"
-```
-
 The wizard also asks the two questions every new user should answer once.
 Ask them in the human's own words and record the answers the same way:
 
@@ -109,6 +90,35 @@ Ask them in the human's own words and record the answers the same way:
   drafts always need that, and pasted content or images may not be captured).
   Typing `WAIT` in caps holds deliveries for two minutes. `wait` parks arrivals
   until the input is empty.
+
+Write the choices to one answers file. This example assumes the human chose
+auto for both CLIs, approval before enrolling another project, and delivery
+when the input box is empty. It adds no presets, plugins or shell integration.
+Substitute their actual choices, then preview the file:
+
+```bash
+answers_file="$(mktemp)"
+cat > "$answers_file" <<'JSON'
+{
+  "harnesses": {
+    "claude": {"presets": "skip", "permissions": "auto"},
+    "codex": {"presets": "skip", "permissions": "auto"}
+  },
+  "onboarding": {"init": "ask"},
+  "injection": {"behavior": "wait"},
+  "write": "apply"
+}
+JSON
+tap setup --machine --answers "$answers_file" --dry-run
+```
+
+Show the preview in its own message and wait for the person to say yes.
+If they change a choice, update the file and preview it again. After approval,
+apply the identical file:
+
+```bash
+tap setup --machine --answers "$answers_file"
+```
 
 `--answers -` reads the same JSON from stdin. `--dry-run` validates the same
 choices and shows the intended TOML-key diff and effects without changing files

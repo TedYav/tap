@@ -25,8 +25,8 @@ output is substituted into the text the model reads. Per the Claude Code docs
 something Claude executes. Claude only sees the final result."
 
 That property is a real latency lever for a thin "shim" skill whose whole job is to run
-one command and report the result. `/tap-in` (`skills/tap-in/SKILL.md`, an alias for
-`tap register`) is the canonical case. In its shipped prose form it costs **two model
+one command and report the result. The [registration skill](../../../skills/in/SKILL.md)
+runs `tap in`. In its shipped prose form it costs **two model
 turns** around a ~0.1s command:
 
 1. **Turn A** — the model reads "Run this: `tap in`" and decides to issue a `Bash`
@@ -45,15 +45,10 @@ That looks like a free latency win. It is not portable. It is faster where the h
 not a cross-harness one. Do not put it in a SKILL.md that other harnesses read from the
 same file.**
 
-The decisive constraint is that TAP skills are **one physical file consumed by every
-harness**. `install.sh` links the core skill set, `tap-in` included, into each harness's
-skills home from one source file, so `~/.claude/skills/tap-in` and `~/.codex/skills/tap-in`
-both point at the *same* `skills/tap-in/` directory — one physical `SKILL.md` governs every
-harness. There is no
-per-harness variant to gate the syntax behind — a change to that one file lands verbatim
-in Claude Code, Codex, OpenCode, Cursor, and Grok at once. So the injection syntax cannot
-be "used where supported and hidden elsewhere" without first splitting the file per
-harness, which the shim architecture deliberately does not do.
+TAP maintains one set of registration instructions in `skills/in/SKILL.md`.
+The native plugin wrapper tells the agent to run `tap help skill in` and read
+that file. Other supported harnesses also use the shared instructions, so a
+change there has to work for every reader.
 
 The same body produces three different behaviors:
 
@@ -133,4 +128,4 @@ tested confirmation that non-supporting harnesses treat it as inert prose.
 ## Related
 
 - Claude Code docs — code.claude.com/docs/en/skills, "Inject dynamic context".
-- `install.sh` links the core skill set, `tap-in` included, from one source file. It does not link retired or repo-local skills.
+- [Registration instructions](../../../skills/in/SKILL.md) and the [native plugin wrapper](../../../plugins/tap/skills/in/SKILL.md).

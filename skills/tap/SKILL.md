@@ -156,7 +156,7 @@ Before adding or reassigning a seat, read [staffing](references/staffing.md).
 ## Staffing a seat
 
 Use `tap presets` for saved recipes and `tap team` for who is seated.
-Choose a supported harness/model@effort, then launch from the intended worktree. Presets optionally save a combination you use often; OpenCode and Cursor support model only.
+Choose a supported harness/model@effort, then launch from the intended worktree. Presets can save a combination you use often. For OpenCode, `--effort` selects a variant supported by the model. Cursor accepts a model only.
 ```bash
 tap presets
 tap launch claude reviewer --model fable --effort high

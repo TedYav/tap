@@ -191,18 +191,18 @@ li { margin-bottom:8px }
 <p class="eyebrow">The five levels of TAP · 4 of 5</p>
 <h1>Teams that organize themselves</h1>
 <p class="intro">Give a lead a goal. It can split the work, staff lanes and bring their results through review.</p>
-<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html" aria-current="page">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html" aria-current="page">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Skills</a></nav>
 </header>
 <section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Build an export feature while another pair handles its documentation. Let a lead reconcile the API between lanes. Use a reviewer from another model family to question each driver’s assumptions.</p><p>Use this level when the task has several parts that can move independently. Coordination takes time and tokens; two agents are still enough for many changes.</p></section>
 <section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>Ask your agent to use <code>tap:config-wizard</code> (native plugin) or <code>tap-config-wizard</code> (flat host) to configure its skills. Native plugins include the complete set; flat hosts can choose the full skill kit. Then, from your initialized project:</p>
 <pre><code>tap launch claude lead</code></pre>
 <p>Tell the lead:</p>
-<blockquote class="quote">Use tap-lead. Add CSV export to the reports page, with tests. Split independent work into lanes, give each writer a worktree and each driver a reviewer from another model family. Bring me the reviewed result; ask me before changing scope.</blockquote></section>
+<blockquote class="quote">Use /tap:lead. Add CSV export to the reports page, with tests. Split independent work into lanes, give each writer a worktree and each driver a reviewer from another model family. Bring me the reviewed result; ask me before changing scope.</blockquote></section>
 <section class="section"><h2>What’s new since level 3</h2><p>Skills give agents instructions for coordinating the work:</p>
 <ul><li><strong>tap-lead</strong> plans the goal, staffs the team and checks the combined result.</li>
 <li><strong>tap-drive</strong> owns a lane through implementation, review and closeout.</li>
 <li><strong>tap-conduct</strong> helps a busy lead with dispatch and review routing.</li></ul>
-<p>A role describes a job. A preset saves a harness, model and settings you use often. Use <code>tap presets</code> for saved recipes and <code>tap team</code> for who is seated. Launch a supported model directly with <code>tap launch &lt;harness&gt; [name] --model &lt;id&gt; [--effort &lt;level&gt;]</code>; OpenCode and Cursor accept model only. Cross-family pairs can use Fable and Astra where your accounts support them.</p></section>
+<p>A role describes a job. A preset saves a harness, model and settings you use often. Use <code>tap presets</code> for saved recipes and <code>tap team</code> for who is seated. Launch a supported model directly with <code>tap launch &lt;harness&gt; [name] --model &lt;id&gt; [--effort &lt;level&gt;]</code>. For OpenCode, <code>--effort</code> selects a variant supported by the model. Cursor accepts a model only. Cross-family pairs can use Fable and Astra where your accounts support them.</p></section>
 <section class="section" id="role-notes"><h2>Write down roles and model strengths</h2>
 <p>A small <code>[roles]</code> table gives the team a shared vocabulary. These quoted values from one operator’s configuration describe the jobs; they do not assign them:</p>
 <pre><code>[roles]
@@ -216,19 +216,19 @@ conductor = &quot;A conductor assists the leader with the variety of messages re
 <p>This is one operator’s judgment, not a default or a benchmark. The summary describes strengths; primary, secondary and avoid lists record staffing preferences. Cost, speed and intelligence are qualitative notes. Metadata briefs the agents; it does not enforce assignments or prove account access. This preset excerpt keeps only the effort entry from <code>params.config</code>; other tuning entries are omitted.</p>
 <pre><code>[presets.astra]
 harness = &quot;codex&quot;
-params.model = &quot;gpt-6-astra&quot;
+params.model = &quot;gpt-6.2-astra&quot;
 params.config = [&quot;model_reasoning_effort=high&quot;]
 metadata.intelligence = &quot;s-tier&quot;
 metadata.cost_level = &quot;high&quot;
 metadata.speed = &quot;medium fast&quot;
-metadata.summary = &quot;Top tier frontier model from OpenAI on high effort. Use for implementation, prototyping, writing, and partnering, when high intelligence is needed.&quot;
+metadata.summary = &quot;GPT-6.2 Astra at high effort. A great collaborator and executor: careful, fast, and candid about what it missed. Best on bounded work with a clear spec, such as code review, well-scoped tickets and pairing. Too literal for ambiguous or open-ended tasks: state the goal and the audience, and ask it to keep its tests.&quot;
 metadata.primary_roles = [&quot;prototyper&quot;, &quot;partner&quot;, &quot;prose_writer&quot;, &quot;implementer&quot;, &quot;architect&quot;, &quot;approver&quot;, &quot;reviewer&quot;]
 metadata.secondary_roles = [&quot;driver&quot;, &quot;leader&quot;, &quot;researcher&quot;]
 metadata.avoid_roles = [&quot;tasker&quot;]</code></pre>
 <p>The <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md#level-4-roles-and-presets">full roles and presets example</a> defines the other roles named here. Ask <code>tap:config-wizard</code> to adapt the excerpt to your config. After saving it, <code>tap launch astra builder</code> starts a new seat with that recipe.</p></details></section>
 <section class="section"><h2>Go deeper</h2><p><code>tap help skill tap-lead</code> locates the lead’s instructions. <a href="cheatsheet-collaboration.html">Collaboration</a> and <a href="cheatsheet-harnesses.html">presets</a> explain the pieces.</p></section>
 <footer class="footer">
-<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-3.html">← Level 3</a><a href="cheatsheet-level-5.html">Level 5: Teams that run and evolve →</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-3.html">← Level 3</a><a href="cheatsheet-level-5.html">Level 5: Teams that run and evolve →</a><a href="cheatsheet-skills.html">Skills</a></nav>
 <p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
 </footer>
 </main>

@@ -191,15 +191,15 @@ li { margin-bottom:8px }
 <p class="eyebrow">The five levels of TAP · 2 of 5</p>
 <h1>A team in one project</h1>
 <p class="intro">Give seats names and jobs. You can hand off work, track answers and let several writers move at once.</p>
-<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html" aria-current="page">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="nav" aria-label="The five levels"><a href="index.html">Home</a><a href="cheatsheet-level-1.html">Level 1</a><a href="cheatsheet-level-2.html" aria-current="page">Level 2</a><a href="cheatsheet-level-3.html">Level 3</a><a href="cheatsheet-level-4.html">Level 4</a><a href="cheatsheet-level-5.html">Level 5</a><a href="cheatsheet-skills.html">Skills</a></nav>
 </header>
 <section aria-labelledby="can"><h2 id="can">What you can do</h2><p>Keep a builder and reviewer on a feature, add a researcher when a question needs investigation, and see who still owes an answer. Separate worktrees let writers change different parts without sharing an index or checkout.</p></section>
 <section class="section" aria-labelledby="try"><h2 id="try">Try it</h2><p>In the project you initialized at level 1:</p>
-<pre><code>tap launch claude builder
-# Ctrl-b then d returns to your terminal.
-tap launch codex reviewer
-# Detach again to inspect the roster.
-tap team
+<pre><code>tap launch claude builder</code></pre>
+<p>If the builder opens, press <kbd>Ctrl-b</kbd>, then <kbd>d</kbd> to return to your project shell.</p>
+<pre><code>tap launch codex reviewer</code></pre>
+<p>Return to your shell the same way to inspect the roster.</p>
+<pre><code>tap team
 tap attach builder</code></pre>
 <blockquote class="quote">Add a test for the date parser and make it pass. Assign the review to reviewer, fix material findings, and tell me what you agreed.</blockquote>
 <p>The reviewer can read the builder’s stable diff. If both will edit, give each writer a worktree. From the team’s project root, for a new branch:</p>
@@ -213,7 +213,7 @@ tap launch codex fixer --workdir ../parser-fix</code></pre></section>
 <p>For a note that needs no answer, use <code>tap send reviewer -f note.md</code>.</p></section>
 <section class="section"><h2>Go deeper</h2><p><a href="cheatsheet-collaboration.html">Dividing the work</a> explains roles. The <a href="https://github.com/TedYav/tap/blob/main/skills/tap/QUICK-REFERENCE.md">command reference</a> covers messages and seat management.</p></section>
 <footer class="footer">
-<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-1.html">← Level 1</a><a href="cheatsheet-level-3.html">Level 3: Teams across projects →</a><a href="cheatsheet-skills.html">Factory skills</a></nav>
+<nav class="level-nav" aria-label="Previous and next level"><a href="cheatsheet-level-1.html">← Level 1</a><a href="cheatsheet-level-3.html">Level 3: Teams across projects →</a><a href="cheatsheet-skills.html">Skills</a></nav>
 <p><a href="index.html">All documentation</a> · <a href="https://github.com/TedYav/tap/blob/main/docs/TAP-LEVELS.md">Markdown guide</a></p>
 </footer>
 </main>

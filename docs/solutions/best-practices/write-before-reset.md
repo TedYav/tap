@@ -118,7 +118,7 @@ The rail may not be overridden.
 - Write the handoff artifact before any clear or restart.
 - Recoverable actions stay advisory. A clear or restart does not.
 - A sensor and a boundary notice do not replace the artifact.
-- `skills/tap-context/SKILL.md` already gates the narrow case. This page generalizes it.
+- `skills/context/SKILL.md` already gates the narrow case. This page generalizes it.
 
 ## Related
 

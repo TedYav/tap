@@ -185,7 +185,7 @@ table {width:100%;border-collapse:collapse} th,td {text-align:left;padding:10px;
 <main>
 <header>
 <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Light theme" disabled>Light theme</button>
-<p class="eyebrow">TAP · human cheat sheet</p><h1>Install once. Keep the clone.</h1><p class="intro">TAP links your agent tools to a permanent source directory. On a Mac, start with the requirements below.</p><nav class="nav" aria-label="Documentation"><a href="index.html">Home</a><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html" aria-current="page">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Factory skills</a></nav></header>
+<p class="eyebrow">TAP · human cheat sheet</p><h1>Install once. Keep the clone.</h1><p class="intro">TAP links your agent tools to a permanent source directory. On a Mac, start with the requirements below.</p><nav class="nav" aria-label="Documentation"><a href="index.html">Home</a><a href="cheatsheet.html">Get started</a><a href="cheatsheet-install.html" aria-current="page">Install</a><a href="cheatsheet-first-team.html">First team</a><a href="cheatsheet-harnesses.html">Harnesses &amp; presets</a><a href="cheatsheet-collaboration.html">Collaboration</a><a href="cheatsheet-skills.html">Skills</a></nav></header>
 <section><h2>1 / Prepare your terminal</h2>
 <p>Rather have an agent do this? <a href="index.html#agent-install">Copy the agent prompt</a> from the landing page.</p>
 <p>TAP needs Git, Bash 5+, Bun 1.4+, jq, tmux, tar and lsof. It does not need Python. With Homebrew already installed:</p>
@@ -199,8 +199,8 @@ jq --version
 tmux -V
 tar --version</code></pre>
 <p>macOS ships an old Bash, so confirm that <code>bash --version</code> reports 5 or newer after the PATH line. On Linux, install the same tools, including lsof, with your package manager and Bun from its <a href="https://bun.sh">official installer</a>; the <a href="https://github.com/TedYav/tap/blob/main/docs/AGENT-SETUP.md">installation runbook</a> lists the commands.</p>
-<p>If <code>brew</code> is missing from PATH, follow Homebrew’s printed <code>shellenv</code> step. Keep the PATH setup in your shell startup file; the <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md">guide</a> covers Apple Silicon, Intel and shell differences. Install and sign in to your chosen agent CLIs separately.</p></section>
-<section class="section"><h2>2 / Clone and install</h2><pre><code>git clone https://github.com/TedYav/tap.git ~/tap
+<p>If <code>brew</code> is missing from PATH, follow Homebrew’s printed <code>shellenv</code> step. Keep the PATH setup in your shell startup file; the <a href="https://github.com/TedYav/tap/blob/main/docs/GETTING-STARTED.md">guide</a> covers Apple Silicon, Intel and shell differences. Start each agent CLI you plan to use and sign in before installing TAP so its configuration folder exists.</p></section>
+<section class="section"><h2>2 / Clone and install</h2><p>On first install, TAP downloads its own pinned copy of <code>fzf</code> from GitHub Releases and verifies its checksum. Your existing <code>fzf</code> stays in place.</p><pre><code>git clone https://github.com/TedYav/tap.git ~/tap
 cd ~/tap
 ./install.sh</code></pre><p>TAP is beta software; expect bugs. Keep your TAP clone wherever you choose; <code>~/tap</code> is only an example. The installed command points into that clone. If the installer refuses, follow its exact repair message and rerun it.</p></section>
 <section class="section"><h2>3 / Answer the wizard</h2><p>On a first interactive install without a machine config, the wizard runs automatically. To revisit it: <code>tap setup --machine</code>.</p>
