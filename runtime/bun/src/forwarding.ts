@@ -2,6 +2,7 @@
 // Both endpoints are instance pinned; retiring a name never authorizes its reuse.
 import { parsePreservingBigint, pyJson, seatMap, supersedeForwardingAliases, type RegistryDoc, loadCurrentRegistry } from "./registry";
 import { TapError } from "./context";
+import { validToken } from "./ids";
 
 export interface Forwarding {
   source: string;
@@ -23,6 +24,20 @@ const text = (v: unknown): string => typeof v === "string" ? v : "";
 function refuse(detail: string): never {
   throw new TapError(1, "forwarding_unresolved", "inspect tap team and the explicit handoff; do not resend old mail", detail);
 }
+
+/** A redirect with unreadable custody must not fall back to another addressee. */
+export function unsupportedForwardingDestination(error: unknown): boolean {
+  return error instanceof TapError && error.errorClass === "forwarding_destination_unsupported";
+}
+
+function localDestination(edge: Forwarding): string {
+  if (!validToken(edge.destination)) {
+    throw new TapError(1, "forwarding_destination_unsupported", "inspect the forwarding record and TAP version",
+      "forwarding destination is not a local seat handle");
+  }
+  return edge.destination;
+}
+
 export function forwardings(doc: RegistryDoc): Forwarding[] {
   if (doc.seat_forwardings === undefined) return [];
   if (!Array.isArray(doc.seat_forwardings)) refuse("seat_forwardings is not an array");
@@ -72,7 +87,7 @@ export function forwardingRoute(doc: RegistryDoc, handle: string, instance = "",
     }
     if (!matches.length) refuse(`recipient '${target}' instance '${bound}' has no current seat or explicit successor`);
     const edge = matches[0]!;
-    target = edge.destination; bound = edge.destination_instance; adopted = true;
+    target = localDestination(edge); bound = edge.destination_instance; adopted = true;
   }
   return refuse(`forwarding chain for '${handle}' exceeds its registry bound`);
 }
@@ -111,7 +126,7 @@ export function prepareForwarding(doc: RegistryDoc, source: string, destination:
     if (name === source) refuse(`forwarding '${source}' to '${destination}' would create a cycle`);
     if (seen.has(name)) continue;
     seen.add(name);
-    for (const edge of edges) if (edge.source === name) pending.push(edge.destination);
+    for (const edge of edges) if (edge.source === name) pending.push(localDestination(edge));
   }
   const record: Forwarding = { source, source_instance: text(from.instance), destination,
     destination_instance: text(to.instance), at, address_active: true };

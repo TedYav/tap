@@ -329,7 +329,10 @@ terminal wizard:
    automatic approval mode, so auto stops the seat on every permission request,
    which the wizard explains; say so when Antigravity is chosen.
 5. **Ask the two new-user questions:** whether TAP asks before setting up a team
-   in a new project, and whether arriving messages interrupt a draft or wait.
+   in a new project, and whether arriving messages interrupt a draft or wait. The draft
+   choice applies in bypass mode, in OpenCode and Hermes seats, and in panes
+   joined by hand with `tap in`. In auto mode, Claude Code, Codex, Cursor and
+   Antigravity seats always wait for an empty input box.
 6. **Offer shell aliases last**, when they chose presets: typing `opus`,
    `fable`, `sol` or `astra` instead of `tap launch opus`. Detect their shell
    first. The writer supports Bash and Zsh.

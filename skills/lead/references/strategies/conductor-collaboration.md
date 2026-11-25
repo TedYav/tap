@@ -2,7 +2,7 @@
 
 A **strategy reference** is a reusable choreography: the roles a run staffs and how each role plays.
 It is not a routine (a routine is steps a role runs; see `../routines/`) and it is not **the strategy**
-(the per-run document written at kickoff per `/tap:lead` §2). A strategy reference is
+(the per-run document written at kickoff per `/tap:lead`'s `shape-the-mission` play). A strategy reference is
 **active** when the per-run doc names it under "Active strategy references" — never because the leader
 remembers it. Word discipline matters here: a reader who cannot tell which of the three objects is meant
 re-derives the routine under load, which is the failure this shelf exists to prevent.
@@ -10,6 +10,13 @@ re-derives the routine under load, which is the failure this shelf exists to pre
 Use this reference when a run has more lanes than a leader can field payload-by-payload and the owner
 has staffed a conductor (`/tap:conduct`). Both patterns below occurred in a single run, within four
 hours of each other; liveness coverage and sender addressing both matter.
+
+The leader holds the team's most expensive context, so routine upward traffic — progress, status,
+settlement traffic — is costly there. For the seats its charter conducts, a conductor absorbs that
+traffic by default; the leader wakes for a typed escalation class `/tap:conduct` names or a batched
+milestone the charter sets. Peer-to-peer alignment is unchanged: drivers still resolve seams,
+interfaces, and handoffs directly. The hub stands in for the leader; it is not a switchboard, and it
+is not another permission step.
 
 ## The two poles this strategy sits between
 
@@ -38,8 +45,8 @@ Leaders design the mission and decide typed escalations; conductors coordinate t
   the conductor as a **new** message carrying the body or a path to it. The sentinel itself is never
   forwarded (TAP refuses that, and a forwarded sentinel settles nothing).
 - **Owns the hopper.** One leader-owned Markdown file in the run directory (`tmp/<run>/hopper.md`),
-  one row per lane: pair, current item, next items in preference order (finish this ladder → the lane's
-  own parked P1 → a salvage or drain PR → a domain P1 → P2 or the wire), bead id, branch-from, tier. A
+  one row per lane with its pair, current item, next items in priority order, issue ID, base
+  branch and model tier. Finish the current review before taking the next item. A
   row is planned enough to hand off when it carries the goal, relevant controls, material risks, and tier — the
   leader's planning, done once per row, never re-derived by the driver. The hopper is planning state,
   not transport state: no verb, no schema, no generated index (revisit if a second run needs the same
@@ -48,14 +55,14 @@ Leaders design the mission and decide typed escalations; conductors coordinate t
   `tap send <seat> --ask --reply-to <conductor> -f <body>`; `tap reply` from the driver or partner then
   lands on the conductor by construction ([reply routing](../../../tap/protocol/messages/reply-expectation-v0-3-part-03.md#reply-routing-reply_to-tap-ywb-v05); the flag works for attended seats).
   The leader keeps authoring under the leader's own name — that is planning — and a wedged conductor
-  delays answers, never dispatch. A body line saying "answer to the conductor" is a human hint, not the
-  mechanism: it failed for its own author on 2026-09-03 because the recipient reads the body after the
-  obligation has already landed on the wrong seat.
+  delays answers, never dispatch. Set the reply destination on the command: TAP assigns the
+  obligation before the recipient reads the message body.
   The flag is the leader's, not the conductor's: an order the conductor sends carries no `--reply-to`,
   because replies to a sender already land on the sender, and `--reply-to <yourself>` is refused.
-- **Runs the tick.** A `/tap:self loop` (30–45 minutes) whose prompt names the active strategy reference
-  and the per-run doc and re-reads both each fire. The tick is the upper bound on staleness; the
-  conductor is the lower bound. A `/tap:self goal` is the wrong tool for supervision — it re-fires on every
+- **Runs the tick.** A `/tap:self loop` (30–45 minutes) whose prompt names a short tick checklist file in
+  the run directory. Each question in it names the instrument that answers it and points at the per-run
+  doc, the hopper or this reference as a lookup target; the long documents are not re-read every fire.
+  The tick is the upper bound on staleness; the conductor is the lower bound. A `/tap:self goal` is the wrong tool for supervision — it re-fires on every
   stop and pulls the checking back onto the leader's seat.
 - **Decides typed escalations.** `/tap:conduct` uses AGENTS.md’s SCOPE, INCIDENT, ADJUDICATION/human_decision and one-way-door classes. Routine staffing and base moves stay with the responsible seat; a queue that needs a new goal or an outage that defeats available staffing needs the leader’s decision.
 
@@ -86,14 +93,12 @@ instance can run it after a compaction without re-deriving it.
 
 ## Persistence across context loss
 
-The active strategy is a **named thing the run carries, not a memory**. The datum is the per-run
-strategy doc's "Active strategy references" field; the loop prompt names that doc and re-reads it every
-fire. That survived a leader compaction on 2026-09-03 with the handoff carrying nothing extra. Two
-stronger mechanisms are parked with revisit triggers in the thread ledger: a seat-registry strategy
-field printed by the SessionStart hook (trigger: an active strategy is lost across a compaction or
-restart despite the loop prompt), and a conditional per-turn hook that fires only when routine payloads
-pile up on the leader (trigger: the forty-five-payload episode recurs with `--reply-to` in use). An
-unconditional per-turn injection is the class TAP already removed (tap-hx4r).
+Record the active strategy in the run document’s “Active strategy references” field. Name the tick
+file in the loop prompt and link the run document from that file so a leader can recover the
+strategy after compaction or restart. If that chain fails, reconsider storing the strategy in the
+seat registry and showing it at session start. If routine payloads repeatedly accumulate at the
+leader despite `--reply-to`, reconsider a hook that runs only when a backlog forms. Keep the
+unconditional per-turn injection retired (tap-hx4r).
 
 ## What this reference deliberately does not add
 
@@ -107,4 +112,4 @@ one harness, for instance) — those are courier defects with beads, not strateg
 In the per-run strategy doc, under the planned-adaptations section: `Active strategy references:
 conductor-collaboration`. In the conductor's charter (`/tap:conduct` `references/charter-template.md`):
 the optional "Active strategy references" field naming the same file, so the two seats read one text.
-In the leader's loop prompt: the reference's path and the per-run doc's path.
+In the leader's tick file: the reference's path and the per-run doc's path.

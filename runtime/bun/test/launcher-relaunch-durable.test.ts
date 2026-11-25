@@ -254,6 +254,24 @@ test("public relaunch dry-runs share candidates and exclusions without replaceme
   expect(existsSync(join(f.root, ".tap/clear-latency.jsonl"))).toBe(false);
 });
 
+test("public agy batch dry-run plans --conversation and --prompt-interactive without side effects", () => {
+  const f = fixture("agy");
+  writeFileSync(f.state, JSON.stringify({ replaced: false, publicCensus: true }));
+  writeFileSync(join(f.root, "bin/ps"), "#!/bin/sh\nprintf '1 fixture-caller\\n'\n", { mode: 0o755 });
+  const env = { ...process.env, TAP_BOOT_ID: "bootuuid:00000000-0000-0000-0000-000000000001", TAP_BOOT_ID_LEGACY: "boot:1", TAP_JSON: "0" };
+  const res = spawnSync(resolve(import.meta.dir, "../../../bin/tap"),
+    ["session", "relaunch", "--harness", "agy", "--team", "Demo", "-m", "continue the task", "--dry-run", "--json"],
+    { cwd: f.root, env, encoding: "utf8", timeout: 10000 });
+  expect(res.status, res.stdout + res.stderr).toBe(0);
+  const receipt = JSON.parse(res.stdout);
+  expect(receipt.harness).toBe("agy");
+  expect(receipt.candidates).toBe(1);
+  expect(receipt.results).toEqual([expect.objectContaining({ team: "Demo", handle: "alice", status: "would-resume", code: 0 })]);
+  expect(receipt.results[0].stdout).toContain("--conversation conversation");
+  expect(receipt.results[0].stdout).toContain("--prompt-interactive 'continue the task'");
+  expect(f.effects()).toBe("");
+});
+
 test("stamp refuses identity or effective conversation drift without changing the row", async () => {
   for (const [field, value] of [["harness_session_id", "changed"], ["pane_id", "%9"], ["harness", "claude"]]) {
     const f = fixture(), p = f.plan(); f.update({ [field!]: value }); const before = f.current();

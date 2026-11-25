@@ -41,7 +41,7 @@ alternate writers, gates that prove review, and a fence that stops relitigation.
 Invoked with a rough todo rather than a finished plan, this routine empowers who-does-what judgment
 — draft the delegation shape, surface material decisions, and refine it per wave. Do not lock a full wave
 table prematurely: early waves teach you the later ones (every wave close is a re-choreography
-point, per the charter's conduct loop).
+point, per the `shape-the-mission` play).
 
 ## Adaptation knobs
 

@@ -33,8 +33,7 @@ so its continuity truth is a durable on-disk handoff rather than conversation me
 is the one form nobody staffs: pane-less and transport-only, it is the stable sender identity a
 daemon, cron job, or script registers for itself (`tap in <handle> --delivery poll --team <team>`) —
 infrastructure enrollment, not a mission staffing choice. `CONCEPTS.md` defines each; choosing among
-the four staffed forms is the LEADER's call (`skills/lead/references/choreography-best-practices.md`,
-*the work lands in the right hands*).
+the four staffed forms is the LEADER's call (`skills/lead/plays/staff-the-run.md`).
 
 **Floor — verify a new Crew Seat before its first work dispatch.** The creating
 command satisfies the gate when it checks the requested handle and preset/model

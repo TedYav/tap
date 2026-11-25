@@ -51,7 +51,7 @@ before treating a watcher’s quiet-activity signal as a problem.
    or, when the run's shape warrants it, the LEADER's own supervise step. The default delegates the
    investigative checking and keeps one infrequent LEADER wake as the
    backstop for delivery itself failing. A `probe` can wake a seat, and settlement of that probe is
-   part of the floor. Choice and cost model are in `choreography-best-practices.md`; the recipes are
+   part of the floor. Choice and cost model are in `skills/lead/plays/cover-liveness.md`; the recipes are
    in `skills/lead/references/supervision.md`.
 7. **A live run also has a direction check, not only a liveness one.** The drift-peek asks whether the
    team is building the right thing — judgment no watcher supplies. It can run on a briefed sentinel

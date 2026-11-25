@@ -120,10 +120,14 @@ function paintedRows(frame: string, rows: number[]): Map<number, PaintedCell[]> 
       else if (value === 38 && params[p + 1] === 5 && p + 2 < params.length) { fg = params.slice(p, p + 3).join(";"); p += 2; }
       else if ((value >= 30 && value <= 37) || (value >= 90 && value <= 97)) fg = String(value);
       else if (value === 39) fg = null;
+      // The startup logo paints RGB backgrounds, then restores the default
+      // background without resetting the foreground or other attributes.
+      else if (value === 48 && params[p + 1] === 2 && p + 4 < params.length) { other.add(48); p += 4; }
+      else if (value === 49) other.delete(48);
       else if (value >= 1 && value <= 9) other.add(value);
       else if (value === 22) { other.delete(1); other.delete(2); }
       else if (value >= 23 && value <= 29 && value !== 26) other.delete(value - 20);
-      // A background, an underline colour or any other parameter: not a
+      // An unmodelled colour or other parameter: not a
       // foreground-only cell until the next full reset.
       else { known = false; break; }
     }
@@ -212,8 +216,8 @@ function claudeWrapProvable(want: string): boolean {
 
 /**
  * The visible wrapped SUFFIX of a typed `/compact` control whose command row
- * has scrolled out of the composer viewport (tap-vho8h). Claude keeps the
- * prompt glyph on the first VISIBLE row and shows the last N layout rows, so
+ * has scrolled out of the composer viewport (tap-vho8h). Claude shows the last
+ * N layout rows, with a prompt glyph or an explicit collapsed border, so
  * the box reads as prose that merely ends in our marker. This proof anchors
  * at that marker and walks backward: every visible row must be an exact
  * width-bounded slice of the control under the same wrap rules as the full
@@ -225,7 +229,7 @@ function claudeWrapProvable(want: string): boolean {
  * prompt line before any payload chunk (courier `typedControlBody`).
  */
 export function claudeScrolledControlMatches(frame: string, expected: string): boolean {
-  const box = claudeBox(frame);
+  const box = claudeBox(frame, true);
   if (!box) return false;
   const want = expected.normalize("NFC").trim();
   if (!/^\/compact .* \[\[sv:[A-Za-z0-9_-]+\]\]$/.test(want) || !claudeWrapProvable(want)) return false;
@@ -491,7 +495,10 @@ function readFrameText(frame: string, command: string, expected: string, width: 
     const busy = state === "working" ? true : agentAtRest(state) ? false : undefined;
     return { state: actual === null ? "unobservable" : actual === expected ? "staged" : actual ? "changed" : "empty", mode, width, text: actual, busy };
   }
-  if (start < 0) {
+  // Only the owned compact arm can stage a glyphless collapsed composer.
+  // Ordinary draft/submit readers keep their no-prompt hold.
+  const claudeInput = command.startsWith("claude") ? claudeBox(frame, scrolledControl) : null;
+  if (start < 0 && !claudeInput) {
     if (normalizeInputMatch(frame).includes(normalizeInputMatch(expected))) mode = "idle";
     return { state: "unobservable", mode, width, text: null };
   }
@@ -499,7 +506,7 @@ function readFrameText(frame: string, command: string, expected: string, width: 
   // The dim-placeholder check below reads the rows as painted (tap-8nmot).
   let dimProbe: string | null = null;
   if (command.startsWith("claude")) {
-    const box = claudeBox(frame);
+    const box = claudeInput;
     if (!box) return { state: "unobservable", mode, width, text: null };
     actual = box.typed;
   } else if (command === "agy") {
@@ -637,7 +644,7 @@ export type ComposerInput = { state: "text"; text: string } | { state: "unknown"
 
 const stripCsi = (text: string): string => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 
-export function composerInput(frame: string, command: string): ComposerInput {
+export function composerInput(frame: string, command: string, allowCollapsed = false): ComposerInput {
   const unknown: ComposerInput = { state: "unknown" };
   const blocked: ComposerInput = { state: "blocked" };
   const text = (value: string | null): ComposerInput => value === null ? unknown : { state: "text", text: value };
@@ -667,7 +674,7 @@ export function composerInput(frame: string, command: string): ComposerInput {
     // and NOT what this door has ever emitted. The differential caught it on 12
     // captured frames (`/compact /goal ` versus `/compact /goal`), and this
     // reader feeds the pending-input backup, where the bytes are the point.
-    const box = claudeBox(delegated);
+    const box = claudeBox(delegated, allowCollapsed);
     return text(box === null ? null : box.raw);
   }
   if (/^codex(?:-|$)/.test(command)) return text(readComposerFrame(delegated, command));

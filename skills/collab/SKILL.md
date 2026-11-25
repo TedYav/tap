@@ -82,7 +82,7 @@ specific obstacle and a useful alternative; do not silently accept and disappear
 Every seat MUST load the selected contract and its role-specific references:
 
 - [/tap:pair](../pair/SKILL.md): produce and review successive artifacts. The current
-  writer builds; a named partner reviews. Pair stays a two-seat unit: other members
+  writer builds; the other named seat reviews, whichever of them drives. Pair stays a two-seat unit: other members
   contribute scoped findings into the pair's unit reports, and the writer dispositions
   them there. Its unit reports and review findings are the issue ledger; keep their
   dispositions there rather than create another.

@@ -8,6 +8,9 @@ import { describe, expect, test } from "bun:test";
 import { classifyPane } from "../src/pane-state";
 import { agyComposer, agyModeHint, composerInput, readFrame } from "../src/submit-frame";
 
+import { frameIo, inputRegion, paneRead, pendingInputProbe } from "../src/pane/reader";
+import startup from "./fixtures/agy-startup-1.5.13.json";
+
 const E = "\x1b[";
 const BLUE = `${E}38;2;122;162;247m`, MUTED = `${E}38;2;154;165;206m`, RULE_FG = `${E}38;2;65;72;104m`;
 const ORANGE = `${E}38;2;255;158;100m`, DEFAULT = `${E}39m`;
@@ -55,6 +58,8 @@ describe("anything short of the painted hint stays a draft", () => {
     ["muted text without the footer cue", frame(`${BLUE}>${DEFAULT} ${MUTED}${AUTO}`, RULE, NO_CUE), AUTO],
     ["text painted in another colour than the cue", frame(`${BLUE}>${DEFAULT} ${ORANGE}${AUTO}`, RULE, CUE), AUTO],
     ["typed text followed by muted completion text", frame(`${BLUE}>${DEFAULT} /pl${MUTED}an`, RULE, CUE), "/plan"],
+    ["background still active on the hint", frame(`${BLUE}>${DEFAULT} ${MUTED}${E}48;2;12;34;56m${AUTO}${E}49m`, RULE, CUE), AUTO],
+    ["background reset leaves reverse video active", frame(`${BLUE}>${DEFAULT} ${MUTED}${E}7;48;2;12;34;56;49m${AUTO}`, RULE, CUE), AUTO],
     ["muted text with a second composer row", frame(`${BLUE}>${DEFAULT} ${MUTED}${AUTO}`, `${DEFAULT}  second row`, RULE, CUE), `${AUTO}\n  second row`],
     ["muted text carrying another attribute", frame(`${BLUE}>${DEFAULT} ${MUTED}${E}7m${AUTO}${E}27m`, RULE, CUE), AUTO],
     ["muted text on a row with an unknown sequence", frame(`${BLUE}>${DEFAULT} ${MUTED}${E}58;5;1m${AUTO}`, RULE, CUE), AUTO],
@@ -90,3 +95,15 @@ describe("anything short of the painted hint stays a draft", () => {
     }
   });
 });
+
+// Captured before the first keystroke, then after typing the hint verbatim.
+// Include the last logo row: its background paint carries into the parser.
+for (const [name, capture, text] of [["fresh", startup.fresh, ""], ["typed", startup.typed, AUTO]] as const) {
+  test(`CLI 1.5.13 ${name} seat: delivery and peek agree on the startup composer`, () => {
+    const io = frameIo(capture, "168");
+    expect(classifyPane(capture, "agy", false)).toEqual(text ? { kind: "draft", text } : { kind: "ready" });
+    expect(inputRegion(io, "%7", "agy").region).toBe(text);
+    expect(pendingInputProbe(io, "%7", "agy", 4096).state).toBe(text ? "pending" : "empty");
+    expect(JSON.parse(paneRead(io, "%7", "agy", "fixture", true)).input_state).toBe(text ? "other-text" : "empty");
+  });
+}

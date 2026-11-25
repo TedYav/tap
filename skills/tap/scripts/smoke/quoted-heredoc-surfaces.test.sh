@@ -29,7 +29,7 @@ required = {
     "skills/send/SKILL.md": ("send",),
     "skills/reply/SKILL.md": ("reply",),
     "skills/escalate/SKILL.md": ("escalate",),
-    "skills/lead/references/choreography-best-practices.md": ("send", "escalate"),
+    "skills/lead/references/supervision.md": ("send",),
 }
 
 for relative, verbs in required.items():

@@ -9,7 +9,7 @@ import { validId } from "./ids";
 import { acquireObligationLock, acquirePathLock, acquireRegistryLock } from "./panelock";
 import { loadRegistry, seatMap, type RegistryDoc } from "./registry";
 import { teamRegistryRefusal } from "./register-authority";
-import { forwardingRoute } from "./forwarding";
+import { forwardings } from "./forwarding";
 import { submitNotice } from "./notice-submit";
 import { AGENT_FAMILIES } from "./harness-families";
 import { isFile } from "./watch-lease";
@@ -44,7 +44,15 @@ export function recipientRetired(meta: Meta, raw: string, registry: RegistryDoc,
   // Re-registration refreshes registered_at without replacing the instance.
   // Unstamped mail therefore has no evidence of an incarnation mismatch.
   if (!bound || bound === row.instance || envelopeField(raw, "to_adopted_from")) return false;
-  try { if (forwardingRoute(registry, target!, bound, true).adopted_from) return false; } catch { /* no live explicit forwarding route */ }
+  try {
+    // Every delegated route starts with an edge for this exact incarnation.
+    // The edge protects the spool even if its successor cannot be resolved.
+    if (forwardings(registry).some(edge =>
+      edge.source === target && edge.source_instance === bound && edge.custody_revoked !== true)) return false;
+  } catch {
+    // An unreadable edge set cannot establish that this instance has no grant.
+    return false;
+  }
   // An explicit adoption grant is still a settlement route for predecessor mail.
   if (Object.values(seatMap(registry)).some(seat => object(seat) && Array.isArray(seat.adopted_handles) && seat.adopted_handles.includes(target) &&
       (!bound || (object(seat.adopted_instances) && seat.adopted_instances[target!] === bound)))) return false;

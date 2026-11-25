@@ -17,7 +17,7 @@ import { TapError, resolveContext, type Context } from "../context";
 import { envelopeBodyBytes, envelopeField, validateEnvelope } from "../envelope";
 import { mintId, validId } from "../ids";
 import { attemptObligationLock, type PaneLock } from "../panelock";
-import { forwardingRoute } from "../forwarding";
+import { forwardingRoute, unsupportedForwardingDestination } from "../forwarding";
 import { loadRegistry, seatMap, type RegistryDoc } from "../registry";
 import { bindRemoteTeam } from "../remote-target";
 import { cmdSendOutcome, type SendDisposition } from "./send";
@@ -679,7 +679,10 @@ function resolveReplyRoute(inbound: string, registry: RegistryDoc, localTeam: st
     try {
       const route = forwardingRoute(registry, replyTo);
       if (deliverableLocal(seats, route.target)) return { target: replyTo, viaReplyTo: true };
-    } catch { /* documented fallback to the original sender */ }
+    } catch (error) {
+      if (unsupportedForwardingDestination(error)) throw error;
+      // Other undeliverable redirects retain the original-sender fallback.
+    }
   }
   const id = envelopeField(inbound, "id") || "";
   process.stderr.write(
@@ -716,7 +719,8 @@ function qualifiedReplyToDeliverable(replyTo: string): boolean {
     // does: a qualified address naming a retired source routes to the edge's
     // destination instead of falsely falling back to the original sender.
     return deliverableLocal(seatMap(doc), forwardingRoute(doc, handle).target);
-  } catch {
+  } catch (error) {
+    if (unsupportedForwardingDestination(error)) throw error;
     return false;
   }
 }

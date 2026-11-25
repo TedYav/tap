@@ -1,7 +1,7 @@
 ---
 name: pair
-description: "When one seat builds live and another reviews each range independently, coordinate one writer and reviewer."
-argument-hint: '[partner-handle] [plan-path]'
+description: "When one seat builds live and another reviews each range independently, coordinate one writer and reviewer. The driver builds by default, or plans and reviews while its partner builds."
+argument-hint: '[partner-handle] [plan-path] [who builds]'
 allowed-tools: 'Bash, Read, Grep, Glob, Edit, Write, Skill'
 # Either seat may hold the writer token, so the grant covers writing. What scopes
 # it is the token contract in the body — not this list. Removing Edit/Write would

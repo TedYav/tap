@@ -1,8 +1,8 @@
 ---
 name: lead
 role: choreographer
-description: "When leading a TAP mission, choosing staffing or delegation, or owning its final gate, design and conduct the team strategy."
-argument-hint: '[--yolo] [plan-path]'
+description: "When leading a team of agents over TAP: keep a settled plan moving, staff or delegate work, or design a run's strategy."
+argument-hint: '[mode:agent] [plan-path]'
 allowed-tools: 'Bash, Read, Grep, Glob, Edit, Write'
 ---
 

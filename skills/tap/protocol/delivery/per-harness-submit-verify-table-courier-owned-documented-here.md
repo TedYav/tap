@@ -41,7 +41,9 @@ decides, never the sentence or a fixed colour: the hint is the composer's only
 row, every character of it carries one explicit foreground and no other
 attribute, and that foreground is the one on the `? for shortcuts` cue directly
 below the band, which Antigravity shows only while the composer is empty. Typed
-and pasted text carry the default foreground. All of this must hold on one
+and pasted text carry the default foreground. Read the escaped frame for both
+delivery and peek. The startup logo restores its RGB background before the
+composer, so its colours do not affect the hint. All of this must hold on one
 painted frame; a plain capture, a second row, a task card above the cue or an
 unrecognized sequence leaves the text a draft, which holds mail as before.
 

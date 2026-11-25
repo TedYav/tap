@@ -176,6 +176,9 @@ async function collectSetupChoices(ask: Prompt, snapshot: SetupSnapshot, found: 
   const savedBehaviorValid = ["clobber", "wait", "warn"].includes(savedBehavior);
   const defaultBehavior = savedBehaviorValid ? (savedBehavior === "warn" ? "wait" : savedBehavior) : "interrupt";
   let behavior = (await ask(`How should agents' messages reach you while you're typing in an agent's prompt?
+  This choice applies in bypass mode, in OpenCode and Hermes seats, and in panes
+  you join by hand with \`tap in\`. In auto mode, Claude Code, Codex, Cursor and
+  Antigravity seats always wait for an empty input box.
   interrupt  Faster when your permission mode allows delivery into typed text.
              It may clear your draft. TAP saves only text it can
              capture; paste-back is conditional. \`tap draft\` recovers it.

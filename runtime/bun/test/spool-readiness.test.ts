@@ -16,7 +16,9 @@ import {
 import type { Run } from "../src/tmux";
 import { composerInput } from "../src/submit-frame";
 import { dimPromptInput, promptGlyph, textHasPasteCollapse } from "../src/pane/geometry";
-import { escapedPromptFromFrame } from "../src/pane/reader";
+import { escapedPromptFromFrame, frameIo, pendingInputText } from "../src/pane/reader";
+import { deliveryDisposition } from "../src/slices/delivery-disposition";
+import collapsed from "./fixtures/claude-compact-collapsed.json";
 
 const deps = (over: Partial<ReadinessDeps> = {}): ReadinessDeps => ({
   registryMatchesTeam: () => true,
@@ -32,6 +34,18 @@ const facts = (over: Partial<ReadinessFacts> = {}): ReadinessFacts => ({
   targetRegistry: "/bus/registry.json", policy: "", identity: "match",
   harnessCmd: "claude", paneInMode: "0", blockedMap: "{}", blockedExempt: "[]",
   frame: "", pending: { kind: "empty" }, band: null, ...over,
+});
+
+test("a collapsed human draft stays unreadable and never enters pending-input grace", () => {
+  const frame = collapsed.frames[2]!;
+  const band = observedBand({ frame, harness: "claude", paneWidth: "58" });
+  expect(band).toBe("unobservable");
+  expect(deliveryDisposition({ band, harness: "claude", urgent: false, noSpool: false, recipientBound: true }))
+    .toMatchObject({ action: "park", parkReason: "no-input-prompt", graceSeconds: null });
+  const pending = pendingInputText(frameIo(frame, "58"), "%401", "claude");
+  expect(pending).toEqual({ status: "no-band" });
+  const kind = pending.status === "text" ? { kind: "text" as const, text: pending.text } : { kind: "no-band" as const };
+  expect(paneReady(facts({ frame, pending: kind }), deps())).toBe("busy:noprompt");
 });
 
 test("the gone family: a blank binding, a foreign team, and a drifted identity all answer gone", () => {

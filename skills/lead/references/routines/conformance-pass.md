@@ -93,9 +93,9 @@ A conformance request names, in its payload body:
 ## Evidence-contract composition (single home)
 
 This contract is the **verdict-side** home of the evidence doctrine: it disciplines the
-reviewer's claims. The **producer-side** home is the "evidence stays honest" objective of
-`skills/lead/references/choreography-best-practices.md`, routed from the charter
-(`skills/lead/SKILL.md`, which carries the reverse pointer here). One pointer each way;
+reviewer's claims. The **producer-side** home is the verify and report steps of
+`skills/lead/plays/close-the-run.md`, routed from the menu in `skills/lead/SKILL.md`;
+the `shape-the-mission` play carries the reverse pointer here. One pointer each way;
 neither home restates the other's rules. [evidence: single-home doctrine; finding #7]
 
 ## Run shape (SHOULD) — the service loop

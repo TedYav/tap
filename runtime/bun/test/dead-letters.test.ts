@@ -130,6 +130,11 @@ const uncertain: Array<[string, (f: Fix) => void, string]> = [
   ["a manual relay (cross_worktree, no to_team)", (f) => reg(f, { seats: {} }), "cross_worktree: true\n"],
   ["an explicit forwarding edge", (f) => reg(f, { seats: { beta: seat("beta") }, seat_forwardings: [
     { source: "ghost", source_instance: "ghost|1", destination: "beta", destination_instance: "beta|1", at: "2026-10-01T00:00:00Z", address_active: true }] }), ""],
+  ["a qualified forwarding destination after source reuse", (f) => reg(f, {
+    schema: "0.21", seats: { ghost: seat("ghost", { instance: "ghost|2" }) }, seat_forwardings: [
+      { source: "ghost", source_instance: "ghost|1", destination: "other/beta", destination_instance: "beta|1",
+        at: "2026-10-01T00:00:00Z", address_active: false }],
+  }), "recipient_instance: ghost|1\n"],
   ["an adoption grant", (f) => reg(f, { seats: { beta: seat("beta", { adopted_handles: ["ghost"] }) } }), ""],
 ];
 for (const [label, arrange, extra] of uncertain) {

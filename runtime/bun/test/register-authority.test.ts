@@ -369,7 +369,7 @@ test("teamNameForRoot keeps valid names, derives launchable slugs, and validates
 test("old_store actions match the store: team registries hand-upgrade, machine and launcher files move aside", () => {
   for (const kind of ["agents_axis", "bus_registry"] as const) {
     expect(oldStoreAction(kind)).toStartWith("ask an agent to upgrade this file to the current format by hand");
-    expect(oldStoreRefusalText("/r.json", kind)).toContain('{"schema":"0.20","team":{...},"seats":{...}} team registries');
+    expect(oldStoreRefusalText("/r.json", kind)).toContain("team registries with a seats object and schema 0.20 or 0.21");
   }
   expect(oldStoreAction("legacy_teams_json")).toBe("move this file aside, then run tap init in each team root to enroll it");
   expect(oldStoreAction("launcher_manifest")).toBe("move this file aside (or unset TAP_SESSION_MANIFEST), then relaunch the seats you still need");

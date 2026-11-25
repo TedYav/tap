@@ -2,7 +2,8 @@
 
 Adapted from obra/superpowers `subagent-driven-development` (MIT): the reviewer template, the
 re-review template, and the driver-side rules that keep a review worth asking for. In a pairing, the
-partner seat holds the reviewer side of this contract.
+reviewing seat holds the reviewer side of this contract: the partner by default, or the driver when
+the driver reviews and its partner builds.
 
 **Where this file lives.** Run `tap help skill pair` and open
 `references/review-contract.md` next to the returned canonical SKILL.md. This
@@ -17,12 +18,13 @@ the release bootstrap. Editing harness discovery directories by hand is not an u
 
 ## What the reviewer is handed
 
-The brief, the review-package path, and the report path. Not your framing of the diff, and not your
+The brief, the review package, and the report: as paths when the reviewer shares your checkout, as
+content when it is a TAP seat in its own. Not your framing of the diff, and not your
 summary of what you think it does — summarising the change *to* a reviewer is the easiest way to get
 back the review you already wrote.
 
 Name the range in refs that outlive your worktree: unit number, BASE and HEAD as commit SHAs, and
-whether this is a review or a re-review. A path into the driver's checkout is not durable across two
+whether this is a review or a re-review. A path into one seat's checkout is not durable across two
 worktrees or a rebase, and a reviewer who cannot re-derive the range cannot re-check its own verdict.
 
 **The package is the entry point, not a prison.** Its context lines carry most of what a review needs,
@@ -70,6 +72,10 @@ before the unit closes. The class is driver-owned because the driver holds the p
 wants the unit closed is the seat most likely to find every ⚠️ harmless, and a ⚠️ that maps onto a spec
 line should not close without the partner's acknowledgement.
 
+A driver that reviews holds both the diff and the plan. It resolves each ⚠️ inside the review instead
+of reporting it, and no acknowledgement step remains. The resolution, or the evidence gap that is
+still open, stays visible in the Spec Compliance section.
+
 **A plan-mandated defect is still a finding.** If the plan or brief explicitly asks for something this
 rubric calls a defect, report it as Important, labeled plan-mandated. The plan does not grade its own
 work.
@@ -95,7 +101,7 @@ the shape pairing was named to protect. It is also where the contract is thinnes
 computed source, never a pasted literal, and no subset may exceed its total.** Recompute validates the
 numbers at their source while the artifact keeps stale ones; only this catches that. The trigger generalizes without weakening: over code it is
 `BASE..HEAD` as commit SHAs; over anything else it is a **named artifact path plus a content hash** the
-partner can recompute — the same property, that the reviewer and the driver are provably looking at the
+reviewer can recompute — the same property, that the reviewer and the builder are provably looking at the
 same bytes. What never triggers a review, in either shape, is a message announcing that work is going
 well.
 

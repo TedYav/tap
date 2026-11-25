@@ -88,7 +88,14 @@ function isClaudeBottomBorder(line: string): boolean {
 }
 
 function isClaudeBoxFence(line: string): boolean {
-  return /^[ \t]*─{10,}/.test(plain(line));
+  return /^[ \t]*─{10,}/.test(plain(line)) || isClaudeCollapsedFence(line);
+}
+
+// Claude 2.1.327 removes the prompt glyph when the head is collapsed. This
+// explicit, column-zero fence is a tail witness, never a whole-draft witness.
+function isClaudeCollapsedFence(line: string): boolean {
+  // A long seat title leaves zero rule cells between the count and title.
+  return /^─{2,} ↑ [1-9][0-9]* more (?:─+|─* [^─\r\n]+ ─)[ \t]*$/.test(plain(line));
 }
 
 /**
@@ -175,13 +182,13 @@ export function claudeDraftRows(capture: string): { rows: string[]; columns: num
   return { rows: rows.map(row => row.replace(/[ \t\u00a0]+$/, "")), columns: plain(all[range.bot]!).trim().length };
 }
 
-/** Active Claude box: last qualifying bottom border, then the prompt above it. */
-export function claudeBox(capture: string): { typed: string; raw: string; columns: number } | null {
-  const range = claudeActiveBoxRange(capture);
+/** Active Claude box; opt in to a collapsed tail only when a caller can prove the hidden head. */
+export function claudeBox(capture: string, allowCollapsed = false): { typed: string; raw: string; columns: number } | null {
+  const range = claudeActiveBoxRange(capture, allowCollapsed);
   if (!range) return null;
   const { top, start, bot } = range;
   const lines = capture.split("\n");
-  const first = plain(lines[start]!).match(CLAUDE_PROMPT)![1]!;
+  const first = range.collapsed ? plain(lines[start]!).slice(2) : plain(lines[start]!).match(CLAUDE_PROMPT)![1]!;
   const raw = [first, ...lines.slice(start + 1, bot).map(plain)].join("\n");
   const typed = raw.replace(/[ \t]+$/gm, "").trim();
   return { typed, raw, columns: plain(lines[bot]!).trim().length };
@@ -230,17 +237,18 @@ export const CLAUDE_SCROLLED_DRAFT_REASON =
  * Shared active-box geometry: the [top, bot) row span `claudeBox` reads, with
  * `start` the composer prompt row. Same refusals: approval dialog, a feedback
  * card that hides the composer (any box found then is an older one), prompt
- * rows below the bottom border, or no prompt inside the box.
+ * rows below the bottom border, or no prompt inside the box. Tail readers may
+ * opt into the explicitly marked collapsed span without licensing draft clears.
  */
-export function claudeActiveBoxRange(capture: string): { top: number; start: number; bot: number } | null {
+export function claudeActiveBoxRange(capture: string, allowCollapsed = false): { top: number; start: number; bot: number; collapsed?: true } | null {
   if (approvalPrompt("claude", capture)) return null;
   const card = claudeFeedbackCard(capture);
   if (card && card.composer !== "visible") return null;
-  return claudeGeometryRange(capture);
+  return claudeGeometryRange(capture, allowCollapsed);
 }
 
 /** Geometry alone, also used to locate the composer below a feedback card without recursion. */
-function claudeGeometryRange(capture: string): { top: number; start: number; bot: number } | null {
+function claudeGeometryRange(capture: string, allowCollapsed = false): { top: number; start: number; bot: number; collapsed?: true } | null {
   const lines = capture.split("\n");
   let bot = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -283,6 +291,15 @@ function claudeGeometryRange(capture: string): { top: number; start: number; bot
   let top = 0;
   for (let i = bot - 1; i >= 0; i--) {
     if (isClaudeBoxFence(lines[i]!)) { top = i + 1; break; }
+  }
+  if (top > 0 && isClaudeCollapsedFence(lines[top - 1]!)) {
+    // Do not fall back to a transcript prompt above this fence, or treat a
+    // prompt-shaped word in the hidden-head draft as the start of its input.
+    if (!allowCollapsed || top === bot) return null;
+    const rows = lines.slice(top, bot).map(plain);
+    if (rows.some(row => !row.startsWith("  ")) || !rows.some(row => row.trim())) return null;
+    if (Bun.stringWidth(plain(lines[top - 1]!).trimEnd()) !== plain(lines[bot]!).trim().length) return null;
+    return { top, start: top, bot, collapsed: true };
   }
   let start = -1;
   for (let i = top; i < bot; i++) {

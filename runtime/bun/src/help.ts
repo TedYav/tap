@@ -2070,7 +2070,7 @@ export const SESSION_RELAUNCH_HELP = `NAME
 
 USAGE
   tap session relaunch <[team/]handle> [options] [-- harness-flags...]
-  tap session relaunch --harness <claude|codex|cursor|opencode> [--team <name>|--team='*'] [options]
+  tap session relaunch --harness <claude|codex|cursor|opencode|agy> [--team <name>|--team='*'] [options]
 
 DESCRIPTION
   Relaunch replaces a live seat's harness process in the pane it already

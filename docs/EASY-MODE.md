@@ -84,7 +84,10 @@ Ask them in the human's own words and record the answers the same way:
   `auto` lets any TAP command enroll a git project (never the home directory)
   without asking.
 - **Messages that arrive while typing** (`injection.behavior`, `clobber` by
-  default): `clobber` interrupts for the fastest deliveries. It may clear a
+  default): this choice applies in bypass mode, in OpenCode and Hermes seats,
+  and in panes you join by hand with `tap in`. In auto mode, Claude Code, Codex,
+  Cursor and Antigravity seats always wait for an empty input box.
+  `clobber` interrupts for the fastest deliveries. It may clear a
   draft to deliver and keeps the text TAP can capture; pasting it back is
   conditional, and when it does not happen `tap draft` recovers it (OpenCode
   drafts always need that, and pasted content or images may not be captured).

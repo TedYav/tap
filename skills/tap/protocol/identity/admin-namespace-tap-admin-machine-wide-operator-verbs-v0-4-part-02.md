@@ -30,7 +30,7 @@ This is intentionally not `refresh` in reverse. A live pane attests only itself:
 
 ### `tap admin migrate-registry` (removed)
 
-TAP never converts old registry formats. For one release the verb stays as a stub: any invocation exits `1` with `error_class=old_store`, detail `tap admin migrate-registry was removed; this TAP reads only {"schema":"0.20","team":{...},"seats":{...}} team registries and never converts old files`, and action `ask an agent to upgrade an old team registry by hand (rename "agents" to "seats", add "schema": "0.20"); move an old teams.json or launcher sessions.json aside; then run tap init`. `--json` selects the JSON error object. `tap init` and `tap doctor` only detect an old `teams.json`; they name it and say to move it aside, then run `tap init` in each team root.
+TAP never converts old registry formats. For one release the verb stays as a stub: any invocation exits `1` with `error_class=old_store`, detail `tap admin migrate-registry was removed; this TAP reads team registries with a seats object and schema 0.20 or 0.21 and never converts old files`, and action `ask an agent to upgrade an old team registry by hand (rename "agents" to "seats", add "schema": "0.20"); move an old teams.json or launcher sessions.json aside; then run tap init`. `--json` selects the JSON error object. `tap init` and `tap doctor` only detect an old `teams.json`; they name it and say to move it aside, then run `tap init` in each team root.
 
 ### Reset archive lifecycle
 

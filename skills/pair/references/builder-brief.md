@@ -8,13 +8,15 @@ Adapted from obra/superpowers `subagent-driven-development` (MIT) and EveryInc/c
 Five parts, and nothing else:
 
 1. **One line** on where this unit sits in the project.
-2. **The brief path**, introduced as: *read this first — it is your requirements, with the exact
-   values to use verbatim.*
+2. **The brief**, introduced as: *read this first — it is your requirements, with the exact
+   values to use verbatim.* A subagent in your own checkout takes it as a path. A TAP seat takes it
+   as content in the message body: a path into your workspace is one its checkout does not have.
 3. **Interfaces and decisions from earlier units** that the brief cannot know — signatures agreed,
    names settled, a parked finding in the area this unit touches (point at the ledger line).
 4. **Your resolution of any ambiguity** you noticed in the brief. You read it; the builder should not
    have to re-derive your reading.
-5. **The report-file path and the report contract** below.
+5. **Where the report goes and the report contract** below: a report-file path for a subagent; for
+   a TAP seat, the report comes back as content in its reply.
 
 Exact values live in the brief, never in the dispatch prose. Two values in two places drift, and the
 one the builder uses is the one you did not update.
@@ -23,20 +25,24 @@ one the builder uses is the one you did not update.
 mostly-history and buy nothing the brief and the interface notes do not already carry.
 
 **The builder does not spawn its own reviewer.** Every reviewer a builder spawns duplicates the review
-you are about to dispatch anyway — a whole extra seat per unit. A builder-spawned review is a thing to
+the unit is about to get anyway — a whole extra seat per unit. A builder-spawned review is a thing to
 flag, not evidence of rigor.
 
-**Pin the model explicitly.** An omitted model inherits the dispatching session's.
+**When you spawn the builder, pin its model explicitly.** An omitted model inherits the dispatching
+session's. A partner seat already has its model; this applies to subagents you dispatch.
 
 ## The report contract
 
-The builder writes the long report to the report file and returns **under 15 lines**:
+The builder writes the long report to the report file and returns a status summary of **under 15
+lines**:
 
 - **Status** — one of `DONE` / `DONE_WITH_CONCERNS` / `BLOCKED` / `NEEDS_CONTEXT`.
 - **Commits** — short SHA plus subject, one per line.
 - **Tests** — one line: what was run, and the result.
 - **Concerns** — anything the driver should know before the review.
-- **Report path.**
+- **Report path** — from a subagent sharing the checkout. A TAP seat in its own checkout puts the
+  full report after the summary in the same body file instead; those lines are outside the limit.
+  The file stays in the builder's workspace as its own memory; the other seat cannot open that path.
 
 The report file carries the detail: what was built and why, the commands run with their output, and —
 when the unit called for TDD — the evidence fields:
@@ -50,8 +56,8 @@ leaves the unit's verification permanently incomplete — mark it unverified rat
 observation nobody made.
 
 **The report file is the persistent memory.** If the builder is replaced mid-unit — a swap, a
-restart, a fresh seat one tier up — the replacement is handed the brief path, the report path, and the
-open findings. Nothing depends on the previous builder's recollection.
+restart, a fresh seat one tier up — the replacement is handed the brief, the report, and the
+open findings, as paths it can open or as content. Nothing depends on the previous builder's recollection.
 
 ## Answering a builder's escalation
 

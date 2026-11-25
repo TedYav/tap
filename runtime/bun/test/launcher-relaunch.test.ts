@@ -17,14 +17,16 @@ afterEach(() => {
   if (savedEnv) { for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key]; Object.assign(process.env, savedEnv); savedEnv = undefined; }
   for (const dir of scratch.splice(0)) removeScratchTree(dir);
 });
-function fixture({ includeOpencode = false }: { includeOpencode?: boolean } = {}) {
+function fixture({ includeOpencode = false, includeAgy = false }: { includeOpencode?: boolean; includeAgy?: boolean } = {}) {
   // A test may build two fixtures; keep the pristine env from the first so afterEach restores it, not the first fixture's pins.
   savedEnv ??= { ...process.env };
   const dir = mkdtempSync(join(tmpdir(), "tap-relaunch.")); scratch.push(dir);
   const bin = join(dir, "bin"), index = join(dir, "index"), home = join(dir, "home");
   for (const path of [bin, index, home]) mkdirSync(path);
-  const extraSession = includeOpencode ? "tap/opencode\\t1:1\\t1\\nother/opencode\\t1:1\\t1\\n" : "";
-  const extraPane = includeOpencode ? "tap/opencode\\ttap/opencode:0.0\\t%%9\\topencode\\t125\\t1:1\\t0\\nother/opencode\\tother/opencode:0.0\\t%%10\\topencode\\t126\\t1:1\\t0\\n" : "";
+  const extraSession = (includeOpencode ? "tap/opencode\\t1:1\\t1\\nother/opencode\\t1:1\\t1\\n" : "")
+    + (includeAgy ? "tap/agy\\t1:1\\t1\\nother/agy\\t1:1\\t1\\n" : "");
+  const extraPane = (includeOpencode ? "tap/opencode\\ttap/opencode:0.0\\t%%9\\topencode\\t125\\t1:1\\t0\\nother/opencode\\tother/opencode:0.0\\t%%10\\topencode\\t126\\t1:1\\t0\\n" : "")
+    + (includeAgy ? "tap/agy\\ttap/agy:0.0\\t%%11\\tagy\\t127\\t1:1\\t0\\nother/agy\\tother/agy:0.0\\t%%12\\tagy\\t128\\t1:1\\t0\\n" : "");
   writeFileSync(join(bin, "tmux"), `#!/bin/sh
 while [ "$1" = -L ] || [ "$1" = -S ]; do shift 2; done
 case "$1" in
@@ -39,7 +41,10 @@ esac
   for (const key of ["TMUX", "TMUX_PANE", "TAP_HOME", "TAP_SELF", "TAP_VERBOSE", "TAP_JSON", "NO_COLOR"]) delete process.env[key];
   const row = (team: string, pane: string) => ({ status: "active", delivery: "pane", harness: "codex", pane_id: pane,
     pane: `${team}/alice:0.0`, session: `${team}/alice`, server_epoch: "srv:1:1", harness_session_id: `${team}-conversation` });
-  const seats = { alice: row("tap", "%7"), ...(includeOpencode ? { opencode: { ...row("tap", "%9"), harness: "opencode", pane: "tap/opencode:0.0", session: "tap/opencode", harness_session_id: "tap-opencode-conversation" } } : {}), offline: { ...row("tap", "%90"), session: "tap/offline", pane: "tap/offline:0.0" },
+  const seats = { alice: row("tap", "%7"),
+    ...(includeOpencode ? { opencode: { ...row("tap", "%9"), harness: "opencode", pane: "tap/opencode:0.0", session: "tap/opencode", harness_session_id: "tap-opencode-conversation" } } : {}),
+    ...(includeAgy ? { agy: { ...row("tap", "%11"), harness: "agy", pane: "tap/agy:0.0", session: "tap/agy", harness_session_id: "tap-agy-conversation" } } : {}),
+    offline: { ...row("tap", "%90"), session: "tap/offline", pane: "tap/offline:0.0" },
     suspended: { ...row("tap", "%7"), status: "suspended", status_reason: "session_stopped" },
     poll: { ...row("tap", "%7"), delivery: "poll" }, crew: { ...row("tap", "%7"), crew: true },
     unknown: { ...row("tap", "%7"), harness: null }, foreign: { ...row("tap", "%7"), harness: "claude" } };
@@ -50,6 +55,7 @@ esac
     // A real foreign opencode seat: a codex-only foreign roster cannot prove
     // the worker path a `--team='*'` opencode instruction must reach.
     ...(includeOpencode ? { opencode: { ...row("other", "%10"), harness: "opencode", pane: "other/opencode:0.0", session: "other/opencode", harness_session_id: "other-opencode-conversation" } } : {}),
+    ...(includeAgy ? { agy: { ...row("other", "%12"), harness: "agy", pane: "other/agy:0.0", session: "other/agy", harness_session_id: "other-agy-conversation" } } : {}),
   } }));
   writeFileSync(join(index, "global-registry.json"), JSON.stringify({ schema: "0.20", teams: {
     tap: { root: dir, registry_location: registry }, other: { root: dir, registry_location: otherRegistry }, missing: { root: dir, registry_location: join(dir, "absent.json") },
@@ -119,6 +125,36 @@ test("same-team opencode batch instruction still reaches the live worker", async
   const f = fixture({ includeOpencode: true });
   expect(await relaunch(parseOptions(["--harness", "opencode", "--team", "tap", "-m", "hello", "--dry-run", "--json"]), f.deps)).toBe(0);
   expect(f.acted.map(m => `${m.team}/${m.handle}`)).toEqual(["tap/opencode"]);
+});
+
+test("agy batch selection reaches active agy seats, uses argv nudge, and keeps hermes outside the allowlist", async () => {
+  for (const harness of ["claude", "codex", "cursor", "opencode", "agy"]) {
+    expect(parseOptions(["--harness", harness]).harness).toBe(harness);
+  }
+  expect(() => parseOptions(["--harness", "hermes"])).toThrow("unsupported relaunch harness");
+  expect(() => parseOptions(["--harness", "bogus"])).toThrow("unsupported relaunch harness");
+  expect(() => parseOptions([])).toThrow("<claude|codex|cursor|opencode|agy>");
+  expect(lookupHelp(["session", "relaunch"]).stdout).toContain("--harness <claude|codex|cursor|opencode|agy>");
+
+  const f = fixture({ includeAgy: true });
+  expect(await relaunch(parseOptions(["--harness", "agy", "--team", "tap", "--dry-run", "--json"]), f.deps)).toBe(0);
+  const data = JSON.parse(f.output.join(""));
+  expect(data.candidates).toBe(1);
+  expect(data.results).toEqual([expect.objectContaining({ team: "tap", handle: "agy", status: "would-resume" })]);
+  expect(data.excluded_inactive).toContainEqual({ team: "tap", handle: "alice", reason: "harness mismatch" });
+  expect(f.acted.map(m => `${m.team}/${m.handle}`)).toEqual(["tap/agy"]);
+
+  f.output.length = 0;
+  f.acted.length = 0;
+  const prompts: (string | undefined)[] = [];
+  const deps = { ...f.deps,
+    states: (rows: ClassifiedMember[]) => new Map(rows.map(row => [row.member, { agent_state: "working" as const, agent_state_reason: "fixture_working" }])),
+    run: async (member: Member, options: Options) => { prompts.push(options.message); return f.deps.run(member, options); },
+  };
+  expect(await relaunch(parseOptions(["--harness", "agy", "--team", "*", "--nudge", "--json"]), deps)).toBe(0);
+  expect(f.acted.map(m => `${m.team}/${m.handle}`)).toEqual(["other/agy", "tap/agy"]);
+  expect(prompts).toEqual([renderNudgeWire(nudgeDoorbellText()), renderNudgeWire(nudgeDoorbellText())]);
+  for (const row of JSON.parse(f.output.join("")).results) expect(row.nudge).toMatchObject({ planned: true, transport: "argv" });
 });
 
 test("JSON retains every exclusion, missing team, worker detail and additive counts", async () => {
@@ -914,8 +950,8 @@ test("an unsupported single seat refuses with nothing replaced and nothing print
 });
 
 test("an unsupported batch refuses before any seat, even with an empty roster for that harness", async () => {
-  for (const harness of ["opencode", "cursor"]) {
-    const f = fixture({ includeOpencode: true });
+  for (const harness of ["opencode", "cursor", "agy"]) {
+    const f = fixture({ includeOpencode: true, includeAgy: true });
     await expect(relaunch(parseOptions(["--harness", harness, "--team", "*", "--context", "850k"]), f.deps)).rejects.toMatchObject({
       errorClass: "launch_context_unsupported", detail: `harness '${harness}' does not support --context (supported by: claude, codex)` });
     expect(f.acted).toEqual([]); expect(f.crewActed).toEqual([]); expect(f.output).toEqual([]);

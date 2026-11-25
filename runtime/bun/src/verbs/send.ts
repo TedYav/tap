@@ -43,7 +43,7 @@ import { stagedIdleWindowSeconds } from "../spool-publication";
 import { noticeExpiredAtSendDoor } from "../clear-fence";
 import { TapError, callingPane, observeCallerIdentity, refuseUnanchoredPane, resolveContext, resolveSelf, teamRootFromBus, type ResolvedContext } from "../context";
 import { COURIER_IDENTITY, HELP_HANDLE, USER_IDENTITY, WATCH_IDENTITY, utcStamp, validToken } from "../ids";
-import { forwardingRoute } from "../forwarding";
+import { forwardingRoute, unsupportedForwardingDestination } from "../forwarding";
 import { listHandleHistory } from "./register";
 import { writeCancelledReceipt } from "../cancelled-receipt";
 import { loadRegistry, seatMap, type RegistryDoc } from "../registry";
@@ -1886,7 +1886,8 @@ function deliverableRow(registryPath: string, team: string, handle: string, qual
     // refusal reads as not-deliverable, which the stamp sites map from here.
     const target = forwardingRoute(doc, handle).target;
     return { deliverable: deliverableLocal(seatMap(doc), target), team, handle, scope: "ok", detail: "", qualified, local };
-  } catch {
+  } catch (error) {
+    if (unsupportedForwardingDestination(error)) throw error;
     return { deliverable: false, team, handle, scope: "other", detail: `no registry at team '${team}' root`, qualified, local };
   }
 }

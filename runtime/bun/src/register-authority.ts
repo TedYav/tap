@@ -199,7 +199,7 @@ export function legacyAgentsAxisStore(path: string): boolean {
   }
 }
 
-/** A registry that passes teamRegistryDefect (schema 0.20, a seats object, no
+/** A registry that passes teamRegistryDefect (a supported schema, a seats object, no
  * agents key, team an object when present) is current, not old store evidence — distinct from `legacyAgentsAxisStore`,
  * which only rules out the agents-only axis; this also rules out
  * unclassified/garbage content and a mixed legacy `agents` axis riding
@@ -274,17 +274,21 @@ const OLD_STORE_REASONS: Record<OldStoreEvidence["kind"], string> = {
   launcher_manifest: "legacy launcher sessions.json manifest",
 };
 
+// New registries and the machine index retain schema 0.20. Accept the next team
+// format before any writer starts recording a team-qualified forwarding edge.
+const FORWARDING_TEAM_SCHEMA = "0.21";
+const READABLE_TEAM_STORES = `team registries with a seats object and schema 0.20 or ${FORWARDING_TEAM_SCHEMA}`;
 const TEAM_REGISTRY_SHAPE = '{"schema":"0.20","team":{...},"seats":{...}}';
 
 /** Team/bus registries can be hand-edited into the current shape; machine and
  * launcher files have no current counterpart to edit into, so they move aside. */
 const OLD_STORE_TEXT: Record<OldStoreEvidence["kind"], { reads: string; action: string }> = {
   agents_axis: {
-    reads: `this TAP reads only ${TEAM_REGISTRY_SHAPE} team registries`,
+    reads: `this TAP reads ${READABLE_TEAM_STORES}`,
     action: 'ask an agent to upgrade this file to the current format by hand (rename "agents" to "seats", add "schema": "0.20"), or move it aside and run tap init',
   },
   bus_registry: {
-    reads: `this TAP reads only ${TEAM_REGISTRY_SHAPE} team registries`,
+    reads: `this TAP reads ${READABLE_TEAM_STORES}`,
     action: `ask an agent to upgrade this file to the current format by hand (${TEAM_REGISTRY_SHAPE}: rename "agents" to "seats", add "schema": "0.20" and a "team" block), or move it aside and run tap init`,
   },
   legacy_teams_json: {
@@ -309,7 +313,7 @@ const isDocObject = (v: unknown): boolean =>
   v instanceof Map || (typeof v === "object" && v !== null && !Array.isArray(v));
 
 /** Why a parsed team registry is not in the current format, or null when it is.
- * Current means an object with `"schema": "0.20"`, a `seats` object, no
+ * Current means an object with a supported schema, a `seats` object, no
  * `agents` key, and `team` an object when present (a missing team is not an
  * old-format signal). Accepts the lossless Map codec and plain objects alike,
  * so every reader keeps its own parse and only asks this question. */
@@ -320,7 +324,7 @@ export function teamRegistryDefect(doc: unknown): string | null {
   if (has("agents")) return OLD_STORE_REASONS.agents_axis;
   if (!has("schema")) return "no schema";
   const schema = get("schema");
-  if (schema !== SCHEMA) return `schema ${typeof schema === "string" ? JSON.stringify(schema) : String(schema)}`;
+  if (schema !== SCHEMA && schema !== FORWARDING_TEAM_SCHEMA) return `schema ${typeof schema === "string" ? JSON.stringify(schema) : String(schema)}`;
   if (!isDocObject(get("seats"))) return "seats not an object";
   if (has("team") && !isDocObject(get("team"))) return "team not an object";
   return null;
@@ -387,7 +391,7 @@ export function registryWriteRefusal(path: string, doc: Record<string, unknown>)
 
 /** The removed migrator's stub has no file to classify, so it names every door. */
 export const MIGRATE_REGISTRY_REMOVED = {
-  detail: `tap admin migrate-registry was removed; this TAP reads only ${TEAM_REGISTRY_SHAPE} team registries and never converts old files`,
+  detail: `tap admin migrate-registry was removed; this TAP reads ${READABLE_TEAM_STORES} and never converts old files`,
   action: 'ask an agent to upgrade an old team registry by hand (rename "agents" to "seats", add "schema": "0.20"); move an old teams.json or launcher sessions.json aside; then run tap init',
 };
 

@@ -3,6 +3,70 @@
 Release notes are curated when a release is prepared. A protocol bump adds the
 next `0.<protocol>.0` release heading in the same change.
 
+## 0.23.6 — 2026-11-24
+
+### Added
+
+- `/tap:pair` works in both directions. The agent you ask is the driver: it
+  owns the plan, the unit order and the closeout. By default it builds and its
+  partner reviews each unit. Say "you drive, your partner implements" and it
+  plans, hands each unit to its partner to build, reviews what comes back and
+  sends edit requests. This suits a stronger planning agent paired with a
+  cheaper or faster builder.
+  - The driver's opening message names both roles. When the partner builds,
+    that message also grants it the writer token and carries the first unit's
+    brief.
+  - Briefs and reports reach a partner in its own checkout as message content,
+    not as paths it cannot open.
+  - Unchanged: one writer at a time, whoever did not write a diff reviews it,
+    three rounds at most, and the pair's reviewer is never the approver of the
+    whole diff.
+- `tap session relaunch --harness agy` relaunches the active Antigravity seats
+  in the selected team scope, as it already did for one harness at a time
+  among Claude Code, Codex, Cursor and OpenCode.
+
+### Changed
+
+- `/tap:lead` is a short core with a menu of plays. The core is about a
+  quarter of its former size, and the separate up-front reference read is
+  gone. An agent opens one play when its situation comes up: a settled plan, wake coverage, recovery, staffing, closing a run,
+  shaping a mission, or composing a plan's choreography.
+  - `mode:agent` lets a planning skill call `/tap:lead` to compose the team
+    for its plan. The call only reads and returns text: it takes no role,
+    launches nothing and asks the user nothing. Missing facts, or a conflict
+    with the rules that govern the plan, come back to the caller as questions.
+    The caller may itself be a planning subagent.
+  - `references/choreography-best-practices.md` and its older redirect,
+    `references/orchestration-best-practices.md`, are gone; the guidance moved
+    into the plays, `references/supervision.md` and `references/staffing.md`.
+    A wake prompt that named either file should name
+    `plays/cover-liveness.md`.
+- The setup wizard and both setup guides say where the "interrupt or wait"
+  choice applies: in bypass mode, in OpenCode and Hermes seats, and in panes
+  joined with `tap in`. Claude Code, Codex, Cursor and Antigravity seats in
+  auto mode always wait for an empty input box. The default is unchanged.
+- `/tap:pair` tells a reviewer who reruns tests or builds to install
+  dependencies inside its own review worktree, and never to link the writer's
+  dependency folders into it. A package-manager command there could rewrite
+  the writer's files through the links.
+
+### Fixed
+
+- A freshly started Antigravity seat receives its first message without a
+  keystroke. Its startup logo left a background color active in TAP's reading
+  of the screen, so the mode hint in the empty input box looked like a
+  person's draft, and mail waited until someone typed.
+- A long `tap self compact` finishes on a narrow Claude Code pane. Claude
+  folds long input behind an "N more" line there, and TAP now reads that
+  layout, including when a long seat title fills the rest of the border. A
+  person's own folded draft still holds delivery.
+- A forwarding record whose successor TAP cannot resolve is refused instead of
+  being read as a local seat or answered to the original sender. Mail parked
+  for a retired seat stays held whenever a forwarding record for it exists or
+  the records cannot be read; it used to be withdrawn in some of those cases.
+  TAP also reads team registries marked schema `0.21`; nothing writes that
+  version yet.
+
 ## 0.23.5 — 2026-11-17
 
 ### Fixed

@@ -383,7 +383,7 @@ export interface PaneEffects extends SurveyEffects {
   /** The composer's prompt line (`tap_pending_input_text`). Required by `typedPrefix`. */
   promptInput?: (target: string, command: string) => PendingInput;
   /** The composer's typed rows (`tap_pending_input_region_text`). Required by `typedPrefix`. */
-  regionInput?: (target: string, command: string) => PendingInput;
+  regionInput?: (target: string, command: string, allowCollapsed?: boolean) => PendingInput;
   /**
    * Take back our own typed control when it was never submitted: C-u only
    * while the band is still ours (deliver.ts `clearOwnInjection`). Supplied by
@@ -414,7 +414,7 @@ export const REAL_EFFECTS: PaneEffects = {
   observeInput: observeInputId,
   submitFrame: observeSubmitFrame,
   promptInput: (target, command) => pendingInputText(realPaneIo, target, command),
-  regionInput: (target, command) => pendingInputRegionText(realPaneIo, target, command),
+  regionInput: (target, command, allowCollapsed) => pendingInputRegionText(realPaneIo, target, command, allowCollapsed),
 };
 
 function familyOf(command: string, families: ReadonlySet<string>): string {
@@ -2385,7 +2385,7 @@ function submitVerifyLockedBody(
     if (line.status !== "text" || line.text !== want) {
       return unverified(`typed prefix did not render in '${pane}' before payload injection (want '${want}', saw '${line.status === "text" ? line.text : line.status}')`);
     }
-    const region = fx.regionInput!(target, command);
+    const region = fx.regionInput!(target, command, true);
     if (region.status !== "text" || !region.text || region.text.split("\n").slice(1).some(row => /[^\s]/.test(row))) {
       return unverified(`input region carries an unclassified row past the typed prefix in '${pane}'`);
     }
@@ -2408,7 +2408,7 @@ function submitVerifyLockedBody(
         fx.settle(sample === 0 ? 0.2 : 0.1);
         const late = recheck();
         if (late) return late;
-        const rendered = fx.regionInput!(target, command);
+        const rendered = fx.regionInput!(target, command, true);
         landed = controlChunkLanded(command, rendered.status === "text" ? rendered.text : "", typedSoFar, chunks[i]!);
       }
       if (!landed.ready) {
@@ -2420,7 +2420,7 @@ function submitVerifyLockedBody(
     for (let sample = 0; sample < 6 && !tail.ready; sample++) {
       const denied = recheck();
       if (denied) return denied;
-      const rendered = fx.regionInput!(target, command);
+      const rendered = fx.regionInput!(target, command, true);
       tail = controlTailReady(command, rendered.status === "text" ? rendered.text : "", sentinel);
       if (!tail.ready) fx.settle(0.1);
     }

@@ -79,6 +79,7 @@ test("public out atomically retires source and exposes unchanged pending and pre
     const result = f.run("out", "a", "--forward-to", "b", "--json");
     expect(result.code, result.err).toBe(0);
     const doc = loadRegistry(f.registry);
+    expect(doc.schema).toBe("0.20");
     expect((doc.seats as any).a).toBeUndefined();
     expect((doc.seat_forwardings as any[])[0].destination_instance).toBe("b|1");
     expect(readFileSync(inbound.path, "utf8")).toBe(inbound.raw);
@@ -93,6 +94,33 @@ test("public out atomically retires source and exposes unchanged pending and pre
     expect(JSON.parse(outstanding.out).outstanding.find((v: any) => v.id === "old-outbound")).toMatchObject({ from: "a", sender_instance: "a|1", adopted_from: "a" });
     expect(f.run("out", "b", "--forward-to", "c").code).toBe(0);
     expect(f.run("poll", "c", "--json").out).toContain("old-custom-id");
+  } finally { removeScratchTree(f.root); }
+});
+
+test("a qualified destination refuses local routing and reply redirection without settling the ask", () => {
+  const f = fixture();
+  try {
+    const { doc, record } = prepareForwarding(initial(), "a", "b", "now");
+    doc.schema = "0.21";
+    record.destination = "elsewhere/b";
+    // Even an invalid local row with this literal key cannot stand in for the foreign seat.
+    (doc.seats as Record<string, unknown>)[record.destination] = initial().seats.b;
+    saveRegistry(f.registry, doc);
+    expect(() => forwardingRoute(doc, "a")).toThrow("not a local seat handle");
+    expect(forwardingGrant(doc, "b", "a", "a|1")).toBe("");
+    const send = f.run("send", "a", "--from", "worker", "--ask", "-m", "question");
+    expect(send.code).toBe(1);
+    expect(send.err).toContain("not a local seat handle");
+    expect(readdirSync(join(f.home, "payloads"))).toEqual([]);
+    for (const redirect of ["a", "forward/a"]) {
+      const ask = f.seed("redirect-question", "worker", "b");
+      writeFileSync(ask.path, ask.raw.replace("reply: expected", `reply: expected\nreply_to: ${redirect}`));
+      const reply = f.run("reply", "redirect-question", "--by", "b", "-m", "answer");
+      expect(reply.code).toBe(1);
+      expect(reply.err).toContain("not a local seat handle");
+      expect(existsSync(join(f.home, "receipts/redirect-question.done"))).toBe(false);
+      expect(readdirSync(join(f.home, "payloads"))).toEqual(["redirect-question.md"]);
+    }
   } finally { removeScratchTree(f.root); }
 });
 
@@ -247,7 +275,7 @@ test("source restore revokes successor authority and restores original sender ca
 }, 30000);
 
 
-test("suspended successor custody prevents obsolete-instance spool withdrawal after source name reuse", async () => {
+test("suspended or replaced successors preserve stamped spool custody after source reuse", async () => {
   const { recipientRetired } = await import("../src/spool-retired");
   const f = fixture();
   try {
@@ -260,7 +288,7 @@ test("suspended successor custody prevents obsolete-instance spool withdrawal af
     const meta = JSON.parse(readFileSync(join(f.home, "spool/retirement-custody.meta.json"), "utf8"));
     expect(recipientRetired(meta, item.raw, doc, f.registry)).toBe(false);
     (doc.seats as any).b.instance = "b|2";
-    expect(recipientRetired(meta, item.raw, doc, f.registry)).toBe(true);
+    expect(recipientRetired(meta, item.raw, doc, f.registry)).toBe(false);
   } finally { removeScratchTree(f.root); }
 });
 

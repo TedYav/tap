@@ -51,7 +51,7 @@ test("remaining old-store scalar reasons retain precise native refusal text", ()
     expect(teamRegistryDefect(doc)).toBe(reason);
     expect(teamRegistryRefusal("/r.json", doc)).toMatchObject({
       errorClass: "old_store",
-      detail: `/r.json is an old TAP registry format (${reason}); this TAP reads only {"schema":"0.20","team":{...},"seats":{...}} team registries and never converts old files`,
+      detail: `/r.json is an old TAP registry format (${reason}); this TAP reads team registries with a seats object and schema 0.20 or 0.21 and never converts old files`,
     });
   }
 });

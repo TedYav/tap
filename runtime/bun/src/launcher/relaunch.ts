@@ -21,6 +21,7 @@ import { tapScriptsDir } from "../scripts-dir";
 
 const scripts = tapScriptsDir();
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
+export const RELAUNCH_HARNESSES = ["claude", "codex", "cursor", "opencode", "agy"] as const;
 export interface Options { seat?: string; harness?: string; team?: string; message?: string; nudge?: string; autoNudge?: string; workdir?: string; json: boolean; dryRun: boolean; overrides?: Overrides; sugar?: LaunchSugar }
 export interface Exclusion { team: string; handle: string; reason: string }
 export interface Member { team: string; handle: string; root: string; team_doc: Record<string, unknown>; row: Record<string, any>; expect?: Record<string, unknown>; expect_resume?: string | null; prepare_error?: string }
@@ -69,8 +70,8 @@ export function parseOptions(argv: string[]): Options {
   if (out.nudge !== undefined && out.message !== undefined) throw new Error("--nudge and -m/--message cannot be combined");
   const nudgeFlag = out.autoNudge !== undefined ? "--auto-nudge" : out.nudge !== undefined ? "--nudge" : undefined;
   if (nudgeFlag && out.seat && out.harness) throw new Error(`${nudgeFlag} takes no separate value; use ${nudgeFlag}=<text> for a message, or omit --harness to select a seat`);
-  if (!!out.seat === !!out.harness) throw new Error("supply a team/handle OR --harness <claude|codex|cursor|opencode>");
-  if (out.harness && !["claude", "codex", "cursor", "opencode"].includes(out.harness)) throw new Error("unsupported relaunch harness");
+  if (!!out.seat === !!out.harness) throw new Error(`supply a team/handle OR --harness <${RELAUNCH_HARNESSES.join("|")}>`);
+  if (out.harness && !(RELAUNCH_HARNESSES as readonly string[]).includes(out.harness)) throw new Error("unsupported relaunch harness");
   if (out.workdir !== undefined && !out.seat) throw new Error("--workdir applies to a single-seat relaunch; supply [team/]handle");
   if (out.team === "") throw new Error("empty --team refuses; use a team name or '*' for all teams");
   if (out.seat && (!/^[^/\s]+(?:\/[^/\s]+)?$/.test(out.seat) || out.team !== undefined)) throw new Error("single-seat relaunch requires [team/]handle without --team");

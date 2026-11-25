@@ -70,6 +70,9 @@ test("the predicate names every old shape and passes the current ones, object or
     [null, "not a JSON object"],
     ["{}", "not a JSON object"],
     [{ schema: "0.20", seats: {} }, null],
+    [{ ...CURRENT, schema: "0.21" }, null],
+    [{ ...CURRENT, schema: "0.21", agents: {} }, '"agents" map'],
+    [{ ...CURRENT, schema: "0.22" }, 'schema "0.22"'],
     [CURRENT, null],
   ];
   for (const [doc, reason] of cases) {

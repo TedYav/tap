@@ -101,6 +101,9 @@ test("wizard asks team-setup and interrupt choices, keeps saved values and tips 
  const initQ=questions.find(q=>q.startsWith("The first time TAP is used"))!;
  expect(initQ).toContain("[keep ask]");
  const behaviorQ=questions.find(q=>q.startsWith("How should agents' messages reach you"))!;
+ const scope=behaviorQ.replace(/\s+/g," ");
+ expect(scope).toContain("This choice applies in bypass mode, in OpenCode and Hermes seats, and in panes you join by hand with `tap in`.");
+ expect(scope).toContain("In auto mode, Claude Code, Codex, Cursor and Antigravity seats always wait for an empty input box.");
  expect(behaviorQ).toContain("[keep wait]");
  expect(behaviorQ).toContain("interrupt  Faster when your permission mode allows delivery into typed text");
  expect(behaviorQ).toContain("TAP saves only text it can");

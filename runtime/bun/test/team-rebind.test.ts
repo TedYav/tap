@@ -97,7 +97,7 @@ test("team doctor names an agents-axis, hybrid or non-object-seats registry old_
  writeFileSync(f.registry,JSON.stringify({schema:"0.20",team:{name:"team"},agents:{seat:f.row}}));
  const old=refusal();
  expect(old.errorClass).toBe("old_store");
- expect(old.detail).toBe(`${f.registry} is an old TAP registry format ("agents" map); this TAP reads only {"schema":"0.20","team":{...},"seats":{...}} team registries and never converts old files`);
+ expect(old.detail).toBe(`${f.registry} is an old TAP registry format ("agents" map); this TAP reads team registries with a seats object and schema 0.20 or 0.21 and never converts old files`);
  expect(old.action).toContain('rename "agents" to "seats"');
  const hybrid=JSON.stringify({schema:"0.20",team:{name:"team"},seats:{seat:f.row},agents:{old:f.row}});
  writeFileSync(f.registry,hybrid);
@@ -106,7 +106,7 @@ test("team doctor names an agents-axis, hybrid or non-object-seats registry old_
  writeFileSync(f.registry,JSON.stringify({schema:"0.20",team:{name:"team"},seats:[f.row]}));
  const invalid=refusal();
  expect(invalid.errorClass).toBe("old_store");
- expect(invalid.detail).toBe(`${f.registry} is an old TAP registry format (seats not an object); this TAP reads only {"schema":"0.20","team":{...},"seats":{...}} team registries and never converts old files`);
+ expect(invalid.detail).toBe(`${f.registry} is an old TAP registry format (seats not an object); this TAP reads team registries with a seats object and schema 0.20 or 0.21 and never converts old files`);
 });
 
 function captureDoctor(argv: string[], observe: Parameters<typeof cmdTeamDoctor>[1], tty = false) {

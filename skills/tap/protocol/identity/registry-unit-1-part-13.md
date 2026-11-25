@@ -52,7 +52,12 @@ and no pane touched. Send does not re-resolve to the new successor:
 that row has not passed the recipient verdicts, and new custody is the sender's
 to address. The manual relay reads no registry and is not rechecked.
 
-Existing IDs, bodies, headers, recipient history and receipts remain unchanged.
+New team registries use schema `0.20`. Readers also accept team schema `0.21`;
+the machine index remains `0.20`. A reader that cannot resolve a forwarding
+destination as a local handle refuses to follow that edge or use it as a reply
+redirect. An unresolved forwarding route preserves stamped parked mail after
+source reuse. A non-revoked edge also protects canonical mail from dead-letter
+withdrawal. Existing IDs, bodies, headers, recipient history and receipts remain unchanged.
 Handoff never settles, cancels or replays work, including sent, harness-queued or
 possibly attempted mail. Parked custody remains discoverable for explicit read;
 a live delegation excludes obsolete-instance withdrawal. Unstamped predecessor

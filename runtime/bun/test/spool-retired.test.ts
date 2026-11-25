@@ -166,6 +166,18 @@ test("retirement requires a newer row and preserves matching or adopted instance
   expect(recipientRetired(meta, original, registry(row, { successor: { adopted_handles: ["target"], adopted_instances: { target: "target|old" } } }), "/local")).toBe(false);
 });
 
+test("an unresolved forwarding route preserves the old instance's stamped spool after source reuse", () => {
+  for (const destination of ["other/successor", "absent-local-successor"]) {
+    const edge = { source: "target", source_instance: "target|old", destination, destination_instance: "next|1",
+      at: "2026-09-06T00:00:00Z", address_active: false };
+    const doc = { ...registry(), schema: "0.21", seat_forwardings: [edge] };
+    expect(recipientRetired(meta, original, doc, "/local")).toBe(false);
+    const unrelated = { ...edge, source_instance: "target|earlier" };
+    expect(recipientRetired(meta, original, { ...doc, seat_forwardings: [unrelated] }, "/local")).toBe(true);
+    expect(recipientRetired(meta, original, { ...doc, seat_forwardings: null }, "/local")).toBe(false);
+  }
+});
+
 test("an old-format recipient registry is never withdrawal authority", () => {
   expect(recipientRetired(meta, original, registry(), "/local")).toBe(true);
   const { schema: _schema, ...schemaless } = registry();

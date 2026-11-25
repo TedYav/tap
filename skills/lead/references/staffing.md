@@ -1,8 +1,9 @@
 # Staffing — the six axes, in full
 
-Loaded when the form is not obvious from the four defaults in the charter. The charter carries the
-interface: four forms, the narrowing rule, the defaults, and the visibility floor. This file carries
-the axis table that resolves a case the defaults do not, and the exceptions behind each axis.
+Loaded when the form is not obvious from the four defaults in the `staff-the-run` play
+(`../plays/staff-the-run.md`), which carries the four forms, their defaults, and the visibility floor.
+This file carries the axis table that resolves a case the defaults do not, the exceptions behind each
+axis, and the delegation, writer-token and spending detail behind that play.
 
 ## The narrowing rule
 
@@ -34,8 +35,8 @@ A metered seat — one billed per token or per credit rather than through a subs
 eligible for consult and review forms only; assigning it the DRIVER form (or any open-ended
 implementation loop) requires the human to name the build explicitly. Two rationales, either
 sufficient on its own — reasons the rule exists, not authorization paths; authorization has exactly
-the three checkable shapes enumerated in `choreography-best-practices.md` § "money stays where the
-owner put it" (direct instruction naming seat and build, named assignment in the mission brief, or
+the three checkable shapes enumerated in § "The spending envelope" below
+(direct instruction naming seat and build, named assignment in the mission brief, or
 a standing repo instruction — never the seat's own inference).
 
 **Economics.** Implementation is an open-ended token loop; review is bounded. A metered seat can
@@ -82,6 +83,113 @@ A bigger window needs no `-big` preset row. Claude: `tap launch opus <name> --en
 
 ## Where the rest lives
 
-Per-form boundaries and lifecycles are tabulated in `choreography-best-practices.md` (*Staffing and
-dispatch*); what each form owes once staffed is `/tap`'s staffing floor; lane custody is
-`/tap:drive`.
+Per-form boundaries are tabulated in the `staff-the-run` play; what each form owes once staffed is
+`/tap`'s staffing floor; lane custody is `/tap:drive`.
+
+## Delegation detail
+
+Bare/poll registrations are transport-only. Default complex writers to separate DRIVER worktrees;
+only the Writer Token section below permits unrelated DRIVERS to share. Never parallel subagents or
+crews: disjoint files and no-stash rules are not isolation.
+
+- Lead-tier subagents are exceptional: explicit `model` pin + one-line reason, **re-verified on
+  every resume**. A **user-named tier is a hard requirement, passed on every launch** — an
+  inherited `model: inherit` default once billed a whole review roster at lead rates; the pin, not good
+  intentions, is the guard.
+- Teammates spawn subagents at their **own tier** for fan-out or fresh context; they consult the
+  LEADER at judgment forks, and the LEADER treats consult taps as priority interrupts.
+- **Agent-dispatch blocks are role assignments, not tool mandates** — forwarding to a teammate as a
+  work order *satisfies* a skill. Typed seat names resolve same-worktree only; cross-worktree
+  orders inline the prompt.
+- **Why subagents still exist:** fresh-context decorrelation and schema-forced returns are real — a
+  blank spawn hasn't absorbed the team's beliefs. Subagents run a 5-minute cache TTL even on
+  subscription, so batch fan-outs concurrently; and each worktree builds its own cache prefix, so
+  disposable per-task trees pay a cold start every time.
+- **Plan-time delegation contract** — for plan-driven runs you design, the discipline lives in the
+  plan (prose judgment decays under load; plan text doesn't argue back): every Delegation row names
+  `Executor · Tier / spend reason · Subagent fan-out · Return artifact · Lead gate`, and lead-tier
+  lanes are proposed to and confirmed by the user at planning time. A plan that already names who
+  builds and who reviews is not reopened to fit this table.
+- **Staffing memory:** at staffing, read each active candidate's `Route` plus its
+  latest two dated observations from `~/.tap/seat-calibration.md`.
+  Inspect frontmatter for at most five newest non-archived drops in `~/.tap/ingest/` that match the
+  current repo or the `staffing`, `handoff`, or `gate` tags, opening bodies only when relevant.
+  Missing or malformed material warns visibly but does not block staffing; the LEADER owns the judgment.
+- **Visibility floor** (authority boundary): every agent stands where the
+  operator can find it — subagents inside your harness, crews as a window of the operator's tmux
+  session, launcher seats in their own `<team>/<handle>` session — never an anonymous tmux session.
+  `/tap` owns the full statement and the pane-less-infrastructure exemption.
+
+**Research dispatches** are a gated task class: `routines/research-pass.md` owns the pass (brief
+scaffold, claim-level verifier, calibration recipe) and the evidence. LEADER floors above it: the
+three-line brief boilerplate on every research dispatch; **no consumer acts on unverified research**
+— the family/effort routing table is hypotheses (tap-2nuf), no MUST cites it; eval before benching and
+a one-instruction retrial before calibrating a seat down; tier preflight from rollout stamps;
+**panel meta-pass your own syntheses** (the review ladder applies to doctrine: review a synthesis as
+you review code); human spend gates on preregistered runs.
+
+## Writer token
+
+A **Writer Token** names the single seat allowed to write a scope for a stretch of work; a
+**Named-Resource Lease** does the same for one named resource a worktree cannot isolate — an artifact or a path. Both are
+coordination records that make authorship a lookup — neither is a safety boundary. `/tap:drive` owns the
+lane-holder custody actions.
+
+**Technique: the passable writer token.** When multiple seats write one worktree, the team has had
+consistent success assigning a single writer token per worktree, passed explicitly in a tap message.
+One writer at a time turns "who changed this?" from an investigation into a lookup.
+
+**The story that earned it** (tap-tlw): path-scoped claims looked sufficient — disjoint files. They
+collided anyway, invisibly, on *generated files* their tools regenerated across any glob boundary.
+Worse: the lanes were under evidence-grade gates, and any concurrent commit poisoned the whole-tree
+evidence — *"did the eval pass because of, or despite, it?"* The token protects
+**invariants-under-verification, not files** — checkable in one command (`git status` clean + HEAD
+pinned).
+
+**Your judgment, LEADER:** two DRIVERS on genuinely unrelated scopes? Skipping the token is a
+legitimate call — cheap parallelism for the price of watching for collisions:
+- *Failure signature:* unexplained diffs in files you didn't touch; a gate result you can't
+  attribute to your own change.
+- *Recovery moves:* git makes clobbers reversible — roll back, split into worktrees, or mint a
+  named-resource lease. Stage slow work outside the tree and the strict token costs ~nothing.
+- **Keep a mutable checkout stable while a check reads it.** Concurrent writes can invalidate
+  its evidence across file boundaries. A CI run or review of a pinned commit uses a separate
+  view, so local authoring can continue; cite the source identity the check actually read.
+
+**The one-line hard kernel:** generated files cross glob boundaries silently — when in doubt, worktree.
+
+**Tools:** explicit TAP ownership handoffs; `git worktree add/lock`; named-resource lease
+(CONCEPTS). Catalog, not sequence.
+
+The every-dispatch *consequences*:
+
+- **Stage the slow work outside the tree.** Commit the finished output — freeze windows shrink to
+  ~zero.
+- **Named-resource escape hatch.** When two lanes need one shared resource, mint a deliberate
+  named-resource lease per resource — definition in CONCEPTS.
+- **Contention revisit trigger.** Writer windows exceeding ~30–45 min while another lane holds
+  commit-ready work, more than a couple times a week → **move the hot lane to its own branch** (a
+  branch is a path-scoped token whose verifier is the merge).
+
+## The spending envelope
+
+The roster is a budget, not just a contact list. **No cheap lane? Ask the user to staff one and name
+the saving** — a planning-time decision, not a mid-run scramble.
+
+**Metered builds are owner-cleared, in one of three checkable shapes:** a direct instruction naming
+the seat and the build ("have Kimi build this"), a named build assignment in the mission brief, or a
+standing instruction in the repo — never the seat's own inference from being idle, capable, or
+cheap that day, and never the LEADER's promotion on its own judgment. The why: an implementation
+loop can exhaust a metered balance mid-lane and strand a wheel nobody else holds, while a review
+that dies mid-pass is merely re-runnable. Routing around a down driver selects among *eligible*
+seats — a stalled lane waits, splits, or escalates for an explicit metered assignment before it
+lands on a metered seat.
+
+The LEADER holds a target review budget and dispatches paid reviews on any seat's request or own
+judgment, with no per-instance approval. Asking before every dispatch under-uses the budget; having
+no bound over-uses it. The envelope is the middle: judgment moves freely inside it. Per-bot economics
+matter: rate-limited-free bots (CodeRabbit class) have a *concurrency* envelope — stagger
+dispatches, never burst, and otherwise use them liberally; metered bots have a spend envelope. Quota conversations happen at kickoff.
+The hard edges stay with the owner: the envelope's size is the owner's, and seats never self-launch.
+Spend routes through the LEADER because budget-holding is what makes the LEADER's judgment
+accountable.

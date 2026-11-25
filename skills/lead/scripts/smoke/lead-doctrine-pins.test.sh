@@ -32,7 +32,8 @@ SANDBOX_PINS="$REPO_ROOT/skills/tap/scripts/smoke/sandbox-pins.sh"
 [ -f "$SANDBOX_PINS" ] && . "$SANDBOX_PINS"
 
 CHARTER="$REPO_ROOT/skills/lead/SKILL.md"
-BEST_PRACTICES="$REPO_ROOT/skills/lead/references/choreography-best-practices.md"
+LIVENESS="$REPO_ROOT/skills/lead/plays/cover-liveness.md"
+SUPERVISION="$REPO_ROOT/skills/lead/references/supervision.md"
 USING_TAP="$REPO_ROOT/skills/tap/SKILL.md"
 
 fail() { printf 'lead-doctrine-pins: FAIL: %s\n' "$*" >&2; exit 1; }
@@ -86,18 +87,22 @@ assert_pin "$USING_TAP" 'investigative checking and keeps one infrequent LEADER 
 # "delivery itself SUCCEEDING" green — a needle short of the claim pins the subject, not the claim.
 assert_pin "$USING_TAP" 'backstop for delivery itself failing'
 
-# --- skills/lead/references/choreography-best-practices.md — the doctrine file ----------------
-# E: needle carries push-primary too, so the doctrine file cannot lose that leg either.
-assert_pin "$BEST_PRACTICES" '**push primary**; **`tap watch`** as the mechanical liveness leg'
-assert_pin "$BEST_PRACTICES" "**A delegated sentinel**, the hybrid's checking leg"   # F: leg removed -> red
-assert_pin "$BEST_PRACTICES" 'tap in cron-watch --delivery poll'                     # G: recipe removed -> red
-assert_pin "$BEST_PRACTICES" 'say the liveness floor is unmet'                       # H: degraded path removed -> red
-assert_pin "$BEST_PRACTICES" '`/tap:self` never cancels one'                             # I: cancellation fact removed -> red
+# --- the liveness play and the supervision recipes ------------------------------------------------
+# These seven pins were proven against choreography-best-practices.md. That file was split:
+# the choice moved to plays/cover-liveness.md and the recipes to references/supervision.md.
+# Each pin moved with its sentence and its mutation was re-run against the new file (removing
+# the sentence reds the pin by name; restoring it greens it), per the admission rule above.
+# E: needle carries push-primary too, so the liveness play cannot lose that leg either.
+assert_pin "$LIVENESS" '**push primary**; **`tap watch`** as the mechanical liveness leg'
+assert_pin "$LIVENESS" "**A delegated sentinel**, the hybrid's checking leg"   # F: leg removed -> red
+assert_pin "$SUPERVISION" 'tap in cron-watch --delivery poll'                     # G: recipe removed -> red
+assert_pin "$LIVENESS" 'say the liveness floor is unmet'                       # H: degraded path removed -> red
+assert_pin "$LIVENESS" '`/tap:self` never cancels one'                             # I: cancellation fact removed -> red
 # K/L/M/N: the scheduled command, pinned WHOLE. A pane-less send needs the body, --from for
 # identity, and --team for the bus anchor; dropping any one of the three reds this pin. The
 # failure it fences is the quiet one — registration succeeds, the leg reads as armed, and every
 # tick refuses before publishing.
-assert_pin "$BEST_PRACTICES" "tap send <leader> --from cron-watch --team <team> --wake -f <path>"
+assert_pin "$SUPERVISION" "tap send <leader> --from cron-watch --team <team> --wake -f <path>"
 
 # O: added at integration (opus), fable's optional item 3, under the same admission rule
 # rather than on the strength of "it looks substantive". Mutation run here: removing the
@@ -106,6 +111,6 @@ assert_pin "$BEST_PRACTICES" "tap send <leader> --from cron-watch --team <team> 
 # own matrix has `loop` at exit 6 for Codex, opencode AND hermes, so a leader who reads the
 # bullet without the restriction arms a supervision leg that silently cannot run on four of
 # five harnesses. That is the same quiet-failure shape as K/L/M/N below it.
-assert_pin "$BEST_PRACTICES" '**Claude Code only**'
+assert_pin "$LIVENESS" '**Claude Code only**'
 
 printf 'lead-doctrine-pins: ok (12 mutation-proven pins)\n'

@@ -3,8 +3,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { submitQueuedClaude, type WakeRequest } from "../src/self-compact";
 import type { PaneEffects } from "../src/courier";
-import { classifySubmitFrame } from "../src/submit-frame";
-import { claudeBox } from "../src/pane-state";
+import { classifySubmitFrame, composerInput } from "../src/submit-frame";
+import { claudeBox, classifyPane } from "../src/pane-state";
+import { frameIo, pendingInputRegionText, pendingInputText } from "../src/pane/reader";
+import collapsed from "./fixtures/claude-compact-collapsed.json";
 import { proofFixture } from "./fixtures/compaction-proof";
 import { removeScratchTree } from "./support/scratch";
 
@@ -36,6 +38,81 @@ function fixture() {
     set held(v: boolean) { held = v; }, set copy(v: boolean) { copy = v; }, set refuseEnter(v: boolean) { refuseEnter = v; },
     get releases() { return releases; }, close: () => removeScratchTree(root) };
 }
+
+// Live 2.1.327 frames: the second payload chunk hides both the command and
+// prompt glyph behind an explicit collapsed border. Exercise the real readers
+// at each chunk and at Enter, rather than handing the courier its own buffer.
+function collapsedFixture(edit: (frame: string, index: number) => string = frame => frame) {
+  const f = fixture();
+  f.request.id = "collapse-probe";
+  f.request.focus = collapsed.focus;
+  const frame = () => {
+    if (!f.buffer) return `✻ done\n${"─".repeat(58)}\n❯ \n${"─".repeat(58)}\n`;
+    const index = f.keys.filter(k => k !== "Enter").length - 1;
+    return edit(collapsed.frames[index]!, index);
+  };
+  f.fx.promptInput = () => pendingInputText(frameIo(frame(), "58"), "%7", "claude");
+  f.fx.regionInput = (_target, _command, allowCollapsed) => pendingInputRegionText(frameIo(frame(), "58"), "%7", "claude", allowCollapsed);
+  f.fx.submitFrame = (_target, _command, expected, _alive, _sole, scrolledControl) =>
+    classifySubmitFrame(frame(), "claude", expected, "58", true, false, scrolledControl);
+  return f;
+}
+
+test("live collapsed Claude composer proves every chunk and submits compact exactly once", () => {
+  const f = collapsedFixture();
+  try {
+    const out = submitQueuedClaude(f.request, f.fx, f.lock);
+    expect(out.result.status).toBe("injected");
+    expect(out.boundary).toBeDefined();
+    expect(f.keys.filter(k => k === "Enter")).toHaveLength(1);
+    expect(f.keys.slice(0, -1).join("")).toBe(`/compact ${collapsed.focus} [[sv:self-collapse-probe]]`);
+    expect(f.keys.at(-1)).toBe("Enter");
+  } finally { f.close(); }
+});
+
+test("a long Claude seat title can use all the space after the hidden-row count", () => {
+  const f = collapsedFixture(frame =>
+    frame.replace(/─+ fixture\/compact/, " sample-project/full-length-reviewer-sessi…")
+  );
+  try {
+    expect(submitQueuedClaude(f.request, f.fx, f.lock).result.status).toBe("injected");
+    expect(f.keys.filter(key => key === "Enter")).toHaveLength(1);
+  } finally { f.close(); }
+});
+
+test("collapsed input is a suffix witness only; ordinary draft and submit reads still hold", () => {
+  const frame = `❯ older transcript prompt\n${collapsed.frames[3]!}`;
+  const expected = `/compact ${collapsed.focus} [[sv:self-collapse-probe]]`;
+  expect(composerInput(frame, "claude")).toEqual({ state: "unknown" });
+  expect(pendingInputRegionText(frameIo(frame, "58"), "%7", "claude")).toEqual({ status: "no-band" });
+  expect(composerInput(frame, "claude", true)).toMatchObject({ state: "text" });
+  expect(classifySubmitFrame(frame, "claude", expected, "58", true, false, true)).toMatchObject({ state: "staged", scrolled: true });
+  expect(classifySubmitFrame(frame, "claude", expected, "58", true, false).state).toBe("unobservable");
+  expect(classifyPane(frame, "claude", false).kind).toBe("no-band");
+  expect(claudeBox(frame)).toBeNull();
+  expect(classifySubmitFrame(frame, "claude", expected.replace("/compact ", "/goal "), "58", true, false, true).state).not.toBe("staged");
+});
+
+for (const [name, edit] of [
+  ["missing collapsed indicator", (s: string) => s.replace(/↑ \d+ more/, "hidden rows")],
+  ["zero hidden rows", (s: string) => s.replace(/↑ \d+ more/, "↑ 0 more")],
+  ["missing bottom border", (s: string) => s.replace("─".repeat(58), "")],
+  ["mismatched border widths", (s: string) => s.replace("─".repeat(58), "─".repeat(60))],
+  ["unindented body row", (s: string) => s.replace("  fixture and report", "foreign text and report")],
+  ["newer prompt below box", (s: string) => s + "\n❯ human draft\n"],
+  ["altered visible payload", (s: string) => s.replace("fixture and report", "fixture and change")],
+  ["opaque paste chip", (s: string) => s.replace("fixture and report", "[Pasted text #1 +3 lines]")],
+] as const) test(`unprovable collapsed chunk withholds Enter: ${name}`, () => {
+  const f = collapsedFixture((s, i) => i >= 2 ? edit(s) : s);
+  try {
+    const out = submitQueuedClaude(f.request, f.fx, f.lock);
+    expect(out.result.status).toBe("unverified");
+    expect("detail" in out.result && out.result.detail).toContain("Enter withheld");
+    expect(f.keys).not.toContain("Enter");
+    expect(f.keys).toHaveLength(3);
+    expect(f.buffer).toBe(f.keys.join(""));
+  } finally { f.close(); }
+});
 
 for (const kind of ["lock", "draft", "copy"] as const) test(`production queued submit has no effect while ${kind} holds, then submits once`, () => {
   const f = fixture();

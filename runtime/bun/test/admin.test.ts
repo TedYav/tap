@@ -189,7 +189,7 @@ test("unknown subcommand refuses with the bare tap label and incumbent usage", (
 
 test("migrate-registry is a removed-verb stub: old_store, exit 1, no child", () => {
   const f = fixture();
-  const detail = 'tap admin migrate-registry was removed; this TAP reads only {"schema":"0.20","team":{...},"seats":{...}} team registries and never converts old files';
+  const detail = 'tap admin migrate-registry was removed; this TAP reads team registries with a seats object and schema 0.20 or 0.21 and never converts old files';
   const action = 'ask an agent to upgrade an old team registry by hand (rename "agents" to "seats", add "schema": "0.20"); move an old teams.json or launcher sessions.json aside; then run tap init';
   for (const args of [["migrate-registry"], ["migrate-registry", "--yes"], ["migrate-registry", "--nope", "extra"]]) {
     const r = f.run(args);

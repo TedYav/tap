@@ -151,7 +151,7 @@ export function initRoot(cwd: string, opts: InitOptions): InitOutcome {
       if(!currentShapedStore(loc)){
         const old=teamRegistryFileRefusal(loc);
         if(old)throw new InitRefusal(old.errorClass,old.action,old.detail);
-        throw new InitRefusal("registry_invalid","tap doctor",`${loc} is not a current {"schema":"0.20","team":{...},"seats":{...}} team registry`);
+        throw new InitRefusal("registry_invalid","tap doctor",`${loc} is not a valid current team registry`);
       }
     }
     if(enrolled.status==="ok")return {team:enrolled.name,root:enrolled.rootReal,bus:join(enrolled.rootReal,".tap/bus"),inGit,already:true};

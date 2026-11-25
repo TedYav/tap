@@ -213,7 +213,7 @@ export function inputRegion(io: PaneIo, target: string, cmd: string): Region {
     // Bounded band only, between the bottom rule pair. The prompt-anchored scan
     // would start at a transcript '>' echo and drag the rule and footer in.
     // An absent rule-pair band is status 3, as `tap_agy_box_text` returned it.
-    const r = io.capture(target, false, true);
+    const r = io.capture(target, true, true);
     if (r.code !== 0) return { status: "no-band", region: "" };
     const box = agyComposer(r.stdout);
     return box === null ? { status: "no-band", region: "" } : { status: "ok", region: box };
@@ -460,7 +460,7 @@ export function pendingInputText(io: PaneIo, target: string, cmd: string, frame?
     // agy queues typed input mid-turn like every non-hermes harness, so a
     // visible '>' band between its rule pair is permission to type wherever
     // that band sits — under a spinner, and with a task card rendered BELOW it.
-    const r = io.capture(target, false, true);
+    const r = io.capture(target, true, true);
     if (r.code !== 0) return { status: "no-band" };
     // `_agy_cap="$(tap_capture_pane …)"` then `printf '%s\n' "$_agy_cap" | …`:
     // the substitution stripped every trailing newline and the printf added
@@ -556,10 +556,10 @@ export function pendingInputText(io: PaneIo, target: string, cmd: string, frame?
  * "rc 0, empty" for an unreadable OpenCode box is a real hazard, and it is
  * `tap-bxfd8`, not a fold-in here.
  */
-export function pendingInputRegionText(io: PaneIo, target: string, cmd: string): PendingInput {
+export function pendingInputRegionText(io: PaneIo, target: string, cmd: string, allowCollapsed = false): PendingInput {
   const captured = captureInputFrame(io, target, cmd, true);
   if (!captured.ok) return { status: "no-band" };
-  const verdict = composerInput(captured.frame, cmd);
+  const verdict = composerInput(captured.frame, cmd, allowCollapsed);
   if (cmd === "opencode" || cmd === "agy") {
     return { status: "text", text: verdict.state === "text" ? verdict.text : "" };
   }
@@ -821,28 +821,27 @@ function ensureAsciiJson(value: unknown): string {
     `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
-/**
- * Codex's input_state reads through the ONE composer reader (tap-8nmot): the
- * generic glyph region swallows the status footer and Braille paint rows that
- * sit below a staged wire, so an occupied composer classified as other-text
- * while the submit-side readers (which strip paint and trim the footer) saw
- * the wire plainly. A READABLE composer classifies directly — empty,
- * unsubmitted-sentinel, other-text; an unreadable one falls back to the
- * incumbent generic path, which fails closed exactly as before.
- */
-function classifyCodexOrGeneric(
-  captured: { ok: true; frame: string } | { ok: false },
-  cmd: string, region: string, escaped: string, glyph: string,
+/** Prefer the bounded composer when it can distinguish painted hints from drafts. */
+function classifyPeekInput(
+  io: PaneIo, target: string, cmd: string, region: Region, escaped: string,
 ): "empty" | "unsubmitted-sentinel" | "other-text" {
   const promptRe = promptLineReText(cmd);
+  // Antigravity's bounded region already includes the paint decision. Its
+  // raw prompt line alone contains the same words for the hint and a draft.
+  let text: string | undefined;
+  if (cmd === "agy" && region.status === "ok") text = region.region;
   if (cmd === "codex" || cmd.startsWith("codex-")) {
+    // tap-8nmot: the generic glyph region includes the footer below a staged
+    // Codex wire. Its bounded composer also needs paint to recognize hints.
+    const captured = captureInputFrame(io, target, cmd, true);
     const composer = composerInput(captured.ok ? captured.frame : "", cmd);
-    if (composer.state === "text") {
-      if (composer.text.trim() === "") return "empty";
-      return regionIsSentinel(composer.text, promptRe) ? "unsubmitted-sentinel" : "other-text";
-    }
+    if (composer.state === "text") text = composer.text;
   }
-  return inputStateFromRegion(region, escaped, glyph, promptRe, cmd);
+  if (text !== undefined) {
+    if (!text.trim()) return "empty";
+    return regionIsSentinel(text, promptRe) ? "unsubmitted-sentinel" : "other-text";
+  }
+  return inputStateFromRegion(commandSubstitution(region.region), escaped, promptGlyph(cmd), promptRe, cmd);
 }
 
 /** The peek primitive's whole output (ported from lib.sh `tap_pane_read`). */
@@ -851,23 +850,11 @@ export function paneRead(
 ): string {
   const captured = captureInputFrame(io, target, cmd, false);
   const full = commandSubstitution(captured.ok ? captured.frame : "");
-  const region = commandSubstitution(inputRegion(io, target, cmd).region);
+  const region = inputRegion(io, target, cmd);
   const escaped = commandSubstitution(escapedInputLine(io, target, cmd));
-  const glyph = promptGlyph(cmd);
-  // `tap_prompt_line_re`'s output reached BOTH `tap_input_state_from_region`
-  // (as a `sed` program) and `tap_peek_transcript` (as an `awk` pattern) from
-  // this one call site, and those two instruments read its space class
-  // differently. The transcript split is awk's; the state classifier gets the
-  // pattern text and resolves it to sed's.
-  // `tap_prompt_line_re "$cmd"`, NOT a pattern rebuilt from the glyph. Hermes's
-  // is `^[[:space:] ]*([A-Za-z0-9._-]+ |⚕ )?[›❯]`, and a glyph-only reconstruction
-  // leaves a named profile's `ops-hermes ` prefix in place through the strip —
-  // so a staged sentinel stops starting with `[[TAP` and reads as ordinary
-  // draft text. Found by the oracle on a named hermes row.
-  // The Codex composer reads an ESCAPED capture: its idle placeholder is
-  // recognized by dim SGR, which the plain `captured` frame no longer carries.
-  const codex = cmd === "codex" || cmd.startsWith("codex-");
-  const state = classifyCodexOrGeneric(codex ? captureInputFrame(io, target, cmd, true) : captured, cmd, region, escaped, glyph);
+  const state = classifyPeekInput(io, target, cmd, region, escaped);
+  // The transcript split uses awk's prompt expression. Input classification
+  // uses the full harness-specific sed expression, including named Hermes rows.
   const transcript = peekTranscript(full, cmd, promptRowReAwk(cmd));
   if (json) {
     // `transcript="$(tap_peek_transcript …)"` — the JSON branch read it through a

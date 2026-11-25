@@ -141,7 +141,7 @@ export interface DeadLetter {
 
 /** Whether an explicit forwarding edge or adoption grant still carries `to`. */
 function custodyCarried(auth: DeadLetterAuthority, to: string): boolean {
-  if (forwardings(auth.doc).some((edge) => edge.source === to && !edge.custody_revoked)) return true;
+  if (forwardings(auth.doc).some((edge) => edge.source === to && edge.custody_revoked !== true)) return true;
   return Object.values(auth.seats).some((seat) => object(seat) && Array.isArray(seat.adopted_handles) && seat.adopted_handles.includes(to));
 }
 
